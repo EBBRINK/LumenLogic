@@ -9,7 +9,9 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --env-file=.env.local db/migrate.ts",
-    "import": "bun --env-file=.env.local scripts/import.ts"
+    "import": "bun --env-file=.env.local scripts/import.ts",
+    "seed:demo": "bun --env-file=.env.local scripts/seed-demo.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
