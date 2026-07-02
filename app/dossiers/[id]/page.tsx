@@ -74,6 +74,22 @@ export default async function DossierDetailPage({
         </div>
       </header>
 
+      <nav className="mb-8 flex flex-wrap gap-2">
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/dossiers/${dossier.id}/offerte`}>Offerte (calculator)</Link>
+        </Button>
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/dossiers/${dossier.id}/werkvoorbereiding`}>
+            Werkvoorbereiding{dossier.phase === "tender" ? " (gegund)" : ""}
+          </Link>
+        </Button>
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/dossiers/${dossier.id}/armaturenboek`}>
+            Armaturenboek (projectleider)
+          </Link>
+        </Button>
+      </nav>
+
       <section className="mb-8">
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="text-lg font-medium">Spec-regels</h2>

@@ -41,6 +41,36 @@ export type Candidate = {
   matchKind: "exact" | "fuzzy";
 };
 
+export type ComparedField = {
+  label: string;
+  reference: string | null;
+  candidate: string | null;
+  verdict: "better" | "worse" | "equal" | "unknown";
+  source: string;
+};
+
+export type AlternativeView = {
+  id: string;
+  name: string;
+  brandName: string | null;
+  articleCode: string | null;
+  kelvin: number | null;
+  grossPrice: string | null;
+  equivalenceScore: number;
+  rationale: string;
+  technical: ComparedField[];
+  sustainability: ComparedField[];
+};
+
+export type WerkvoorbereiderLine = {
+  specLineId: string;
+  fixtureCode: string;
+  quantity: number;
+  referenceName: string;
+  referenceBrand: string | null;
+  alternatives: AlternativeView[];
+};
+
 export type QuoteLineRow = {
   id: string;
   fixtureCode: string;

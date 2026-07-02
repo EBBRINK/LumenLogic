@@ -169,13 +169,34 @@ export async function getVisibleProduct(db: AppDb, id: string) {
 }
 
 // Ijzeren regel 4: value-engineering-/duurzaamheidssuggesties bestaan UITSLUITEND in de
-// gegund-stand. In tender-stand geeft deze poort altijd een lege lijst — hier, centraal.
-// De vergelijkingsengine zelf is run 3; de poort staat vanaf nu in de architectuur.
+// gegund-stand. In tender-stand geeft de poort altijd een lege lijst. De echte rangschikking
+// zit in de gelijkwaardigheidsengine (lib/repo/equivalence.ts); deze wrapper levert een
+// beknopte kandidatenlijst voor de match-pagina.
 export async function getAlternativeSuggestions(
   db: AppDb,
-  opts: { phase: "tender" | "awarded"; productId: string },
+  opts: { phase: "tender" | "awarded"; productId: string; actor?: string },
 ): Promise<ProductCandidate[]> {
   if (opts.phase === "tender") return []; // default = veilig
-  // gegund: run-3-engine nog niet gebouwd → voorlopig leeg, maar de poort is open.
-  return [];
+  const { getEquivalentAlternatives } = await import("./equivalence");
+  const { alternatives } = await getEquivalentAlternatives(db, {
+    phase: opts.phase,
+    referenceProductId: opts.productId,
+    actor: opts.actor,
+  });
+  return alternatives.map((a) => ({
+    id: a.id,
+    name: a.name,
+    brandName: a.brandName,
+    articleCode: a.articleCode,
+    supplierArticleCode: null,
+    categoryPath: a.categoryPath,
+    kelvin: a.kelvin,
+    cri: a.cri,
+    ipValue: a.ipValue,
+    lumenOutput: null,
+    grossPrice: a.grossPrice,
+    currency: a.currency,
+    score: a.equivalenceScore,
+    matchKind: "fuzzy" as const,
+  }));
 }

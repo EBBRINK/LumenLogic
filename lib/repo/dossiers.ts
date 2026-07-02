@@ -93,6 +93,9 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       matchedBrand: visibleProducts.brandName,
       matchedArticleCode: visibleProducts.articleCode,
       matchedPrice: visibleProducts.grossPrice,
+      matchedKelvin: visibleProducts.kelvin,
+      matchedCri: visibleProducts.cri,
+      matchedIp: visibleProducts.ipValue,
     })
     .from(specLines)
     .leftJoin(
