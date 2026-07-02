@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
+import { brands } from "@/db/schema";
 import {
   addSpecLines,
   createDossier,
@@ -13,6 +14,8 @@ import {
   parseSpecCsv,
   setDossierPhase,
 } from "@/lib/repo/dossiers";
+import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
+import { logEvent } from "@/lib/repo/events";
 import { requireSession, getActor } from "@/lib/session";
 
 function intOrNull(v: FormDataEntryValue | null): number | null {
@@ -65,6 +68,30 @@ export async function addSpecCsvAction(formData: FormData) {
   const lines = parseSpecCsv(csv);
   if (dossierId && lines.length) await addSpecLines(db, dossierId, lines);
   revalidatePath(`/dossiers/${dossierId}`);
+}
+
+export async function importArmaturenboekPdfAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const file = formData.get("pdf");
+  if (!dossierId || !(file instanceof File) || file.size === 0) return;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const brandNames = (
+    await db.select({ name: brands.name }).from(brands)
+  ).map((b) => b.name);
+  const { lines, hadText } = await extractSpecLinesFromPdf(bytes, brandNames);
+  if (lines.length) await addSpecLines(db, dossierId, lines);
+  await logEvent(db, {
+    entity: "dossier",
+    entityId: dossierId,
+    action: "pdf_import",
+    actor: await getActor(),
+    payload: { file: file.name, hadText, imported: lines.length },
+  });
+  revalidatePath(`/dossiers/${dossierId}`);
+  redirect(
+    `/dossiers/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}`,
+  );
 }
 
 export async function matchAction(formData: FormData) {

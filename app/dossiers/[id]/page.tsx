@@ -14,16 +14,20 @@ import {
   addSpecLineAction,
   deleteLineAction,
   generateQuoteAction,
+  importArmaturenboekPdfAction,
   setPhaseAction,
 } from "../actions";
 
 export default async function DossierDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ pdf?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
+  const { pdf } = await searchParams;
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const lines = await getSpecLines(db, id);
@@ -90,6 +94,22 @@ export default async function DossierDetailPage({
         </Button>
       </nav>
 
+      {pdf && (
+        <div className="mb-6 rounded-lg border bg-muted/40 p-3 text-sm">
+          {pdf === "geen-tekstlaag" ? (
+            <>
+              De PDF bevat geen tekstlaag (waarschijnlijk als beeld geëxporteerd) —
+              er viel niets te importeren. Gebruik een tekst-PDF of het CSV-blok.
+            </>
+          ) : (
+            <>
+              <span className="font-medium">{pdf}</span> spec-regels uit de PDF
+              geïmporteerd.
+            </>
+          )}
+        </div>
+      )}
+
       <section className="mb-8">
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="text-lg font-medium">Spec-regels</h2>
@@ -114,6 +134,29 @@ export default async function DossierDetailPage({
             addLineAction={addSpecLineAction}
             addCsvAction={addSpecCsvAction}
           />
+          <form
+            action={importArmaturenboekPdfAction}
+            className="mt-6 flex flex-wrap items-center gap-3 border-t pt-6"
+          >
+            <input type="hidden" name="dossierId" value={dossier.id} />
+            <div>
+              <p className="text-sm font-medium">Armaturenboek-PDF importeren</p>
+              <p className="text-xs text-muted-foreground">
+                Leest de inhoudsopgave (code · merk · type). Alleen PDF&apos;s met
+                tekstlaag.
+              </p>
+            </div>
+            <input
+              type="file"
+              name="pdf"
+              accept="application/pdf"
+              required
+              className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
+            />
+            <Button type="submit" variant="secondary" size="sm">
+              Importeer PDF
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </main>

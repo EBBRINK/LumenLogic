@@ -7,14 +7,17 @@ import { drizzle } from "drizzle-orm/pglite";
 import * as schema from "./schema";
 import initSql from "./migrations/0000_init.sql?raw";
 import searchSql from "./migrations/0001_search_and_visibility.sql?raw";
+import viewSql from "./migrations/0003_view_sustainability.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
 export async function createTestDb(): Promise<TestDb> {
   const client = await PGlite.create({ extensions: { pg_trgm } });
-  // Beide bestanden zijn multi-statement SQL met ';' — client.exec voert ze integraal uit.
+  // Multi-statement SQL met ';' — client.exec voert elk bestand integraal uit.
+  // Zelfde migraties als Neon (0002 auth is niet nodig voor de repo-tests).
   await client.exec(initSql);
   await client.exec(searchSql);
+  await client.exec(viewSql); // view mét duurzaamheids-/techvelden (regel 3 blijft gelijk)
   return drizzle(client, { schema });
 }
 
@@ -32,6 +35,10 @@ export async function seedBrandProduct(
     kelvin?: number | null;
     cri?: number | null;
     ip?: string | null;
+    categoryPath?: string | null;
+    warrantyMonths?: number | null;
+    repairability?: string | null;
+    epdLifetimeHours?: number | null;
   },
 ) {
   const brandId = crypto.randomUUID();
@@ -59,6 +66,10 @@ export async function seedBrandProduct(
     kelvin: opts.kelvin ?? null,
     cri: opts.cri ?? null,
     ipValue: opts.ip ?? null,
+    categoryPath: opts.categoryPath ?? null,
+    warrantyMonths: opts.warrantyMonths ?? null,
+    repairability: opts.repairability ?? null,
+    epdLifetimeHours: opts.epdLifetimeHours ?? null,
   });
   await db.insert(schema.prices).values({
     productId,
