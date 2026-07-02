@@ -1,5 +1,5 @@
 // Dossier-, spec-regel- en offerte-logica (calculatorflow, BUILD-PLAN §4.3).
-import { and, asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import {
   projectDossiers,
   quoteLines,
@@ -101,6 +101,15 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
     )
     .where(eq(specLines.dossierId, dossierId))
     .orderBy(asc(specLines.sortOrder), asc(specLines.createdAt));
+}
+
+export async function getSpecLine(db: AppDb, id: string) {
+  const [row] = await db
+    .select()
+    .from(specLines)
+    .where(eq(specLines.id, id))
+    .limit(1);
+  return row ?? null;
 }
 
 export type SpecLineInput = {

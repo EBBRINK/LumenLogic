@@ -26,6 +26,31 @@ export type ProductCandidate = {
   matchKind: "exact" | "fuzzy";
 };
 
+// De view-kolommen zijn drizzle-typisch nullable; id/name zijn in werkelijkheid NOT NULL
+// (products.id/name). Deze mapper coërceert één rij (uit welke tak dan ook) naar een kandidaat.
+function toCandidate(
+  r: Record<string, unknown>,
+  score: number,
+  matchKind: "exact" | "fuzzy",
+): ProductCandidate {
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    brandName: (r.brandName as string | null) ?? null,
+    articleCode: (r.articleCode as string | null) ?? null,
+    supplierArticleCode: (r.supplierArticleCode as string | null) ?? null,
+    categoryPath: (r.categoryPath as string | null) ?? null,
+    kelvin: (r.kelvin as number | null) ?? null,
+    cri: (r.cri as number | null) ?? null,
+    ipValue: (r.ipValue as string | null) ?? null,
+    lumenOutput: (r.lumenOutput as number | null) ?? null,
+    grossPrice: (r.grossPrice as string | null) ?? null,
+    currency: (r.currency as string | null) ?? null,
+    score,
+    matchKind,
+  };
+}
+
 const SELECTION = {
   id: visibleProducts.id,
   name: visibleProducts.name,
@@ -71,7 +96,7 @@ export async function searchProducts(
           ),
         )
         .limit(limit);
-      results = exact.map((r) => ({ ...r, score: 1, matchKind: "exact" }));
+      results = exact.map((r) => toCandidate(r, 1, "exact"));
     }
 
     // 2) Anders: fuzzy op merk + producttekst. Het merk wordt genormaliseerd vergeleken
@@ -118,22 +143,7 @@ export async function searchProducts(
         // Regel 2: #matchende tokens, dan similariteit, dan naam. Geen prijs, nergens.
         .orderBy(desc(matchCount), desc(score), asc(visibleProducts.name))
         .limit(limit);
-      results = fuzzy.map((r) => ({
-        id: r.id,
-        name: r.name,
-        brandName: r.brandName,
-        articleCode: r.articleCode,
-        supplierArticleCode: r.supplierArticleCode,
-        categoryPath: r.categoryPath,
-        kelvin: r.kelvin,
-        cri: r.cri,
-        ipValue: r.ipValue,
-        lumenOutput: r.lumenOutput,
-        grossPrice: r.grossPrice,
-        currency: r.currency,
-        score: Number(r.score) || 0,
-        matchKind: "fuzzy" as const,
-      }));
+      results = fuzzy.map((r) => toCandidate(r, Number(r.score) || 0, "fuzzy"));
     }
   }
 

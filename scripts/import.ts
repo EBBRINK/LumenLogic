@@ -61,7 +61,6 @@ async function flush<T extends Record<string, unknown>>(
 ) {
   if (rows.length === 0) return;
   // onConflictDoNothing → idempotent op de primaire sleutel (bron-UUID / unieke index)
-  // @ts-expect-error generieke insert over heterogene tabellen
   await db.insert(table).values(rows).onConflictDoNothing();
 }
 
