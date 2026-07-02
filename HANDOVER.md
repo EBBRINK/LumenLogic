@@ -1,82 +1,90 @@
-# HANDOVER — Lumen Logic run 1
+# HANDOVER — Lumen Logic (runs 1–3)
 
-_Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de opdracht._
+_Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de oorspronkelijke run-1-opdracht._
 
-## Status: run 1 is af
+## Status: het complete Lumen Logic staat
 
-`bun vitest run` → **22 tests groen** (2 files): 4 repository-/kernregeltests op een echte
-PGlite-database + 18 white-box RSC-screenshottests (licht/donker × mobiel/desktop). De
-PNG's staan naast `components/dossier/screens.test.tsx` (gitignored) en zijn visueel
-gecontroleerd. `bunx tsc --noEmit`, `bunx eslint .` en `bunx next build` zijn schoon.
+`bun vitest run` → **41 tests groen** (5 files): repo-/engine-tests op een echte PGlite-db
+(zelfde migraties + view als productie) + white-box RSC-screenshottests van álle schermen
+(licht/donker × mobiel/desktop). `bunx tsc --noEmit`, `bunx eslint .` en `bunx next build`
+zijn schoon. Alles is end-to-end geverifieerd in de browser tegen echte Neon-data.
 
-### Wat is af (BUILD-PLAN §4)
-- **Datamodel** (`db/schema.ts`): brands (brand_code niet-uniek), suppliers, categories
-  (3 niveaus), products (technische + duurzaamheidsvelden), price_lists (**valid_until
-  verplicht**), prices, project_dossiers (`phase` enum), spec_lines, quotes/quote_lines,
-  events. Better Auth-tabellen in `db/auth-schema.ts`.
-- **Import** (`bun run import`): 211.310 producten idempotent ingeladen in Neon; 210.117
-  prijzen; 1.193 producten zonder verkoopprijs (→ bewust onzichtbaar); 0 dangling FK's,
-  0 naamloze rijen. Fail-loud logging, nooit stil droppen.
-- **Calculatorflow**: `/login` (magic link) → `/dossiers` (lijst + aanmaken) →
-  `/dossiers/[id]` (spec-regels invoeren, los of via CSV-plak; fase-toggle) →
-  `/dossiers/[id]/regel/[lineId]` (matchen) → `/dossiers/[id]/offerte` (printbare
-  geprijsde lijst, print-CSS).
+### De drie rollen (driekoppige gebruiker) — compleet
+- **Calculator** → geprijsde tender-inschrijving. Engine in tender-stand (spec-getrouw,
+  geen suggesties). `/dossiers/[id]/offerte`.
+- **Werkvoorbereider** → value-engineering ná gunning. `/dossiers/[id]/werkvoorbereiding`
+  (alleen in gegund-stand).
+- **Projectleider** → gecodeerd armaturenboek. `/dossiers/[id]/armaturenboek`.
 
-### De vier ijzeren regels in code
-1. **Geen webshop-semantiek** — geen winkelwagen/checkout/publieke prijzen.
-2. **Geld nooit in de ranking** — `searchProducts` sorteert puur op tekstsimilariteit
-   (`lib/repo/products.ts`); prijs wordt getoond, nooit gesorteerd.
-3. **Verlopen prijslijst = onzichtbaar** — centrale view `visible_products`
-   (`db/migrations/0001`); alle zoekcode leest enkel hieruit. Bewezen in
-   `lib/repo/rules.test.ts` (ook op exacte SKU).
-4. **Default = veilig** — dossier-fase default `tender`; suggesties-poort
-   `getAlternativeSuggestions` geeft in tender altijd `[]`. Bewezen in repo- én UI-test.
-5. **Event-log vanaf dag één** — elke search/match/no-match/offerte in `events`.
+### De vijf ijzeren regels — in code én in tests
+1. **Geen webshop** — geen winkelwagen/checkout/publieke prijzen.
+2. **Geld nooit in de ranking** — matching (`lib/repo/products.ts`) én de vergelijkings-
+   engine (`lib/repo/equivalence.ts`) sorteren puur op objectieve velden; prijs wordt
+   getoond, nooit gesorteerd. Aparte test bewijst dit.
+3. **Verlopen prijslijst = onzichtbaar** — centrale view `visible_products`; alle zoek-/
+   engine-code leest enkel hieruit. Bewezen voor zoeken, exacte SKU én de engine.
+4. **Default = veilig** — dossier-fase default `tender`; `getEquivalentAlternatives` geeft
+   in tender altijd `[]`. Bewezen in repo- én UI-tests.
+5. **Event-log vanaf dag één** — elke search/match/no-match/offerte/suggestie/PDF-import
+   in `events`; de `/analytics`-view maakt er het Fase-2-fundament van.
 
-### DoD-demo (BUILD-PLAN §6.2)
-`bun run seed:demo` zet het Deerns-dossier klaar in Neon en valideert de pijplijn
-end-to-end tegen echte data:
-- Lp301 · XAL · SASSO 100 → match ✓
-- Lr303 · XAL · SASSO 60 Adjustable → match ✓
-- Lw201 · Wever & Ducré · SCAVA 1.0 → match ✓
-- Lp001-a · LedsC4 · INFINITE PRO → **nette "geen match"** (LEDS-C4 heeft 0 producten in de bron)
-- Ls001 · Glamox · i40 → **nette "geen match"** (Glamox niet in de catalogus)
+### Run 1 — fundament (af)
+Datamodel · import van **211.310 echte XIS-producten** · calculatorflow (dossiers,
+spec-regels los + CSV-plak, matchen, printbare offerte).
 
-Offerte: 3 geprijsde regels, totaal € 3.758,00. Na inloggen ziet Timo dit dossier staan.
+### Run 2 — PDF-import + armaturenboek (af)
+- **Armaturenboek-export** (projectleider): gecodeerd, printbaar overdrachtsdocument.
+- **PDF-import** (`lib/pdf/armaturenboek.ts`): leest de inhoudsopgave-tekstlaag van een
+  geüpload armaturenboek, segmenteert op armatuurcodes en splitst merk/type via de
+  merkenlijst. ⚠️ Het Deerns-voorbeeld in `docs/examples/…ANN…pdf` is als **beeld/outline**
+  geëxporteerd en heeft géén tekstlaag — daar valt niets uit te parsen (de UI meldt dat
+  eerlijk). Voor de live demo genereert `bun scripts/gen-demo-pdf.ts` een tekst-PDF
+  (`docs/examples/demo-armaturenboek.pdf`) die de import wél leest (7 regels).
+
+### Run 3 — fase-bewuste gelijkwaardigheidsengine (af)
+- **Engine** (`lib/repo/equivalence.ts`) — "scheidsrechter, geen rechter": rangschikt
+  alternatieven op objectieve merk-velden (categorie, kelvin, CRI, IP) + duurzaamheid
+  (garantie, repareerbaarheid, EPD) als tiebreak, **nooit prijs**. Toont de bron
+  ("merk-opgave") en eerlijk "geen data" bij ontbrekende cijfers. Alleen in gegund-stand.
+- **Werkvoorbereidersview** met objectieve vergelijkingstabellen per gematchte regel.
+
+## DoD-demo (klaargezet in Neon)
+`bun run seed:demo` → `bun run seed:scenario` zet het Deerns-dossier klaar en valideert de
+volledige pijplijn end-to-end. Na inloggen ziet Timo het dossier met 3 matches + 2 nette
+no-matches; op “gegund” toont de werkvoorbereider cross-merk groenere gelijkwaardigen.
 
 ## Aannames & keuzes onderweg
-- **Prijsgeldigheid (opgedragen aanname):** de bron heeft geen geldigheidsdatum op prijzen,
-  dus elke prijslijst krijgt `valid_from = 2026-01-01`, **`valid_until = 2026-12-31`**.
-  Aanpassen = één prijslijst per merk bijwerken.
-- **Eén prijslijst per merk** (unieke index op `price_lists.brand_id`). Staffels = run 2.
-- **Zichtbaarheid vereist een geldige prijs.** Een product zonder prijs verschijnt niet in
-  zoekresultaten (1.193 stuks). Dat volgt logisch uit regel 3 en past bij een offertetool.
-- **Eigen HTTP-migrator** (`db/migrate.ts`, `bun run db:migrate`): drizzle-kit's ingebouwde
-  `migrate` gebruikt de Neon-WebSocket-driver, die in deze omgeving hing.
-- **Better Auth via de Drizzle-adapter** i.p.v. de `pg`-provider (het `pg`-pakket zit niet
-  in de stack). Magic link logt naar de serverconsole (op Vercel: functie-logs).
-- **Testomgeving-compat:** de geteste componenten zijn server-safe gemaakt — lucide-react
-  (roept `createContext` bij import aan) vervangen door lokale inline-SVG's; shadcn Button/
-  Badge importeren `Slot` nu direct uit `@radix-ui/react-slot` i.p.v. de `radix-ui`-barrel
-  (die trok react-collapsible mee en brak de react-server-render); `Table` niet langer
-  `"use client"`. Interne links in geteste componenten zijn `<a>` i.p.v. `next/link`.
+- **Prijsgeldigheid:** bron heeft geen datum → prijslijst `valid_until = 2026-12-31`. Eén
+  prijslijst per merk (staffels = later). Zichtbaarheid vereist een geldige prijs.
+- **Categorie- en duurzaamheidsdata ontbreekt in de bron** (`category_path` op 19 van 211k
+  rijen, duurzaamheid leeg). De engine/architectuur zijn daarop gebouwd; de data komt in
+  productie van de merken. Voor de demo zetten `seed:scenario` (cross-merk spots-scenario)
+  en `seed:sustainability` **synthetische, duidelijk-gemarkeerde** categorie/kelvin/
+  duurzaamheidscijfers op een kleine set producten, zodat de engine zichtbaar werkt.
+- **Eigen HTTP-migrator** (`bun run db:migrate`) i.p.v. drizzle-kit's ws-driver (hing hier).
+- **Better Auth via de Drizzle-adapter** (pg-provider mist het `pg`-pakket). Magic link →
+  serverconsole (op Vercel: functie-logs).
+- **Testomgeving-compat:** geteste componenten zijn server-safe (lucide → lokale inline-
+  SVG's; shadcn Slot direct uit `@radix-ui/react-slot`; `Table` niet meer `"use client"`).
 
 ## Nodig voor de live Vercel-demo
-- **`DATABASE_URL`** — Neon (al gevuld; migraties + import zijn hiertegen gedraaid).
-- **`BETTER_AUTH_SECRET`** — staat lokaal in `.env.local`; **zet dezelfde waarde als
-  Vercel project-env**, anders werkt de magic-link-login op de deploy niet.
-- **`BETTER_AUTH_URL`** — optioneel; valt anders terug op `https://$VERCEL_URL`.
-- Draai bij een schone DB: `bun run db:migrate` → `bun run import` → `bun run seed:demo`.
+- **`DATABASE_URL`** — Neon (al gevuld; migraties + import + seeds hiertegen gedraaid).
+- **`BETTER_AUTH_SECRET`** — staat lokaal in `.env.local`; **zet dezelfde waarde als Vercel
+  project-env**, anders werkt de magic-link-login op de deploy niet.
+- Schone DB opbouwen: `db:migrate` → `import` → `seed:demo` → `seed:scenario`.
 
-## Run-2-kandidaten (bewust NIET in run 1)
-- PDF-import van armaturenboeken + armaturenboek-export.
-- **Relevance-tuning matching**: nu wint pure tekstsimilariteit, waardoor een accessoire
-  ("SNOOT FOR SASSO 100") soms boven de echte armatuur ("SASSO 100 SQ SP CEIL") staat.
-  Wegen op categorie/armatuur-vs-toebehoren hoort in run 2.
-- Staffelprijzen; disclosure-tier-gating in de UI; rollen & rechten.
-- Fase-aware vergelijkings-/suggestie-engine (gegund-stand) + werkvoorbereidersview (run 3).
-- Elasticsearch (pas nodig richting 3M SKU's); client-side navigatie (`next/link`) terug.
+## Commando's
+`bun dev` · `bun run test` · `bun run db:migrate` · `bun run import` · `bun run seed:demo`
+· `bun run seed:scenario` · `bun run seed:sustainability` · `bun scripts/gen-demo-pdf.ts`
+
+## Bewust NIET gedaan / vervolg
+- OCR voor beeld-geëxporteerde PDF-armaturenboeken (zoals het Deerns-voorbeeld) — nu een
+  eerlijke melding; OCR-pijplijn is een volgende stap.
+- Echte merk-duurzaamheidsdata (PDL/ConnectingTheDots-koppeling), staffelprijzen,
+  disclosure-tier-gating in de UI, rollen & rechten, Elasticsearch (richting 3M SKU's).
+- Relevance-tuning matching (armatuur vs. accessoire weegt nu niet mee).
+- Client-side navigatie (`next/link`) in de twee lijst-componenten die nu `<a>` gebruiken.
 
 ## Open eindes
 - RLS staat uit op de bron-Supabase — bekend, niet van ons (alleen-lezen bron).
-- Eén gebruiker (Timo), geen rollen; rollen komen met de fase-engine.
+- Eén gebruiker (Timo), geen rollen; rollen komen bij een echte multi-user-uitrol.
