@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { PhaseBadge } from "./phase-badge";
 import type { DossierSummary } from "./types";
@@ -15,7 +14,7 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
     <ul className="flex flex-col gap-2">
       {dossiers.map((d) => (
         <li key={d.id}>
-          <Link href={`/dossiers/${d.id}`} className="block">
+          <a href={`/dossiers/${d.id}`} className="block">
             <Card className="py-3 transition-colors hover:bg-muted/50">
               <CardContent className="flex items-center justify-between gap-3 px-4">
                 <div className="min-w-0">
@@ -29,7 +28,7 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
                 <PhaseBadge phase={d.phase} />
               </CardContent>
             </Card>
-          </Link>
+          </a>
         </li>
       ))}
     </ul>

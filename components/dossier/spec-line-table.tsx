@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Search, Trash2 } from "lucide-react";
+import { IconSearch, IconTrash } from "./icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,9 +76,9 @@ export function SpecLineTable({
             <TableCell className="text-right">
               <div className="flex items-center justify-end gap-1">
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/dossiers/${dossierId}/regel/${l.id}`}>
-                    <Search /> Matchen
-                  </Link>
+                  <a href={`/dossiers/${dossierId}/regel/${l.id}`}>
+                    <IconSearch /> Matchen
+                  </a>
                 </Button>
                 {deleteAction && (
                   <form action={deleteAction}>
@@ -91,7 +90,7 @@ export function SpecLineTable({
                       variant="ghost"
                       aria-label="Regel verwijderen"
                     >
-                      <Trash2 />
+                      <IconTrash />
                     </Button>
                   </form>
                 )}

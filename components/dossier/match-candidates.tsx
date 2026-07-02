@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { IconCheck } from "./icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatEur } from "@/lib/format";
@@ -70,7 +70,7 @@ export function MatchCandidates({
                   <input type="hidden" name="specLineId" value={specLine.id} />
                   <input type="hidden" name="productId" value={c.id} />
                   <Button type="submit" size="sm">
-                    <Check /> Kies
+                    <IconCheck /> Kies
                   </Button>
                 </form>
               </div>
