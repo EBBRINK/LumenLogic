@@ -82,8 +82,16 @@ no-matches; op “gegund” toont de werkvoorbereider cross-merk groenere gelijk
   eerlijke melding; OCR-pijplijn is een volgende stap.
 - Echte merk-duurzaamheidsdata (PDL/ConnectingTheDots-koppeling), staffelprijzen,
   disclosure-tier-gating in de UI, rollen & rechten, Elasticsearch (richting 3M SKU's).
-- Relevance-tuning matching (armatuur vs. accessoire weegt nu niet mee).
 - Client-side navigatie (`next/link`) in de twee lijst-componenten die nu `<a>` gebruiken.
+
+## Review-pass (Fable, 2026-07-02)
+Frisse-ogen-review na oplevering; drie fixes doorgevoerd (43 tests groen):
+- **Matching**: prefix-bonus in de fuzzy-ranking — het armatuur ("SASSO 100 SQ SP CEIL…")
+  wint nu van accessoires die de familienaam middenin noemen ("SNOOT … FOR SASSO 100").
+  `seed:demo` matcht Lp301 daardoor direct aan het echte armatuur. Nog steeds puur tekst.
+- **CSV-plak**: meegeplakte kolomkop ("code, aantal, merk, type") wordt overgeslagen.
+- **Analytics**: uuid-cast op `payload->>'productId'` afgeschermd met een regex-guard —
+  één afwijkend event kan de pagina niet meer breken.
 
 ## Open eindes
 - RLS staat uit op de bron-Supabase — bekend, niet van ons (alleen-lezen bron).

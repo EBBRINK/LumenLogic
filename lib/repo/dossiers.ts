@@ -161,6 +161,8 @@ export function parseSpecCsv(block: string): SpecLineInput[] {
     // scheiding op tab, puntkomma of komma
     const cols = line.split(/\t|;|,/).map((c) => c.trim());
     if (!cols[0]) continue;
+    // meegeplakte kolomkop ("code, aantal, merk, type") is geen spec-regel
+    if (/^(code|armatuurcode)$/i.test(cols[0])) continue;
     const qty = parseInt(cols[1] ?? "", 10);
     out.push({
       fixtureCode: cols[0],

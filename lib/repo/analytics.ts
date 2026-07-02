@@ -41,6 +41,8 @@ export async function getAnalytics(db: AppDb): Promise<Analytics> {
       FROM events e
       JOIN products p ON p.id = (e.payload->>'productId')::uuid
       WHERE e.action = 'match'
+        -- guard: één event met een niet-uuid payload mag de cast (en de pagina) niet breken
+        AND e.payload->>'productId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       GROUP BY 1, 2 ORDER BY count DESC LIMIT 8`),
   );
   const recent = rows<Analytics["recent"][number]>(

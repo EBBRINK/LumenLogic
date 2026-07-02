@@ -135,13 +135,25 @@ export async function searchProducts(
         conditions.push(ilike(visibleProducts.name, `%${query}%`));
       }
       const score = sql<number>`similarity(${visibleProducts.name}, ${query})`;
+      // Prefix-bonus: een naam die mét de zoektekst begint ("SASSO 100 SQ SP CEIL…") is
+      // vrijwel zeker het gevraagde armatuur; accessoires noemen de familie meestal
+      // middenin ("SNOOT … FOR SASSO 100"). Nog steeds puur tekst — geen prijs (regel 2).
+      const prefixBonus =
+        query.length > 0
+          ? sql<number>`(case when ${visibleProducts.name} ilike ${query + "%"} then 1 else 0 end)`
+          : sql<number>`0`;
 
       const fuzzy = await db
         .select({ ...SELECTION, score, matchCount })
         .from(visibleProducts)
         .where(conditions.length ? and(...conditions) : undefined)
-        // Regel 2: #matchende tokens, dan similariteit, dan naam. Geen prijs, nergens.
-        .orderBy(desc(matchCount), desc(score), asc(visibleProducts.name))
+        // Regel 2: #tokens, dan prefix, dan similariteit, dan naam. Geen prijs, nergens.
+        .orderBy(
+          desc(matchCount),
+          desc(prefixBonus),
+          desc(score),
+          asc(visibleProducts.name),
+        )
         .limit(limit);
       results = fuzzy.map((r) => toCandidate(r, Number(r.score) || 0, "fuzzy"));
     }
