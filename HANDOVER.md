@@ -6,6 +6,9 @@ geen code gewijzigd)._
 _2026-07-07 (later, grill-sessie): koers herzien — Brink-binnendienst als klant nul,
 vijfstatussen-regelset als domeinmodel, XIS-koppeling. `docs/MASTERPLAN.md` vervangen;
 nieuw: `docs/matching-regelset.md` + `docs/xis-post-api-attributes.md` (voor Lynx-call)._
+_2026-07-07 (avond): `docs/FUNCTIONEEL-ONTWERP.md` — alle 78 features getraceerd naar bron,
+complete appstructuur, per scherm wireframes met elk knopje, 12 Mermaid-flowdiagrammen,
+event-catalogus, rollenmatrix. Bouwsessies: masterplan = koers, functioneel ontwerp = wat/hoe._
 
 ## Status: het complete Lumen Logic staat
 
