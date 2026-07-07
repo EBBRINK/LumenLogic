@@ -19,6 +19,7 @@ import { formatEur } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 import {
   chooseCandidateAction,
+  editSpecLineAction,
   runMatchAction,
   setDayPriceAction,
   setLineStatusAction,
@@ -120,6 +121,57 @@ export default async function RegelDetailPage({
         </h2>
         <StatusBadge status={specLine.status as MatchStatus} />
       </div>
+
+      {/* B-10: regel bewerken → matcher draait opnieuw. */}
+      <details className="mb-5 rounded-lg border">
+        <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+          Regel bewerken
+        </summary>
+        <form action={editSpecLineAction} className="border-t p-4">
+          <input type="hidden" name="dossierId" value={dossier.id} />
+          <input type="hidden" name="specLineId" value={specLine.id} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(
+              [
+                ["fixtureCode", "Code", specLine.fixtureCode, "text"],
+                ["quantity", "Aantal", specLine.quantity ?? "", "number"],
+                ["zone", "Zone", specLine.zone ?? "", "text"],
+                ["brandText", "Merk", specLine.brandText ?? "", "text"],
+                ["productText", "Type", specLine.productText ?? "", "text"],
+                ["reqKelvin", "Kelvin", specLine.reqKelvin ?? "", "number"],
+                ["reqCri", "CRI", specLine.reqCri ?? "", "number"],
+                ["reqIp", "IP", specLine.reqIp ?? "", "text"],
+                ["reqWatt", "Watt", specLine.reqWatt ?? "", "text"],
+                ["reqLumen", "Lumen", specLine.reqLumen ?? "", "number"],
+                ["reqBeamAngle", "Straalhoek", specLine.reqBeamAngle ?? "", "text"],
+                ["reqSizeCm", "Maat (cm)", specLine.reqSizeCm ?? "", "text"],
+                ["reqShape", "Vorm", specLine.reqShape ?? "", "text"],
+                ["reqColor", "Kleur", specLine.reqColor ?? "", "text"],
+                ["reqDimmable", "Dimbaar", specLine.reqDimmable ?? "", "text"],
+              ] as const
+            ).map(([name, label, value, type]) => (
+              <label key={name} className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">{label}</span>
+                <input
+                  name={name}
+                  type={type}
+                  defaultValue={String(value)}
+                  required={name === "fixtureCode"}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                />
+              </label>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Merk, type of specs wijzigen draait de matcher opnieuw.
+          </p>
+          <div className="mt-2">
+            <Button type="submit" size="sm" variant="secondary">
+              Opslaan &amp; opnieuw matchen
+            </Button>
+          </div>
+        </form>
+      </details>
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* GEVRAAGD */}

@@ -311,13 +311,30 @@ export function parseBestek(block: string): { code: string; quantity: number }[]
 }
 
 // ── Offerte ──────────────────────────────────────────────────────────────────
+// Offertenummer BL-{jaar}-{4 cijfers} (A-09): teller telt bestaande genummerde
+// offertes van dit jaar. Wordt pas toegekend bij generatie en daarna bewaard —
+// niet bij elke render, en niet opnieuw bij hergenereren.
+async function nextQuoteNumber(db: AppDb): Promise<string> {
+  const year = new Date().getFullYear();
+  const [{ n }] = (await db
+    .select({ n: sql<number>`count(*)` })
+    .from(quotes)
+    .where(sql`${quotes.quoteNumber} like ${"BL-" + year + "-%"}`)) as {
+    n: number;
+  }[];
+  return `BL-${year}-${String(Number(n) + 1).padStart(4, "0")}`;
+}
+
 // Genereert (of hergenereert) de offerte uit alle gematchte spec-regels die een
-// geldige, niet-verlopen prijs hebben. Regel × stukprijs → totalen.
+// geldige, niet-verlopen prijs hebben. Regel × stukprijs → totalen. Het kopblok
+// (nummer, klant, contact, …) blijft behouden bij hergenereren; een uitgestuurde
+// (bevroren) offerte wordt niet overschreven (I-06).
 export async function generateQuote(
   db: AppDb,
   dossierId: string,
   actor?: string,
 ) {
+  const dossier = await getDossier(db, dossierId);
   const lines = await getSpecLines(db, dossierId);
   // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus
   // (matchedPrice) of een dagprijs op de regel (manualPrice, I-04).
@@ -327,7 +344,27 @@ export async function generateQuote(
       (l.matchedPrice != null || l.manualPrice != null),
   );
 
-  // bestaande offerte(s) opruimen → hergenereren is idempotent
+  // bestaand kopblok bewaren; bevroren offerte niet aanraken (I-06)
+  const [prev] = await db
+    .select()
+    .from(quotes)
+    .where(eq(quotes.dossierId, dossierId))
+    .orderBy(asc(quotes.createdAt))
+    .limit(1);
+  if (prev?.frozenAt) return prev; // uitgestuurd → op slot
+
+  const header = {
+    quoteNumber: prev?.quoteNumber ?? (await nextQuoteNumber(db)),
+    customer: prev?.customer ?? dossier?.customer ?? null,
+    contactName: prev?.contactName ?? null,
+    address: prev?.address ?? null,
+    projectRef: prev?.projectRef ?? dossier?.name ?? null,
+    authorEmail: prev?.authorEmail ?? actor ?? null,
+    quoteDate:
+      prev?.quoteDate ?? new Date().toISOString().slice(0, 10),
+    validUntil: prev?.validUntil ?? null,
+  };
+
   const existing = await db
     .select({ id: quotes.id })
     .from(quotes)
@@ -337,7 +374,10 @@ export async function generateQuote(
     await db.delete(quotes).where(eq(quotes.id, q.id));
   }
 
-  const [quote] = await db.insert(quotes).values({ dossierId }).returning();
+  const [quote] = await db
+    .insert(quotes)
+    .values({ dossierId, ...header })
+    .returning();
   if (matched.length > 0) {
     await db.insert(quoteLines).values(
       matched.map((l) => {
@@ -382,4 +422,78 @@ export async function getQuote(db: AppDb, dossierId: string) {
     .orderBy(asc(quoteLines.fixtureCode));
   const total = lines.reduce((sum, l) => sum + Number(l.lineTotal), 0);
   return { quote, lines, total };
+}
+
+// A-10: kopblok bewerkbaar tot de estimate wordt uitgestuurd. Werkt op de bestaande
+// offerte van het dossier; een bevroren offerte blijft op slot (I-06).
+export async function updateQuoteHeader(
+  db: AppDb,
+  dossierId: string,
+  fields: {
+    quoteNumber?: string | null;
+    customer?: string | null;
+    contactName?: string | null;
+    address?: string | null;
+    projectRef?: string | null;
+    authorEmail?: string | null;
+    quoteDate?: string | null;
+    validUntil?: string | null;
+  },
+  actor?: string,
+) {
+  const [quote] = await db
+    .select()
+    .from(quotes)
+    .where(eq(quotes.dossierId, dossierId))
+    .orderBy(asc(quotes.createdAt))
+    .limit(1);
+  if (!quote || quote.frozenAt) return; // geen offerte of bevroren → niet wijzigen
+  await db
+    .update(quotes)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(quotes.id, quote.id));
+  await logEvent(db, {
+    entity: "quote",
+    entityId: quote.id,
+    action: "quote_header_updated",
+    actor,
+    payload: { dossierId },
+  });
+}
+
+// B-10: een spec-regel bewerken. Wijziging aan merk/type/specs raakt de match, dus
+// de aanroeper draait daarna de matcher opnieuw (via runMatchAction).
+export async function updateSpecLine(
+  db: AppDb,
+  specLineId: string,
+  fields: Partial<SpecLineInput>,
+  actor?: string,
+) {
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const set = (k: string, v: unknown) => {
+    if (v !== undefined) patch[k] = v;
+  };
+  set("fixtureCode", fields.fixtureCode);
+  set("quantity", fields.quantity ?? null);
+  set("zone", fields.zone ?? null);
+  set("brandText", fields.brandText ?? null);
+  set("productText", fields.productText ?? null);
+  set("reqKelvin", fields.reqKelvin ?? null);
+  set("reqCri", fields.reqCri ?? null);
+  set("reqIp", fields.reqIp ?? null);
+  set("reqWatt", fields.reqWatt != null ? String(fields.reqWatt) : null);
+  set("reqLumen", fields.reqLumen ?? null);
+  set("reqBeamAngle", fields.reqBeamAngle != null ? String(fields.reqBeamAngle) : null);
+  set("reqSizeCm", fields.reqSizeCm != null ? String(fields.reqSizeCm) : null);
+  set("reqShape", fields.reqShape ?? null);
+  set("reqColor", fields.reqColor ?? null);
+  set("reqDimmable", fields.reqDimmable ?? null);
+  await db.update(specLines).set(patch).where(eq(specLines.id, specLineId));
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "spec_line_edited",
+    actor,
+    payload: { fields: Object.keys(patch).filter((k) => k !== "updatedAt") },
+  });
 }

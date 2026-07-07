@@ -15,8 +15,74 @@ import { getDossier, getQuote, getSpecLines } from "@/lib/repo/dossiers";
 import { getXisExports, preflightSummary } from "@/lib/repo/xis";
 import type { Deviation, MatchStatus } from "@/components/dossier/types";
 import { requireSession } from "@/lib/session";
-import { generateQuoteAction } from "../../actions";
+import {
+  generateQuoteAction,
+  saveQuoteHeaderAction,
+} from "../../actions";
 import { xisExportAction } from "./actions";
+
+// A-10: kopblok bewerkbaar tot de estimate wordt uitgestuurd (bevroren → op slot).
+function KopblokBewerken({
+  dossierId,
+  q,
+  frozen,
+}: {
+  dossierId: string;
+  q: {
+    quoteNumber: string | null;
+    customer: string | null;
+    contactName: string | null;
+    address: string | null;
+    projectRef: string | null;
+    authorEmail: string | null;
+    quoteDate: string | null;
+    validUntil: string | null;
+  } | null;
+  frozen: boolean;
+}) {
+  if (!q || frozen) return null;
+  const field = (
+    name: string,
+    label: string,
+    value: string | null,
+    type = "text",
+  ) => (
+    <label className="flex flex-col gap-1 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <input
+        name={name}
+        type={type}
+        defaultValue={value ?? ""}
+        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+      />
+    </label>
+  );
+  return (
+    <details className="mb-6 rounded-lg border">
+      <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+        Kopblok bewerken
+      </summary>
+      <form action={saveQuoteHeaderAction} className="border-t p-4">
+        <input type="hidden" name="dossierId" value={dossierId} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {field("quoteNumber", "Offertenummer", q.quoteNumber)}
+          {field("quoteDate", "Datum", q.quoteDate, "date")}
+          {field("validUntil", "Geldig tot", q.validUntil, "date")}
+          {field("customer", "Klant", q.customer)}
+          {field("contactName", "Contactpersoon", q.contactName)}
+          {field("address", "Adres", q.address)}
+          {field("projectRef", "Project", q.projectRef)}
+          {field("authorEmail", "Opsteller", q.authorEmail)}
+        </div>
+        <div className="mt-3">
+          <Button type="submit" size="sm">
+            Kopblok opslaan
+          </Button>
+        </div>
+      </form>
+    </details>
+  );
+}
 
 const nlDate = new Intl.DateTimeFormat("nl-NL", {
   day: "numeric",
@@ -96,12 +162,19 @@ export default async function EstimatePage({
   );
 
   return (
-    <QuoteView
-      dossierName={dossier.name}
-      phase={dossier.phase}
-      header={header}
-      lines={lines}
-      actions={actions}
-    />
+    <>
+      <KopblokBewerken
+        dossierId={dossier.id}
+        q={q}
+        frozen={q?.frozenAt != null}
+      />
+      <QuoteView
+        dossierName={dossier.name}
+        phase={dossier.phase}
+        header={header}
+        lines={lines}
+        actions={actions}
+      />
+    </>
   );
 }

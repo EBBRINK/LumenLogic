@@ -15,6 +15,8 @@ import {
   setDayPrice,
   setDossierPhase,
   setQuantity,
+  updateQuoteHeader,
+  updateSpecLine,
 } from "@/lib/repo/dossiers";
 import {
   chooseCandidate,
@@ -262,6 +264,65 @@ export async function setQuantityAction(formData: FormData) {
   const quantity = intOrNull(formData.get("quantity"));
   if (specLineId) await setQuantity(db, specLineId, quantity, await getActor());
   revalidatePath(`/dossiers/${dossierId}/offerte`);
+}
+
+// A-10: kopblok van de estimate opslaan (bewerkbaar tot uitsturen).
+export async function saveQuoteHeaderAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  if (dossierId) {
+    await updateQuoteHeader(
+      db,
+      dossierId,
+      {
+        quoteNumber: strOrNull(formData.get("quoteNumber")),
+        customer: strOrNull(formData.get("customer")),
+        contactName: strOrNull(formData.get("contactName")),
+        address: strOrNull(formData.get("address")),
+        projectRef: strOrNull(formData.get("projectRef")),
+        authorEmail: strOrNull(formData.get("authorEmail")),
+        quoteDate: strOrNull(formData.get("quoteDate")),
+        validUntil: strOrNull(formData.get("validUntil")),
+      },
+      await getActor(),
+    );
+  }
+  revalidatePath(`/dossiers/${dossierId}/offerte`);
+}
+
+// B-10: een spec-regel bewerken → daarna de matcher opnieuw draaien.
+export async function editSpecLineAction(formData: FormData) {
+  await requireSession();
+  const actor = await getActor();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
+  if (!specLineId || !fixtureCode) return;
+  await updateSpecLine(
+    db,
+    specLineId,
+    {
+      fixtureCode,
+      quantity: intOrNull(formData.get("quantity")),
+      zone: strOrNull(formData.get("zone")),
+      brandText: strOrNull(formData.get("brandText")),
+      productText: strOrNull(formData.get("productText")),
+      reqKelvin: intOrNull(formData.get("reqKelvin")),
+      reqCri: intOrNull(formData.get("reqCri")),
+      reqIp: strOrNull(formData.get("reqIp")),
+      reqWatt: numOrNull(formData.get("reqWatt")),
+      reqLumen: intOrNull(formData.get("reqLumen")),
+      reqBeamAngle: numOrNull(formData.get("reqBeamAngle")),
+      reqSizeCm: numOrNull(formData.get("reqSizeCm")),
+      reqShape: strOrNull(formData.get("reqShape")),
+      reqColor: strOrNull(formData.get("reqColor")),
+      reqDimmable: strOrNull(formData.get("reqDimmable")),
+    },
+    actor,
+  );
+  // merk/type/specs kunnen de match veranderen → opnieuw matchen
+  await runMatcher(db, specLineId, actor);
+  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
 }
 
 export async function deleteLineAction(formData: FormData) {
