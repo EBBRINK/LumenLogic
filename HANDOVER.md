@@ -1,6 +1,8 @@
 # HANDOVER — Lumen Logic (runs 1–3)
 
 _Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de oorspronkelijke run-1-opdracht._
+_2026-07-07: eindbeeld + roadmap runs 4–8 vastgelegd in `docs/MASTERPLAN.md` (plansessie,
+geen code gewijzigd)._
 
 ## Status: het complete Lumen Logic staat
 
