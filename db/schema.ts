@@ -25,6 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 export const disclosureTier = pgEnum("disclosure_tier", [
@@ -57,6 +58,28 @@ export const reviewKind = pgEnum("review_kind", [
   "variant",
   "onvolledig",
   "ocr",
+]);
+// Rollen als "petten" (L-03/04): meerdere per persoon. Rol bepaalt de default-view,
+// nooit wat de engine toont (dat is de fase). org_admin beheert leden.
+export const membershipRole = pgEnum("membership_role", [
+  "calculator",
+  "werkvoorbereider",
+  "projectleider",
+  "org_admin",
+]);
+// Dossier-lifecycle (A-05): naast de fase (tender/gegund) — opgeleverd = read-only,
+// gearchiveerd mét reden (een verloren tender is data, geen niets).
+export const dossierLifecycle = pgEnum("dossier_lifecycle", [
+  "actief",
+  "delivered",
+  "archived",
+]);
+// Prijsaanvraag-lead (J-03) en merk-upload-staging (H-11).
+export const leadStatus = pgEnum("lead_status", ["open", "opgevolgd", "gesloten"]);
+export const uploadStatus = pgEnum("upload_status", [
+  "staging",
+  "approved",
+  "rejected",
 ]);
 
 const timestamps = {
@@ -198,6 +221,13 @@ export const projectDossiers = pgTable("project_dossiers", {
   name: text("name").notNull(),
   customer: text("customer"),
   phase: dossierPhase("phase").notNull().default("tender"), // default = veilig (regel 4)
+  // H2: org-scoping (nullable → interne Brink-dossiers zonder org blijven werken).
+  orgId: uuid("org_id"),
+  // A-05: lifecycle naast de fase. archived draagt altijd een reden.
+  lifecycle: dossierLifecycle("lifecycle").notNull().default("actief"),
+  archivedReason: text("archived_reason"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -210,6 +240,7 @@ export const specLines = pgTable("spec_lines", {
   // A-07: aantal mag ontbreken (bestek komt later) → stukprijs-modus op de estimate.
   quantity: integer("quantity"),
   zone: text("zone"), // A-08: optioneel; ingevuld → groeperen + subtotaal per zone
+  location: text("location"), // G-03: WAAR — uit de tekening-bron, op het armaturenboek
   description: text("description"),
   brandText: text("brand_text"), // gevraagd merk (vrije tekst; "merk hebben we altijd")
   productText: text("product_text"), // gevraagd type (vrije tekst)
@@ -424,6 +455,34 @@ export const visibleProducts = pgView("visible_products", {
   validUntil: date("valid_until"),
 }).existing();
 
+// visible_specs (J-01): productspecs LOS van de prijs — voor de disclosure-productkaart,
+// waar tier 2 wél de specs toont maar de prijs gated is. Toont actieve producten met hun
+// merk-disclosure-tier; géén prijskolom (die loopt via visible_products, regel 3 blijft).
+export const visibleSpecs = pgView("visible_specs", {
+  id: uuid("id"),
+  articleCode: text("article_code"),
+  name: text("name"),
+  brandId: uuid("brand_id"),
+  brandName: text("brand_name"),
+  disclosureTier: disclosureTier("disclosure_tier"),
+  categoryPath: text("category_path"),
+  description: text("description"),
+  lumenOutput: integer("lumen_output"),
+  maxWattage: numeric("max_wattage", { precision: 8, scale: 2 }),
+  kelvin: integer("kelvin"),
+  cri: smallint("cri"),
+  ipValue: text("ip_value"),
+  beamAngle: numeric("beam_angle", { precision: 6, scale: 2 }),
+  dimmable: text("dimmable"),
+  color1: text("color_1"),
+  tier2Source: jsonb("tier2_source").$type<Record<string, string>>(),
+  warrantyMonths: integer("warranty_months"),
+  repairability: text("repairability"),
+  epdLifetimeHours: integer("epd_lifetime_hours"),
+  countryOfOrigin: text("country_of_origin"),
+  status: text("status"),
+}).existing();
+
 // ── XIS-koppeling (E-09…E-12, run 6) ─────────────────────────────────────────
 // Zolang de Lynx-API er niet is: exportbestand in hetzelfde payload-formaat.
 // Idempotent op dossier-id (external_reference) — herverzenden maakt geen duplicaat.
@@ -535,6 +594,153 @@ export const llmUsage = pgTable("llm_usage", {
     .defaultNow(),
 });
 
+// ── H2: organisaties, memberships & rollen (L-03/04/05) ──────────────────────
+export const organizations = pgTable("organizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  branding: jsonb("branding").$type<Record<string, unknown>>(), // logo-url, accentkleur
+  plan: text("plan").notNull().default("trial"), // L-05: prijsmodel (abonnement/per-dossier)
+  seatLimit: integer("seat_limit"),
+  ...timestamps,
+});
+
+// Eén persoon kan meerdere rollen (petten) in een org hebben. Koppelt op e-mail
+// (net als allowed_emails); rol bepaalt de default-view, nooit wat de engine toont.
+export const memberships = pgTable(
+  "memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    roles: membershipRole("roles").array().notNull().default(sql`'{}'::membership_role[]`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("memberships_org_email_uniq").on(t.orgId, t.email)],
+);
+
+// ── H2: disclosure & merkrelaties (J-01…J-05) ────────────────────────────────
+// Per-veld-uitzonderingen bovenop de disclosure-tier van het merk (J-04).
+export const brandFieldVisibility = pgTable(
+  "brand_field_visibility",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "cascade" }),
+    field: text("field").notNull(), // productveld-naam, bv. 'max_wattage' of 'gross_price'
+    visible: boolean("visible").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("brand_field_vis_uniq").on(t.brandId, t.field)],
+);
+
+// Prijsaanvraag-knop bij tier 2 = een lead (J-03).
+export const leads = pgTable("leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id").references(() => products.id),
+  brandId: uuid("brand_id").references(() => brands.id),
+  userEmail: text("user_email"),
+  orgId: uuid("org_id").references(() => organizations.id),
+  dossierId: uuid("dossier_id").references(() => projectDossiers.id),
+  status: leadStatus("status").notNull().default("open"),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── H2: staffelprijzen (I-05) ────────────────────────────────────────────────
+// Stukprijs volgt aantal; drempel min_qty. In V1 doet XIS dit; hier het datamodel.
+export const priceTiers = pgTable(
+  "price_tiers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    priceListId: uuid("price_list_id")
+      .notNull()
+      .references(() => priceLists.id, { onDelete: "cascade" }),
+    minQty: integer("min_qty").notNull().default(1),
+    grossPrice: numeric("gross_price", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("price_tiers_uniq").on(t.productId, t.priceListId, t.minQty)],
+);
+
+// ── H2: armaturenboek-versiebeheer (G-02) + datasheets (G-04) ────────────────
+export const armaturenboekVersions = pgTable("armaturenboek_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  dossierId: uuid("dossier_id")
+    .notNull()
+    .references(() => projectDossiers.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  note: text("note"),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>[]>().notNull(),
+  actor: text("actor"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const productDatasheets = pgTable("product_datasheets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── H2: substitutievoorstel-document (F-06) ──────────────────────────────────
+export const substitutionProposals = pgTable("substitution_proposals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  dossierId: uuid("dossier_id")
+    .notNull()
+    .references(() => projectDossiers.id, { onDelete: "cascade" }),
+  specLineId: uuid("spec_line_id").references(() => specLines.id, {
+    onDelete: "set null",
+  }),
+  referenceProductId: uuid("reference_product_id").references(() => products.id),
+  alternativeProductId: uuid("alternative_product_id").references(() => products.id),
+  // veld-voor-veld origineel vs alternatief + duurzaamheidswinst + bron
+  fields: jsonb("fields").$type<
+    { field: string; reference: string | null; alternative: string | null; source: string }[]
+  >(),
+  savingNote: text("saving_note"), // besparing tonen (F-08), nooit als sortering
+  actor: text("actor"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── H3: merkportaal — één publicatiepad via staging → goedkeuring (H-11) ──────
+export const brandUploads = pgTable("brand_uploads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id")
+    .notNull()
+    .references(() => brands.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // 'pricelist' | 'data'
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  status: uploadStatus("status").notNull().default("staging"),
+  submittedBy: text("submitted_by"),
+  reviewedBy: text("reviewed_by"),
+  reviewNote: text("review_note"),
+  ...timestamps,
+});
+
 export type Product = typeof products.$inferSelect;
 export type Brand = typeof brands.$inferSelect;
 export type ProjectDossier = typeof projectDossiers.$inferSelect;
@@ -542,3 +748,11 @@ export type SpecLine = typeof specLines.$inferSelect;
 export type SpecLineCandidate = typeof specLineCandidates.$inferSelect;
 export type QuoteLine = typeof quoteLines.$inferSelect;
 export type ImportRun = typeof importRuns.$inferSelect;
+export type Organization = typeof organizations.$inferSelect;
+export type Membership = typeof memberships.$inferSelect;
+export type MembershipRole =
+  (typeof membershipRole.enumValues)[number];
+export type Lead = typeof leads.$inferSelect;
+export type BrandUpload = typeof brandUploads.$inferSelect;
+export type ArmaturenboekVersion = typeof armaturenboekVersions.$inferSelect;
+export type SubstitutionProposal = typeof substitutionProposals.$inferSelect;

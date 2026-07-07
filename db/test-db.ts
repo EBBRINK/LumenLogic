@@ -10,6 +10,7 @@ import initSql from "./migrations/0000_init.sql?raw";
 import searchSql from "./migrations/0001_search_and_visibility.sql?raw";
 import viewSql from "./migrations/0003_view_sustainability.sql?raw";
 import vijfstatussenSql from "./migrations/0004_vijfstatussen.sql?raw";
+import h2h3Sql from "./migrations/0005_h2_h3.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -21,6 +22,7 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(searchSql);
   await client.exec(viewSql); // view mét duurzaamheids-/techvelden (regel 3 blijft gelijk)
   await client.exec(vijfstatussenSql); // run 4: vijfstatussen + kandidaten/review/import
+  await client.exec(h2h3Sql); // H2/H3: orgs/rollen, disclosure, lifecycle, merkportaal
   return drizzle(client, { schema });
 }
 
