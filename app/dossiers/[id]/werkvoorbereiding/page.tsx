@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { WerkvoorbereiderView } from "@/components/dossier/werkvoorbereider-view";
+import { Button } from "@/components/ui/button";
 import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
 import { getActor, requireSession } from "@/lib/session";
+import { generateSubstitutionAction } from "../substitutie/actions";
 
 // Werkvoorbereiding-tab (§3.11): value-engineering ná gunning. De dossier-layout levert al
 // de kop + tabs — deze pagina rendert alleen zijn eigen inhoud als fragment.
@@ -37,13 +40,36 @@ export default async function WerkvoorbereidingPage({
   const matched = lines.filter((l) => l.matchedProductId);
   const actor = await getActor();
 
+  // Parallel aan de view houden we per regel het referentie-product + de alternatieven vast,
+  // zodat we een substitutievoorstel kunnen genereren (F-06) en naar het productdetail linken.
+  type SubLine = {
+    specLineId: string;
+    fixtureCode: string;
+    referenceProductId: string;
+    referenceName: string;
+    alternatives: { id: string; name: string; brandName: string | null }[];
+  };
+  const subLines: SubLine[] = [];
+
   const vmLines: WerkvoorbereiderLine[] = [];
   for (const l of matched) {
+    const referenceProductId = l.matchedProductId as string;
     const { alternatives } = await getEquivalentAlternatives(db, {
       phase: "awarded",
-      referenceProductId: l.matchedProductId as string,
+      referenceProductId,
       limit: 4,
       actor,
+    });
+    subLines.push({
+      specLineId: l.id,
+      fixtureCode: l.fixtureCode,
+      referenceProductId,
+      referenceName: l.matchedName ?? "",
+      alternatives: alternatives.map((a) => ({
+        id: a.id,
+        name: a.name,
+        brandName: a.brandName,
+      })),
     });
     vmLines.push({
       specLineId: l.id,
@@ -66,5 +92,86 @@ export default async function WerkvoorbereidingPage({
     });
   }
 
-  return <WerkvoorbereiderView dossierName={dossier.name} lines={vmLines} />;
+  const subActionable = subLines.filter((s) => s.alternatives.length > 0);
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex items-center justify-end">
+        <Link
+          href={`/dossiers/${id}/armaturenboek/versies`}
+          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Armaturenboek-versies →
+        </Link>
+      </div>
+
+      <WerkvoorbereiderView dossierName={dossier.name} lines={vmLines} />
+
+      {subActionable.length > 0 && (
+        <section className="border-t pt-6">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Substitutievoorstel genereren
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Leg een gelijkwaardig alternatief vast als printbaar voorstel voor de klant.
+            Het prijsverschil komt er alléén als tekst bij — geld weegt nooit mee in de
+            ordening.
+          </p>
+          <div className="mt-4 flex flex-col gap-4">
+            {subActionable.map((s) => (
+              <div key={s.specLineId} className="rounded-lg border p-3">
+                <p className="text-sm font-medium">
+                  {s.fixtureCode}
+                  {" · "}
+                  <Link
+                    href={`/producten/${s.referenceProductId}`}
+                    className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    {s.referenceName || "referentie"}
+                  </Link>
+                </p>
+                <div className="mt-2 flex flex-col gap-2">
+                  {s.alternatives.map((alt) => (
+                    <div
+                      key={alt.id}
+                      className="flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <Link
+                        href={`/producten/${alt.id}`}
+                        className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        {alt.brandName ? `${alt.brandName} ` : ""}
+                        {alt.name}
+                      </Link>
+                      <form action={generateSubstitutionAction}>
+                        <input type="hidden" name="dossierId" value={id} />
+                        <input
+                          type="hidden"
+                          name="specLineId"
+                          value={s.specLineId}
+                        />
+                        <input
+                          type="hidden"
+                          name="referenceProductId"
+                          value={s.referenceProductId}
+                        />
+                        <input
+                          type="hidden"
+                          name="alternativeProductId"
+                          value={alt.id}
+                        />
+                        <Button type="submit" size="sm" variant="outline">
+                          Genereer substitutievoorstel
+                        </Button>
+                      </form>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }

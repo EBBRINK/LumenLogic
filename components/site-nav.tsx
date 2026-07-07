@@ -11,6 +11,8 @@ const ITEMS = [
   { href: "/data", label: "Data" },
   { href: "/analytics", label: "Analytics" },
   { href: "/instellingen", label: "Instellingen" },
+  { href: "/merk", label: "Merk" },
+  { href: "/admin", label: "Admin" },
 ];
 
 export async function SiteNav() {

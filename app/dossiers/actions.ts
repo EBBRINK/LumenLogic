@@ -24,6 +24,7 @@ import {
   setLineStatus,
   unlinkMatch,
 } from "@/lib/repo/matching";
+import { setDossierOrg } from "@/lib/repo/orgs";
 import { decideReview, flagForReview } from "@/lib/repo/review";
 import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
@@ -55,6 +56,9 @@ export async function createDossierAction(formData: FormData) {
     phase,
     actor: await getActor(),
   });
+  // Optioneel: dossier aan een org koppelen (leeg = intern Brink-dossier).
+  const orgId = strOrNull(formData.get("orgId"));
+  if (orgId) await setDossierOrg(db, dossier.id, orgId);
   redirect(`/dossiers/${dossier.id}`);
 }
 

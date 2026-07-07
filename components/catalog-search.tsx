@@ -61,20 +61,25 @@ function ResultCard({ item }: { item: CatalogResult }) {
     item.lumenOutput ? `${item.lumenOutput} lm` : null,
   ].filter(Boolean);
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border p-3">
-      <div className="min-w-0">
-        <p className="text-sm text-muted-foreground">{item.brandName ?? "—"}</p>
-        <p className="truncate font-medium">{item.name}</p>
-        <p className="text-xs text-muted-foreground">{specs.join(" · ")}</p>
-        {item.missing && item.missing.length > 0 && (
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            geen data voor: {item.missing.join(", ")}
-          </p>
-        )}
-      </div>
-      <span className="shrink-0 font-medium tabular-nums">
-        {formatEur(item.grossPrice)}
-      </span>
+    <li>
+      <a
+        href={`/producten/${item.id}`}
+        className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40"
+      >
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">{item.brandName ?? "—"}</p>
+          <p className="truncate font-medium">{item.name}</p>
+          <p className="text-xs text-muted-foreground">{specs.join(" · ")}</p>
+          {item.missing && item.missing.length > 0 && (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              geen data voor: {item.missing.join(", ")}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 font-medium tabular-nums">
+          {formatEur(item.grossPrice)}
+        </span>
+      </a>
     </li>
   );
 }

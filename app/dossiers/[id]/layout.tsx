@@ -6,12 +6,15 @@ import { DossierTabs } from "@/components/dossier/dossier-tabs";
 import { PhaseBadge } from "@/components/dossier/phase-badge";
 import { PhaseToggle } from "@/components/dossier/phase-toggle";
 import { StatusTally } from "@/components/dossier/status-badge";
+import { LifecycleControls } from "@/components/dossier/lifecycle-controls";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getStatusCounts } from "@/lib/repo/matching";
 import { getReviewCounts } from "@/lib/repo/review";
+import { isReadOnly, type Lifecycle } from "@/lib/repo/lifecycle";
 import type { StatusCounts } from "@/components/dossier/status";
 import { requireSession } from "@/lib/session";
 import { setPhaseAction } from "../actions";
+import { setLifecycleAction } from "../lifecycle-actions";
 
 // Gedeelde dossier-header + tabs (functioneel ontwerp §3.3): het dossier is de "map",
 // alles eromheen zit achter één URL met tabs. Fasebadge + kleuren-telling zijn altijd
@@ -29,6 +32,8 @@ export default async function DossierLayout({
   if (!dossier) notFound();
   const counts = (await getStatusCounts(db, id)) as StatusCounts;
   const review = await getReviewCounts(db, id);
+  const lifecycle = (dossier.lifecycle ?? "actief") as Lifecycle;
+  const readOnly = isReadOnly(lifecycle);
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-8">
@@ -56,12 +61,28 @@ export default async function DossierLayout({
             <StatusTally counts={counts} />
           </div>
         </div>
-        <PhaseToggle
-          dossierId={dossier.id}
-          phase={dossier.phase}
-          action={setPhaseAction}
-        />
+        <div className="flex flex-col items-end gap-3">
+          <PhaseToggle
+            dossierId={dossier.id}
+            phase={dossier.phase}
+            action={setPhaseAction}
+          />
+          <LifecycleControls
+            dossierId={dossier.id}
+            lifecycle={lifecycle}
+            archivedReason={dossier.archivedReason}
+            action={setLifecycleAction}
+          />
+        </div>
       </header>
+
+      {readOnly && (
+        <div className="mb-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          Dit dossier is {lifecycle === "delivered" ? "opgeleverd" : "gearchiveerd"} en
+          daarmee read-only. Bewerkingen worden niet meer verwacht — heropen het dossier om
+          weer te kunnen wijzigen.
+        </div>
+      )}
 
       <div className="mb-8">
         <DossierTabs

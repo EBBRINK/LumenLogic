@@ -2,16 +2,42 @@ import Link from "next/link";
 import { db } from "@/db/client";
 import { DossierList } from "@/components/dossier/dossier-list";
 import { NewDossierForm } from "@/components/dossier/new-dossier-form";
+import {
+  LifecycleFilter,
+  type DossierFilter,
+} from "@/components/dossier/lifecycle-filter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StatusCounts } from "@/components/dossier/types";
-import { listDossiers } from "@/lib/repo/dossiers";
+import { listDossiersFiltered } from "@/lib/repo/lifecycle";
+import { listOrganizations } from "@/lib/repo/orgs";
 import { getStatusCounts } from "@/lib/repo/matching";
 import { requireSession } from "@/lib/session";
 import { createDossierAction } from "./actions";
 
-export default async function DossiersPage() {
+const FILTERS: DossierFilter[] = [
+  "alle",
+  "tender",
+  "gegund",
+  "opgeleverd",
+  "archief",
+];
+
+function asFilter(v: string | string[] | undefined): DossierFilter {
+  const s = Array.isArray(v) ? v[0] : v;
+  return FILTERS.includes(s as DossierFilter) ? (s as DossierFilter) : "alle";
+}
+
+export default async function DossiersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireSession();
-  const dossiers = await listDossiers(db);
+  const filter = asFilter((await searchParams).filter);
+  const [dossiers, organizations] = await Promise.all([
+    listDossiersFiltered(db, filter),
+    listOrganizations(db),
+  ]);
   // Kleuren-telling per dossier ophalen zodat de lijst het status-dashboard toont (E-03).
   const withCounts = await Promise.all(
     dossiers.map(async (d) => ({
@@ -40,6 +66,9 @@ export default async function DossiersPage() {
           Analytics →
         </Link>
       </header>
+      <div className="mb-6">
+        <LifecycleFilter active={filter} />
+      </div>
       <div className="grid gap-8 md:grid-cols-[1fr_20rem]">
         <section>
           <DossierList dossiers={withCounts} />
@@ -50,7 +79,10 @@ export default async function DossiersPage() {
               <CardTitle>Nieuw dossier</CardTitle>
             </CardHeader>
             <CardContent>
-              <NewDossierForm action={createDossierAction} />
+              <NewDossierForm
+                action={createDossierAction}
+                organizations={organizations}
+              />
             </CardContent>
           </Card>
         </aside>
