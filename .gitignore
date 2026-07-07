@@ -45,3 +45,7 @@ next-env.d.ts
 
 # test-screenshots (RSC vitest-plugin-rsc)
 **/*.test.png
+
+# vitest browser-mode artifacts
+.vitest-attachments/
+**/__screenshots__/

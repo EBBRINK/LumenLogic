@@ -31,9 +31,9 @@ export default function LoginPage() {
       </div>
       {sent ? (
         <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-          Magic link verstuurd naar <span className="font-medium">{email}</span>.
-          In deze fase verschijnt de link in de <b>serverconsole</b> — klik hem
-          daar uit.
+          Als <span className="font-medium">{email}</span> toegang heeft, is er
+          een magic link verstuurd. In deze fase verschijnt de link in de{" "}
+          <b>serverconsole</b> — klik hem daar uit.
         </div>
       ) : (
         <form onSubmit={onSubmit} className="flex flex-col gap-3">

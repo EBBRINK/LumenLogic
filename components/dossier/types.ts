@@ -1,5 +1,8 @@
 // Gedeelde vormtypes voor de presentational componenten. Bewust losgekoppeld van de
 // repo zodat de componenten met fixtures getest kunnen worden (screenshots).
+import type { MatchStatus, StatusCounts } from "./status";
+
+export type { MatchStatus, StatusCounts } from "./status";
 export type Phase = "tender" | "awarded";
 
 export type DossierSummary = {
@@ -7,18 +10,35 @@ export type DossierSummary = {
   name: string;
   customer: string | null;
   phase: Phase;
+  counts?: StatusCounts;
+  lineCount?: number;
+};
+
+// Eén afwijking (transparantieregel C-07): oordeel per veld uit de tolerantietabel.
+export type Deviation = {
+  field: string;
+  requested: string | number;
+  delivered: string | number | null;
+  verdict: "groen" | "geel" | "rood" | "onbekend";
+  note?: string;
 };
 
 export type SpecLineRow = {
   id: string;
   fixtureCode: string;
-  quantity: number;
+  quantity: number | null;
+  zone?: string | null;
   brandText: string | null;
   productText: string | null;
   reqKelvin: number | null;
   reqCri: number | null;
   reqIp: string | null;
-  status: "open" | "matched" | "no_match";
+  status: MatchStatus;
+  deviations?: Deviation[] | null;
+  source?: "manual" | "csv" | "pdf" | "ocr" | "llm";
+  reviewKind?: "geel" | "variant" | "onvolledig" | "ocr" | null;
+  noMatchReason?: string | null;
+  manualPrice?: string | null;
   matchedProductId: string | null;
   matchedName: string | null;
   matchedBrand: string | null;
@@ -39,6 +59,24 @@ export type Candidate = {
   lumenOutput: number | null;
   grossPrice: string | null;
   matchKind: "exact" | "fuzzy";
+  // vijfstatussen-verrijking (optioneel; nieuwe match-pagina vult deze)
+  deviations?: Deviation[];
+  list?: "aantoonbaar" | "onvolledig";
+};
+
+// Een review-item in de wachtrij (D-01).
+export type ReviewItem = {
+  id: string;
+  fixtureCode: string;
+  brandText: string | null;
+  productText: string | null;
+  status: MatchStatus;
+  reviewKind: "geel" | "variant" | "onvolledig" | "ocr";
+  deviations?: Deviation[] | null;
+  reqColor?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  reviewDecision?: string | null;
 };
 
 export type ComparedField = {
@@ -78,4 +116,6 @@ export type QuoteLineRow = {
   quantity: number;
   unitPrice: string;
   lineTotal: string;
+  status?: MatchStatus;
+  zone?: string | null;
 };

@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { PhaseBadge } from "./phase-badge";
+import { StatusTally } from "./status-badge";
 import type { DossierSummary } from "./types";
 
 export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
@@ -24,6 +25,8 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
                       {d.customer}
                     </p>
                   )}
+                  {/* Kleuren-telling per dossier (E-03) — alleen als de counts zijn meegestuurd. */}
+                  {d.counts && <StatusTally counts={d.counts} className="mt-1.5" />}
                 </div>
                 <PhaseBadge phase={d.phase} />
               </CardContent>

@@ -40,9 +40,9 @@ const wvLines: WerkvoorbereiderLine[] = [
 ];
 
 const armatuurRows = [
-  { fixtureCode: "Lp301", quantity: 12, brand: "XAL", productName: "SASSO 100 SQ SP CEIL 3000K", articleCode: "L360048-33100111S", kelvin: 3000, cri: null, ip: null, status: "matched" as const },
-  { fixtureCode: "Lw201", quantity: 8, brand: "Wever & Ducré", productName: "SCAVA WALL SURF 1.0", articleCode: "L092W350188W3", kelvin: null, cri: 90, ip: null, status: "matched" as const },
-  { fixtureCode: "Ls001", quantity: 4, brand: null, productName: null, articleCode: null, kelvin: null, cri: null, ip: null, status: "no_match" as const },
+  { fixtureCode: "Lp301", quantity: 12, brand: "XAL", productName: "SASSO 100 SQ SP CEIL 3000K", articleCode: "L360048-33100111S", kelvin: 3000, cri: null, ip: null, status: "groen" as const },
+  { fixtureCode: "Lw201", quantity: 8, brand: "Wever & Ducré", productName: "SCAVA WALL SURF 1.0", articleCode: "L092W350188W3", kelvin: null, cri: 90, ip: null, status: "geel" as const },
+  { fixtureCode: "Ls001", quantity: 4, brand: null, productName: null, articleCode: null, kelvin: null, cri: null, ip: null, status: "rood" as const },
 ];
 
 const analytics = {

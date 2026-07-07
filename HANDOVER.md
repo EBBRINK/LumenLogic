@@ -9,13 +9,71 @@ nieuw: `docs/matching-regelset.md` + `docs/xis-post-api-attributes.md` (voor Lyn
 _2026-07-07 (avond): `docs/FUNCTIONEEL-ONTWERP.md` — alle 78 features getraceerd naar bron,
 complete appstructuur, per scherm wireframes met elk knopje, 12 Mermaid-flowdiagrammen,
 event-catalogus, rollenmatrix. Bouwsessies: masterplan = koers, functioneel ontwerp = wat/hoe._
+_2026-07-07 (nacht): runs 4–6 gebouwd — vijfstatussen-regelset in de kern, review-station,
+estimate met totalen-per-kleur, XIS-export, verrijkingspijplijn, /data-werkbank, catalogus,
+instellingen + allowlist, import-voorstelscherm. Zie "Runs 4–6" hieronder._
 
-## Status: het complete Lumen Logic staat
+## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 
-`bun vitest run` → **41 tests groen** (5 files): repo-/engine-tests op een echte PGlite-db
-(zelfde migraties + view als productie) + white-box RSC-screenshottests van álle schermen
-(licht/donker × mobiel/desktop). `bunx tsc --noEmit`, `bunx eslint .` en `bunx next build`
-zijn schoon. Alles is end-to-end geverifieerd in de browser tegen echte Neon-data.
+`bun vitest run` → **182 tests groen** (21 files): repo-/engine-tests op een echte PGlite-db
+(zelfde migraties + view als productie) + white-box RSC-render/screenshottests van de schermen
+(licht/donker × mobiel/desktop). `bunx tsc --noEmit` is schoon voor `app/`, `lib/`,
+`components/`, `db/` én `scripts/`. Migratie `0004_vijfstatussen` is toegepast op Neon; de
+demo is opnieuw geseed (3 groen · 1 blauw · 1 rood) en end-to-end in de browser geverifieerd
+(dossierlijst met kleuren-telling, dossier-tabs, regel-detail met twee kandidatenlijsten +
+afwijkingentabel, estimate met totalen-per-kleur + p.m. + open punten, XIS-push-dialoog).
+
+### Runs 4–6 — wat erbij kwam
+
+- **Vijfstatussen-regelset (run 4)** — `match_status`-enum (`open|groen|geel|blauw|rood|paars`)
+  vervangt `open/matched/no_match`. De matcher is deterministische code: `lib/matching/
+  tolerances.ts` (de tolerantietabel uit `docs/matching-regelset.md`, met Eduard vastgesteld)
+  + `lib/matching/engine.ts` (de beslisboom §4.3) + `lib/repo/matching.ts` (persisteert status,
+  kandidaten en afwijkingen, logt events, zet blauw op de inlaadwachtrij). **De 7 invarianten
+  staan elk in een test** (`lib/matching/engine.test.ts`, `tolerances.test.ts` — 27 tests):
+  strengste-telt, IP-nooit-lager, kelvin-exact, ontbrekend≠afwijkend, niets weggelaten,
+  aanvraagvolgorde, geen prijs in de ranking.
+- **Twee-lijsten-presentatie + transparantie** — regel-detail (`/dossiers/[id]/regel/[lineId]`)
+  toont "voldoet aantoonbaar" vs "mogelijk — data onvolledig", een afwijkingentabel per
+  gevraagd veld (ook binnen groen), en rood/blauw/paars-knoppen + dagprijs-flow.
+- **Review-station (run 4)** — `/dossiers/[id]/review`: geel-review, variantkeuze,
+  onvolledig-bevestiging, OCR-controle; elke beslissing met actor + reden. Tab-badge toont
+  het aantal wachtende items.
+- **Estimate (run 4)** — `/dossiers/[id]/offerte`: kopblok, zone-groepering, totalen groen+geel
+  apart én samen, blauw/rood/paars als p.m. (nooit opgeteld), automatische open-punten +
+  merken-inladen-lijst, print-CSS met kleuren óók als woord.
+- **Import-voorstelscherm (run 4)** — `import_runs` + `/dossiers/[id]/import/[runId]`:
+  bewerkbare voorstel-tabel, OCR/LLM-rijen standaard uitgevinkt, niets stil weggeschreven.
+- **Allowlist + instellingen (run 4)** — `allowed_emails`; magic-link stuurt alleen naar
+  toegestane adressen (zelfde succesmelding, geen account-enumeratie). `/instellingen`:
+  gebruikers, LLM-budgetcap + teller, XIS-sleutel + sandbox-schakelaar.
+- **Verrijkingspijplijn + /data-werkbank (run 5)** — `lib/enrichment/parser.ts` (deterministische
+  naam-parser) + `lib/repo/enrichment.ts` (run → steekproef → publiceren → hermatch) +
+  `lib/repo/evaluation.ts` (hit-rate op de evaluatieset). Schermen: `/data/verrijking`,
+  `/data/inladen` (blauw-wachtrij), `/data/prijslijsten` (verloopt-binnenkort/dekkingsgaten),
+  `/data/evaluatie`.
+- **XIS-export (run 6)** — `lib/repo/xis.ts`: `buildXisPayload` (aanvraagvolgorde,
+  `external_reference` = dossier-id, classificatie product/tekstregel/nieuw-product),
+  `createXisExport` (idempotent op dossier-id, snapshot in `xis_exports`, sandbox default).
+  Push-dialoog met pre-flight op de estimate-tab. De echte Lynx-API bestaat nog niet — dit is
+  het exportbestand in het toekomstige payload-formaat.
+- **Catalogus + hoofdnav** — `/catalogus` (los zoeken, merk-eerst, twee lijsten); dunne
+  hoofdbalk Dossiers · Catalogus · Data · Analytics · Instellingen.
+
+### Aannames / open eindes runs 4–6
+
+- `open` blijft de zesde status ("nog niet gematcht"); `paars` telt in `STATUS.countsInTotal`
+  als "wél tonen", maar op de estimate staat het als p.m. (niet opgeteld) — bewust.
+- CRI en dimbaarheid staan niet in de tolerantietabel van de regelset; keuze in `tolerances.ts`:
+  CRI lager dan gevraagd = rood (minimum-eis), afwijkend dim-protocol = geel. Herijken met Eduard.
+- Variant-kleuren in het review-station zijn een vaste lijst (wit/zwart/grijs/aluminium) omdat
+  er geen kleur-enum in het schema staat — makkelijk te vervangen.
+- LLM-verrijking (H-04) is nog niet aangesloten (geen key); de parser-route draait deterministisch.
+  De budgetteller (`llm_usage`) en cap staan klaar in /instellingen.
+- Vorm (`req_shape`) en beam angle worden pas echt bruikbaar zodra run 5-verrijking die velden
+  op producten vult; de matcher behandelt ze nu meestal als "geen data" (grijze vlag).
+
+## Status: het complete Lumen Logic staat (runs 1–3)
 
 ### De drie rollen (driekoppige gebruiker) — compleet
 - **Calculator** → geprijsde tender-inschrijving. Engine in tender-stand (spec-getrouw,

@@ -9,10 +9,8 @@ import {
   generateQuote,
   getQuote,
   getSpecLines,
-  markNoMatch,
-  matchSpecLine,
 } from "@/lib/repo/dossiers";
-import { searchProducts } from "@/lib/repo/products";
+import { chooseCandidate, runMatcher } from "@/lib/repo/matching";
 
 const NAME = "Deerns armaturenboek (demo)";
 const LINES = [
@@ -42,21 +40,23 @@ async function main() {
 
   const specLines = await getSpecLines(db, dossier.id);
   for (const line of specLines) {
-    const candidates = await searchProducts(db, {
-      query: line.productText ?? line.fixtureCode,
-      brand: line.brandText,
-      limit: 5,
-      actor: "seed@brink",
-      specLineId: line.id,
-    });
-    if (candidates.length > 0) {
-      await matchSpecLine(db, line.id, candidates[0].id, "seed@brink");
+    // Vijfstatussen-matcher: bepaalt status + persisteert kandidaten. Bij een
+    // bruikbare kandidaat kiezen we de best passende (rank 1), zodat de demo een
+    // gevulde offerte oplevert; anders blijft de status staan (blauw/rood/paars).
+    const outcome = await runMatcher(db, line.id, "seed@brink");
+    const best = outcome.provable[0] ?? outcome.incomplete[0];
+    if (best) {
+      await chooseCandidate(db, {
+        specLineId: line.id,
+        productId: best.productId,
+        fromList: outcome.provable[0] ? "aantoonbaar" : "onvolledig",
+        actor: "seed@brink",
+      });
       console.log(
-        `✓ ${line.fixtureCode} → ${candidates[0].brandName} ${candidates[0].name.slice(0, 45)} (€${candidates[0].grossPrice}) · ${candidates.length} kandidaten`,
+        `✓ ${line.fixtureCode} → ${best.brandName} ${best.name.slice(0, 45)} (€${best.grossPrice}) · status ${outcome.status}`,
       );
     } else {
-      await markNoMatch(db, line.id, "seed@brink");
-      console.log(`○ ${line.fixtureCode} → geen match (${line.brandText})`);
+      console.log(`○ ${line.fixtureCode} → ${outcome.status} (${line.brandText})`);
     }
   }
 

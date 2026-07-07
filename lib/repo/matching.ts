@@ -1,0 +1,307 @@
+// Persistente kant van de vijfstatussen-matcher: draait de engine (lib/matching/engine.ts)
+// voor een spec-regel, schrijft status + afwijkingen op de regel, bewaart de kandidaten
+// (C-10) en logt de events (K-01/K-02). Zet blauwe merken op de inlaadwachtrij (H-08).
+import { and, eq, sql } from "drizzle-orm";
+import {
+  brandLoadQueue,
+  specLineCandidates,
+  specLines,
+  type MatchDeviation,
+} from "@/db/schema";
+import type { AppDb } from "./db";
+import { logEvent } from "./events";
+import {
+  brandKeyOf,
+  evaluateSpecLine,
+  type MatchOutcome,
+  type SpecRequest,
+} from "@/lib/matching/engine";
+
+function specRequestFromLine(l: typeof specLines.$inferSelect): SpecRequest {
+  return {
+    brandText: l.brandText,
+    productText: l.productText,
+    sku: null,
+    specs: {
+      kelvin: l.reqKelvin,
+      cri: l.reqCri,
+      ip: l.reqIp,
+      watt: l.reqWatt != null ? Number(l.reqWatt) : null,
+      lumen: l.reqLumen,
+      beamAngle: l.reqBeamAngle != null ? Number(l.reqBeamAngle) : null,
+      sizeCm: l.reqSizeCm != null ? Number(l.reqSizeCm) : null,
+      shape: l.reqShape,
+      color: l.reqColor,
+      dimmable: l.reqDimmable,
+    },
+  };
+}
+
+// Draai de matcher voor één regel en persisteer alles. Idempotent: verwijdert eerst de
+// oude kandidaten. Retourneert de uitkomst.
+export async function runMatcher(
+  db: AppDb,
+  specLineId: string,
+  actor?: string,
+): Promise<MatchOutcome> {
+  const [line] = await db
+    .select()
+    .from(specLines)
+    .where(eq(specLines.id, specLineId))
+    .limit(1);
+  if (!line) throw new Error(`spec-regel ${specLineId} niet gevonden`);
+
+  const outcome = await evaluateSpecLine(db, specRequestFromLine(line));
+
+  // oude kandidaten weg (idempotent)
+  await db
+    .delete(specLineCandidates)
+    .where(eq(specLineCandidates.specLineId, specLineId));
+
+  // nieuwe kandidaten opslaan + product.considered loggen (K-02: het "overwogen"-goud)
+  const all = [
+    ...outcome.provable.map((c) => ({ ...c, listName: "aantoonbaar" as const })),
+    ...outcome.incomplete.map((c) => ({ ...c, listName: "onvolledig" as const })),
+  ];
+  let rank = 1;
+  for (const c of all) {
+    await db.insert(specLineCandidates).values({
+      specLineId,
+      productId: c.productId,
+      rank: rank++,
+      list: c.listName,
+      score: String(c.score ?? 0),
+      verdicts: c.deviations,
+    });
+    await logEvent(db, {
+      entity: "spec_line",
+      entityId: specLineId,
+      action: "product_considered",
+      actor,
+      payload: { productId: c.productId, rank: rank - 1, list: c.listName },
+    });
+  }
+
+  // status + top-afwijkingen op de regel schrijven; matched blijft leeg tot een keuze
+  await db
+    .update(specLines)
+    .set({
+      status: outcome.status,
+      deviations: outcome.topDeviations,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, specLineId));
+
+  // blauw → merk op de inlaadwachtrij (frequentie++)
+  if (outcome.status === "blauw" && line.brandText) {
+    await enqueueBrandLoad(db, line.brandText);
+    await logEvent(db, {
+      entity: "spec_line",
+      entityId: specLineId,
+      action: "brand_load_requested",
+      actor,
+      payload: { brandText: line.brandText },
+    });
+  }
+
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "matched_status",
+    actor,
+    payload: {
+      status: outcome.status,
+      provable: outcome.provable.length,
+      incomplete: outcome.incomplete.length,
+    },
+  });
+
+  return outcome;
+}
+
+// H-08: merk op de inlaadwachtrij, frequentie ophogen bij herhaling.
+export async function enqueueBrandLoad(db: AppDb, brandText: string) {
+  const key = brandKeyOf(brandText);
+  if (!key) return;
+  const existing = await db
+    .select({ id: brandLoadQueue.id, frequency: brandLoadQueue.frequency })
+    .from(brandLoadQueue)
+    .where(eq(brandLoadQueue.brandKey, key))
+    .limit(1);
+  if (existing.length) {
+    await db
+      .update(brandLoadQueue)
+      .set({ frequency: existing[0].frequency + 1, updatedAt: new Date() })
+      .where(eq(brandLoadQueue.id, existing[0].id));
+  } else {
+    await db.insert(brandLoadQueue).values({
+      brandKey: key,
+      displayName: brandText,
+      frequency: 1,
+    });
+  }
+}
+
+// Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht → review-item.
+export async function chooseCandidate(
+  db: AppDb,
+  input: {
+    specLineId: string;
+    productId: string;
+    fromList: "aantoonbaar" | "onvolledig";
+    reason?: string | null;
+    actor?: string;
+  },
+) {
+  // kandidaat-record markeren
+  await db
+    .update(specLineCandidates)
+    .set({ chosen: false })
+    .where(eq(specLineCandidates.specLineId, input.specLineId));
+  await db
+    .update(specLineCandidates)
+    .set({
+      chosen: true,
+      chosenBy: input.actor ?? null,
+      chosenReason: input.reason ?? null,
+    })
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, input.specLineId),
+        eq(specLineCandidates.productId, input.productId),
+      ),
+    );
+
+  // afwijkingen van deze kandidaat overnemen op de regel + status (her)bepalen
+  const [cand] = await db
+    .select({ verdicts: specLineCandidates.verdicts })
+    .from(specLineCandidates)
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, input.specLineId),
+        eq(specLineCandidates.productId, input.productId),
+      ),
+    )
+    .limit(1);
+  const deviations = (cand?.verdicts ?? []) as MatchDeviation[];
+  const status = statusFromDeviations(deviations);
+
+  // keuze uit lijst 2 → review-item (onvolledig-bevestiging, D-01)
+  const reviewKind = input.fromList === "onvolledig" ? "onvolledig" : null;
+
+  await db
+    .update(specLines)
+    .set({
+      matchedProductId: input.productId,
+      status,
+      deviations,
+      reviewKind,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, input.specLineId));
+
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: input.specLineId,
+    action: "spec_line_matched",
+    actor: input.actor,
+    payload: {
+      productId: input.productId,
+      status,
+      list: input.fromList,
+      reason: input.reason ?? null,
+    },
+  });
+  return status;
+}
+
+// Status uit de afwijkingen van de gekozen kandidaat (strengste telt).
+function statusFromDeviations(deviations: MatchDeviation[]): "groen" | "geel" | "rood" {
+  if (deviations.some((d) => d.verdict === "rood")) return "rood";
+  if (deviations.some((d) => d.verdict === "geel")) return "geel";
+  return "groen";
+}
+
+// Handmatig een status zetten (rood/paars/blauw vanuit de regel-detailknoppen).
+export async function setLineStatus(
+  db: AppDb,
+  input: {
+    specLineId: string;
+    status: "rood" | "paars" | "blauw";
+    reason?: string | null;
+    brandText?: string | null;
+    actor?: string;
+  },
+) {
+  await db
+    .update(specLines)
+    .set({
+      status: input.status,
+      matchedProductId: null,
+      noMatchReason: input.reason ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, input.specLineId));
+
+  if (input.status === "blauw" && input.brandText) {
+    await enqueueBrandLoad(db, input.brandText);
+  }
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: input.specLineId,
+    action: "spec_line_no_match",
+    actor: input.actor,
+    payload: { status: input.status, reason: input.reason ?? null },
+  });
+}
+
+// Match losmaken → terug naar 'open' (reden verplicht, K-03).
+export async function unlinkMatch(
+  db: AppDb,
+  specLineId: string,
+  reason: string,
+  actor?: string,
+) {
+  await db
+    .update(specLines)
+    .set({
+      matchedProductId: null,
+      status: "open",
+      deviations: null,
+      reviewKind: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, specLineId));
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "match_unlinked",
+    actor,
+    payload: { reason },
+  });
+}
+
+// Kleuren-telling per dossier (E-03) — voor de header en de dossierlijst.
+export async function getStatusCounts(
+  db: AppDb,
+  dossierId: string,
+): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ status: specLines.status, n: sql<number>`count(*)` })
+    .from(specLines)
+    .where(eq(specLines.dossierId, dossierId))
+    .groupBy(specLines.status);
+  const out: Record<string, number> = {
+    open: 0, groen: 0, geel: 0, blauw: 0, rood: 0, paars: 0,
+  };
+  for (const r of rows) out[r.status] = Number(r.n);
+  return out;
+}
+
+export async function getCandidates(db: AppDb, specLineId: string) {
+  return db
+    .select()
+    .from(specLineCandidates)
+    .where(eq(specLineCandidates.specLineId, specLineId))
+    .orderBy(specLineCandidates.rank);
+}

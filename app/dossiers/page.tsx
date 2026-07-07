@@ -3,13 +3,25 @@ import { db } from "@/db/client";
 import { DossierList } from "@/components/dossier/dossier-list";
 import { NewDossierForm } from "@/components/dossier/new-dossier-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { StatusCounts } from "@/components/dossier/types";
 import { listDossiers } from "@/lib/repo/dossiers";
+import { getStatusCounts } from "@/lib/repo/matching";
 import { requireSession } from "@/lib/session";
 import { createDossierAction } from "./actions";
 
 export default async function DossiersPage() {
   await requireSession();
   const dossiers = await listDossiers(db);
+  // Kleuren-telling per dossier ophalen zodat de lijst het status-dashboard toont (E-03).
+  const withCounts = await Promise.all(
+    dossiers.map(async (d) => ({
+      id: d.id,
+      name: d.name,
+      customer: d.customer,
+      phase: d.phase,
+      counts: (await getStatusCounts(db, d.id)) as StatusCounts,
+    })),
+  );
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -30,14 +42,7 @@ export default async function DossiersPage() {
       </header>
       <div className="grid gap-8 md:grid-cols-[1fr_20rem]">
         <section>
-          <DossierList
-            dossiers={dossiers.map((d) => ({
-              id: d.id,
-              name: d.name,
-              customer: d.customer,
-              phase: d.phase,
-            }))}
-          />
+          <DossierList dossiers={withCounts} />
         </section>
         <aside>
           <Card>

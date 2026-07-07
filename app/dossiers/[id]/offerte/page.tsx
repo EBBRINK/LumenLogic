@@ -1,14 +1,33 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
-import { QuoteView } from "@/components/dossier/quote-view";
+import {
+  QuoteView,
+  type EstimateHeader,
+  type EstimateLine,
+} from "@/components/dossier/quote-view";
+import {
+  PrintButton,
+  XisPushDialog,
+  type ExistingExport,
+} from "@/components/dossier/xis-push-dialog";
 import { Button } from "@/components/ui/button";
-import { getDossier, getQuote } from "@/lib/repo/dossiers";
+import { getDossier, getQuote, getSpecLines } from "@/lib/repo/dossiers";
+import { getXisExports, preflightSummary } from "@/lib/repo/xis";
+import type { Deviation, MatchStatus } from "@/components/dossier/types";
 import { requireSession } from "@/lib/session";
 import { generateQuoteAction } from "../../actions";
+import { xisExportAction } from "./actions";
 
-export default async function OffertePage({
+const nlDate = new Intl.DateTimeFormat("nl-NL", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+// Tab ESTIMATE (§3.8/§3.9). Header + tabs komen uit layout.tsx → deze pagina rendert
+// alleen zijn eigen inhoud (fragment). De estimate leest ÁLLE spec-regels (niet enkel
+// de gegenereerde offerteregels), zodat blauw/rood/paars zichtbaar meelopen als p.m.
+export default async function EstimatePage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -17,45 +36,72 @@ export default async function OffertePage({
   const { id } = await params;
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
-  const quote = await getQuote(db, id);
+
+  const [specRows, quote, preflight, exports] = await Promise.all([
+    getSpecLines(db, id),
+    getQuote(db, id),
+    preflightSummary(db, id),
+    getXisExports(db, id),
+  ]);
+
+  const lines: EstimateLine[] = specRows.map((r) => ({
+    id: r.id,
+    fixtureCode: r.fixtureCode,
+    zone: r.zone,
+    status: r.status as MatchStatus,
+    quantity: r.quantity,
+    productName: r.matchedName ?? null,
+    sku: r.matchedArticleCode ?? null,
+    unitPrice: r.manualPrice ?? r.matchedPrice ?? null, // I-04: dagprijs wint
+    deviations: (r.deviations as Deviation[] | null) ?? null,
+    brandText: r.brandText,
+    productText: r.productText,
+  }));
+
+  const q = quote?.quote ?? null;
+  const header: EstimateHeader = {
+    quoteNumber: q?.quoteNumber ?? null,
+    quoteDate: q?.quoteDate ?? null,
+    customer: q?.customer ?? dossier.customer,
+    projectRef: q?.projectRef ?? null,
+    author: q?.authorEmail ?? null,
+    validUntil: q?.validUntil ?? null,
+  };
+
+  const firstExport = exports[0];
+  const existing: ExistingExport = firstExport
+    ? {
+        environment: firstExport.environment,
+        createdAt: nlDate.format(new Date(firstExport.createdAt)),
+        status: firstExport.status,
+      }
+    : null;
+
+  const actions = (
+    <>
+      <form action={generateQuoteAction}>
+        <input type="hidden" name="dossierId" value={dossier.id} />
+        <Button type="submit" variant="secondary" size="sm">
+          {quote ? "Ververs estimate" : "Genereer estimate"}
+        </Button>
+      </form>
+      <PrintButton />
+      <XisPushDialog
+        dossierId={dossier.id}
+        preflight={preflight}
+        existing={existing}
+        action={xisExportAction}
+      />
+    </>
+  );
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-10">
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <Link
-          href={`/dossiers/${dossier.id}`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" /> {dossier.name}
-        </Link>
-        <form action={generateQuoteAction}>
-          <input type="hidden" name="dossierId" value={dossier.id} />
-          <Button type="submit" variant="outline" size="sm">
-            {quote ? "Offerte opnieuw genereren" : "Offerte genereren"}
-          </Button>
-        </form>
-      </div>
-
-      {quote ? (
-        <QuoteView
-          dossierName={dossier.name}
-          customer={dossier.customer}
-          phase={dossier.phase}
-          lines={quote.lines.map((l) => ({
-            id: l.id,
-            fixtureCode: l.fixtureCode,
-            productName: l.productName,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            lineTotal: l.lineTotal,
-          }))}
-          total={quote.total}
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Nog geen offerte gegenereerd voor dit dossier.
-        </p>
-      )}
-    </main>
+    <QuoteView
+      dossierName={dossier.name}
+      phase={dossier.phase}
+      header={header}
+      lines={lines}
+      actions={actions}
+    />
   );
 }

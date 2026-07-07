@@ -1,14 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { WerkvoorbereiderView } from "@/components/dossier/werkvoorbereider-view";
-import { PhaseBadge } from "@/components/dossier/phase-badge";
 import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
 import { getActor, requireSession } from "@/lib/session";
 
+// Werkvoorbereiding-tab (§3.11): value-engineering ná gunning. De dossier-layout levert al
+// de kop + tabs — deze pagina rendert alleen zijn eigen inhoud als fragment.
 export default async function WerkvoorbereidingPage({
   params,
 }: {
@@ -19,30 +18,18 @@ export default async function WerkvoorbereidingPage({
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
 
-  const back = (
-    <Link
-      href={`/dossiers/${dossier.id}`}
-      className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="size-3.5" /> {dossier.name}
-    </Link>
-  );
-
   // Ijzeren regel 4: value-engineering bestaat alleen ná gunning. In tender: poort dicht.
+  // De fase-badge staat al in de dossier-layout; hier alleen een nette melding.
   if (dossier.phase !== "awarded") {
     return (
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
-        {back}
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <PhaseBadge phase="tender" />
-          <p className="mt-3 font-medium">Werkvoorbereiding is uit in tender-stand</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            Alternatieven en value-engineering verschijnen pas als het dossier op
-            “gegund” staat. Default = veilig: in de tenderfase toont de tool niets
-            dat de spec-gelijkwaardigheid in gevaar brengt.
-          </p>
-        </div>
-      </main>
+      <div className="rounded-lg border border-dashed p-8 text-center">
+        <p className="font-medium">Deze tab is er alleen in gegund-stand</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Alternatieven en value-engineering verschijnen pas als het dossier op
+          “gegund” staat. Default = veilig: in de tenderfase toont de tool niets
+          dat de spec-gelijkwaardigheid in gevaar brengt.
+        </p>
+      </div>
     );
   }
 
@@ -61,7 +48,7 @@ export default async function WerkvoorbereidingPage({
     vmLines.push({
       specLineId: l.id,
       fixtureCode: l.fixtureCode,
-      quantity: l.quantity,
+      quantity: l.quantity ?? 0,
       referenceName: l.matchedName ?? "",
       referenceBrand: l.matchedBrand ?? null,
       alternatives: alternatives.map((a) => ({
@@ -79,10 +66,5 @@ export default async function WerkvoorbereidingPage({
     });
   }
 
-  return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-10">
-      {back}
-      <WerkvoorbereiderView dossierName={dossier.name} lines={vmLines} />
-    </main>
-  );
+  return <WerkvoorbereiderView dossierName={dossier.name} lines={vmLines} />;
 }

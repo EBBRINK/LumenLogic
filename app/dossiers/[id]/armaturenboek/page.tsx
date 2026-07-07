@@ -1,11 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { ArmaturenboekView } from "@/components/dossier/armaturenboek-view";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { requireSession } from "@/lib/session";
+import { PrintButton } from "./print-button";
 
+// Armaturenboek-tab (§3.10): overdrachtsdocument voor de bouwplaats. De dossier-layout
+// levert al de kop (naam, klant, fase, telling) + tabs — deze pagina rendert alleen zijn
+// eigen inhoud als fragment. Elke spec-regel komt terug, ook de onopgeloste (niet weglaten).
 export default async function ArmaturenboekPage({
   params,
 }: {
@@ -18,14 +20,9 @@ export default async function ArmaturenboekPage({
   const lines = await getSpecLines(db, id);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div className="mb-6 print:hidden">
-        <Link
-          href={`/dossiers/${dossier.id}`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" /> {dossier.name}
-        </Link>
+    <>
+      <div className="mb-4 flex justify-end print:hidden">
+        <PrintButton />
       </div>
       <ArmaturenboekView
         dossierName={dossier.name}
@@ -34,15 +31,15 @@ export default async function ArmaturenboekPage({
         rows={lines.map((l) => ({
           fixtureCode: l.fixtureCode,
           quantity: l.quantity,
-          brand: l.matchedBrand,
+          brand: l.matchedBrand ?? l.brandText,
           productName: l.matchedName,
           articleCode: l.matchedArticleCode,
-          kelvin: l.matchedKelvin,
-          cri: l.matchedCri,
-          ip: l.matchedIp,
+          kelvin: l.matchedKelvin ?? l.reqKelvin,
+          cri: l.matchedCri ?? l.reqCri,
+          ip: l.matchedIp ?? l.reqIp,
           status: l.status,
         }))}
       />
-    </main>
+    </>
   );
 }

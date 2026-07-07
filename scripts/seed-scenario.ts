@@ -7,7 +7,8 @@ import { eq } from "drizzle-orm";
 import { neon } from "@neondatabase/serverless";
 import { db } from "@/db/client";
 import { projectDossiers, specLines } from "@/db/schema";
-import { generateQuote, matchSpecLine } from "@/lib/repo/dossiers";
+import { generateQuote } from "@/lib/repo/dossiers";
+import { chooseCandidate, runMatcher } from "@/lib/repo/matching";
 
 const url = process.env.DATABASE_URL!;
 const sql = neon(url);
@@ -85,7 +86,15 @@ async function main() {
       .where(eq(specLines.dossierId, dossier.id));
     const lp301 = lines.find((l) => l.code === "Lp301");
     if (lp301) {
-      await matchSpecLine(db, lp301.id, reference, "scenario@brink");
+      // matcher draaien (persisteert kandidaten + afwijkingen), dan expliciet het
+      // echte SASSO 100-armatuur kiezen i.p.v. het accessoire.
+      await runMatcher(db, lp301.id, "scenario@brink");
+      await chooseCandidate(db, {
+        specLineId: lp301.id,
+        productId: reference,
+        fromList: "aantoonbaar",
+        actor: "scenario@brink",
+      });
       await generateQuote(db, dossier.id, "scenario@brink");
       console.log("✓ Lp301 herkoppeld aan XAL SASSO 100 SQ SP CEIL + offerte herzien");
     }

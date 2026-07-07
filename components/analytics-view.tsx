@@ -11,6 +11,18 @@ const ACTION_LABEL: Record<string, string> = {
   pdf_import: "PDF-import",
   dossier_created: "Dossier aangemaakt",
   phase_changed: "Fasewissel",
+  // Nieuwe event-acties uit de vijfstatussen-/matcherlaag — nette labels.
+  matched_status: "Status gezet",
+  product_considered: "Product overwogen",
+  spec_line_matched: "Regel gematcht",
+  spec_line_no_match: "Regel zonder match",
+  review_decided: "Review besloten",
+  brand_load_requested: "Merk-inlaad aangevraagd",
+  quantity_linked: "Aantal gekoppeld",
+  day_price_set: "Dagprijs gezet",
+  xis_exported: "Naar XIS geëxporteerd",
+  enrichment_published: "Verrijking gepubliceerd",
+  evaluation_measured: "Hit-rate gemeten",
 };
 
 export function AnalyticsView({ data }: { data: Analytics }) {

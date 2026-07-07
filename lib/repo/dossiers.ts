@@ -80,6 +80,7 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       id: specLines.id,
       fixtureCode: specLines.fixtureCode,
       quantity: specLines.quantity,
+      zone: specLines.zone,
       description: specLines.description,
       brandText: specLines.brandText,
       productText: specLines.productText,
@@ -87,6 +88,11 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       reqCri: specLines.reqCri,
       reqIp: specLines.reqIp,
       status: specLines.status,
+      deviations: specLines.deviations,
+      source: specLines.source,
+      reviewKind: specLines.reviewKind,
+      noMatchReason: specLines.noMatchReason,
+      manualPrice: specLines.manualPrice,
       sortOrder: specLines.sortOrder,
       matchedProductId: specLines.matchedProductId,
       matchedName: visibleProducts.name,
@@ -117,13 +123,25 @@ export async function getSpecLine(db: AppDb, id: string) {
 
 export type SpecLineInput = {
   fixtureCode: string;
-  quantity?: number;
+  quantity?: number | null;
+  zone?: string | null;
   description?: string | null;
   brandText?: string | null;
   productText?: string | null;
   reqKelvin?: number | null;
   reqCri?: number | null;
   reqIp?: string | null;
+  reqWatt?: number | null;
+  reqLumen?: number | null;
+  reqBeamAngle?: number | null;
+  reqSizeCm?: number | null;
+  reqShape?: string | null;
+  reqColor?: string | null;
+  reqDimmable?: string | null;
+  source?: "manual" | "csv" | "pdf" | "ocr" | "llm";
+  sourceConfidence?: string | null;
+  sourcePage?: number | null;
+  importRunId?: string | null;
 };
 
 export async function addSpecLines(
@@ -140,16 +158,65 @@ export async function addSpecLines(
   const rows = lines.map((l, i) => ({
     dossierId,
     fixtureCode: l.fixtureCode,
-    quantity: l.quantity ?? 1,
+    quantity: l.quantity ?? null,
+    zone: l.zone ?? null,
     description: l.description ?? null,
     brandText: l.brandText ?? null,
     productText: l.productText ?? null,
     reqKelvin: l.reqKelvin ?? null,
     reqCri: l.reqCri ?? null,
     reqIp: l.reqIp ?? null,
+    reqWatt: l.reqWatt != null ? String(l.reqWatt) : null,
+    reqLumen: l.reqLumen ?? null,
+    reqBeamAngle: l.reqBeamAngle != null ? String(l.reqBeamAngle) : null,
+    reqSizeCm: l.reqSizeCm != null ? String(l.reqSizeCm) : null,
+    reqShape: l.reqShape ?? null,
+    reqColor: l.reqColor ?? null,
+    reqDimmable: l.reqDimmable ?? null,
+    source: l.source ?? "manual",
+    sourceConfidence: l.sourceConfidence ?? null,
+    sourcePage: l.sourcePage ?? null,
+    importRunId: l.importRunId ?? null,
     sortOrder: Number(max) + 1 + i,
   }));
   return db.insert(specLines).values(rows).returning();
+}
+
+// Aantallen koppelen op fixture-code (B-08/A-06: bestek/telstaat-import).
+// Retourneert welke codes gekoppeld zijn en welke onbekend bleven.
+export async function linkQuantities(
+  db: AppDb,
+  dossierId: string,
+  pairs: { code: string; quantity: number }[],
+  actor?: string,
+): Promise<{ linked: string[]; unknown: string[] }> {
+  const existing = await db
+    .select({ id: specLines.id, code: specLines.fixtureCode })
+    .from(specLines)
+    .where(eq(specLines.dossierId, dossierId));
+  const byCode = new Map(existing.map((r) => [r.code.toLowerCase(), r.id]));
+  const linked: string[] = [];
+  const unknown: string[] = [];
+  for (const p of pairs) {
+    const id = byCode.get(p.code.toLowerCase());
+    if (id) {
+      await db
+        .update(specLines)
+        .set({ quantity: p.quantity, updatedAt: new Date() })
+        .where(eq(specLines.id, id));
+      await logEvent(db, {
+        entity: "spec_line",
+        entityId: id,
+        action: "quantity_linked",
+        actor,
+        payload: { quantity: p.quantity },
+      });
+      linked.push(p.code);
+    } else {
+      unknown.push(p.code);
+    }
+  }
+  return { linked, unknown };
 }
 
 // CSV-blok plakken: kolommen code, aantal, merk, type (BUILD-PLAN §4.3.2).
@@ -174,44 +241,73 @@ export function parseSpecCsv(block: string): SpecLineInput[] {
   return out;
 }
 
-export async function matchSpecLine(
-  db: AppDb,
-  specLineId: string,
-  productId: string,
-  actor?: string,
-) {
-  await db
-    .update(specLines)
-    .set({ matchedProductId: productId, status: "matched", updatedAt: new Date() })
-    .where(eq(specLines.id, specLineId));
-  await logEvent(db, {
-    entity: "spec_line",
-    entityId: specLineId,
-    action: "match",
-    actor,
-    payload: { productId },
-  });
-}
-
-export async function markNoMatch(
-  db: AppDb,
-  specLineId: string,
-  actor?: string,
-) {
-  await db
-    .update(specLines)
-    .set({ matchedProductId: null, status: "no_match", updatedAt: new Date() })
-    .where(eq(specLines.id, specLineId));
-  await logEvent(db, {
-    entity: "spec_line",
-    entityId: specLineId,
-    action: "no_match",
-    actor,
-  });
-}
-
 export async function deleteSpecLine(db: AppDb, specLineId: string) {
   await db.delete(specLines).where(eq(specLines.id, specLineId));
+}
+
+// Dagprijs op DE REGEL (I-04): de catalogus blijft leeg (het gat blijft eerlijk),
+// maar deze regel krijgt een handmatige, gemarkeerde prijs met geldigheidsdatum.
+export async function setDayPrice(
+  db: AppDb,
+  input: {
+    specLineId: string;
+    price: number;
+    validUntil?: string | null;
+    actor?: string;
+  },
+) {
+  await db
+    .update(specLines)
+    .set({
+      manualPrice: input.price.toFixed(2),
+      manualPriceValidUntil: input.validUntil ?? null,
+      manualPriceSetBy: input.actor ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, input.specLineId));
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: input.specLineId,
+    action: "day_price_set",
+    actor: input.actor,
+    payload: { price: input.price, validUntil: input.validUntil ?? null },
+  });
+}
+
+// Aantal live bijwerken op de estimate (E-07).
+export async function setQuantity(
+  db: AppDb,
+  specLineId: string,
+  quantity: number | null,
+  actor?: string,
+) {
+  await db
+    .update(specLines)
+    .set({ quantity, updatedAt: new Date() })
+    .where(eq(specLines.id, specLineId));
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "quantity_changed",
+    actor,
+    payload: { quantity },
+  });
+}
+
+// Bestek/telstaat plakken: "code aantal" of "code;aantal" per regel.
+export function parseBestek(block: string): { code: string; quantity: number }[] {
+  const out: { code: string; quantity: number }[] = [];
+  for (const raw of block.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const cols = line.split(/\t|;|,|\s{2,}|\s/).map((c) => c.trim()).filter(Boolean);
+    if (cols.length < 2) continue;
+    if (/^(code|armatuurcode)$/i.test(cols[0])) continue;
+    const qty = parseInt(cols[cols.length - 1], 10);
+    if (Number.isNaN(qty)) continue;
+    out.push({ code: cols[0], quantity: qty });
+  }
+  return out;
 }
 
 // ── Offerte ──────────────────────────────────────────────────────────────────
@@ -223,8 +319,12 @@ export async function generateQuote(
   actor?: string,
 ) {
   const lines = await getSpecLines(db, dossierId);
+  // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus
+  // (matchedPrice) of een dagprijs op de regel (manualPrice, I-04).
   const matched = lines.filter(
-    (l) => l.matchedProductId && l.matchedPrice != null,
+    (l) =>
+      (l.status === "groen" || l.status === "geel") &&
+      (l.matchedPrice != null || l.manualPrice != null),
   );
 
   // bestaande offerte(s) opruimen → hergenereren is idempotent
@@ -241,16 +341,17 @@ export async function generateQuote(
   if (matched.length > 0) {
     await db.insert(quoteLines).values(
       matched.map((l) => {
-        const unit = Number(l.matchedPrice);
+        const unit = Number(l.manualPrice ?? l.matchedPrice);
+        const qty = l.quantity ?? 0; // aantal ontbreekt → stukprijs-modus (A-07)
         return {
           quoteId: quote.id,
           specLineId: l.id,
           productId: l.matchedProductId,
           productName: l.matchedName ?? l.productText ?? l.fixtureCode,
           fixtureCode: l.fixtureCode,
-          quantity: l.quantity,
+          quantity: qty,
           unitPrice: unit.toFixed(2),
-          lineTotal: (unit * l.quantity).toFixed(2),
+          lineTotal: (unit * qty).toFixed(2),
         };
       }),
     );

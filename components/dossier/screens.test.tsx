@@ -1,15 +1,19 @@
-// White-box RSC-screenshottests van de calculatorflow-schermen met fixture-data
-// (klein, deterministisch). Licht/donker × mobiel/desktop — dit is het "zicht" op de UI.
-// Bevat ook de UI-kant van ijzeren regel 4: tender toont géén suggesties, gegund wél.
+// White-box RSC-screenshottests van de kernschermen met fixture-data (klein,
+// deterministisch). Licht/donker × mobiel/desktop — dit is het "zicht" op de UI.
+//
+// NB: het regel-detailscherm (MatchCandidates, twee kandidatenlijsten + afronding) wordt
+// getest in regel-detail.test.tsx; de estimate/offerte in estimate.test.tsx. De
+// fase-poort van ijzeren regel 4 (tender toont géén alternatieven-suggesties) leeft op
+// repo-niveau en wordt getest in lib/repo/rules.test.ts. Hier houden we de twee schermen
+// die nergens anders in beeld komen: de dossierlijst en de spec-regeltabel.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
 import { DossierList } from "./dossier-list";
-import { MatchCandidates } from "./match-candidates";
-import { QuoteView } from "./quote-view";
 import { SpecLineTable } from "./spec-line-table";
-import type { Candidate, DossierSummary, SpecLineRow, QuoteLineRow } from "./types";
+import { emptyCounts } from "./status";
+import type { DossierSummary, SpecLineRow } from "./types";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -17,51 +21,46 @@ const viewports = {
 } as const;
 
 const dossiers: DossierSummary[] = [
-  { id: "d1", name: "Ziekenhuis Noord", customer: "Deerns", phase: "tender" },
-  { id: "d2", name: "Kantoor Zuid", customer: "BAM Bouw", phase: "awarded" },
+  {
+    id: "d1",
+    name: "Ziekenhuis Noord",
+    customer: "Deerns",
+    phase: "tender",
+    counts: { ...emptyCounts(), groen: 9, geel: 2, blauw: 2, rood: 1 },
+  },
+  {
+    id: "d2",
+    name: "Kantoor Zuid",
+    customer: "BAM Bouw",
+    phase: "awarded",
+    counts: { ...emptyCounts(), groen: 4, paars: 1 },
+  },
 ];
 
 const specLines: SpecLineRow[] = [
   {
     id: "s1", fixtureCode: "Lp301", quantity: 12, brandText: "XAL",
     productText: "SASSO 100", reqKelvin: 2700, reqCri: 90, reqIp: "IP20",
-    status: "matched", matchedProductId: "p1",
+    status: "groen", matchedProductId: "p1",
     matchedName: "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K", matchedBrand: "XAL",
     matchedArticleCode: "L360-SASSO100", matchedPrice: "310.00",
   },
   {
     id: "s2", fixtureCode: "Lw201", quantity: 8, brandText: "Wever & Ducré",
     productText: "SCAVA 1.0", reqKelvin: 3000, reqCri: 90, reqIp: null,
-    status: "matched", matchedProductId: "p2",
+    status: "geel", matchedProductId: "p2",
     matchedName: "SCAVA WALL SURF 1.0 LED 3000K", matchedBrand: "Wever & Ducré",
     matchedArticleCode: "L092-SCAVA", matchedPrice: "226.00",
+    deviations: [
+      { field: "straalhoek", requested: 12, delivered: 13, verdict: "geel", note: "1° breder" },
+    ],
   },
   {
-    id: "s3", fixtureCode: "Ls001", quantity: 4, brandText: "Glamox",
+    id: "s3", fixtureCode: "Ls001", quantity: null, brandText: "Glamox",
     productText: "i40", reqKelvin: null, reqCri: null, reqIp: null,
-    status: "no_match", matchedProductId: null, matchedName: null,
+    status: "rood", matchedProductId: null, matchedName: null,
     matchedBrand: null, matchedArticleCode: null, matchedPrice: null,
   },
-];
-
-const candidates: Candidate[] = [
-  {
-    id: "p1", name: "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K 220-240V",
-    brandName: "XAL", articleCode: "L360048-2191", supplierArticleCode: null,
-    categoryPath: "Binnen >> Spots", kelvin: 2700, cri: 90, ipValue: "IP20",
-    lumenOutput: 1200, grossPrice: "310.00", matchKind: "fuzzy",
-  },
-  {
-    id: "p2", name: "SASSO 100 RD SP CEIL 25W LED 3000K 220-240V",
-    brandName: "XAL", articleCode: "L360048-2192", supplierArticleCode: null,
-    categoryPath: "Binnen >> Spots", kelvin: 3000, cri: 90, ipValue: "IP20",
-    lumenOutput: 1800, grossPrice: "345.00", matchKind: "fuzzy",
-  },
-];
-
-const quoteLines: QuoteLineRow[] = [
-  { id: "q1", fixtureCode: "Lp301", productName: "SASSO 100 SQ SP CEIL 2700K", quantity: 12, unitPrice: "310.00", lineTotal: "3720.00" },
-  { id: "q2", fixtureCode: "Lw201", productName: "SCAVA WALL SURF 1.0 3000K", quantity: 8, unitPrice: "226.00", lineTotal: "1808.00" },
 ];
 
 function Screen({ children }: { children: React.ReactNode }) {
@@ -91,32 +90,6 @@ const screens = {
       <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
     </Screen>
   ),
-  "match-tender": (
-    <Screen>
-      <h1 className="mb-4 text-xl font-semibold tracking-tight">
-        Match voor Lp301 — tender
-      </h1>
-      <MatchCandidates
-        dossierId="d1"
-        specLine={{ id: "s1", fixtureCode: "Lp301", brandText: "XAL", productText: "SASSO 100" }}
-        candidates={candidates}
-        phase="tender"
-        matchAction={noopAction}
-        noMatchAction={noopAction}
-      />
-    </Screen>
-  ),
-  offerte: (
-    <Screen>
-      <QuoteView
-        dossierName="Ziekenhuis Noord"
-        customer="Deerns"
-        phase="tender"
-        lines={quoteLines}
-        total={5528}
-      />
-    </Screen>
-  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -133,37 +106,27 @@ for (const [name, ui] of Object.entries(screens)) {
   }
 }
 
-test("regel 4 (UI): tender-match toont GEEN suggesties, ook niet met data", async () => {
+// De dossierlijst toont per dossier de kleuren-telling (E-03) — een status-dashboard in
+// het klein. Niets telt op tot iets misleidends; het is puur de telling per status.
+test("DossierList: toont de kleuren-telling wanneer counts zijn meegestuurd", async () => {
   await renderServer(
     <Screen>
-      <MatchCandidates
-        dossierId="d1"
-        specLine={{ id: "s1", fixtureCode: "Lp301", brandText: "XAL", productText: "SASSO 100" }}
-        candidates={candidates}
-        phase="tender"
-        suggestions={candidates}
-        matchAction={noopAction}
-        noMatchAction={noopAction}
-      />
+      <DossierList dossiers={dossiers} />
     </Screen>,
   );
-  // in tender bestaat de suggesties-sectie niet, zelfs niet als er suggesties meegegeven zijn
-  expect(page.getByTestId("suggestions").query()).toBeNull();
+  await expect.element(page.getByText("Ziekenhuis Noord")).toBeInTheDocument();
+  // groen=9 uit d1 verschijnt als telling.
+  await expect.element(page.getByText("9", { exact: true })).toBeInTheDocument();
 });
 
-test("regel 4 (UI): gegund-match toont de suggesties-sectie wél", async () => {
+// Niets stilzwijgend weglaten: ook de rode regel zonder match staat er, met status.
+test("SpecLineTable: rode regel zonder match blijft zichtbaar met status", async () => {
   await renderServer(
     <Screen>
-      <MatchCandidates
-        dossierId="d2"
-        specLine={{ id: "s1", fixtureCode: "Lp301", brandText: "XAL", productText: "SASSO 100" }}
-        candidates={candidates}
-        phase="awarded"
-        suggestions={candidates}
-        matchAction={noopAction}
-        noMatchAction={noopAction}
-      />
+      <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
     </Screen>,
   );
-  await expect.element(page.getByTestId("suggestions")).toBeInTheDocument();
+  await expect.element(page.getByText("Ls001", { exact: true })).toBeInTheDocument();
+  // Ontbrekend aantal = eerlijke "p/st"-markering, nooit stil weggelaten.
+  await expect.element(page.getByText("p/st", { exact: true })).toBeInTheDocument();
 });

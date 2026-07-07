@@ -9,11 +9,20 @@ import {
   createDossier,
   deleteSpecLine,
   generateQuote,
-  markNoMatch,
-  matchSpecLine,
+  linkQuantities,
+  parseBestek,
   parseSpecCsv,
+  setDayPrice,
   setDossierPhase,
+  setQuantity,
 } from "@/lib/repo/dossiers";
+import {
+  chooseCandidate,
+  runMatcher,
+  setLineStatus,
+  unlinkMatch,
+} from "@/lib/repo/matching";
+import { decideReview, flagForReview } from "@/lib/repo/review";
 import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
 import { requireSession, getActor } from "@/lib/session";
@@ -21,6 +30,11 @@ import { requireSession, getActor } from "@/lib/session";
 function intOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
   const n = parseInt(String(v), 10);
+  return Number.isNaN(n) ? null : n;
+}
+function numOrNull(v: FormDataEntryValue | null): number | null {
+  if (v == null) return null;
+  const n = Number(String(v).replace(",", "."));
   return Number.isNaN(n) ? null : n;
 }
 function strOrNull(v: FormDataEntryValue | null): string | null {
@@ -42,36 +56,65 @@ export async function createDossierAction(formData: FormData) {
   redirect(`/dossiers/${dossier.id}`);
 }
 
+// Handmatige regel toevoegen → matcher draait direct (functioneel ontwerp 3.4-5).
 export async function addSpecLineAction(formData: FormData) {
   await requireSession();
+  const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
   if (!dossierId || !fixtureCode) return;
-  await addSpecLines(db, dossierId, [
+  const [row] = await addSpecLines(db, dossierId, [
     {
       fixtureCode,
-      quantity: intOrNull(formData.get("quantity")) ?? 1,
+      quantity: intOrNull(formData.get("quantity")),
+      zone: strOrNull(formData.get("zone")),
       brandText: strOrNull(formData.get("brandText")),
       productText: strOrNull(formData.get("productText")),
       reqKelvin: intOrNull(formData.get("reqKelvin")),
       reqCri: intOrNull(formData.get("reqCri")),
       reqIp: strOrNull(formData.get("reqIp")),
+      reqWatt: numOrNull(formData.get("reqWatt")),
+      reqLumen: intOrNull(formData.get("reqLumen")),
+      reqBeamAngle: numOrNull(formData.get("reqBeamAngle")),
+      reqSizeCm: numOrNull(formData.get("reqSizeCm")),
+      reqShape: strOrNull(formData.get("reqShape")),
+      reqColor: strOrNull(formData.get("reqColor")),
+      reqDimmable: strOrNull(formData.get("reqDimmable")),
+      source: "manual",
     },
   ]);
+  if (row) await runMatcher(db, row.id, actor);
   revalidatePath(`/dossiers/${dossierId}`);
 }
 
 export async function addSpecCsvAction(formData: FormData) {
   await requireSession();
+  const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const csv = String(formData.get("csv") ?? "");
-  const lines = parseSpecCsv(csv);
-  if (dossierId && lines.length) await addSpecLines(db, dossierId, lines);
+  const lines = parseSpecCsv(csv).map((l) => ({ ...l, source: "csv" as const }));
+  if (dossierId && lines.length) {
+    const rows = await addSpecLines(db, dossierId, lines);
+    for (const r of rows) await runMatcher(db, r.id, actor);
+  }
+  revalidatePath(`/dossiers/${dossierId}`);
+}
+
+// Bestek/telstaat plakken → aantallen koppelen op fixture-code (B-08/A-06).
+export async function linkBestekAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const block = String(formData.get("bestek") ?? "");
+  const pairs = parseBestek(block);
+  if (dossierId && pairs.length) {
+    await linkQuantities(db, dossierId, pairs, await getActor());
+  }
   revalidatePath(`/dossiers/${dossierId}`);
 }
 
 export async function importArmaturenboekPdfAction(formData: FormData) {
   await requireSession();
+  const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const file = formData.get("pdf");
   if (!dossierId || !(file instanceof File) || file.size === 0) return;
@@ -80,12 +123,19 @@ export async function importArmaturenboekPdfAction(formData: FormData) {
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
   const { lines, hadText } = await extractSpecLinesFromPdf(bytes, brandNames);
-  if (lines.length) await addSpecLines(db, dossierId, lines);
+  if (lines.length) {
+    const rows = await addSpecLines(
+      db,
+      dossierId,
+      lines.map((l) => ({ ...l, source: "pdf" as const })),
+    );
+    for (const r of rows) await runMatcher(db, r.id, actor);
+  }
   await logEvent(db, {
     entity: "dossier",
     entityId: dossierId,
     action: "pdf_import",
-    actor: await getActor(),
+    actor,
     payload: { file: file.name, hadText, imported: lines.length },
   });
   revalidatePath(`/dossiers/${dossierId}`);
@@ -94,22 +144,124 @@ export async function importArmaturenboekPdfAction(formData: FormData) {
   );
 }
 
-export async function matchAction(formData: FormData) {
+// Matcher (opnieuw) draaien op één regel.
+export async function runMatchAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  if (specLineId) await runMatcher(db, specLineId, await getActor());
+  revalidatePath(`/dossiers/${dossierId}`);
+}
+
+// Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht.
+export async function chooseCandidateAction(formData: FormData) {
   await requireSession();
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const productId = String(formData.get("productId"));
-  if (specLineId && productId)
-    await matchSpecLine(db, specLineId, productId, await getActor());
+  const fromList =
+    formData.get("fromList") === "onvolledig" ? "onvolledig" : "aantoonbaar";
+  const reason = strOrNull(formData.get("reason"));
+  if (specLineId && productId) {
+    await chooseCandidate(db, {
+      specLineId,
+      productId,
+      fromList,
+      reason,
+      actor: await getActor(),
+    });
+  }
   redirect(`/dossiers/${dossierId}`);
 }
 
-export async function noMatchAction(formData: FormData) {
+// Rood/paars/blauw handmatig zetten (regel-detailknoppen).
+export async function setLineStatusAction(formData: FormData) {
   await requireSession();
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
-  if (specLineId) await markNoMatch(db, specLineId, await getActor());
+  const status = String(formData.get("status"));
+  if (specLineId && (status === "rood" || status === "paars" || status === "blauw")) {
+    await setLineStatus(db, {
+      specLineId,
+      status,
+      reason: strOrNull(formData.get("reason")),
+      brandText: strOrNull(formData.get("brandText")),
+      actor: await getActor(),
+    });
+  }
   redirect(`/dossiers/${dossierId}`);
+}
+
+export async function unlinkMatchAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (specLineId && reason) await unlinkMatch(db, specLineId, reason, await getActor());
+  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
+}
+
+// Dagprijs op de regel (I-04).
+export async function setDayPriceAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const price = numOrNull(formData.get("price"));
+  if (specLineId && price != null) {
+    await setDayPrice(db, {
+      specLineId,
+      price,
+      validUntil: strOrNull(formData.get("validUntil")),
+      actor: await getActor(),
+    });
+  }
+  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
+}
+
+// Review-beslissing (3.7).
+export async function decideReviewAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const decision = String(formData.get("decision")) as
+    | "accepteer"
+    | "afgewezen"
+    | "variant"
+    | "gecontroleerd"
+    | "bevestigd";
+  if (specLineId) {
+    await decideReview(db, {
+      specLineId,
+      decision,
+      reason: strOrNull(formData.get("reason")),
+      variantColor: strOrNull(formData.get("variantColor")),
+      actor: await getActor(),
+    });
+  }
+  revalidatePath(`/dossiers/${dossierId}/review`);
+}
+
+// Een regel handmatig in de review-wachtrij zetten (bv. variantkeuze).
+export async function flagReviewAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const kind = String(formData.get("kind")) as
+    | "geel"
+    | "variant"
+    | "onvolledig"
+    | "ocr";
+  if (specLineId) await flagForReview(db, specLineId, kind);
+  revalidatePath(`/dossiers/${dossierId}`);
+}
+
+export async function setQuantityAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const quantity = intOrNull(formData.get("quantity"));
+  if (specLineId) await setQuantity(db, specLineId, quantity, await getActor());
+  revalidatePath(`/dossiers/${dossierId}/offerte`);
 }
 
 export async function deleteLineAction(formData: FormData) {

@@ -1,5 +1,5 @@
+import { Fragment } from "react";
 import { IconSearch, IconTrash } from "./icons";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -9,14 +9,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatEur } from "@/lib/format";
+import { StatusBadge } from "./status-badge";
+import { STATUS } from "./status";
 import type { SpecLineRow } from "./types";
 
-function StatusBadge({ status }: { status: SpecLineRow["status"] }) {
-  if (status === "matched") return <Badge>Gematcht</Badge>;
-  if (status === "no_match")
-    return <Badge variant="destructive">Geen match</Badge>;
-  return <Badge variant="secondary">Open</Badge>;
+// De contextuele actie per status (functioneel ontwerp 3.4-2):
+//   🟢/🔴/🟣 → Open (regel-detail) · 🟡/review → Review · 🔵 → Inladen (wachtrij).
+function actionFor(status: SpecLineRow["status"]): { label: string; kind: "open" | "review" | "inladen" } {
+  if (status === "geel") return { label: "Review", kind: "review" };
+  if (status === "blauw") return { label: "Inladen", kind: "inladen" };
+  return { label: "Open", kind: "open" };
 }
 
 export function SpecLineTable({
@@ -40,65 +42,105 @@ export function SpecLineTable({
       <TableHeader>
         <TableRow>
           <TableHead>Code</TableHead>
+          <TableHead>Zone</TableHead>
           <TableHead>Aantal</TableHead>
           <TableHead>Gevraagd</TableHead>
-          <TableHead>Match uit catalogus</TableHead>
-          <TableHead className="text-right">Stukprijs</TableHead>
+          <TableHead>Match</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Actie</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {lines.map((l) => (
-          <TableRow key={l.id}>
-            <TableCell className="font-medium">{l.fixtureCode}</TableCell>
-            <TableCell>{l.quantity}</TableCell>
-            <TableCell className="max-w-56 whitespace-normal">
-              <span className="text-muted-foreground">{l.brandText}</span>{" "}
-              {l.productText}
-            </TableCell>
-            <TableCell className="max-w-64 whitespace-normal">
-              {l.matchedName ? (
-                <span>
-                  <span className="text-muted-foreground">{l.matchedBrand}</span>{" "}
-                  {l.matchedName}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatEur(l.matchedPrice)}
-            </TableCell>
-            <TableCell>
-              <StatusBadge status={l.status} />
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex items-center justify-end gap-1">
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/dossiers/${dossierId}/regel/${l.id}`}>
-                    <IconSearch /> Matchen
-                  </a>
-                </Button>
-                {deleteAction && (
-                  <form action={deleteAction}>
-                    <input type="hidden" name="dossierId" value={dossierId} />
-                    <input type="hidden" name="specLineId" value={l.id} />
-                    <Button
-                      type="submit"
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="Regel verwijderen"
-                    >
-                      <IconTrash />
+        {lines.map((l) => {
+          const act = actionFor(l.status);
+          // transparantieregel (C-07): benoem afwijkingen als subregel, óók binnen groen.
+          const notable = (l.deviations ?? []).filter(
+            (d) => d.verdict !== "onbekend" && d.note && d.note !== "exact",
+          );
+          return (
+            <Fragment key={l.id}>
+              <TableRow>
+                <TableCell className="font-medium">{l.fixtureCode}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {l.zone ?? "—"}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {l.quantity ?? <span className="text-muted-foreground">p/st</span>}
+                </TableCell>
+                <TableCell className="max-w-56 whitespace-normal">
+                  <span className="text-muted-foreground">{l.brandText}</span>{" "}
+                  {l.productText}
+                </TableCell>
+                <TableCell className="max-w-64 whitespace-normal">
+                  {l.matchedName ? (
+                    <span>
+                      <span className="text-muted-foreground">
+                        {l.matchedBrand}
+                      </span>{" "}
+                      {l.matchedName}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={l.status} />
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button asChild size="sm" variant="outline">
+                      <a href={`/dossiers/${dossierId}/regel/${l.id}`}>
+                        <IconSearch /> {act.label}
+                      </a>
                     </Button>
-                  </form>
-                )}
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
+                    {deleteAction && (
+                      <form action={deleteAction}>
+                        <input type="hidden" name="dossierId" value={dossierId} />
+                        <input type="hidden" name="specLineId" value={l.id} />
+                        <Button
+                          type="submit"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label="Regel verwijderen"
+                        >
+                          <IconTrash />
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+              {notable.length > 0 && (
+                <TableRow className="border-0">
+                  <TableCell />
+                  <TableCell colSpan={6} className="pt-0 text-xs text-muted-foreground">
+                    afwijking:{" "}
+                    {notable.map((d, i) => (
+                      <span key={d.field}>
+                        {i > 0 && " · "}
+                        <span
+                          className={
+                            d.verdict === "rood"
+                              ? "text-rose-600 dark:text-rose-400"
+                              : d.verdict === "geel"
+                                ? "text-amber-600 dark:text-amber-400"
+                                : ""
+                          }
+                        >
+                          {d.note}
+                        </span>
+                      </span>
+                    ))}
+                  </TableCell>
+                </TableRow>
+              )}
+            </Fragment>
+          );
+        })}
       </TableBody>
     </Table>
   );
 }
+
+// Ongebruikt hier maar handig voor consumers die de betekenis willen tonen.
+export { STATUS as STATUS_META };
