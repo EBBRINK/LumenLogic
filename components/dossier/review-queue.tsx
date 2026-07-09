@@ -64,7 +64,6 @@ function DeviationList({ deviations }: { deviations: Deviation[] }) {
         <li key={d.field} className="text-amber-700 dark:text-amber-400">
           <span className="font-medium">{d.field}</span>: gevraagd {d.requested} →
           geleverd {d.delivered ?? "—"}
-          {d.note ? ` · ${d.note}` : ""}
         </li>
       ))}
     </ul>
