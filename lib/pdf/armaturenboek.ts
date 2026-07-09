@@ -6,6 +6,7 @@
 // Dat melden we eerlijk (fail loud), i.p.v. stil niets te importeren.
 import { extractText, getDocumentProxy } from "unpdf";
 import type { SpecLineInput } from "@/lib/repo/dossiers";
+import { parseProductName } from "@/lib/enrichment/parser";
 
 // Armatuurcode zoals in de Deerns-boeken: Lp301, Ls004, Lw201, Lp001-a, Lt001…
 const CODE = /^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/;
@@ -75,11 +76,23 @@ export function parseTocText(
     if (mid.length && !seen.has(code)) {
       seen.add(code);
       const { brand, type } = splitBrandType(mid.join(" "), brandNames);
+      // Deterministische spec-extractie (geen AI): armaturenboeken coderen de gevraagde
+      // specs inline in de omschrijving ("… 17,9W 3000K IP44"). We lezen die met de
+      // naam-parser en zetten ze als GEVRAAGDE specs, zodat de tolerantie-matcher geel/
+      // rood kan bepalen. Ontbrekend blijft leeg (nooit geraden).
+      const specs = type ? parseProductName(type) : {};
       lines.push({
         fixtureCode: code,
         quantity: 1, // inhoudsopgave kent geen aantallen → default 1
         brandText: brand,
         productText: type || null,
+        reqKelvin: specs.kelvin ?? null,
+        reqCri: specs.cri ?? null,
+        reqIp: specs.ipValue ?? null,
+        reqWatt: specs.maxWattage ?? null,
+        reqLumen: specs.lumenOutput ?? null,
+        reqBeamAngle: specs.beamAngle ?? null,
+        reqDimmable: specs.dimmable ?? null,
       });
     }
     i = j;
