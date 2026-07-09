@@ -28,6 +28,8 @@ const ROWS: [string, string, string, string][] = [
   ["Ld202", "Kreon", "Holon 80 directional 3000K 40W", "geel"],
   ["Lw102", "Axo Light", "NEST SEMI-RECESSED 3000K 8W", "geel"],
   ["Ld106", "XAL", "UNICO Q4 2700K 30W", "geel"],
+  ["Lw103", "Axo Light", "NEST SEMI-RECESSED 3000K 9W", "geel"],
+  ["Ld107", "XAL", "UNICO Q4 2700K 28W", "geel"],
   // — ROOD: merk hebben we, dit product niet —
   ["Lp601", "XAL", "PHANTOMDELUXE ZX9000", "rood"],
   ["Lr701", "Flos", "ORIONNOVA QX5 SPECIAL", "rood"],

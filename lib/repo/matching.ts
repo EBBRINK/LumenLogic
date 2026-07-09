@@ -82,12 +82,17 @@ export async function runMatcher(
     });
   }
 
-  // status + top-afwijkingen op de regel schrijven; matched blijft leeg tot een keuze
+  // status + top-afwijkingen op de regel schrijven; matched blijft leeg tot een keuze.
+  // Geel = "Brink reviewt of de afwijking acceptabel is" (regelset) → automatisch in de
+  // review-wachtrij. Andere statussen resetten reviewKind zodat een hermatch de wachtrij
+  // opschoont.
   await db
     .update(specLines)
     .set({
       status: outcome.status,
       deviations: outcome.topDeviations,
+      reviewKind: outcome.status === "geel" ? "geel" : null,
+      reviewedAt: null,
       updatedAt: new Date(),
     })
     .where(eq(specLines.id, specLineId));
