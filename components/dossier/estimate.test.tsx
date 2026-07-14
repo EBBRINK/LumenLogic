@@ -5,8 +5,11 @@
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { Button } from "@/components/ui/button";
+import { noopAction } from "@/lib/test-actions";
 import { QuoteView } from "./quote-view";
 import type { EstimateHeader, EstimateLine } from "./quote-view";
+import { PrintButton } from "./xis-push-dialog";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -113,6 +116,34 @@ const screens = {
       />
     </Screen>
   ),
+  // Actiebalk zoals de offerte-pagina hem samenstelt (zelfde opbouw als
+  // app/projecten/[id]/offerte/page.tsx): ververs-knop, printknop en de
+  // downloadknop "Download PDF" die naar de PDF-route wijst.
+  "estimate-downloadknop": (
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={header}
+        lines={zonedLines}
+        actions={
+          <>
+            <form action={noopAction}>
+              <Button type="submit" variant="secondary" size="sm">
+                Ververs estimate
+              </Button>
+            </form>
+            <PrintButton />
+            <Button asChild variant="outline" size="sm">
+              <a href="/projecten/d1/offerte/pdf" download>
+                Download PDF
+              </a>
+            </Button>
+          </>
+        }
+      />
+    </Screen>
+  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -198,6 +229,17 @@ test("kopblok: nummer-volgt fallback als er nog geen offertenummer is", async ()
     </Screen>,
   );
   await expect.element(page.getByText(/BL-2026-\{nummer volgt\}/)).toBeInTheDocument();
+});
+
+test("downloadknop staat naast de printknop en wijst naar de PDF-route", async () => {
+  await renderServer(screens["estimate-downloadknop"]);
+  const link = page.getByRole("link", { name: "Download PDF" });
+  await expect.element(link).toBeInTheDocument();
+  await expect.element(link).toHaveAttribute("href", "/projecten/d1/offerte/pdf");
+  await expect.element(link).toHaveAttribute("download");
+  await expect
+    .element(page.getByRole("button", { name: "Print / PDF" }))
+    .toBeInTheDocument();
 });
 
 test("zonder zones → één lijst, geen zone-koppen", async () => {

@@ -12,6 +12,16 @@ event-catalogus, rollenmatrix. Bouwsessies: masterplan = koers, functioneel ontw
 _2026-07-07 (nacht): runs 4–6 gebouwd — vijfstatussen-regelset in de kern, review-station,
 estimate met totalen-per-kleur, XIS-export, verrijkingspijplijn, /data-werkbank, catalogus,
 instellingen + allowlist, import-voorstelscherm. Zie "Runs 4–6" hieronder._
+_2026-07-14: estimate-PDF (plan stap 9, B5). Berekenlogica geëxtraheerd naar
+`lib/repo/estimate.ts` (één bron voor scherm + PDF; `computeEstimate` is puur,
+`getEstimateData` haalt kop + regels), `lib/pdf/estimate.ts` (pdf-lib/Helvetica, A4 staand,
+meerpaginasteun, ellipsis, zones + subtotalen, p.m.-sectie), route
+`/projecten/[id]/offerte/pdf` (requireSession, event `estimate_pdf_generated`) + knop
+"Download PDF" naast de printknop. Aannames: geen logo-asset in `public/` → tekstkop
+"Brink Licht" (pdf-lib kan alleen PNG/JPG embedden); prijzen = bruto adviesprijs (B5);
+zone-subtotalen staan wél in de PDF, het scherm bleef ongewijzigd. Testkanttekening:
+pdf-lib hangt op tslib v1 — in `vitest.config.ts` een klein pre-resolve-plugin
+(tslib→es6-build alleen voor pdf-lib) + `optimizeDeps` exclude pdf-lib / include pako._
 
 ## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 

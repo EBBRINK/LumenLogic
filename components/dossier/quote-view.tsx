@@ -9,68 +9,24 @@ import {
 } from "@/components/ui/table";
 import { formatEur } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import {
+  computeEstimate,
+  countedLineTotal,
+  countsInTotal,
+  notableDeviations,
+  requestedText,
+  type EstimateHeader,
+  type EstimateLine,
+  type EstimateZoneGroup,
+} from "@/lib/repo/estimate";
 import { PhaseBadge } from "./phase-badge";
 import { StatusBadge } from "./status-badge";
-import { STATUS, type MatchStatus } from "./status";
-import type { Deviation, Phase } from "./types";
+import { STATUS } from "./status";
+import type { Phase } from "./types";
 
-// Eén estimate-regel. Bewust ontkoppeld van de repo zodat de estimate met fixtures
-// getest kan worden. Anders dan de gegenereerde offerte bevat de estimate ÁLLE
-// spec-regels — óók blauw/rood/paars/open — want niets wordt stilzwijgend weggelaten.
-export type EstimateLine = {
-  id: string;
-  fixtureCode: string;
-  zone?: string | null;
-  productName: string | null; // gematchte productnaam, anders de gevraagde tekst
-  sku: string | null; // artikelcode van het gematchte product
-  quantity: number | null;
-  unitPrice: string | null; // dagprijs (I-04) wint van catalogusprijs
-  status: MatchStatus;
-  deviations?: Deviation[] | null;
-  brandText?: string | null; // gevraagd merk (voor blauw: welk merk inladen)
-  productText?: string | null; // gevraagd type
-};
-
-// Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt pas bij uitsturen.
-export type EstimateHeader = {
-  quoteNumber: string | null;
-  quoteDate: string | null;
-  customer: string | null;
-  projectRef: string | null;
-  author: string | null;
-  validUntil: string | null;
-};
-
-// Alleen groen + geel tellen mee in het projecttotaal (E-02). Blauw/rood/paars gaan
-// mee als p.m. — getoond, niet opgeteld.
-function countsInTotal(status: MatchStatus): boolean {
-  return status === "groen" || status === "geel";
-}
-
-// Regel + doorlopend nummer (aanvraagvolgorde-positie in de hele estimate).
-type NumberedLine = { line: EstimateLine; nr: number };
-type ZoneGroup = { zone: string | null; lines: NumberedLine[] };
-
-// Groepeer op zone in eerste-verschijning-volgorde; bínnen een zone blijft de
-// aanvraagvolgorde intact (de array-volgorde). Nooit hersorteren op status/prijs.
-// De nummering (#) is al vooraf toegekend op de globale aanvraagvolgorde, dus die
-// blijft stabiel — ongeacht hoe de zones gegroepeerd worden.
-function groupByZone(lines: NumberedLine[]): ZoneGroup[] {
-  const groups: ZoneGroup[] = [];
-  const index = new Map<string, number>();
-  for (const nl of lines) {
-    const zone = nl.line.zone;
-    const key = zone && zone.trim() ? zone.trim() : "__none__";
-    let at = index.get(key);
-    if (at === undefined) {
-      at = groups.length;
-      index.set(key, at);
-      groups.push({ zone: key === "__none__" ? null : zone!.trim(), lines: [] });
-    }
-    groups[at].lines.push(nl);
-  }
-  return groups;
-}
+// De berekening (totalen, p.m., zones, nummering) leeft in lib/repo/estimate.ts —
+// één bron voor scherm én PDF (stap 9). Dit component rendert alleen.
+export type { EstimateHeader, EstimateLine } from "@/lib/repo/estimate";
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -96,44 +52,9 @@ export function QuoteView({
   lines: EstimateLine[];
   actions?: ReactNode;
 }) {
-  const year = header.quoteDate?.slice(0, 4) ?? String(new Date().getFullYear());
-  const quoteNumber = header.quoteNumber ?? `BL-${year}-{nummer volgt}`;
-
-  // Totalen: groen apart, geel apart, samen. Een regel telt alleen mee met een aantal
-  // én een geldige prijs; ontbreekt het aantal, dan is het een stukprijs-regel (p/st).
-  let groenTotal = 0;
-  let geelTotal = 0;
-  for (const l of lines) {
-    if (countsInTotal(l.status) && l.quantity != null && l.unitPrice != null) {
-      const t = Number(l.unitPrice) * l.quantity;
-      if (l.status === "groen") groenTotal += t;
-      else geelTotal += t;
-    }
-  }
-  const samen = groenTotal + geelTotal;
-
-  // p.m.-regels: getoond, niet opgeteld.
-  const pm = { blauw: 0, rood: 0, paars: 0 };
-  for (const l of lines) {
-    if (l.status === "blauw") pm.blauw++;
-    else if (l.status === "rood") pm.rood++;
-    else if (l.status === "paars") pm.paars++;
-  }
-  const pmTotal = pm.blauw + pm.rood + pm.paars;
-
-  // Open punten & acties.
-  const blauwLines = lines.filter((l) => l.status === "blauw");
-  const roodLines = lines.filter((l) => l.status === "rood");
-  const brandFreq = new Map<string, number>();
-  for (const l of blauwLines) {
-    const b = (l.brandText ?? "").trim() || "onbekend merk";
-    brandFreq.set(b, (brandFreq.get(b) ?? 0) + 1);
-  }
-
-  const hasZones = lines.some((l) => l.zone && l.zone.trim());
-  // Nummer vooraf toekennen op globale aanvraagvolgorde, dán pas groeperen.
-  const numbered: NumberedLine[] = lines.map((line, i) => ({ line, nr: i + 1 }));
-  const groups = groupByZone(numbered);
+  const computed = computeEstimate(header, lines);
+  const { totals, pm, blauwLines, roodLines, brandFreq, hasZones, groups } =
+    computed;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -156,7 +77,7 @@ export function QuoteView({
           </div>
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-          <Field label="Offertenummer" value={quoteNumber} />
+          <Field label="Offertenummer" value={computed.quoteNumberDisplay} />
           <Field label="Datum" value={header.quoteDate ?? "—"} />
           <Field label="Klant" value={header.customer ?? "—"} />
           <Field label="Project" value={header.projectRef ?? "—"} />
@@ -197,17 +118,17 @@ export function QuoteView({
           <div className="w-full max-w-xs text-sm">
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Groen</span>
-              <span className="tabular-nums">{formatEur(groenTotal)}</span>
+              <span className="tabular-nums">{formatEur(totals.groen)}</span>
             </div>
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Geel</span>
-              <span className="tabular-nums">{formatEur(geelTotal)}</span>
+              <span className="tabular-nums">{formatEur(totals.geel)}</span>
             </div>
             <div className="mt-1 flex justify-between border-t pt-1.5 font-semibold">
               <span>Samen (groen + geel)</span>
-              <span className="tabular-nums">{formatEur(samen)}</span>
+              <span className="tabular-nums">{formatEur(totals.samen)}</span>
             </div>
-            {pmTotal > 0 && (
+            {pm.total > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Getoond, niet opgeteld (blauw {pm.blauw} · rood {pm.rood} · paars{" "}
                 {pm.paars}) — <span className="font-medium">p.m.</span>
@@ -244,13 +165,13 @@ export function QuoteView({
             ))}
           </ul>
 
-          {brandFreq.size > 0 && (
+          {brandFreq.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground">
                 Merken inladen (ons)
               </p>
               <ul className="mt-1 space-y-0.5 text-sm">
-                {[...brandFreq.entries()].map(([brand, n]) => (
+                {brandFreq.map(([brand, n]) => (
                   <li key={brand} className="tabular-nums">
                     {brand} — {n}×
                   </li>
@@ -272,7 +193,13 @@ export function QuoteView({
 
 // Rendert de regels van één zone. Het regelnummer is al vooraf toegekend
 // (aanvraagvolgorde blijft heilig).
-function ZoneRows({ group, showZone }: { group: ZoneGroup; showZone: boolean }) {
+function ZoneRows({
+  group,
+  showZone,
+}: {
+  group: EstimateZoneGroup;
+  showZone: boolean;
+}) {
   return (
     <>
       {showZone && (
@@ -294,28 +221,23 @@ function ZoneRows({ group, showZone }: { group: ZoneGroup; showZone: boolean }) 
 
 function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
   const counting = countsInTotal(line.status);
-  const requested = [line.brandText, line.productText]
-    .map((s) => (s ?? "").trim())
-    .filter(Boolean)
-    .join(" ");
-  const displayName = line.productName ?? (requested || "—");
+  const displayName = line.productName ?? (requestedText(line) || "—");
 
   // Regeltotaal-cel: p.m. voor niet-tellende statussen, p/st bij ontbrekend aantal.
   let totalCell: ReactNode;
+  const lineTotal = countedLineTotal(line);
   if (!counting) {
     totalCell = <span className="text-muted-foreground">p.m.</span>;
   } else if (line.quantity == null) {
     totalCell = <span className="text-muted-foreground">p/st</span>;
-  } else if (line.unitPrice == null) {
+  } else if (lineTotal == null) {
     totalCell = <span className="text-muted-foreground">—</span>;
   } else {
-    totalCell = formatEur(Number(line.unitPrice) * line.quantity);
+    totalCell = formatEur(lineTotal);
   }
 
   // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
-  const notable = (line.deviations ?? []).filter(
-    (d) => d.verdict !== "onbekend" && d.note && d.note !== "exact",
-  );
+  const notable = notableDeviations(line);
 
   return (
     <>
