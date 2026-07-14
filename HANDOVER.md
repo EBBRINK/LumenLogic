@@ -303,3 +303,75 @@ menskeuze. Bewuste besluiten:
 - **Rood-kaart is fase-veilig** (ijzeren regel 4): het systeem toont er nooit
   suggesties; de resultatenlijst verschijnt pas na een eigen zoekactie (GET-formulier
   → `searchProducts`, dat zelf logt).
+
+## Onderdeel Aanvraag→Estimate — afgerond 2026-07-14
+
+Plan: `docs/plan-aanvraag-estimate.md` (B1–B6); herontwerp + nulmeting in de vault
+(`projects/lumenlogic/onderdelen/aanvraag-tot-estimate.md`). Alle tien bouwstappen staan.
+
+### Wat er gebouwd is (stappen 1–9 samengevat)
+
+1. **Hernoemen "Projecten"** — routes `/dossiers` → `/projecten` (permanente redirect),
+   alle UI-labels; DB-tabellen en code-identifiers bewust níét (B1, zie besluiten).
+2. **Cleanup-testdata-script** — `scripts/cleanup-testdata.ts`: Van Dijk-org + leden weg,
+   Flos → tier-1; dry-run default, `--apply` vereist, idempotent, events gelogd.
+3. **Migratie 0006** (additief + backfill in één transactie) — kolommen `status` en
+   `xis_phase` op `project_dossiers`, `raw_markdown` op `import_runs`, tabel `ai_suggestions`.
+4. **Status/fasemodel** — `lib/repo/project-status.ts` is de éne schrijver van `phase`
+   (`derivePhase`); statusfilter, XIS-fasen in het formulier, "Markeer als gestuurd"
+   bevriest de quote (I-06).
+5. **PDF-upload bovenaan + md-controlespoor** — upload als eerste blok; de volledige
+   tekstlaag als markdown ("## Pagina N", cap ~2 MB) opgeslagen, toonbaar en downloadbaar
+   per importrun.
+6. **Geel auto-door (B3)** — `pickUnambiguousYellow` in de engine (puur, deterministisch):
+   precies één schoon-gele kandidaat zonder keuzeveld-afwijking → match direct gezet,
+   `chosenBy='system:auto'`, label "automatisch geaccepteerde bijna-match", event
+   `near_match_auto_accepted`. Ambiguïteit → gewoon review.
+7. **Review-kaarten** — echte kleurvarianten (zusterproduct-query), "welke van deze N",
+   inline catalogus-zoeker op rood-kaarten; élke bevestigende keuze → groen mét merkteken
+   "handmatig gekozen" (zie "Review-kaarten (stap 7)" hierboven).
+8. **AI-vangnet (B4)** — `lib/ai/vangnet.ts` (`@anthropic-ai/sdk`, claude-haiku): automatisch
+   na import/hermatch over alléén de restregels; drie read-only tools uitsluitend op
+   `visible_products` (regel 3), nooit prijs (regel 2), tender = server-side merkvergrendeling
+   (regel 4); suggesties-only, budgetstop via `llm_budget_eur`/`llm_usage`, alles in events.
+9. **Estimate-PDF (B5)** — `lib/repo/estimate.ts` (`computeEstimate`, één bron voor scherm
+   én PDF) + `lib/pdf/estimate.ts` (pdf-lib) + downloadroute; getest op terugleesbare tekst.
+
+**Stap 10 — acceptatietest**: `tests/acceptatie-aanvraag-estimate.test.ts` — de hele keten
+op PGlite met het échte `docs/examples/test-armaturenboek.pdf` (20 regels): project →
+PDF-import (incl. markdown-spoor) → matcher (9 groen · 5 geel · 2 rood · 2 blauw · 2 paars;
+van de gele gaan er 3 auto-door en blijven er 2 in review) → vangnet met gemockte client
+(suggesties, statussen onaangetast) → review (accepteer/variant/handmatig linken) →
+estimate-PDF terugleesbaar (offertenummer, totalen, p.m., beide merktekens) → statusflow
+(estimate_gestuurd bevriest; gegund → awarded) → audittrail-asserts over de hele keten.
+
+### Bewuste besluiten
+
+- **B1-compromis naamgeving**: UI + routes zeggen "Project"; DB-tabellen
+  (`project_dossiers`), code-identifiers en de events-historie blijven "dossier" —
+  gedeelde Neon-DB, audit-log niet herschrijven. Commentaarkop "UI-naam: Project" in
+  schema/repo's.
+- **Fase-grens AI (B4)**: het vangnet zoekt in tender uitsluitend het gevraagde product —
+  de merkvergrendeling zit in de tool-implementatie (server-side), niet alleen in de
+  prompt; blauw-suggesties bestaan alleen bij `awarded`. De matcher-engine blijft LLM- en
+  fase-vrij.
+- **Backfill-aannames (0006)**: actief + bevroren quote → `estimate_gestuurd`; actief →
+  `concept`; delivered → `gegund`; archived → `archief`; fase awarded → xis `deal_making`.
+- **Review → groen**: élke bevestigende review-keuze maakt de regel groen mét merkteken
+  "handmatig gekozen"; de oorspronkelijke afwijkingen blijven benoemd (C-07).
+- **deliveredAt genegeerd** bij status `gegund` (hoorde bij het oude lifecycle-"opgeleverd");
+  kolom blijft deprecated staan, het gunningsmoment leeft in het `status_changed`-event.
+- **Read-only alléén bij archief**: bestaande "opgeleverde" dossiers zijn weer bewerkbaar.
+- **EUR≈USD-kostenaanname**: de vangnet-budgetteller rekent bewust conservatief 1 USD ≈ 1 EUR
+  (haiku $1/M in · $5/M uit), zodat `llm_usage.cost_eur` nooit te laag telt.
+- **Groene regels krijgen géén automatische match**: alleen de B3-auto-door zet een match
+  zonder mens; een groene regel telt pas mee in de totalen nadat iemand de kandidaat koos.
+
+### Open punten
+
+- **`ANTHROPIC_API_KEY` ontbreekt nog** — het vangnet slaat nu netjes over met event
+  `ai_vangnet_skipped_no_key` (nooit een importfout). Key zetten in `.env.local` én als
+  Vercel-env; daarna draait het vangnet automatisch mee bij import/hermatch.
+- **Resend/mailprovider** — magic-link gaat nog via de serverconsole (L-01).
+- **Echte XIS-API** — export is een idempotent snapshot in het payload-formaat; de echte
+  Lynx-POST wacht op API-keys (extern).
