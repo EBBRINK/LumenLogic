@@ -57,6 +57,10 @@ export type MatchOutcome = {
   incomplete: ScoredCandidate[]; // lijst 2: mogelijk — data onvolledig
   // de afwijkingen van de best passende kandidaat (voor de spec-regel zelf)
   topDeviations: MatchDeviation[];
+  // B3 (geel auto-door): gezet als de regel geel is én er precies één kandidaat is met
+  // een schoon-geel oordeel (zie pickUnambiguousYellow). Alle andere gevallen: undefined.
+  // Puur en deterministisch — geen LLM, geen fase; het persisteren beslist de repo.
+  unambiguousYellow?: ScoredCandidate;
 };
 
 export type SpecRequest = {
@@ -83,6 +87,38 @@ function looksNonLighting(text: string | null): boolean {
 
 export function brandKeyOf(brand: string): string {
   return brand.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// B3: keuzevelden — kleur, vorm en dimprotocol zijn keuzes van de mens, geen
+// toleranties. Een gele afwijking op zo'n veld mag nooit automatisch geaccepteerd
+// worden. (Veldnamen conform judgeCandidate in tolerances.ts.)
+const CHOICE_FIELDS = new Set(["color", "shape", "dimmable"]);
+
+// B3-predicaat (puur, deterministisch): de ondubbelzinnige bijna-match.
+// Gezet ALLEEN als:
+//   • de regelstatus geel is, én
+//   • er precies één kandidaat is waarvan het slechtste veld-verdict "geel" is en die
+//     volledig beoordeelbaar is (geen rood én geen onbekend in de deviations), én
+//   • geen van de gele afwijkingen van die kandidaat een keuzeveld betreft
+//     (color/shape/dimmable — daar kiest een mens, nooit het systeem).
+// Alle andere gevallen: undefined (bestaand gedrag: geel → review).
+export function pickUnambiguousYellow<C extends { deviations: MatchDeviation[] }>(
+  status: MatchStatus,
+  candidates: C[],
+): C | undefined {
+  if (status !== "geel") return undefined;
+  const cleanYellow = candidates.filter(
+    (c) =>
+      hasYellow(c.deviations) &&
+      !hasRed(c.deviations) &&
+      !hasUnknown(c.deviations),
+  );
+  if (cleanYellow.length !== 1) return undefined;
+  const only = cleanYellow[0];
+  const yellowOnChoiceField = only.deviations.some(
+    (d) => d.verdict === "geel" && CHOICE_FIELDS.has(d.field),
+  );
+  return yellowOnChoiceField ? undefined : only;
 }
 
 const SELECTION = {
@@ -329,11 +365,15 @@ export async function evaluateSpecLine(
   const top =
     provable[0] ?? incomplete[0] ?? scored[0];
 
+  // B3: de ondubbelzinnige bijna-match (alleen bij geel, zie pickUnambiguousYellow).
+  const unambiguousYellow = pickUnambiguousYellow(status, scored);
+
   return {
     status,
     provable: provable.map(strip),
     incomplete: incomplete.map(strip),
     topDeviations: top ? top.deviations : [],
+    unambiguousYellow: unambiguousYellow ? strip(unambiguousYellow) : undefined,
   };
 }
 

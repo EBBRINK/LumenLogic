@@ -15,8 +15,10 @@ import { projectDossiers, specLines, brandLoadQueue } from "@/db/schema";
 import {
   evaluateSpecLine,
   brandKeyOf,
+  pickUnambiguousYellow,
   type SpecRequest,
 } from "./engine";
+import type { MatchDeviation } from "@/db/schema";
 import { worstVerdict } from "./tolerances";
 import { runMatcher } from "@/lib/repo/matching";
 
@@ -322,4 +324,147 @@ test("blauw: runMatcher zet het onbekende merk op de brand_load_queue en de rege
   expect(queue.length).toBe(1);
   expect(queue[0].brandKey).toBe(brandKeyOf("Occhio"));
   expect(queue[0].frequency).toBe(1);
+});
+
+// ── B3: geel auto-door — unambiguousYellow (de ondubbelzinnige bijna-match) ──
+// Puur predicaat: alleen bij regelstatus geel én precies één kandidaat met een
+// schoon-geel oordeel (geen rood, geen onbekend, geen geel op een keuzeveld).
+
+test("b3: precies één schoon-gele kandidaat → unambiguousYellow gezet", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000, // exact → groen
+    maxWattage: 14, // gevraagd 12 → 16,7% afwijking → geel
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("geel");
+  expect(out.unambiguousYellow).toBeDefined();
+  expect(out.unambiguousYellow?.name).toContain("VELA ROUND 600");
+  // het gele veld is een tolerantieveld (watt), volledig beoordeelbaar
+  expect(
+    out.unambiguousYellow?.deviations.find((d) => d.field === "watt")?.verdict,
+  ).toBe("geel");
+});
+
+test("b3: twee schoon-gele kandidaten → geen unambiguousYellow (niet ondubbelzinnig)", async () => {
+  const db = await createTestDb();
+  const seeded = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 14, // geel
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 15, // 25% → ook geel
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("geel");
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+test("b3: gele afwijking op een keuzeveld (dimbaarheid) → geen auto-door", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12, // exact → groen
+    dimmable: "1-10V", // gevraagd DALI → ander protocol → geel op keuzeveld
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000, dimmable: "DALI" },
+    }),
+  );
+  expect(out.status).toBe("geel"); // dimprotocol wijkt af → geel, mens beslist
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt mag wél", () => {
+  const colorYellow = {
+    deviations: [
+      {
+        field: "color",
+        requested: "zwart",
+        delivered: "wit",
+        verdict: "geel",
+        note: "variant: gevraagd zwart, beschikbaar wit",
+      },
+    ] as MatchDeviation[],
+  };
+  expect(pickUnambiguousYellow("geel", [colorYellow])).toBeUndefined();
+
+  // bewijs dat de weigering aan het KEUZEVELD ligt, niet aan het gele verdict
+  const wattYellow = {
+    deviations: [
+      {
+        field: "watt",
+        requested: 12,
+        delivered: 14,
+        verdict: "geel",
+        note: "gevraagd 12, geleverd 14",
+      },
+    ] as MatchDeviation[],
+  };
+  expect(pickUnambiguousYellow("geel", [wattYellow])).toBe(wattYellow);
+  // en zonder gele regelstatus nooit
+  expect(pickUnambiguousYellow("groen", [wattYellow])).toBeUndefined();
+});
+
+test("b3: kandidaat met een onbekend veld → geen auto-door (niet volledig beoordeelbaar)", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: null, // gevraagd 3000 → onbekend
+    maxWattage: 14, // geel
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("geel"); // slechtste bekende verdict is geel…
+  expect(out.unambiguousYellow).toBeUndefined(); // …maar onbekend veld blokkeert auto-door
+});
+
+test("b3: regel met alleen rood-kandidaten → rood, geen unambiguousYellow", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 4000, // gevraagd 3000, kelvin is exact → rood
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", productText: "VELA ROUND", specs: { kelvin: 3000 } }),
+  );
+  expect(out.status).toBe("rood");
+  expect(out.unambiguousYellow).toBeUndefined();
 });

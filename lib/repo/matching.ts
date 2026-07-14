@@ -82,20 +82,59 @@ export async function runMatcher(
     });
   }
 
-  // status + top-afwijkingen op de regel schrijven; matched blijft leeg tot een keuze.
+  // Review-flags: geëvalueerd op de ÓUDE regelwaarde, vóór de update. Een niet-gele
+  // reviewKind (variant/onvolledig/ocr) zegt iets over de bron of een eerdere keuze van
+  // de regel — niet over déze matchuitkomst — en blijft dus staan bij een hermatch.
+  // Dat repareert ook de latente bug dat een hermatch ocr-flags wiste
+  // (reviewer-bevinding 3). Alleen de geel-flag is van de matcher zelf en wordt
+  // hieronder opnieuw bepaald.
+  const preservedKind =
+    line.reviewKind && line.reviewKind !== "geel" ? line.reviewKind : null;
+
+  // B3 (geel auto-door): de engine markeerde de ondubbelzinnige bijna-match (precies
+  // één schoon-gele kandidaat, geen keuzeveld-afwijking). Een bewaarde andere
+  // review-flag blokkeert het automatisch accepteren — dan eerst de mens.
+  const auto = preservedKind ? undefined : outcome.unambiguousYellow;
+
+  // status + afwijkingen op de regel schrijven; matched blijft leeg tot een keuze,
+  // BEHALVE bij auto-door (B3): dan wordt de bijna-match direct gezet, zónder review.
   // Geel = "Brink reviewt of de afwijking acceptabel is" (regelset) → automatisch in de
-  // review-wachtrij. Andere statussen resetten reviewKind zodat een hermatch de wachtrij
-  // opschoont.
+  // review-wachtrij. Andere statussen resetten de geel-flag zodat een hermatch de
+  // wachtrij opschoont; bewaarde flags (zie hierboven) gaan altijd voor.
   await db
     .update(specLines)
     .set({
       status: outcome.status,
-      deviations: outcome.topDeviations,
-      reviewKind: outcome.status === "geel" ? "geel" : null,
+      deviations: auto ? auto.deviations : outcome.topDeviations,
+      reviewKind:
+        preservedKind ?? (outcome.status === "geel" && !auto ? "geel" : null),
       reviewedAt: null,
       updatedAt: new Date(),
+      ...(auto ? { matchedProductId: auto.productId } : {}),
     })
     .where(eq(specLines.id, specLineId));
+
+  // B3: de auto-geaccepteerde kandidaat markeren — zelfde velden als chooseCandidate
+  // (chosen/chosenBy), maar met het systeem als kiezer. Event mét de afwijkingen in de
+  // payload (ijzeren regel 5: elke match wordt gelogd).
+  if (auto) {
+    await db
+      .update(specLineCandidates)
+      .set({ chosen: true, chosenBy: "system:auto", chosenReason: null })
+      .where(
+        and(
+          eq(specLineCandidates.specLineId, specLineId),
+          eq(specLineCandidates.productId, auto.productId),
+        ),
+      );
+    await logEvent(db, {
+      entity: "spec_line",
+      entityId: specLineId,
+      action: "near_match_auto_accepted",
+      actor,
+      payload: { productId: auto.productId, deviations: auto.deviations },
+    });
+  }
 
   // blauw → merk op de inlaadwachtrij (frequentie++)
   if (outcome.status === "blauw" && line.brandText) {

@@ -4,7 +4,7 @@
 // afwijkingsnotitie. Plus: extreem lange naam → ellipsis (geen crash) en meerpaginasteun.
 import { expect, test } from "vitest";
 import { extractText, getDocumentProxy } from "unpdf";
-import { projectDossiers, specLines } from "@/db/schema";
+import { projectDossiers, specLineCandidates, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote } from "@/lib/repo/dossiers";
 import { getEstimateData } from "@/lib/repo/estimate";
@@ -45,19 +45,34 @@ async function seedEstimateDossier(db: TestDb) {
   ] as const;
 
   for (const r of rows) {
-    await db.insert(specLines).values({
-      dossierId: dossier.id,
-      fixtureCode: r.fixtureCode,
-      zone: r.zone,
-      status: r.status,
-      quantity: r.quantity,
-      matchedProductId: r.matchedProductId,
-      brandText: r.brandText,
-      productText: r.productText,
-      manualPrice: r.manualPrice,
-      deviations: r.deviations ? [...r.deviations] : null,
-      sortOrder: r.sortOrder,
-    });
+    const [line] = await db
+      .insert(specLines)
+      .values({
+        dossierId: dossier.id,
+        fixtureCode: r.fixtureCode,
+        zone: r.zone,
+        status: r.status,
+        quantity: r.quantity,
+        matchedProductId: r.matchedProductId,
+        brandText: r.brandText,
+        productText: r.productText,
+        manualPrice: r.manualPrice,
+        deviations: r.deviations ? [...r.deviations] : null,
+        sortOrder: r.sortOrder,
+      })
+      .returning();
+    // B3: de gele regel is een automatisch geaccepteerde bijna-match
+    // (chosen-kandidaat met chosenBy='system:auto') → label op de PDF.
+    if (r.fixtureCode === "Lw201" && r.matchedProductId) {
+      await db.insert(specLineCandidates).values({
+        specLineId: line.id,
+        productId: r.matchedProductId,
+        rank: 1,
+        list: "aantoonbaar",
+        chosen: true,
+        chosenBy: "system:auto",
+      });
+    }
   }
   return dossier.id;
 }
@@ -104,8 +119,9 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
   expect(text).toContain("terug naar klant");
   expect(text).toContain("buiten assortiment");
 
-  // afwijkingsnotitie (C-07) als subregel
+  // afwijkingsnotitie (C-07) als subregel, mét het auto-door-label (B3) erachter
   expect(text).toContain("3000K i.p.v. 2700K");
+  expect(text).toContain("automatisch geaccepteerde bijna-match");
 
   // zones als groepskoppen
   expect(text).toContain("ZONE A-08");

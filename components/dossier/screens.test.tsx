@@ -65,6 +65,23 @@ const specLines: SpecLineRow[] = [
   },
 ];
 
+// B3 (geel auto-door): een regel waarvan de bijna-match automatisch is geaccepteerd
+// (chosenBy='system:auto') — het label hoort onder de afwijkingsnotitie te staan.
+const autoDoorLines: SpecLineRow[] = [
+  specLines[1], // gewone gele review-regel zónder label, als contrast
+  {
+    id: "s4", fixtureCode: "Lk410", quantity: 6, brandText: "XAL",
+    productText: "VELA ROUND", reqKelvin: 3000, reqCri: null, reqIp: null,
+    status: "geel", matchedProductId: "p4",
+    matchedName: "VELA ROUND 600 opbouw 3000K", matchedBrand: "XAL",
+    matchedArticleCode: "L450-VELA600", matchedPrice: "412.00",
+    chosenBy: "system:auto",
+    deviations: [
+      { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+    ],
+  },
+];
+
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -90,6 +107,14 @@ const screens = {
         Ziekenhuis Noord
       </h1>
       <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
+    </Screen>
+  ),
+  "regel-auto-door": (
+    <Screen>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight">
+        Ziekenhuis Noord
+      </h1>
+      <SpecLineTable dossierId="d1" lines={autoDoorLines} deleteAction={noopAction} />
     </Screen>
   ),
 } as const;
@@ -119,6 +144,30 @@ test("DossierList: toont de kleuren-telling wanneer counts zijn meegestuurd", as
   await expect.element(page.getByText("Ziekenhuis Noord")).toBeInTheDocument();
   // groen=9 uit d1 verschijnt als telling.
   await expect.element(page.getByText("9", { exact: true })).toBeInTheDocument();
+});
+
+// B3: het label "automatisch geaccepteerde bijna-match" staat alléén op de regel met
+// chosenBy='system:auto' — de gewone gele review-regel ernaast blijft label-loos.
+test("SpecLineTable: auto-door-label alleen op de system:auto-regel", async () => {
+  await renderServer(
+    <Screen>
+      <SpecLineTable dossierId="d1" lines={autoDoorLines} deleteAction={noopAction} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("automatisch geaccepteerde bijna-match"))
+    .toBeInTheDocument();
+  // de afwijkingsnotitie van de auto-regel staat er ook (label vervangt de notitie niet)
+  await expect.element(page.getByText("gevraagd 12, geleverd 14")).toBeInTheDocument();
+});
+
+test("SpecLineTable: regel zonder system:auto-keuze draagt het label NIET", async () => {
+  await renderServer(
+    <Screen>
+      <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
+    </Screen>,
+  );
+  expect(page.getByText("automatisch geaccepteerde bijna-match").query()).toBeNull();
 });
 
 // Niets stilzwijgend weglaten: ook de rode regel zonder match staat er, met status.

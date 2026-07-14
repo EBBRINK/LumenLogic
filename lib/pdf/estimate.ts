@@ -229,7 +229,9 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
       for (const { line } of group.lines) {
         const notable = notableDeviations(line);
-        const rowH = 13 + (notable.length > 0 ? 10 : 0);
+        // B3: het auto-door-label deelt de subregel met de afwijkingsnotitie.
+        const hasSubLine = notable.length > 0 || !!line.autoAccepted;
+        const rowH = 13 + (hasSubLine ? 10 : 0);
         need(rowH);
 
         const counting = countsInTotal(line.status);
@@ -265,9 +267,14 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         }
         y -= 10;
 
-        // Afwijkingsnotities (C-07) als kleinere subregel onder de rij — óók binnen groen.
-        if (notable.length > 0) {
-          const note = `afwijking: ${notable.map((d) => d.note).join(" · ")}`;
+        // Afwijkingsnotities (C-07) als kleinere subregel onder de rij — óók binnen
+        // groen. B3: het label "automatisch geaccepteerde bijna-match" erachteraan.
+        if (hasSubLine) {
+          const parts: string[] = [];
+          if (notable.length > 0)
+            parts.push(`afwijking: ${notable.map((d) => d.note).join(" · ")}`);
+          if (line.autoAccepted) parts.push("automatisch geaccepteerde bijna-match");
+          const note = parts.join(" — ");
           text(fit(note, CONTENT_W - (COL.name.x - MARGIN), regular, 7.5), COL.name.x, {
             size: 7.5,
             color: MUTED,

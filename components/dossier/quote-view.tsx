@@ -265,7 +265,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           <StatusBadge status={line.status} />
         </TableCell>
       </TableRow>
-      {notable.length > 0 && (
+      {(notable.length > 0 || line.autoAccepted) && (
         <TableRow className="border-0 hover:bg-transparent">
           <TableCell />
           <TableCell />
@@ -273,23 +273,33 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
             colSpan={COLS - 2}
             className="pt-0 text-xs text-muted-foreground"
           >
-            afwijking:{" "}
-            {notable.map((d, i) => (
-              <span key={d.field}>
-                {i > 0 && " · "}
-                <span
-                  className={
-                    d.verdict === "rood"
-                      ? "text-rose-600 dark:text-rose-400"
-                      : d.verdict === "geel"
-                        ? "text-amber-600 dark:text-amber-400"
-                        : ""
-                  }
-                >
-                  {d.note}
-                </span>
+            {notable.length > 0 && (
+              <>
+                afwijking:{" "}
+                {notable.map((d, i) => (
+                  <span key={d.field}>
+                    {i > 0 && " · "}
+                    <span
+                      className={
+                        d.verdict === "rood"
+                          ? "text-rose-600 dark:text-rose-400"
+                          : d.verdict === "geel"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : ""
+                      }
+                    >
+                      {d.note}
+                    </span>
+                  </span>
+                ))}
+              </>
+            )}
+            {line.autoAccepted && (
+              <span className="italic">
+                {notable.length > 0 && " — "}
+                automatisch geaccepteerde bijna-match
               </span>
-            ))}
+            )}
           </TableCell>
         </TableRow>
       )}

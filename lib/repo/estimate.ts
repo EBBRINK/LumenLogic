@@ -23,6 +23,9 @@ export type EstimateLine = {
   deviations?: Deviation[] | null;
   brandText?: string | null; // gevraagd merk (voor blauw: welk merk inladen)
   productText?: string | null; // gevraagd type
+  // B3: match gekozen door het systeem (chosenBy='system:auto') → label
+  // "automatisch geaccepteerde bijna-match" bij de afwijkingsnotitie (scherm + PDF).
+  autoAccepted?: boolean;
 };
 
 // Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt pas bij uitsturen.
@@ -194,6 +197,7 @@ export async function getEstimateData(db: AppDb, dossierId: string) {
     deviations: (r.deviations as Deviation[] | null) ?? null,
     brandText: r.brandText,
     productText: r.productText,
+    autoAccepted: r.chosenBy === "system:auto",
   }));
 
   const quote = quoteData?.quote ?? null;

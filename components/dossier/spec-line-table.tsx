@@ -57,6 +57,8 @@ export function SpecLineTable({
           const notable = (l.deviations ?? []).filter(
             (d) => d.verdict !== "onbekend" && d.note && d.note !== "exact",
           );
+          // B3: door het systeem geaccepteerde bijna-match → subtiel label bij de notitie.
+          const autoAccepted = l.chosenBy === "system:auto";
           return (
             <Fragment key={l.id}>
               <TableRow>
@@ -110,27 +112,37 @@ export function SpecLineTable({
                   </div>
                 </TableCell>
               </TableRow>
-              {notable.length > 0 && (
+              {(notable.length > 0 || autoAccepted) && (
                 <TableRow className="border-0">
                   <TableCell />
                   <TableCell colSpan={6} className="pt-0 text-xs text-muted-foreground">
-                    afwijking:{" "}
-                    {notable.map((d, i) => (
-                      <span key={d.field}>
-                        {i > 0 && " · "}
-                        <span
-                          className={
-                            d.verdict === "rood"
-                              ? "text-rose-600 dark:text-rose-400"
-                              : d.verdict === "geel"
-                                ? "text-amber-600 dark:text-amber-400"
-                                : ""
-                          }
-                        >
-                          {d.note}
-                        </span>
+                    {notable.length > 0 && (
+                      <>
+                        afwijking:{" "}
+                        {notable.map((d, i) => (
+                          <span key={d.field}>
+                            {i > 0 && " · "}
+                            <span
+                              className={
+                                d.verdict === "rood"
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : d.verdict === "geel"
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : ""
+                              }
+                            >
+                              {d.note}
+                            </span>
+                          </span>
+                        ))}
+                      </>
+                    )}
+                    {autoAccepted && (
+                      <span className="italic">
+                        {notable.length > 0 && " — "}
+                        automatisch geaccepteerde bijna-match
                       </span>
-                    ))}
+                    )}
                   </TableCell>
                 </TableRow>
               )}

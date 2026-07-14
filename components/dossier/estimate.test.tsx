@@ -252,3 +252,37 @@ test("zonder zones → één lijst, geen zone-koppen", async () => {
   await expect.element(page.getByText(/600,00/).first()).toBeInTheDocument();
   expect(page.getByText(/^Zone\b/).query()).toBeNull();
 });
+
+// B3: automatisch geaccepteerde bijna-match → subtiel label bij de afwijkingsnotitie.
+test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () => {
+  const lines: EstimateLine[] = [
+    {
+      id: "a1", fixtureCode: "Lk410", zone: null, status: "geel", quantity: 6,
+      productName: "VELA ROUND 600 opbouw 3000K", sku: "L450-VELA600",
+      unitPrice: "412.00", brandText: "XAL", productText: "VELA ROUND",
+      autoAccepted: true,
+      deviations: [
+        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+      ],
+    },
+    {
+      // gewone gele regel zonder auto-door → géén label
+      id: "a2", fixtureCode: "Lw201", zone: null, status: "geel", quantity: 8,
+      productName: "SCAVA WALL SURF 1.0 3000K", sku: "L092-SCAVA",
+      unitPrice: "226.00", brandText: "Wever & Ducré", productText: "SCAVA 1.0",
+      deviations: [
+        { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "3000K i.p.v. 2700K" },
+      ],
+    },
+  ];
+  await renderServer(
+    <Screen>
+      <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={lines} />
+    </Screen>,
+  );
+  const labels = page.getByText("automatisch geaccepteerde bijna-match");
+  await expect.element(labels).toBeInTheDocument();
+  expect(labels.elements().length).toBe(1); // alléén de auto-regel draagt het label
+  // de afwijkingsnotitie blijft er gewoon naast staan
+  await expect.element(page.getByText(/gevraagd 12, geleverd 14/)).toBeInTheDocument();
+});

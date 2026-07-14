@@ -67,6 +67,9 @@ export type SpecLineRow = {
   matchedBrand: string | null;
   matchedArticleCode: string | null;
   matchedPrice: string | null;
+  // B3: wie de match koos — 'system:auto' toont het label "automatisch geaccepteerde
+  // bijna-match" onder de afwijkingsnotitie.
+  chosenBy?: string | null;
 };
 
 export type Candidate = {

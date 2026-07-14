@@ -1,10 +1,11 @@
 // UI-naam: Project. DB/code-naam blijft 'dossier' (bewust, zie docs/plan-aanvraag-estimate.md B1).
 // Dossier-, spec-regel- en offerte-logica (calculatorflow, BUILD-PLAN §4.3).
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import {
   projectDossiers,
   quoteLines,
   quotes,
+  specLineCandidates,
   specLines,
   visibleProducts,
 } from "@/db/schema";
@@ -104,11 +105,25 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       matchedKelvin: visibleProducts.kelvin,
       matchedCri: visibleProducts.cri,
       matchedIp: visibleProducts.ipValue,
+      // B3: wie koos de match — 'system:auto' = automatisch geaccepteerde bijna-match
+      // (label op regel, estimate en PDF). Er is hooguit één chosen-kandidaat per regel
+      // (chooseCandidate reset eerst alles; runMatcher verwijdert en herschrijft), en
+      // de koppeling op matched_product_id zorgt dat een losgemaakte match (unlinkMatch
+      // laat het kandidaat-record staan) geen label meer draagt.
+      chosenBy: specLineCandidates.chosenBy,
     })
     .from(specLines)
     .leftJoin(
       visibleProducts,
       eq(specLines.matchedProductId, visibleProducts.id),
+    )
+    .leftJoin(
+      specLineCandidates,
+      and(
+        eq(specLineCandidates.specLineId, specLines.id),
+        eq(specLineCandidates.chosen, true),
+        eq(specLineCandidates.productId, specLines.matchedProductId),
+      ),
     )
     .where(eq(specLines.dossierId, dossierId))
     .orderBy(asc(specLines.sortOrder), asc(specLines.createdAt));
