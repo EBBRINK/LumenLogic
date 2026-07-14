@@ -181,3 +181,27 @@ test("SpecLineTable: rode regel zonder match blijft zichtbaar met status", async
   // Ontbrekend aantal = eerlijke "p/st"-markering, nooit stil weggelaten.
   await expect.element(page.getByText("p/st", { exact: true })).toBeInTheDocument();
 });
+
+// Stap 7 (herontwerp 2026-07-14): een door een méns gekozen match (review-keuze,
+// kandidaat of handmatige link) draagt het merkteken "handmatig gekozen" — en dat
+// staat nooit op regels zonder menskeuze of met system:auto.
+test("SpecLineTable: merkteken 'handmatig gekozen' alleen bij een niet-system chosenBy", async () => {
+  const manualLines: SpecLineRow[] = [
+    specLines[0], // groen zonder chosenBy → geen merkteken
+    {
+      ...specLines[1],
+      id: "s5",
+      status: "groen",
+      chosenBy: "eduard@brinklicht.nl",
+    },
+  ];
+  await renderServer(
+    <Screen>
+      <SpecLineTable dossierId="d1" lines={manualLines} deleteAction={noopAction} />
+    </Screen>,
+  );
+  const labels = page.getByText("handmatig gekozen");
+  await expect.element(labels).toBeInTheDocument();
+  expect(labels.elements().length).toBe(1); // alléén de menskeuze-regel
+  expect(page.getByText("automatisch geaccepteerde bijna-match").query()).toBeNull();
+});

@@ -230,7 +230,9 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
       for (const { line } of group.lines) {
         const notable = notableDeviations(line);
         // B3: het auto-door-label deelt de subregel met de afwijkingsnotitie.
-        const hasSubLine = notable.length > 0 || !!line.autoAccepted;
+        // Stap 7: idem voor het merkteken "handmatig gekozen".
+        const hasSubLine =
+          notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
         const rowH = 13 + (hasSubLine ? 10 : 0);
         need(rowH);
 
@@ -274,6 +276,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
           if (notable.length > 0)
             parts.push(`afwijking: ${notable.map((d) => d.note).join(" · ")}`);
           if (line.autoAccepted) parts.push("automatisch geaccepteerde bijna-match");
+          if (line.manuallyChosen) parts.push("handmatig gekozen");
           const note = parts.join(" — ");
           text(fit(note, CONTENT_W - (COL.name.x - MARGIN), regular, 7.5), COL.name.x, {
             size: 7.5,

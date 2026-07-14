@@ -90,6 +90,23 @@ export type Candidate = {
   list?: "aantoonbaar" | "onvolledig";
 };
 
+// Een echte kleurvariant uit de catalogus (zusterproduct, lib/repo/variants.ts).
+export type ColorVariantOption = {
+  productId: string;
+  color: string; // zoals de productnaam hem draagt, bv. "white" of "black/gold"
+  name: string;
+};
+
+// Een kandidaat op de review-kaart ("welke van deze N" / variant-fallback).
+export type ReviewCandidate = {
+  productId: string;
+  name: string;
+  brandName: string | null;
+  articleCode: string | null;
+  list: "aantoonbaar" | "onvolledig";
+  deviations?: Deviation[] | null;
+};
+
 // Een review-item in de wachtrij (D-01).
 export type ReviewItem = {
   id: string;
@@ -100,9 +117,37 @@ export type ReviewItem = {
   reviewKind: "geel" | "variant" | "onvolledig" | "ocr";
   deviations?: Deviation[] | null;
   reqColor?: string | null;
+  // Echte kleurvarianten (variantkaart); leeg → fallback op candidates, nooit
+  // verzonnen kleuren.
+  variants?: ColorVariantOption[];
+  // Persistente kandidaten van de regel (voor de "welke van deze N"-kaart en de
+  // variant-fallback).
+  candidates?: ReviewCandidate[];
   reviewedAt?: string | null;
   reviewedBy?: string | null;
   reviewDecision?: string | null;
+};
+
+// Zoekresultaat op de rood-kaart (handmatig linken) — uit visible_products.
+export type RedLinkResult = {
+  id: string;
+  name: string;
+  brandName: string | null;
+  articleCode: string | null;
+  grossPrice?: string | null;
+};
+
+// Een rode regel zonder match in de sectie "Niet gevonden — handmatig linken".
+// searchQuery/results zijn gevuld nadat de mens zélf zocht (GET-formulier) — het
+// systeem toont hier nooit ongevraagde suggesties (ijzeren regel 4).
+export type RedLinkLine = {
+  id: string;
+  fixtureCode: string;
+  brandText: string | null;
+  productText: string | null;
+  noMatchReason?: string | null;
+  searchQuery?: string | null;
+  results?: RedLinkResult[] | null;
 };
 
 export type ComparedField = {

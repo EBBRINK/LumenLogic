@@ -273,3 +273,30 @@ aftersales, win}). Phase-toggle, `setDossierPhase` en de lifecycle-code (control
   status gegund) zijn daarmee weer bewerkbaar (bewust, zie plan B6).
 - `setStatus` naar `estimate_gestuurd` bevriest een bestaande, nog niet bevroren estimate
   (I-06) + `quote_frozen`-event; zonder quote gebeurt er niets.
+
+## Review-kaarten (stap 7, 2026-07-14)
+Herontwerp §4: review alleen bij échte keuzes, en elke bevestigende keuze telt als
+menskeuze. Bewuste besluiten:
+- **Accepteer → groen** (was: bleef geel). Élke bevestigende review-beslissing
+  (accepteer voorstel, "welke van deze N", kleurvariant, handmatig linken) maakt de
+  regel groen mét merkteken "handmatig gekozen" (chosenBy = actor); de oorspronkelijke
+  afwijkingen blijven als notitie op regel + estimate + PDF staan (C-07).
+  'gecontroleerd' (OCR) en 'bevestigd' (onvolledig) blijven status-neutraal — daar is
+  de match al gekozen of gaat het om de bron, niet om een productkeuze.
+- **Badge-telling**: rode regels zonder match tellen mee als 'wachtend' in de
+  Review-tab-badge — de review-pagina bevat er werk voor (sectie "Niet gevonden —
+  handmatig linken"). Na het linken is de regel groen en valt hij uit de telling;
+  het audit-spoor leeft in events (`manual_link`) + chosenBy/chosenReason.
+- **Kleurvarianten**: échte zusterproducten (zelfde merk, zelfde naam minus
+  kleur-token) uit `visible_products`. De kleur-tokens (EN+NL woordenlijst, ook
+  samengesteld "BLACK/GOLD") leven in de naam-parser (`lib/enrichment/parser.ts`,
+  `extractColorTokens`) — bewust conservatief: alleen hele kleurwoorden, nooit codes;
+  nul varianten → fallback op de kandidatenlijst, nooit een verzonnen kleur.
+- **N-keuze-drempel**: de "welke van deze N"-kaart verschijnt bij ≥2 schone kandidaten
+  (lijst 'aantoonbaar' — volledig beoordeelbaar, geen rood/onbekend); max 4 knoppen.
+- **Kandidaat-record bij niet-getoetste keuze**: een gekozen zuster/gelinkt product dat
+  nog geen kandidaat was krijgt een record in lijst 'onvolledig' met lege verdicts —
+  "aantoonbaar" zou liegen (C-08); de mens was hier de toetser.
+- **Rood-kaart is fase-veilig** (ijzeren regel 4): het systeem toont er nooit
+  suggesties; de resultatenlijst verschijnt pas na een eigen zoekactie (GET-formulier
+  → `searchProducts`, dat zelf logt).

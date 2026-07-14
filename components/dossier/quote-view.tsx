@@ -265,7 +265,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           <StatusBadge status={line.status} />
         </TableCell>
       </TableRow>
-      {(notable.length > 0 || line.autoAccepted) && (
+      {(notable.length > 0 || line.autoAccepted || line.manuallyChosen) && (
         <TableRow className="border-0 hover:bg-transparent">
           <TableCell />
           <TableCell />
@@ -298,6 +298,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
               <span className="italic">
                 {notable.length > 0 && " — "}
                 automatisch geaccepteerde bijna-match
+              </span>
+            )}
+            {line.manuallyChosen && (
+              <span className="italic">
+                {notable.length > 0 && " — "}
+                handmatig gekozen
               </span>
             )}
           </TableCell>

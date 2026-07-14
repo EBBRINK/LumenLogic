@@ -286,3 +286,35 @@ test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () 
   // de afwijkingsnotitie blijft er gewoon naast staan
   await expect.element(page.getByText(/gevraagd 12, geleverd 14/)).toBeInTheDocument();
 });
+
+// Stap 7 (herontwerp 2026-07-14): een menskeuze uit de review (accepteer/N-keuze/
+// variant/handmatige link) → merkteken "handmatig gekozen" op de estimate-regel.
+test("review-keuze: merkteken 'handmatig gekozen' op de estimate-regel", async () => {
+  const lines: EstimateLine[] = [
+    {
+      id: "m1", fixtureCode: "Lk410", zone: null, status: "groen", quantity: 6,
+      productName: "VELA ROUND 600", sku: "L450-VELA600",
+      unitPrice: "412.00", brandText: "XAL", productText: "VELA ROUND",
+      manuallyChosen: true,
+      deviations: [
+        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+      ],
+    },
+    {
+      // gewone groene regel zonder menskeuze → géén merkteken
+      id: "m2", fixtureCode: "Lp301", zone: null, status: "groen", quantity: 12,
+      productName: "SASSO 100 SQ SP CEIL 2700K", sku: "L360-SASSO100",
+      unitPrice: "310.00", brandText: "XAL", productText: "SASSO 100",
+    },
+  ];
+  await renderServer(
+    <Screen>
+      <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={lines} />
+    </Screen>,
+  );
+  const labels = page.getByText("handmatig gekozen");
+  await expect.element(labels).toBeInTheDocument();
+  expect(labels.elements().length).toBe(1);
+  // de geaccepteerde afwijking blijft als notitie zichtbaar (C-07)
+  await expect.element(page.getByText(/gevraagd 12, geleverd 14/)).toBeInTheDocument();
+});

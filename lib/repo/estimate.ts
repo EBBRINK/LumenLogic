@@ -26,6 +26,9 @@ export type EstimateLine = {
   // B3: match gekozen door het systeem (chosenBy='system:auto') → label
   // "automatisch geaccepteerde bijna-match" bij de afwijkingsnotitie (scherm + PDF).
   autoAccepted?: boolean;
+  // Stap 7 (herontwerp 2026-07-14): match gekozen door een mens (review-keuze,
+  // kandidaat of handmatige link) → merkteken "handmatig gekozen" (scherm + PDF).
+  manuallyChosen?: boolean;
 };
 
 // Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt pas bij uitsturen.
@@ -198,6 +201,7 @@ export async function getEstimateData(db: AppDb, dossierId: string) {
     brandText: r.brandText,
     productText: r.productText,
     autoAccepted: r.chosenBy === "system:auto",
+    manuallyChosen: r.chosenBy != null && r.chosenBy !== "system:auto",
   }));
 
   const quote = quoteData?.quote ?? null;

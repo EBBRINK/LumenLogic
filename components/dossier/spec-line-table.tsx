@@ -59,6 +59,9 @@ export function SpecLineTable({
           );
           // B3: door het systeem geaccepteerde bijna-match → subtiel label bij de notitie.
           const autoAccepted = l.chosenBy === "system:auto";
+          // Stap 7 (herontwerp 2026-07-14): een mens koos de match (review-keuze,
+          // kandidaat of handmatige link) → merkteken "handmatig gekozen".
+          const manuallyChosen = l.chosenBy != null && l.chosenBy !== "system:auto";
           return (
             <Fragment key={l.id}>
               <TableRow>
@@ -112,7 +115,7 @@ export function SpecLineTable({
                   </div>
                 </TableCell>
               </TableRow>
-              {(notable.length > 0 || autoAccepted) && (
+              {(notable.length > 0 || autoAccepted || manuallyChosen) && (
                 <TableRow className="border-0">
                   <TableCell />
                   <TableCell colSpan={6} className="pt-0 text-xs text-muted-foreground">
@@ -141,6 +144,12 @@ export function SpecLineTable({
                       <span className="italic">
                         {notable.length > 0 && " — "}
                         automatisch geaccepteerde bijna-match
+                      </span>
+                    )}
+                    {manuallyChosen && (
+                      <span className="italic">
+                        {notable.length > 0 && " — "}
+                        handmatig gekozen
                       </span>
                     )}
                   </TableCell>

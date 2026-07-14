@@ -1,0 +1,258 @@
+// Review-beslissingen (stap 7, herontwerp 2026-07-14): élke bevestigende keuze maakt
+// de regel GROEN met merkteken "handmatig gekozen" (chosenBy = actor op de kandidaat);
+// de oorspronkelijke afwijkingen blijven als notitie staan. Afwijzen blijft → rood.
+// Plus: handmatig linken op rood (menshandeling, ijzeren regel 4) en de badge-telling
+// die rode ongematchte regels als wachtend meetelt.
+import { expect, test } from "vitest";
+import { and, asc, eq } from "drizzle-orm";
+import { events, projectDossiers, specLineCandidates, specLines } from "@/db/schema";
+import { addProductToBrand, createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
+import { runMatcher } from "@/lib/repo/matching";
+import {
+  decideReview,
+  flagForReview,
+  getReviewCounts,
+  getRedLinkLines,
+  linkManualProduct,
+} from "@/lib/repo/review";
+
+const ACTOR = "eduard@brinklicht.nl";
+
+// Twee schone gele kandidaten (watt 14 op gevraagd 12 = 16,7% → geel; kelvin exact):
+// precies het geval waar B3/auto-door NIET vuurt (meerdere kandidaten) en de regel
+// dus met reviewKind 'geel' in de wachtrij komt.
+async function seedTwoCleanYellow() {
+  const db = await createTestDb();
+  const { brandId, priceListId, productId: p600 } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 14,
+  });
+  const { productId: p900 } = await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 14,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Review" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lk410",
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      reqWatt: "12",
+      reqKelvin: 3000,
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+  return { db, dossierId: dossier.id, lineId: line.id, brandId, priceListId, p600, p900 };
+}
+
+async function getLine(db: TestDb, id: string) {
+  const [row] = await db.select().from(specLines).where(eq(specLines.id, id));
+  return row;
+}
+
+async function chosenCandidates(db: TestDb, lineId: string) {
+  return db
+    .select()
+    .from(specLineCandidates)
+    .where(
+      and(eq(specLineCandidates.specLineId, lineId), eq(specLineCandidates.chosen, true)),
+    );
+}
+
+test("accepteer → groen + merkteken: voorstel-kandidaat (rank 1) gekozen, deviations blijven", async () => {
+  const s = await seedTwoCleanYellow();
+  const before = await getLine(s.db, s.lineId);
+  expect(before.status).toBe("geel");
+  expect(before.reviewKind).toBe("geel"); // twee kandidaten → geen auto-door
+  expect(before.matchedProductId).toBeNull();
+
+  await decideReview(s.db, { specLineId: s.lineId, decision: "accepteer", actor: ACTOR });
+
+  const [rank1] = await s.db
+    .select()
+    .from(specLineCandidates)
+    .where(eq(specLineCandidates.specLineId, s.lineId))
+    .orderBy(asc(specLineCandidates.rank))
+    .limit(1);
+
+  const after = await getLine(s.db, s.lineId);
+  // bewust besluit herontwerp 2026-07-14: accepteren maakt de regel groen (was: bleef geel)
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(rank1.productId);
+  // de oorspronkelijke afwijkingen blijven als notitie zichtbaar (C-07)
+  expect(after.deviations?.some((d) => d.field === "watt" && d.verdict === "geel")).toBe(true);
+  expect(after.reviewedAt).not.toBeNull();
+  expect(after.reviewDecision).toBe("accepteer");
+
+  const chosen = await chosenCandidates(s.db, s.lineId);
+  expect(chosen.length).toBe(1);
+  expect(chosen[0].productId).toBe(rank1.productId);
+  expect(chosen[0].chosenBy).toBe(ACTOR); // menskeuze → merkteken "handmatig gekozen"
+
+  const evts = await s.db.select().from(events).where(eq(events.action, "review_decided"));
+  expect(evts.length).toBe(1);
+  expect((evts[0].payload as { productId: string }).productId).toBe(rank1.productId);
+});
+
+test("N-keuze: accepteer mét productId kiest die kandidaat → groen + merkteken", async () => {
+  const s = await seedTwoCleanYellow();
+  // kies expliciet de ándere kandidaat (VELA ROUND 900)
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "accepteer",
+    productId: s.p900,
+    actor: ACTOR,
+  });
+
+  const after = await getLine(s.db, s.lineId);
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(s.p900);
+
+  const chosen = await chosenCandidates(s.db, s.lineId);
+  expect(chosen.length).toBe(1);
+  expect(chosen[0].productId).toBe(s.p900);
+  expect(chosen[0].chosenBy).toBe(ACTOR);
+});
+
+test("variant mét productId → groen + matched; onbekende zuster krijgt kandidaat-record", async () => {
+  const s = await seedTwoCleanYellow();
+  // een zichtbare zustervariant die NIET in spec_line_candidates zit
+  const { productId: sister } = await addProductToBrand(s.db, {
+    brandId: s.brandId,
+    priceListId: s.priceListId,
+    name: "VELA ROUND 600 BLACK",
+    kelvin: 3000,
+    maxWattage: 14,
+  });
+  await flagForReview(s.db, s.lineId, "variant");
+
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "variant",
+    productId: sister,
+    variantColor: "black",
+    actor: ACTOR,
+  });
+
+  const after = await getLine(s.db, s.lineId);
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(sister);
+  expect(after.reqColor).toBe("black");
+  expect(after.reviewDecision).toBe("variant");
+
+  const chosen = await chosenCandidates(s.db, s.lineId);
+  expect(chosen.length).toBe(1);
+  expect(chosen[0].productId).toBe(sister);
+  expect(chosen[0].chosenBy).toBe(ACTOR);
+  // niet door de tolerantietabel getoetst → eerlijk in lijst 'onvolledig' (C-08)
+  expect(chosen[0].list).toBe("onvolledig");
+  expect(chosen[0].chosenReason).toBe("kleurvariant gekozen in review");
+});
+
+test("afwijzen blijft → rood, reden verplicht, geen match gezet", async () => {
+  const s = await seedTwoCleanYellow();
+  await expect(
+    decideReview(s.db, { specLineId: s.lineId, decision: "afgewezen", actor: ACTOR }),
+  ).rejects.toThrow(/Reden verplicht/);
+
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "afgewezen",
+    reason: "klant accepteert geen hoger vermogen",
+    actor: ACTOR,
+  });
+  const after = await getLine(s.db, s.lineId);
+  expect(after.status).toBe("rood");
+  expect(after.matchedProductId).toBeNull();
+  expect(after.noMatchReason).toContain("hoger vermogen");
+  expect((await chosenCandidates(s.db, s.lineId)).length).toBe(0);
+});
+
+// Rood → handmatig linken: menshandeling (zoeken + klikken), regel wordt groen met
+// merkteken, event manual_link, en de regel verdwijnt uit de link-werkvoorraad.
+test("linkManualProduct: rood → groen + merkteken + manual_link-event + telling zakt", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId, productId: similar } = await seedBrandProduct(db, {
+    brand: "Flos",
+    name: "Bellhop Glass C2",
+  });
+  void brandId;
+  void priceListId;
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Rood linken" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lr701",
+      brandText: "Flos",
+      productText: "ORIONNOVA QX5",
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+
+  const before = await getLine(db, line.id);
+  expect(before.status).toBe("rood"); // merk wél, product niet
+  expect((await getRedLinkLines(db, dossier.id)).map((r) => r.id)).toEqual([line.id]);
+  // badge-telling (bewust besluit): rood zonder match telt als wachtend
+  expect((await getReviewCounts(db, dossier.id)).pending).toBe(1);
+
+  await linkManualProduct(db, { specLineId: line.id, productId: similar, actor: ACTOR });
+
+  const after = await getLine(db, line.id);
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(similar);
+  expect(after.noMatchReason).toBeNull();
+
+  const chosen = await chosenCandidates(db, line.id);
+  expect(chosen.length).toBe(1);
+  expect(chosen[0].chosenBy).toBe(ACTOR);
+  expect(chosen[0].chosenReason).toBe("vergelijkbaar product handmatig gelinkt");
+
+  const evts = await db.select().from(events).where(eq(events.action, "manual_link"));
+  expect(evts.length).toBe(1);
+  expect((evts[0].payload as { productId: string }).productId).toBe(similar);
+
+  // gelinkt → uit de werkvoorraad én uit de badge
+  expect(await getRedLinkLines(db, dossier.id)).toEqual([]);
+  expect((await getReviewCounts(db, dossier.id)).pending).toBe(0);
+});
+
+test("linkManualProduct weigert een niet-zichtbaar product (regel 3)", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, { brand: "Flos", name: "Bellhop" });
+  // product van hetzelfde merk ZONDER geldige prijs(lijst) → onzichtbaar in
+  // visible_products (verlopen/ontbrekende prijslijst = product bestaat niet)
+  const schema = await import("@/db/schema");
+  const invisible = crypto.randomUUID();
+  await db.insert(schema.products).values({
+    id: invisible,
+    name: "Bellhop OLD",
+    brandId,
+    brandName: "Flos",
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Onzichtbaar" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({ dossierId: dossier.id, fixtureCode: "Lx1", status: "rood" })
+    .returning();
+
+  await expect(
+    linkManualProduct(db, { specLineId: line.id, productId: invisible, actor: ACTOR }),
+  ).rejects.toThrow(/niet zichtbaar/);
+});

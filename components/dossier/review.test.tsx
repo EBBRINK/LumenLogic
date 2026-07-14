@@ -1,12 +1,15 @@
 // White-box RSC-render/screenshottests van de review-wachtrij met fixture-data
-// (klein, deterministisch). Licht/donker × mobiel/desktop, plus expliciete asserts op de
-// koppen, de beslis-knoppen en het verplichte redenveld bij afwijzen.
+// (klein, deterministisch). Licht/donker × mobiel/desktop, plus expliciete asserts op
+// alle kaarttypes (stap 7): geel-kaart, "welke van deze N"-kaart, variantkaart met
+// échte catalogus-kleuren, variant-fallback (kandidatenlijst — nooit verzonnen
+// kleuren) en de rood-sectie "Niet gevonden — handmatig linken" met zoekveld,
+// resultaten en link-knop.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
 import { ReviewQueue } from "./review-queue";
-import type { ReviewItem } from "./types";
+import type { RedLinkLine, ReviewItem } from "./types";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -14,6 +17,7 @@ const viewports = {
 } as const;
 
 const pending: ReviewItem[] = [
+  // Geel met één schone kandidaat → gewone geel-kaart (accepteer/afwijs).
   {
     id: "s1",
     fixtureCode: "Lp301",
@@ -30,39 +34,154 @@ const pending: ReviewItem[] = [
         note: "300K koeler dan gevraagd",
       },
     ],
+    candidates: [
+      {
+        productId: "p1",
+        name: "SASSO 100 SQ SP CEIL 3000K",
+        brandName: "XAL",
+        articleCode: "L360-SASSO100",
+        list: "aantoonbaar",
+        deviations: [
+          { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "gevraagd 2700, geleverd 3000" },
+        ],
+      },
+    ],
     reqColor: null,
-    reviewedAt: null,
-    reviewedBy: null,
-    reviewDecision: null,
   },
+  // Geel met ≥2 schone kandidaten → "welke van deze N"-kaart met keuzeknoppen.
   {
     id: "s2",
+    fixtureCode: "Lk410",
+    brandText: "XAL",
+    productText: "VELA ROUND",
+    status: "geel",
+    reviewKind: "geel",
+    deviations: [
+      { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+    ],
+    candidates: [
+      {
+        productId: "p2",
+        name: "VELA ROUND 600",
+        brandName: "XAL",
+        articleCode: "L450-VELA600",
+        list: "aantoonbaar",
+        deviations: [
+          { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+        ],
+      },
+      {
+        productId: "p3",
+        name: "VELA ROUND 900",
+        brandName: "XAL",
+        articleCode: "L450-VELA900",
+        list: "aantoonbaar",
+        deviations: [
+          { field: "watt", requested: 12, delivered: 16, verdict: "geel", note: "gevraagd 12, geleverd 16" },
+        ],
+      },
+      {
+        productId: "p4",
+        name: "VELA ROUND 1200",
+        brandName: "XAL",
+        articleCode: "L450-VELA1200",
+        list: "onvolledig", // niet schoon → telt niet mee voor de N-keuze-drempel
+        deviations: [
+          { field: "watt", requested: 12, delivered: null, verdict: "onbekend", note: "geen data voor watt" },
+        ],
+      },
+    ],
+    reqColor: null,
+  },
+  // Variantkeuze met échte kleurvarianten uit de catalogus.
+  {
+    id: "s3",
     fixtureCode: "Lw201",
-    brandText: "Wever & Ducré",
-    productText: "SCAVA 1.0",
+    brandText: "Marset",
+    productText: "DISCOCO 53",
     status: "groen",
     reviewKind: "variant",
     deviations: null,
     reqColor: "zwart",
-    reviewedAt: null,
-    reviewedBy: null,
-    reviewDecision: null,
+    variants: [
+      { productId: "v1", color: "white", name: "DISCOCO 53 WHITE" },
+      { productId: "v2", color: "black/gold", name: "DISCOCO 53 BLACK/GOLD" },
+    ],
+    candidates: [],
+  },
+  // Variantkeuze zónder gevonden varianten → fallback op de kandidatenlijst.
+  {
+    id: "s4",
+    fixtureCode: "Ls001",
+    brandText: "TAL",
+    productText: "TAGLIO CORNER",
+    status: "groen",
+    reviewKind: "variant",
+    deviations: null,
+    reqColor: "wit",
+    variants: [],
+    candidates: [
+      {
+        productId: "p5",
+        name: "TAGLIO CORNER",
+        brandName: "TAL",
+        articleCode: "T-TAGLIO",
+        list: "aantoonbaar",
+        deviations: [],
+      },
+    ],
   },
 ];
 
 const done: ReviewItem[] = [
   {
-    id: "s3",
-    fixtureCode: "Ls001",
-    brandText: "Glamox",
-    productText: "i40",
-    status: "geel",
+    id: "s9",
+    fixtureCode: "Ld202",
+    brandText: "Kreon",
+    productText: "Holon 80",
+    status: "groen",
     reviewKind: "geel",
     deviations: null,
     reqColor: null,
-    reviewedAt: "03-07-2026",
+    reviewedAt: "14-07-2026",
     reviewedBy: "eduard@brinklicht.nl",
     reviewDecision: "accepteer",
+  },
+];
+
+// Rood zonder match: één kaart waar al gezocht is (resultaten + link-knoppen), één
+// kaart in ruststand (alleen het zoekveld — het systeem suggereert niets).
+const rood: RedLinkLine[] = [
+  {
+    id: "r1",
+    fixtureCode: "Lr701",
+    brandText: "Flos",
+    productText: "ORIONNOVA QX5 SPECIAL",
+    noMatchReason: "merk in catalogus, maar geen passend product gevonden",
+    searchQuery: "bellhop",
+    results: [
+      {
+        id: "q1",
+        name: "Bellhop Glass C2",
+        brandName: "Flos",
+        articleCode: "F-BELL-C2",
+        grossPrice: "185.00",
+      },
+      {
+        id: "q2",
+        name: "Bellhop Wall",
+        brandName: "Flos",
+        articleCode: "F-BELL-W",
+        grossPrice: "240.00",
+      },
+    ],
+  },
+  {
+    id: "r2",
+    fixtureCode: "Lp601",
+    brandText: "XAL",
+    productText: "PHANTOMDELUXE ZX9000",
+    noMatchReason: null,
   },
 ];
 
@@ -76,58 +195,119 @@ afterEach(() => {
   document.documentElement.classList.remove("dark");
 });
 
-for (const theme of ["light", "dark"] as const) {
-  for (const [device, viewport] of Object.entries(viewports)) {
-    test(`review-queue (${theme}, ${device})`, async () => {
-      await page.viewport(viewport.width, viewport.height);
-      if (theme === "dark") document.documentElement.classList.add("dark");
-      await renderServer(
-        <Screen>
-          <ReviewQueue
-            dossierId="d1"
-            pending={pending}
-            done={done}
-            decideAction={noopAction}
-          />
-        </Screen>,
-      );
-      await expect.element(document.body).toBeInTheDocument();
-      await page.screenshot({ path: `./review-queue.${theme}.${device}.test.png` });
-    });
+// Twee screenshot-sets (de pagina is langer dan het viewport): de geel/N-keuze-kant
+// en de variant/rood-kant — zo staan álle kaarttypes op beeld.
+const shots = {
+  "review-queue": (
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={pending.slice(0, 2)} // geel-kaart + "welke van deze N"-kaart
+        done={done}
+        decideAction={noopAction}
+        linkAction={noopAction}
+      />
+    </Screen>
+  ),
+  "review-variant-rood": (
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={pending.slice(2)} // variantkaart (echte kleuren) + variant-fallback
+        done={[]}
+        rood={rood} // rood-kaart met zoekveld + resultaten + link-knop
+        decideAction={noopAction}
+        linkAction={noopAction}
+      />
+    </Screen>
+  ),
+} as const;
+
+for (const [name, ui] of Object.entries(shots)) {
+  for (const theme of ["light", "dark"] as const) {
+    for (const [device, viewport] of Object.entries(viewports)) {
+      test(`${name} (${theme}, ${device})`, async () => {
+        await page.viewport(viewport.width, viewport.height);
+        if (theme === "dark") document.documentElement.classList.add("dark");
+        await renderServer(ui);
+        await expect.element(document.body).toBeInTheDocument();
+        await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
+      });
+    }
   }
 }
 
-test("review-queue toont koppen, acties en (bij afwijzen) een verplicht redenveld", async () => {
+test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
   await renderServer(
     <Screen>
       <ReviewQueue
         dossierId="d1"
         pending={pending}
         done={done}
+        rood={rood}
         decideAction={noopAction}
+        linkAction={noopAction}
       />
     </Screen>,
   );
-  // Titel telt wachtend + afgerond.
+  // Titel telt wachtend (pending + rood-linken) en afgerond.
   await expect
-    .element(page.getByText(/2 wachtend, 1 afgerond/))
+    .element(page.getByText(/6 wachtend, 1 afgerond/))
     .toBeInTheDocument();
-  // Gele kaart: accepteren + afwijzen.
+
+  // Geel-kaart én N-keuze-kaart dragen accepteer + afwijzen (met verplicht redenveld).
+  expect(
+    page.getByRole("button", { name: /Accepteer als voorstel/ }).elements().length,
+  ).toBe(2);
+  expect(page.getByRole("button", { name: /Wijs af/ }).elements().length).toBe(2);
   await expect
-    .element(page.getByRole("button", { name: /Accepteer als voorstel/ }))
+    .element(page.getByText(/Reden \(verplicht/).first())
+    .toBeInTheDocument();
+
+  // N-keuze: alleen de schone kandidaten als keuzeknop (2), plus de variant-fallback (1).
+  await expect
+    .element(page.getByText(/2 passende kandidaten — welke moet het worden/))
+    .toBeInTheDocument();
+  expect(page.getByRole("button", { name: /Kies deze/ }).elements().length).toBe(3);
+  await expect.element(page.getByText("VELA ROUND 900")).toBeInTheDocument();
+
+  // Variantkaart: échte catalogus-kleuren als knop — geen verzonnen standaardlijst.
+  await expect
+    .element(page.getByRole("button", { name: /black\/gold/ }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByRole("button", { name: /Wijs af/ }))
+    .element(page.getByRole("button", { name: /white/ }))
     .toBeInTheDocument();
-  // Variantkaart: kleur bevestigen.
+  expect(page.getByText("aluminium").query()).toBeNull(); // oude STANDARD_FINISHES weg
+
+  // Variant-fallback benoemt de fallback expliciet.
   await expect
-    .element(page.getByRole("button", { name: /Bevestig kleur/ }))
+    .element(page.getByText(/Geen kleurvarianten van dit product/))
     .toBeInTheDocument();
-  // Afwijzen toont een (verplicht) redenveld.
+
+  // Rood-sectie: eigen kop, zoekveld en link-knoppen bij de gevonden resultaten.
   await expect
-    .element(page.getByText(/Reden \(verplicht/))
+    .element(page.getByText(/Niet gevonden — handmatig linken \(2\)/))
     .toBeInTheDocument();
-  // Afgerond item draagt het audit-spoor (wie).
+  await expect
+    .element(
+      page.getByRole("textbox", {
+        name: /Zoek vergelijkbaar product voor Lr701/,
+      }),
+    )
+    .toBeInTheDocument();
+  expect(
+    page.getByRole("button", { name: /Link dit product/ }).elements().length,
+  ).toBe(2);
+  // het systeem doet hier geen suggesties — dat staat er letterlijk bij
+  await expect
+    .element(page.getByText(/bewust\s+geen suggesties/))
+    .toBeInTheDocument();
+
+  // Afgerond item draagt het audit-spoor mét de nieuwe uitkomst-taal.
+  await expect
+    .element(page.getByText(/geaccepteerd → groen/))
+    .toBeInTheDocument();
   await expect
     .element(page.getByText(/eduard@brinklicht\.nl/))
     .toBeInTheDocument();

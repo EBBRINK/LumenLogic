@@ -130,3 +130,64 @@ export function parseProductName(name: string): ParsedSpecs {
   set(out, "dimmable", parseDimmable(name));
   return out;
 }
+
+// ── Kleur-tokens ──────────────────────────────────────────────────────────────
+// Catalogi coderen de kleur als los woord in de naam ("DISCOCO 53 WHITE",
+// "MELAMPO W BRONZE", "DISCOCO 53 BLACK/GOLD"). Dezelfde conservatieve regel als
+// hierboven: alleen een token dat VOLLEDIG uit bekende kleurwoorden bestaat telt als
+// kleur — "C/5mt" of "WH" wordt nooit als kleur geraden (ontbrekend ≠ fout).
+// Deze lijst is de ene bron voor kleur-herkenning; de zusterproduct-query
+// (lib/repo/variants.ts, echte kleurvarianten op de review-kaart) hergebruikt hem.
+const COLOR_TOKENS = new Set([
+  // Engels (verreweg het gangbaarst in de bron-catalogi)
+  "white", "black", "grey", "gray", "silver", "gold", "golden", "bronze",
+  "brass", "chrome", "copper", "aluminium", "aluminum", "anthracite", "beige",
+  "red", "blue", "green", "yellow", "orange", "pink", "brown", "ivory",
+  "cream", "sand", "terracotta",
+  // Nederlands
+  "wit", "zwart", "grijs", "zilver", "goud", "brons", "messing", "chroom",
+  "koper", "antraciet", "rood", "blauw", "groen", "geel", "oranje", "roze",
+  "bruin", "ivoor", "creme", "crème",
+]);
+
+// Is dit hele token een kleur? Samengestelde kleuren met een slash ("BLACK/GOLD")
+// tellen alleen als élk deel een kleurwoord is.
+function isColorToken(token: string): boolean {
+  const parts = token.split("/").filter(Boolean);
+  if (parts.length === 0) return false;
+  return parts.every((p) => COLOR_TOKENS.has(p));
+}
+
+export type NameColor = {
+  // De herkende kleur-tokens, in naamvolgorde, lowercase (bv. ["white"] of ["black/gold"]).
+  colors: string[];
+  // De naam zónder kleur-tokens, genormaliseerd (lowercase, interpunctie → spatie).
+  // Twee producten met dezelfde baseKey zijn zustervarianten van elkaar.
+  baseKey: string;
+};
+
+// Haal kleur(en) uit een productnaam en lever de kleur-loze basissleutel op.
+// Interpunctie wordt genormaliseerd zodat "SUSP." ≡ "SUSP"; de slash blijft staan
+// zodat samengestelde kleuren ("BLACK/GOLD") als één token beoordeeld worden.
+export function extractColorTokens(name: string): NameColor {
+  const tokens = (name ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9/]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const colors: string[] = [];
+  const base: string[] = [];
+  for (const t of tokens) {
+    if (isColorToken(t)) colors.push(t);
+    else base.push(t);
+  }
+  return { colors, baseKey: base.join(" ") };
+}
+
+// De kleur van een product zoals de naam hem draagt, of null als de naam geen
+// herkenbaar kleurwoord bevat (nooit een geraden default).
+export function colorFromName(name: string): string | null {
+  const { colors } = extractColorTokens(name);
+  return colors.length ? colors.join(" / ") : null;
+}

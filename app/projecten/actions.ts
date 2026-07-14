@@ -33,7 +33,7 @@ import {
 } from "@/lib/repo/matching";
 import { recordPdfImport } from "@/lib/repo/imports";
 import { setDossierOrg } from "@/lib/repo/orgs";
-import { decideReview, flagForReview } from "@/lib/repo/review";
+import { decideReview, flagForReview, linkManualProduct } from "@/lib/repo/review";
 import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
 import { requireSession, getActor } from "@/lib/session";
@@ -240,7 +240,9 @@ export async function setDayPriceAction(formData: FormData) {
   redirect(`/projecten/${dossierId}/regel/${specLineId}`);
 }
 
-// Review-beslissing (3.7).
+// Review-beslissing (3.7). Bevestigende keuzes dragen optioneel het gekozen productId
+// ("welke van deze N", kleurvariant) — de repo maakt de regel dan groen met merkteken
+// "handmatig gekozen" (herontwerp 2026-07-14).
 export async function decideReviewAction(formData: FormData) {
   await requireSession();
   const dossierId = String(formData.get("dossierId"));
@@ -257,10 +259,32 @@ export async function decideReviewAction(formData: FormData) {
       decision,
       reason: strOrNull(formData.get("reason")),
       variantColor: strOrNull(formData.get("variantColor")),
+      productId: strOrNull(formData.get("productId")),
       actor: await getActor(),
     });
   }
+  // De beslissing verandert ook de regelstatus (groen/rood) → regels-tab en badge mee.
   revalidatePath(`/projecten/${dossierId}/review`);
+  revalidatePath(`/projecten/${dossierId}`);
+}
+
+// Rood-kaart: handmatig een vergelijkbaar product linken (stap 7). Menshandeling —
+// de gebruiker zocht zelf en klikte; het systeem suggereerde niets (ijzeren regel 4).
+export async function linkManualProductAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const productId = String(formData.get("productId"));
+  if (specLineId && productId) {
+    await linkManualProduct(db, {
+      specLineId,
+      productId,
+      actor: await getActor(),
+    });
+  }
+  // redirect zonder query-string: de zoekresultaten zijn na het linken niet meer nodig.
+  revalidatePath(`/projecten/${dossierId}`);
+  redirect(`/projecten/${dossierId}/review`);
 }
 
 // Een regel handmatig in de review-wachtrij zetten (bv. variantkeuze).
