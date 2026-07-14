@@ -125,11 +125,17 @@ test("geen fan-out: merk met 2 prijslijst-rijen geeft 1 rij, indicator op de nie
   const { brandId } = await seedBrandProduct(db, {
     brand: "Merk Dubbel", name: "P1", validUntil: "2027-06-30",
   });
-  // Tweede (oudere, vervangen) lijst via raw SQL — replaced_at gezet zodat de
-  // partial-unique-index op actieve lijsten niet schendt.
+  // In de huidige (0008-)staat dwingt price_lists_brand_uniq één lijst per merk af;
+  // de datamodel-migratie (0007, parallelle workstream) laat die index vallen zodat
+  // vervangen lijsten kunnen blijven staan. Simuleer die toekomstige staat lokaal
+  // in deze testdatabase zodat de aggregatie-query bewezen niet fan-out.
+  // (De opvolger uit 0007 — een partial index op actieve lijsten — gaat hier ook
+  // opzij: deze test gaat puur over de aggregatie, niet over de uniciteitsregels.)
+  await db.execute(sql`drop index if exists price_lists_brand_uniq`);
+  await db.execute(sql`drop index if exists price_lists_brand_active_uniq`);
   await db.execute(sql`
-    insert into price_lists (brand_id, name, valid_from, valid_until, replaced_at)
-    values (${brandId}, 'Oude lijst', '2024-01-01', '2025-01-01', now())
+    insert into price_lists (brand_id, name, valid_from, valid_until)
+    values (${brandId}, 'Oude lijst', '2024-01-01', '2025-01-01')
   `);
 
   const rows = await listBrandRelations(db, TODAY);

@@ -101,7 +101,9 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(overzicht);
-      await expect.element(document.body).toBeInTheDocument();
+      // Wacht op echte content vóór de capture — een kale body-assert gaf blanco PNG's.
+      await expect.element(page.getByText("4 van 4 merken")).toBeInTheDocument();
+      await expect.element(page.getByText("Occhio")).toBeInTheDocument();
       await page.screenshot({
         path: `./data-merkrelaties.${theme}.${device}.test.png`,
       });
@@ -208,7 +210,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(detail);
-      await expect.element(document.body).toBeInTheDocument();
+      // Zelfde race als bij het overzicht: wacht op gerenderde content.
+      await expect
+        .element(page.getByRole("button", { name: "Opslaan" }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByText("9. Documentatie / links"))
+        .toBeInTheDocument();
       await page.screenshot({
         path: `./data-merkrelatie-detail.${theme}.${device}.test.png`,
       });
