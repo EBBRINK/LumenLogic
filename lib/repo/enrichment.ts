@@ -511,6 +511,19 @@ export type PriceListStatus = {
   bucket: "verlopen" | "7" | "14" | "30" | "ok";
 };
 
+// Gedeelde datum-helper: hele dagen (UTC) tussen vandaag en een 'YYYY-MM-DD'-datum.
+// Negatief = verlopen. Gebruikt door listPriceListStatus hieronder én de prijslijst-
+// indicator in lib/repo/brand-relations.ts — één definitie, geen duplicaat.
+export function daysUntil(dateStr: string, today: Date = new Date()): number {
+  const t0 = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const [y, m, d] = dateStr.split("-").map((s) => parseInt(s, 10));
+  return Math.round((Date.UTC(y, m - 1, d) - t0) / 86_400_000);
+}
+
 // Per prijslijst: hoeveel dagen tot verval + in welke waarschuwingsbucket. Verlopen lijsten
 // zijn een dekkingsgat (hun producten vallen uit visible_products — ijzeren regel 3).
 export async function listPriceListStatus(
@@ -531,15 +544,8 @@ export async function listPriceListStatus(
     .groupBy(priceLists.id, priceLists.name, priceLists.validUntil, brands.name)
     .orderBy(asc(priceLists.validUntil));
 
-  const t0 = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  );
   return rows.map((r) => {
-    const [y, m, d] = r.validUntil.split("-").map((s) => parseInt(s, 10));
-    const until = Date.UTC(y, m - 1, d);
-    const daysLeft = Math.round((until - t0) / 86_400_000);
+    const daysLeft = daysUntil(r.validUntil, today);
     const bucket: PriceListStatus["bucket"] =
       daysLeft < 0
         ? "verlopen"

@@ -108,6 +108,18 @@ export const uploadStatus = pgEnum("upload_status", [
   "rejected",
 ]);
 
+// Merkrelaties (plan-merkrelaties K1): relatiestatus per merk — vrij muteerbaar
+// (geen state-machine), elke wijziging gelogd. "Geen reactie" is een filter
+// (GEEN_REACTIE_DAGEN in lib/field-catalog.ts), geen status.
+export const brandRelationStatus = pgEnum("brand_relation_status", [
+  "niet_benaderd",
+  "benaderd",
+  "wacht_op_data",
+  "data_ontvangen",
+  "verwerkt",
+  "afgewezen",
+]);
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -799,6 +811,30 @@ export const brandUploads = pgTable("brand_uploads", {
   ...timestamps,
 });
 
+
+// ── Merkrelaties (K2): 1-op-1 met brands, reads virtueel ─────────────────────
+// Géén backfill: een merk zonder rij is per definitie 'niet_benaderd' (de repo
+// COALESCE't bij het lezen — lezen schrijft nooit). Alleen upsertBrandRelation
+// schrijft, via INSERT … ON CONFLICT (brand_id) DO UPDATE (race-vrij).
+// Contactpersoon/e-mail staan hier en niet op suppliers: ander soort contact
+// (data-inwinning, niet inkoop).
+export const brandRelations = pgTable(
+  "brand_relations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "cascade" }),
+    status: brandRelationStatus("status").notNull().default("niet_benaderd"),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    lastContactAt: date("last_contact_at"), // laatste contactmoment ("geen reactie"-filter)
+    notes: text("notes"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("brand_relations_brand_uniq").on(t.brandId)],
+);
+
 export type Product = typeof products.$inferSelect;
 export type Brand = typeof brands.$inferSelect;
 export type ProjectDossier = typeof projectDossiers.$inferSelect;
@@ -815,5 +851,8 @@ export type MembershipRole =
   (typeof membershipRole.enumValues)[number];
 export type Lead = typeof leads.$inferSelect;
 export type BrandUpload = typeof brandUploads.$inferSelect;
+export type BrandRelation = typeof brandRelations.$inferSelect;
+export type BrandRelationStatus =
+  (typeof brandRelationStatus.enumValues)[number];
 export type ArmaturenboekVersion = typeof armaturenboekVersions.$inferSelect;
 export type SubstitutionProposal = typeof substitutionProposals.$inferSelect;
