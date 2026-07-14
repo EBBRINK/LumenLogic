@@ -1,3 +1,4 @@
+// UI-naam: Project. DB/code-naam blijft 'dossier' (bewust, zie docs/plan-aanvraag-estimate.md B1).
 // Dossier-, spec-regel- en offerte-logica (calculatorflow, BUILD-PLAN §4.3).
 import { asc, eq, sql } from "drizzle-orm";
 import {

@@ -28,7 +28,7 @@ export default async function ImportRunPage({
   return (
     <>
       <Link
-        href={`/dossiers/${dossier.id}`}
+        href={`/projecten/${dossier.id}`}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" /> Regels
@@ -49,7 +49,7 @@ export default async function ImportRunPage({
         <p className="text-sm text-muted-foreground">
           Dit importvoorstel is al{" "}
           {run.status === "bevestigd" ? "bevestigd" : "geannuleerd"}. Ga terug
-          naar de regels van dit dossier.
+          naar de regels van dit project.
         </p>
       )}
     </>

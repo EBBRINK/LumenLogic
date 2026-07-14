@@ -21,7 +21,7 @@ const FILTERS: { value: DossierFilter; label: string }[] = [
 
 export function LifecycleFilter({
   active = "alle",
-  basePath = "/dossiers",
+  basePath = "/projecten",
 }: {
   active?: DossierFilter;
   basePath?: string;

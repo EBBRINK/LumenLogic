@@ -9,7 +9,7 @@ const ACTION_LABEL: Record<string, string> = {
   quote_generated: "Offerte",
   suggestions: "Suggesties (gegund)",
   pdf_import: "PDF-import",
-  dossier_created: "Dossier aangemaakt",
+  dossier_created: "Project aangemaakt",
   phase_changed: "Fasewissel",
   // Nieuwe event-acties uit de vijfstatussen-/matcherlaag — nette labels.
   matched_status: "Status gezet",

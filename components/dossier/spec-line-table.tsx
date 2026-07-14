@@ -89,7 +89,7 @@ export function SpecLineTable({
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="outline">
-                      <a href={`/dossiers/${dossierId}/regel/${l.id}`}>
+                      <a href={`/projecten/${dossierId}/regel/${l.id}`}>
                         <IconSearch /> {act.label}
                       </a>
                     </Button>

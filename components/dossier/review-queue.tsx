@@ -49,7 +49,7 @@ function EntityLine({ item }: { item: ReviewItem }) {
 function OtherMatch({ dossierId, itemId }: { dossierId: string; itemId: string }) {
   return (
     <Button asChild size="sm" variant="outline">
-      <a href={`/dossiers/${dossierId}/regel/${itemId}`}>
+      <a href={`/projecten/${dossierId}/regel/${itemId}`}>
         <IconSearch /> Andere match
       </a>
     </Button>

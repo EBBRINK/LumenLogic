@@ -28,9 +28,9 @@ export async function setLifecycleAction(formData: FormData) {
     });
   } catch {
     // Reden verplicht bij archiveren → geen crash, dossier blijft ongewijzigd.
-    revalidatePath(`/dossiers/${dossierId}`);
+    revalidatePath(`/projecten/${dossierId}`);
     return;
   }
-  revalidatePath(`/dossiers/${dossierId}`);
-  revalidatePath("/dossiers");
+  revalidatePath(`/projecten/${dossierId}`);
+  revalidatePath("/projecten");
 }

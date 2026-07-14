@@ -1,3 +1,4 @@
+// UI-naam: Project. DB/code-naam blijft 'dossier' (bewust, zie docs/plan-aanvraag-estimate.md B1).
 // Lumen Logic — datamodel (run 1).
 //
 // Ontworpen op de brondata (data/source/README.md) én op de vijf ijzeren regels uit

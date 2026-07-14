@@ -28,7 +28,7 @@ export default async function SubstitutiePage({
     <>
       <div className="mb-4 flex items-center justify-between print:hidden">
         <Link
-          href={`/dossiers/${id}/werkvoorbereiding`}
+          href={`/projecten/${id}/werkvoorbereiding`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" /> Werkvoorbereiding

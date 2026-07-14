@@ -31,6 +31,6 @@ export async function generateSubstitutionAction(formData: FormData) {
     actor: await getActor(),
   });
 
-  revalidatePath(`/dossiers/${dossierId}/werkvoorbereiding`);
-  redirect(`/dossiers/${dossierId}/substitutie/${proposal.id}`);
+  revalidatePath(`/projecten/${dossierId}/werkvoorbereiding`);
+  redirect(`/projecten/${dossierId}/substitutie/${proposal.id}`);
 }

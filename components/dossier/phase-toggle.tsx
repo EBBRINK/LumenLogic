@@ -38,8 +38,8 @@ export function PhaseToggle({
         <DialogHeader>
           <DialogTitle>
             {toAwarded
-              ? "Dit dossier op gegund zetten?"
-              : "Dit dossier terugzetten naar tender?"}
+              ? "Dit project op gegund zetten?"
+              : "Dit project terugzetten naar tender?"}
           </DialogTitle>
           <DialogDescription asChild>
             <ul className="mt-1 list-disc space-y-1 pl-4">

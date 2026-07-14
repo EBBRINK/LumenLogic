@@ -28,7 +28,7 @@ export default async function WerkvoorbereidingPage({
       <div className="rounded-lg border border-dashed p-8 text-center">
         <p className="font-medium">Deze tab is er alleen in gegund-stand</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Alternatieven en value-engineering verschijnen pas als het dossier op
+          Alternatieven en value-engineering verschijnen pas als het project op
           “gegund” staat. Default = veilig: in de tenderfase toont de tool niets
           dat de spec-gelijkwaardigheid in gevaar brengt.
         </p>
@@ -98,7 +98,7 @@ export default async function WerkvoorbereidingPage({
     <div className="flex flex-col gap-8">
       <div className="flex items-center justify-end">
         <Link
-          href={`/dossiers/${id}/armaturenboek/versies`}
+          href={`/projecten/${id}/armaturenboek/versies`}
           className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
           Armaturenboek-versies →

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-// Actief = huidige sectie (prefix-match, zodat /dossiers/[id] ook "Dossiers" oplicht).
+// Actief = huidige sectie (prefix-match, zodat /projecten/[id] ook "Dossiers" oplicht).
 export function NavLink({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(href + "/");

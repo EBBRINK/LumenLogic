@@ -34,7 +34,7 @@ export default async function OrganisatiePage() {
         <p className="text-sm text-muted-foreground">
           Organisaties, hun leden en de rollen (petten) waarmee die leden
           binnenkomen. Een rol bepaalt de default-view, nooit wat de engine
-          toont — dat is de fase van het dossier.
+          toont — dat is de fase van het project.
         </p>
       </header>
 

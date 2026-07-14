@@ -19,5 +19,5 @@ export async function snapshotAction(formData: FormData) {
     note,
     actor: await getActor(),
   });
-  revalidatePath(`/dossiers/${dossierId}/armaturenboek/versies`);
+  revalidatePath(`/projecten/${dossierId}/armaturenboek/versies`);
 }

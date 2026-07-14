@@ -59,7 +59,7 @@ export async function createDossierAction(formData: FormData) {
   // Optioneel: dossier aan een org koppelen (leeg = intern Brink-dossier).
   const orgId = strOrNull(formData.get("orgId"));
   if (orgId) await setDossierOrg(db, dossier.id, orgId);
-  redirect(`/dossiers/${dossier.id}`);
+  redirect(`/projecten/${dossier.id}`);
 }
 
 // Handmatige regel toevoegen → matcher draait direct (functioneel ontwerp 3.4-5).
@@ -90,7 +90,7 @@ export async function addSpecLineAction(formData: FormData) {
     },
   ]);
   if (row) await runMatcher(db, row.id, actor);
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 export async function addSpecCsvAction(formData: FormData) {
@@ -103,7 +103,7 @@ export async function addSpecCsvAction(formData: FormData) {
     const rows = await addSpecLines(db, dossierId, lines);
     for (const r of rows) await runMatcher(db, r.id, actor);
   }
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 // Bestek/telstaat plakken → aantallen koppelen op fixture-code (B-08/A-06).
@@ -115,7 +115,7 @@ export async function linkBestekAction(formData: FormData) {
   if (dossierId && pairs.length) {
     await linkQuantities(db, dossierId, pairs, await getActor());
   }
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 export async function importArmaturenboekPdfAction(formData: FormData) {
@@ -144,9 +144,9 @@ export async function importArmaturenboekPdfAction(formData: FormData) {
     actor,
     payload: { file: file.name, hadText, imported: lines.length },
   });
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
   redirect(
-    `/dossiers/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}`,
+    `/projecten/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}`,
   );
 }
 
@@ -156,7 +156,7 @@ export async function runMatchAction(formData: FormData) {
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   if (specLineId) await runMatcher(db, specLineId, await getActor());
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 // Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht.
@@ -177,7 +177,7 @@ export async function chooseCandidateAction(formData: FormData) {
       actor: await getActor(),
     });
   }
-  redirect(`/dossiers/${dossierId}`);
+  redirect(`/projecten/${dossierId}`);
 }
 
 // Rood/paars/blauw handmatig zetten (regel-detailknoppen).
@@ -195,7 +195,7 @@ export async function setLineStatusAction(formData: FormData) {
       actor: await getActor(),
     });
   }
-  redirect(`/dossiers/${dossierId}`);
+  redirect(`/projecten/${dossierId}`);
 }
 
 export async function unlinkMatchAction(formData: FormData) {
@@ -204,7 +204,7 @@ export async function unlinkMatchAction(formData: FormData) {
   const specLineId = String(formData.get("specLineId"));
   const reason = String(formData.get("reason") ?? "").trim();
   if (specLineId && reason) await unlinkMatch(db, specLineId, reason, await getActor());
-  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
+  redirect(`/projecten/${dossierId}/regel/${specLineId}`);
 }
 
 // Dagprijs op de regel (I-04).
@@ -221,7 +221,7 @@ export async function setDayPriceAction(formData: FormData) {
       actor: await getActor(),
     });
   }
-  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
+  redirect(`/projecten/${dossierId}/regel/${specLineId}`);
 }
 
 // Review-beslissing (3.7).
@@ -244,7 +244,7 @@ export async function decideReviewAction(formData: FormData) {
       actor: await getActor(),
     });
   }
-  revalidatePath(`/dossiers/${dossierId}/review`);
+  revalidatePath(`/projecten/${dossierId}/review`);
 }
 
 // Een regel handmatig in de review-wachtrij zetten (bv. variantkeuze).
@@ -258,7 +258,7 @@ export async function flagReviewAction(formData: FormData) {
     | "onvolledig"
     | "ocr";
   if (specLineId) await flagForReview(db, specLineId, kind);
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 export async function setQuantityAction(formData: FormData) {
@@ -267,7 +267,7 @@ export async function setQuantityAction(formData: FormData) {
   const specLineId = String(formData.get("specLineId"));
   const quantity = intOrNull(formData.get("quantity"));
   if (specLineId) await setQuantity(db, specLineId, quantity, await getActor());
-  revalidatePath(`/dossiers/${dossierId}/offerte`);
+  revalidatePath(`/projecten/${dossierId}/offerte`);
 }
 
 // A-10: kopblok van de estimate opslaan (bewerkbaar tot uitsturen).
@@ -291,7 +291,7 @@ export async function saveQuoteHeaderAction(formData: FormData) {
       await getActor(),
     );
   }
-  revalidatePath(`/dossiers/${dossierId}/offerte`);
+  revalidatePath(`/projecten/${dossierId}/offerte`);
 }
 
 // B-10: een spec-regel bewerken → daarna de matcher opnieuw draaien.
@@ -326,7 +326,7 @@ export async function editSpecLineAction(formData: FormData) {
   );
   // merk/type/specs kunnen de match veranderen → opnieuw matchen
   await runMatcher(db, specLineId, actor);
-  redirect(`/dossiers/${dossierId}/regel/${specLineId}`);
+  redirect(`/projecten/${dossierId}/regel/${specLineId}`);
 }
 
 export async function deleteLineAction(formData: FormData) {
@@ -334,14 +334,14 @@ export async function deleteLineAction(formData: FormData) {
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   if (specLineId) await deleteSpecLine(db, specLineId);
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 export async function generateQuoteAction(formData: FormData) {
   await requireSession();
   const dossierId = String(formData.get("dossierId"));
   if (dossierId) await generateQuote(db, dossierId, await getActor());
-  redirect(`/dossiers/${dossierId}/offerte`);
+  redirect(`/projecten/${dossierId}/offerte`);
 }
 
 export async function setPhaseAction(formData: FormData) {
@@ -349,5 +349,5 @@ export async function setPhaseAction(formData: FormData) {
   const dossierId = String(formData.get("dossierId"));
   const phase = formData.get("phase") === "awarded" ? "awarded" : "tender";
   if (dossierId) await setDossierPhase(db, dossierId, phase, await getActor());
-  revalidatePath(`/dossiers/${dossierId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }

@@ -78,7 +78,7 @@ afterEach(() => {
 const screens = {
   dossiers: (
     <Screen>
-      <h1 className="mb-4 text-2xl font-semibold tracking-tight">Dossiers</h1>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight">Projecten</h1>
       <DossierList dossiers={dossiers} />
     </Screen>
   ),

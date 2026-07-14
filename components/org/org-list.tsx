@@ -72,7 +72,7 @@ function NewOrgForm({
             >
               <option value="trial">Trial</option>
               <option value="abonnement">Abonnement</option>
-              <option value="per-dossier">Per dossier</option>
+              <option value="per-dossier">Per project</option>
             </select>
           </div>
           <div className="flex flex-col gap-1.5">

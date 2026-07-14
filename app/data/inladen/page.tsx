@@ -34,7 +34,7 @@ export default async function InladenPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Inladen</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Merken die als datagat (blauw) gevraagd zijn maar nog niet in de
-          catalogus staan. De frequentie telt hoe vaak ze over alle dossiers
+          catalogus staan. De frequentie telt hoe vaak ze over alle projecten
           voorkomen — laadt de meest gevraagde eerst.
         </p>
       </header>

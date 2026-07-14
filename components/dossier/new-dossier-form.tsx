@@ -15,7 +15,7 @@ export function NewDossierForm({
     <form action={action} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <label htmlFor="name" className="text-sm font-medium">
-          Dossiernaam
+          Projectnaam
         </label>
         <Input id="name" name="name" required placeholder="Bijv. Ziekenhuis X" />
       </div>
@@ -60,7 +60,7 @@ export function NewDossierForm({
         </div>
       )}
       <Button type="submit" className="self-start">
-        Dossier aanmaken
+        Project aanmaken
       </Button>
     </form>
   );

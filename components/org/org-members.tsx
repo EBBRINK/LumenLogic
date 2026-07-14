@@ -37,7 +37,7 @@ const ROLE_DESCRIPTION: Record<MembershipRole, string> = {
   calculator: "Matcht spec-regels en bouwt de calculatie en offerte.",
   werkvoorbereider:
     "Bereidt het werk voor: armaturenboek, locaties en datasheets.",
-  projectleider: "Houdt overzicht op projectniveau en levert het dossier op.",
+  projectleider: "Houdt overzicht op projectniveau en levert het project op.",
   org_admin: "Beheert leden, rollen en de organisatie-instellingen.",
 };
 
@@ -52,7 +52,7 @@ const LANDING_LABEL: Record<
   werkvoorbereiding: "Werkvoorbereiding",
   armaturenboek: "Armaturenboek",
   instellingen: "Instellingen",
-  dossiers: "Dossiers",
+  dossiers: "Projecten",
 };
 
 export function landingForRole(role: MembershipRole): string {
@@ -70,7 +70,7 @@ export function RoleLegend() {
         <p className="text-sm text-muted-foreground">
           Eén persoon kan meerdere petten dragen. Een rol bepaalt alleen waar
           iemand standaard landt — nooit wat de engine toont. Wat zichtbaar is,
-          hangt af van de fase van het dossier, niet van de rol.
+          hangt af van de fase van het project, niet van de rol.
         </p>
       </CardHeader>
       <CardContent>

@@ -109,7 +109,7 @@ export default async function RegelDetailPage({
   return (
     <>
       <Link
-        href={`/dossiers/${dossier.id}`}
+        href={`/projecten/${dossier.id}`}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" /> Regels

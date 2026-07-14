@@ -6,7 +6,7 @@ import { getSession } from "@/lib/session";
 import { NavLink } from "./nav-link";
 
 const ITEMS = [
-  { href: "/dossiers", label: "Dossiers" },
+  { href: "/projecten", label: "Projecten" },
   { href: "/catalogus", label: "Catalogus" },
   { href: "/data", label: "Data" },
   { href: "/analytics", label: "Analytics" },
@@ -21,7 +21,7 @@ export async function SiteNav() {
   return (
     <header className="border-b">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6 px-6 py-3">
-        <Link href="/dossiers" className="text-sm font-semibold tracking-tight">
+        <Link href="/projecten" className="text-sm font-semibold tracking-tight">
           Lumen Logic
         </Link>
         <nav className="flex items-center gap-1 text-sm">

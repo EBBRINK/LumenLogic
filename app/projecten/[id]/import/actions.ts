@@ -34,7 +34,7 @@ export async function confirmImportAction(formData: FormData) {
   if (runId) {
     await confirmImportRun(db, runId, checkedIndicesFrom(formData), await getActor());
   }
-  redirect(`/dossiers/${dossierId}`);
+  redirect(`/projecten/${dossierId}`);
 }
 
 // Annuleren: run op 'geannuleerd', geen enkele regel ontstaat.
@@ -43,7 +43,7 @@ export async function cancelImportAction(formData: FormData) {
   const dossierId = String(formData.get("dossierId"));
   const runId = String(formData.get("runId"));
   if (runId) await cancelImportRun(db, runId, await getActor());
-  redirect(`/dossiers/${dossierId}`);
+  redirect(`/projecten/${dossierId}`);
 }
 
 // Groot CSV-blok (>10 regels) → géén directe toevoeging, maar een voorstel-run + het
@@ -55,7 +55,7 @@ export async function createCsvProposalAction(formData: FormData) {
   const parsed = parseSpecCsv(csv);
   if (!dossierId || parsed.length <= CSV_PROPOSAL_THRESHOLD) {
     // te klein voor een voorstel-scherm → terug naar het dossier (regels-tab handelt af)
-    redirect(`/dossiers/${dossierId}`);
+    redirect(`/projecten/${dossierId}`);
   }
   const rows: ImportRow[] = parsed.map((l) => ({
     fixtureCode: l.fixtureCode,
@@ -73,5 +73,5 @@ export async function createCsvProposalAction(formData: FormData) {
     rows,
     actor: await getActor(),
   });
-  redirect(`/dossiers/${dossierId}/import/${run.id}`);
+  redirect(`/projecten/${dossierId}/import/${run.id}`);
 }

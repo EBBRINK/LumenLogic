@@ -15,7 +15,7 @@ export default function LoginPage() {
     setError(null);
     const { error } = await authClient.signIn.magicLink({
       email,
-      callbackURL: "/dossiers",
+      callbackURL: "/projecten",
     });
     if (error) setError(error.message ?? "Er ging iets mis");
     else setSent(true);

@@ -173,5 +173,5 @@ test("lifecycle-filter: vijf opties, de actieve draagt aria-current", async () =
   // Href's bevatten de juiste filterwaarde (default "Alle" zonder query).
   await expect
     .element(page.getByRole("link", { name: "Opgeleverd" }))
-    .toHaveAttribute("href", "/dossiers?filter=opgeleverd");
+    .toHaveAttribute("href", "/projecten?filter=opgeleverd");
 });

@@ -11,10 +11,10 @@ export default async function AnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
       <Link
-        href="/dossiers"
+        href="/projecten"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Dossiers
+        <ArrowLeft className="size-3.5" /> Projecten
       </Link>
       <AnalyticsView data={data} />
     </main>

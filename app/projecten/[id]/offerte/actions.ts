@@ -21,5 +21,5 @@ export async function xisExportAction(formData: FormData) {
     environment,
     actor: await getActor(),
   });
-  revalidatePath(`/dossiers/${dossierId}/offerte`);
+  revalidatePath(`/projecten/${dossierId}/offerte`);
 }

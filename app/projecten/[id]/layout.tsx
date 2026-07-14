@@ -38,10 +38,10 @@ export default async function DossierLayout({
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-8">
       <Link
-        href="/dossiers"
+        href="/projecten"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Dossiers
+        <ArrowLeft className="size-3.5" /> Projecten
       </Link>
 
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
@@ -78,8 +78,8 @@ export default async function DossierLayout({
 
       {readOnly && (
         <div className="mb-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Dit dossier is {lifecycle === "delivered" ? "opgeleverd" : "gearchiveerd"} en
-          daarmee read-only. Bewerkingen worden niet meer verwacht — heropen het dossier om
+          Dit project is {lifecycle === "delivered" ? "opgeleverd" : "gearchiveerd"} en
+          daarmee read-only. Bewerkingen worden niet meer verwacht — heropen het project om
           weer te kunnen wijzigen.
         </div>
       )}

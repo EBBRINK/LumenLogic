@@ -19,7 +19,7 @@ export function DossierTabs({
   reviewTotal: number;
 }) {
   const pathname = usePathname();
-  const base = `/dossiers/${dossierId}`;
+  const base = `/projecten/${dossierId}`;
   const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
     { href: base, label: "Regels", match: (p) => p === base || p.startsWith(`${base}/regel`) || p.startsWith(`${base}/import`) },
     { href: `${base}/review`, label: "Review", match: (p) => p.startsWith(`${base}/review`) },

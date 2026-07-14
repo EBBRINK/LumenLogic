@@ -91,9 +91,9 @@ function ArchiveDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Dit dossier archiveren?</DialogTitle>
+          <DialogTitle>Dit project archiveren?</DialogTitle>
           <DialogDescription>
-            Een gearchiveerd dossier is read-only. De reden hoort erbij — een verloren
+            Een gearchiveerd project is read-only. De reden hoort erbij — een verloren
             tender is data. Bijvoorbeeld &ldquo;verloren tender&rdquo; of &ldquo;project
             vervallen&rdquo;.
           </DialogDescription>
