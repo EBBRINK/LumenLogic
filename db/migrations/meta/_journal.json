@@ -43,6 +43,13 @@
       "when": 1783440000000,
       "tag": "0005_h2_h3",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784030000000,
+      "tag": "0006_projectstatus_ai",
+      "breakpoints": true
     }
   ]
 }

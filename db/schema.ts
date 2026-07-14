@@ -35,6 +35,31 @@ export const disclosureTier = pgEnum("disclosure_tier", [
   "tier3",
 ]);
 export const dossierPhase = pgEnum("dossier_phase", ["tender", "awarded"]);
+// B6 (docs/plan-aanvraag-estimate.md): commerciële status van een project —
+// concept → estimate_gestuurd → offerte → gegund | niet_gegund → archief.
+// Vervangt op termijn de lifecycle-code; `phase` blijft de afgeleide
+// veiligheidsschakelaar (regel 4), met één schrijver in lib/repo/project-status.ts (stap 4).
+export const projectStatus = pgEnum("project_status", [
+  "concept",
+  "estimate_gestuurd",
+  "offerte",
+  "gegund",
+  "niet_gegund",
+  "archief",
+]);
+// B6: XIS-fasen — de taal van Brink zelf (start…aftersales, win/lost).
+export const xisPhase = pgEnum("xis_phase", [
+  "start",
+  "engineering",
+  "calculations",
+  "presenting",
+  "tender",
+  "deal_making",
+  "deliver",
+  "aftersales",
+  "win",
+  "lost",
+]);
 // Vijfstatussen-regelset (masterplan §3, met Eduard vastgesteld) — vervangt het oude
 // open/matched/no_match. 'open' = nog niet gematcht (zesde waarde, besluit run 4).
 export const matchStatus = pgEnum("match_status", [
@@ -222,6 +247,13 @@ export const projectDossiers = pgTable("project_dossiers", {
   name: text("name").notNull(),
   customer: text("customer"),
   phase: dossierPhase("phase").notNull().default("tender"), // default = veilig (regel 4)
+  // B6: commerciële status; backfill van bestaande dossiers in migratie 0006.
+  status: projectStatus("status").notNull().default("concept"),
+  // B6: XIS-fase. Default bewust 'start' (het plan noemde 'tender'): een nieuw project
+  // begint vóór XIS Start — de estimate komt eerder dan de tender. De veilige engine-stand
+  // (nooit alternatieven in tender) blijft geregeld via `phase` default 'tender' hierboven;
+  // bestaande dossiers worden in 0006 gebackfilld naar 'tender'/'deal_making'.
+  xisPhase: xisPhase("xis_phase").notNull().default("start"),
   // H2: org-scoping (nullable → interne Brink-dossiers zonder org blijven werken).
   orgId: uuid("org_id"),
   // A-05: lifecycle naast de fase. archived draagt altijd een reden.
@@ -312,6 +344,29 @@ export const specLineCandidates = pgTable("spec_line_candidates", {
     .defaultNow(),
 });
 
+// B4: AI-vangnet — zoekt uitsluitend het gevraagde product (fase-veilig); de matcher-
+// engine blijft LLM-vrij en een suggestie wijzigt nooit de regelstatus. Tokens per
+// suggestie vastgelegd voor de budgetstop (L-06). Index op spec_line_id in migratie 0006
+// (net als spec_line_candidates: niet-unieke indexes leven in de SQL, niet hier).
+export const aiSuggestions = pgTable("ai_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  specLineId: uuid("spec_line_id")
+    .notNull()
+    .references(() => specLines.id, { onDelete: "cascade" }),
+  productId: uuid("product_id")
+    .notNull()
+    .references(() => products.id),
+  rationale: text("rationale").notNull(),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+  dismissedBy: text("dismissed_by"),
+});
+
 // B-06: voorstel-scherm vóór opslaan — geparste regels zijn pas spec_lines na bevestiging.
 export const importRuns = pgTable("import_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -325,6 +380,8 @@ export const importRuns = pgTable("import_runs", {
   rows: jsonb("rows").$type<ImportRow[]>().notNull(),
   counts: jsonb("counts").$type<Record<string, number>>(),
   actor: text("actor"),
+  // B2: PDF→markdown-controlespoor (cap ~2 MB) — inzichtelijk + downloadbaar per import.
+  rawMarkdown: text("raw_markdown"),
   ...timestamps,
 });
 
@@ -747,6 +804,9 @@ export type Brand = typeof brands.$inferSelect;
 export type ProjectDossier = typeof projectDossiers.$inferSelect;
 export type SpecLine = typeof specLines.$inferSelect;
 export type SpecLineCandidate = typeof specLineCandidates.$inferSelect;
+export type AiSuggestion = typeof aiSuggestions.$inferSelect;
+export type ProjectStatus = (typeof projectStatus.enumValues)[number];
+export type XisPhase = (typeof xisPhase.enumValues)[number];
 export type QuoteLine = typeof quoteLines.$inferSelect;
 export type ImportRun = typeof importRuns.$inferSelect;
 export type Organization = typeof organizations.$inferSelect;
