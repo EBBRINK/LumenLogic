@@ -66,6 +66,18 @@ export async function listBrandRelations(
   db: AppDb,
   today: Date = new Date(),
 ): Promise<BrandRelationRow[]> {
+  // Eén rij per merk, ook bij meerdere prijslijst-rijen (bv. vervangen lijsten):
+  // we aggregeren naar de nieuwste einddatum per merk i.p.v. een kale LEFT JOIN,
+  // die zou fan-outen zodra een merk >1 prijslijst heeft.
+  const latestList = db
+    .select({
+      brandId: priceLists.brandId,
+      validUntil: sql<string>`max(${priceLists.validUntil})`.as("valid_until"),
+    })
+    .from(priceLists)
+    .groupBy(priceLists.brandId)
+    .as("latest_list");
+
   const rows = await db
     .select({
       brandId: brands.id,
@@ -76,14 +88,14 @@ export async function listBrandRelations(
       contactEmail: brandRelations.contactEmail,
       lastContactAt: brandRelations.lastContactAt,
       notes: brandRelations.notes,
-      priceListValidUntil: priceLists.validUntil,
+      priceListValidUntil: latestList.validUntil,
       productCount: sql<number>`(
         select count(*) from ${products} p where p.brand_id = ${brands.id}
       )`,
     })
     .from(brands)
     .leftJoin(brandRelations, eq(brandRelations.brandId, brands.id))
-    .leftJoin(priceLists, eq(priceLists.brandId, brands.id))
+    .leftJoin(latestList, eq(latestList.brandId, brands.id))
     .orderBy(asc(brands.name));
 
   // K8: codes die door méér dan één merk gedragen worden.

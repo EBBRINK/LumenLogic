@@ -2,7 +2,7 @@
 // upsert is de enige schrijver en logt precies de juiste events (regel 5), en de
 // prijslijst-indicator deelt de datumlogica met listPriceListStatus.
 import { expect, test } from "vitest";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
 import { brandRelations, brands, events } from "@/db/schema";
 import {
@@ -115,6 +115,25 @@ test("prijslijst-indicator: geldig / verloopt binnenkort / verlopen / ontbreekt"
   expect(priceListIndicator("2026-07-14", TODAY)).toBe("verloopt_binnenkort");
   expect(priceListIndicator("2026-07-13", TODAY)).toBe("verlopen");
   expect(priceListIndicator(null, TODAY)).toBe("ontbreekt");
+});
+
+test("geen fan-out: merk met 2 prijslijst-rijen geeft 1 rij, indicator op de nieuwste lijst", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Merk Dubbel", name: "P1", validUntil: "2027-06-30",
+  });
+  // Tweede (oudere, vervangen) lijst via raw SQL — replaced_at gezet zodat de
+  // partial-unique-index op actieve lijsten niet schendt.
+  await db.execute(sql`
+    insert into price_lists (brand_id, name, valid_from, valid_until, replaced_at)
+    values (${brandId}, 'Oude lijst', '2024-01-01', '2025-01-01', now())
+  `);
+
+  const rows = await listBrandRelations(db, TODAY);
+  const dubbel = rows.filter((r) => r.brandId === brandId);
+  expect(dubbel).toHaveLength(1);
+  expect(dubbel[0].priceListValidUntil).toBe("2027-06-30");
+  expect(dubbel[0].priceListIndicator).toBe("aanwezig_geldig");
 });
 
 test("K8: merken met een gedeelde brand_code krijgen de dubbele-code-markering", async () => {
