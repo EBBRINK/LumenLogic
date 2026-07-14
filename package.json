@@ -13,7 +13,8 @@
     "seed:demo": "bun --env-file=.env.local scripts/seed-demo.ts",
     "test": "vitest run",
     "seed:scenario": "bun --env-file=.env.local scripts/seed-scenario.ts",
-    "seed:sustainability": "bun --env-file=.env.local scripts/seed-sustainability.ts"
+    "seed:sustainability": "bun --env-file=.env.local scripts/seed-sustainability.ts",
+    "cleanup:testdata": "bun --env-file=.env.local scripts/cleanup-testdata.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
