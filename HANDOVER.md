@@ -375,3 +375,30 @@ estimate-PDF terugleesbaar (offertenummer, totalen, p.m., beide merktekens) → 
 - **Resend/mailprovider** — magic-link gaat nog via de serverconsole (L-01).
 - **Echte XIS-API** — export is een idempotent snapshot in het payload-formaat; de echte
   Lynx-POST wacht op API-keys (extern).
+
+## Onderdeel Merkrelaties & data-inwinning — afgerond 2026-07-14
+
+Plan: `docs/plan-merkrelaties.md` (stappen 1–8). Overzicht `/data/merkrelaties`
+(status, prijslijst-indicator, mini-scorecard), detailpagina met volledige scorecard +
+relatieformulier, Excel-template-download en bericht-klaarzetten.
+
+### Aannames & bewuste besluiten
+
+- **Gradient-semantiek scorecard**: donkergroen = álle must-velden van de bucket 100%
+  gevuld; daaronder kleurt het blokje mee met de dekkingsratio (rood→geel→groen). De
+  exacte ratio-drempels zijn een UI-keuze, geen datamodel-feit.
+- **Niet-meetbare velden grijs**: velden die nog niet in het datamodel bestaan tonen
+  "niet meetbaar" (grijs) tot de datamodel-migratie (0007, parallelle workstream) landt.
+  Daarna is per veld alleen `measure.column` invullen in `lib/field-catalog.ts` genoeg.
+- **Drizzle-snapshot-gat**: migraties vanaf 0004 zijn handgeschreven; de drizzle-kit
+  meta-snapshots lopen dus achter op de werkelijke schema-staat.
+- **Dubbele brand_codes (K8)**: merken met een gedeelde code krijgen alleen een badge;
+  merge-tooling is bewust later.
+- **"Geen reactie"-filter** vereist een gevulde `lastContactAt` — status 'benaderd'
+  zonder contactdatum valt er buiten.
+- **TOCTOU-venstertje in het status-event**: tussen lezen van de oude status en de
+  upsert kan in theorie een andere schrijver zitten; single-user, acceptabel.
+- **Retour-pad** (ingevulde templates terug verwerken) is bewust het volgende onderdeel.
+- **exceljs** toegevoegd als dependency (echte .xlsx-template) — met Timo's akkoord.
+- **`brand_template_downloaded`-event** heeft `entityId` null (download is niet aan één
+  merk gebonden bij de generieke template).
