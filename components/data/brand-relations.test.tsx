@@ -11,6 +11,9 @@ import {
 } from "./brand-relations-table";
 import { DataCards } from "./data-cards";
 import { blokKleur, type BucketBlok } from "./mini-scorecard";
+import { BrandRelationForm } from "./brand-relation-form";
+import { BrandScorecard } from "./brand-scorecard";
+import { bucketScore, FIELD_CATALOG } from "@/lib/field-catalog";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -158,4 +161,113 @@ test("mini-scorecard: n.v.t. bij 0 producten en donkergroen bij 100% must", asyn
     .toBe("hsl(55 65% 45%)");
   expect(blokKleur({ key: "x", labelNl: "x", ratio: null, mustComplete: false }))
     .toBeUndefined();
+});
+
+// ── Detailpagina (stap 5): volledige scorecard + relatieformulier ────────────
+
+const filledByField: Record<string, number> = {
+  supplier_article_code: 2,
+  name_nl: 2,
+  category: 1,
+  list_price_excl_vat: 2,
+  kelvin: 2,
+  cri: 1,
+  color_1: 1,
+};
+const detailBuckets = [...FIELD_CATALOG]
+  .sort((a, b) => a.order - b.order)
+  .map((bucket) => ({ bucket, score: bucketScore(bucket, filledByField, 2) }));
+
+const detail = (
+  <Screen>
+    <div className="space-y-8">
+      <BrandRelationForm
+        values={{
+          brandId: "b-occhio",
+          status: "benaderd",
+          contactName: "Anna",
+          contactEmail: "anna@occhio.de",
+          lastContactAt: "2026-06-01",
+          notes: "Toezegging: Excel volgt.",
+        }}
+        updateAction={noopAction}
+      />
+      <BrandScorecard
+        buckets={detailBuckets}
+        filledByField={filledByField}
+        productCount={2}
+        hasProducts
+      />
+    </div>
+  </Screen>
+);
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`merkrelatie-detail (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(detail);
+      await expect.element(document.body).toBeInTheDocument();
+      await page.screenshot({
+        path: `./data-merkrelatie-detail.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
+test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden en legenda", async () => {
+  await renderServer(detail);
+  // Legenda met de donkergroen-definitie (Timo-besluit 1).
+  await expect
+    .element(page.getByText(/Donkergroen = alle must-velden 100%/))
+    .toBeInTheDocument();
+  // Dekkingspercentages: kelvin 100%, cri 50%.
+  await expect
+    .element(page.getByTitle(/Kleurtemperatuur \(K\): 100% van de producten/))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByTitle(/CRI: 50% van de producten/))
+    .toBeInTheDocument();
+  // Niet-meetbaar veld: EAN-code (kind none) grijs met uitleg.
+  await expect
+    .element(page.getByTitle(/EAN-code: nog niet meetbaar/))
+    .toBeInTheDocument();
+  // Bucket 9 volledig niet meetbaar.
+  await expect
+    .element(page.getByText("9. Documentatie / links"))
+    .toBeInTheDocument();
+  // Interne 🔒-velden dragen een slotje (aria-label "intern").
+  expect(page.getByLabelText("intern").all().length).toBeGreaterThanOrEqual(5);
+});
+
+test("detail-formulier: relatievelden vooringevuld en opslaan-knop aanwezig", async () => {
+  await renderServer(detail);
+  await expect.element(page.getByLabelText("Status")).toHaveValue("benaderd");
+  await expect.element(page.getByLabelText("Contactpersoon")).toHaveValue("Anna");
+  await expect
+    .element(page.getByLabelText("E-mail"))
+    .toHaveValue("anna@occhio.de");
+  await expect
+    .element(page.getByLabelText("Laatste contact"))
+    .toHaveValue("2026-06-01");
+  await expect
+    .element(page.getByRole("button", { name: "Opslaan" }))
+    .toBeInTheDocument();
+});
+
+test("scorecard zonder producten toont n.v.t.-uitleg i.p.v. 0% rood", async () => {
+  await renderServer(
+    <Screen>
+      <BrandScorecard
+        buckets={detailBuckets}
+        filledByField={{}}
+        productCount={0}
+        hasProducts={false}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/compleetheid n\.v\.t\./))
+    .toBeInTheDocument();
 });
