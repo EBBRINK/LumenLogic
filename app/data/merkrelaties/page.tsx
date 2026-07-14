@@ -8,6 +8,7 @@ import {
   BrandRelationsTable,
   type BrandRelationTableRow,
 } from "@/components/data/brand-relations-table";
+import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { bucketBlok } from "@/components/data/scorecard-blokken";
 import {
   getAllBrandCompleteness,
@@ -52,16 +53,19 @@ export default async function MerkrelatiesPage() {
       >
         <ArrowLeft className="size-3.5" /> Data
       </Link>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Merkrelaties</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Per merk: relatiestatus, prijslijst-dekking en datacompleetheid.
-          Toestemming (disclosure) beheer je op{" "}
-          <Link href="/admin/merken" className="underline">
-            Admin · Merken
-          </Link>
-          .
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Merkrelaties</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Per merk: relatiestatus, prijslijst-dekking en datacompleetheid.
+            Toestemming (disclosure) beheer je op{" "}
+            <Link href="/admin/merken" className="underline">
+              Admin · Merken
+            </Link>
+            .
+          </p>
+        </div>
+        <TemplateDownloadLink />
       </header>
       <BrandRelationsTable
         rows={rows}

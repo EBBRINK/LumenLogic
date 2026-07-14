@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { brandRelations, brands } from "@/db/schema";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
+import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
 import { getBrandCompleteness } from "@/lib/repo/brand-relations";
 import { requireSession } from "@/lib/session";
@@ -48,22 +49,25 @@ export default async function MerkrelatieDetailPage({
       >
         <ArrowLeft className="size-3.5" /> Merkrelaties
       </Link>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {row.name}
-          {row.brandCode && (
-            <span className="ml-2 text-base font-normal text-muted-foreground">
-              {row.brandCode}
-            </span>
-          )}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Relatie en datacompleetheid. Toestemming (disclosure) beheer je op{" "}
-          <Link href="/admin/merken" className="underline">
-            Admin · Merken
-          </Link>
-          .
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {row.name}
+            {row.brandCode && (
+              <span className="ml-2 text-base font-normal text-muted-foreground">
+                {row.brandCode}
+              </span>
+            )}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Relatie en datacompleetheid. Toestemming (disclosure) beheer je op{" "}
+            <Link href="/admin/merken" className="underline">
+              Admin · Merken
+            </Link>
+            .
+          </p>
+        </div>
+        <TemplateDownloadLink />
       </header>
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
