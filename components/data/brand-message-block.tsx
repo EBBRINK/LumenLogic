@@ -18,18 +18,25 @@ export function BrandMessageBlock({
   const [gekopieerd, setGekopieerd] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function kopieer() {
-    // Event bij de expliciete actie (K7) — loggen mag het kopiëren nooit blokkeren.
-    void onCopied(brandId).catch(() => {});
-    try {
-      await navigator.clipboard.writeText(message);
-    } catch {
-      // Geen clipboard-permissie (bv. onbeveiligde context): selecteer de tekst
-      // zodat Ctrl/Cmd+C alsnog werkt.
-      textareaRef.current?.select();
-    }
+  function kopieer() {
     setGekopieerd(true);
     setTimeout(() => setGekopieerd(false), 2000);
+    // Niet awaiten: de UI-bevestiging mag niet aan clipboard-permissies hangen.
+    // Zonder permissie (bv. onbeveiligde context) selecteren we de tekst zodat
+    // Ctrl/Cmd+C alsnog werkt.
+    try {
+      navigator.clipboard
+        .writeText(message)
+        .catch(() => textareaRef.current?.select());
+    } catch {
+      textareaRef.current?.select();
+    }
+    // Event bij de expliciete actie (K7) — loggen mag het kopiëren nooit blokkeren.
+    try {
+      void onCopied(brandId).catch(() => {});
+    } catch {
+      // Bewust stil: het bericht is al gekopieerd.
+    }
   }
 
   return (

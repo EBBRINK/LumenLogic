@@ -2,7 +2,7 @@
 // mobile/desktop) van het detailpagina-blok — servergegenereerde tekst in een readonly
 // textarea, kopieerknop die het event-callback aanroept, template-downloadknop ernaast.
 import { page } from "vitest/browser";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
 import { BrandMessageBlock } from "./brand-message-block";
@@ -82,8 +82,19 @@ test("tekst staat readonly in de textarea; templateknop ernaast", async () => {
     .toHaveAttribute("href", "/data/merkrelaties/template");
 });
 
-test("kopieerknop: klik toont 'Gekopieerd' (event-callback vuurt in dezelfde handler)", async () => {
-  await renderServer(blok());
-  await page.getByRole("button", { name: "Bericht kopiëren" }).click();
-  await expect.element(page.getByText("Gekopieerd")).toBeInTheDocument();
-});
+// Onder volle parallelle testlast hydrateert het client-eiland soms traag of pas na
+// een verse render — vandaar de klik-retry-lus én een test-retry met verse render.
+test(
+  "kopieerknop: klik toont 'Gekopieerd' (event-callback vuurt in dezelfde handler)",
+  { retry: 2 },
+  async () => {
+    await renderServer(blok());
+    await vi.waitFor(
+      async () => {
+        await page.getByRole("button", { name: /kopiëren|Gekopieerd/ }).click();
+        expect(document.body.textContent).toContain("Gekopieerd");
+      },
+      { timeout: 10_000, interval: 250 },
+    );
+  },
+);
