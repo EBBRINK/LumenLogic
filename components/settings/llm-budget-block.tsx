@@ -8,10 +8,13 @@ import { formatEur } from "@/lib/format";
 export function LlmBudgetBlock({
   budgetEur,
   spentEur,
+  vangnetEur,
   saveAction,
 }: {
   budgetEur: number | null;
   spentEur: number;
+  // Uitsplitsing: het deel van de teller dat het AI-vangnet (B4/stap 8) verbruikte.
+  vangnetEur?: number;
   saveAction: (formData: FormData) => void | Promise<void>;
 }) {
   const hasBudget = budgetEur != null && budgetEur > 0;
@@ -23,8 +26,8 @@ export function LlmBudgetBlock({
       <CardHeader>
         <CardTitle>LLM-budget</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Maandcap voor import, zoek-fallback en verrijking. De teller loopt per
-          kalendermaand.
+          Maandcap voor import, AI-vangnet, zoek-fallback en verrijking. De teller
+          loopt per kalendermaand.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
@@ -70,6 +73,12 @@ export function LlmBudgetBlock({
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
               Geen maandcap ingesteld.
+            </p>
+          )}
+          {vangnetEur != null && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Waarvan AI-vangnet:{" "}
+              <span className="tabular-nums">{formatEur(vangnetEur)}</span>
             </p>
           )}
         </div>

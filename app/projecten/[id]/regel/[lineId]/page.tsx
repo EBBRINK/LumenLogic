@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
+import { AiSuggestionBlock } from "@/components/dossier/ai-suggestion-block";
 import { DeviationTable } from "@/components/dossier/deviation-table";
 import {
   MatchCandidates,
@@ -12,6 +13,7 @@ import { IconUnlock } from "@/components/dossier/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Deviation, MatchStatus } from "@/components/dossier/types";
+import { getOpenSuggestionsForLine } from "@/lib/repo/ai-suggestions";
 import { getDossier, getSpecLine } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct } from "@/lib/repo/products";
@@ -19,11 +21,13 @@ import { formatEur } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 import {
   chooseCandidateAction,
+  dismissAiSuggestionAction,
   editSpecLineAction,
   runMatchAction,
   setDayPriceAction,
   setLineStatusAction,
   unlinkMatchAction,
+  useAiSuggestionAction,
 } from "../../../actions";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -83,6 +87,10 @@ export default async function RegelDetailPage({
   const matched = specLine.matchedProductId
     ? await getVisibleProduct(db, specLine.matchedProductId)
     : null;
+
+  // AI-vangnet (B4): niet-verworpen suggesties voor deze regel — zelfde blok als op
+  // de review-kaarten, met dezelfde tender-render-guard in het component.
+  const aiSuggestions = await getOpenSuggestionsForLine(db, specLine.id);
 
   // Gevraagde kernvelden: alleen wat is ingevuld is een matcheis (B-09).
   const requested: { label: string; value: string | number }[] = [];
@@ -257,6 +265,21 @@ export default async function RegelDetailPage({
           )}
         </section>
       </div>
+
+      {/* AI-SUGGESTIES (B4) — duidelijk gelabeld, kiezen blijft menswerk. */}
+      {aiSuggestions.length > 0 && (
+        <section className="mt-6">
+          <AiSuggestionBlock
+            dossierId={dossier.id}
+            specLineId={specLine.id}
+            suggestions={aiSuggestions}
+            phase={dossier.phase === "awarded" ? "awarded" : "tender"}
+            brandText={specLine.brandText}
+            useAction={useAiSuggestionAction}
+            dismissAction={dismissAiSuggestionAction}
+          />
+        </section>
+      )}
 
       {/* AFWIJKINGEN — altijd getoond, ook binnen groen (transparantieregel C-07). */}
       <section className="mt-6">

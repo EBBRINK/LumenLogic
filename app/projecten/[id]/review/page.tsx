@@ -7,12 +7,19 @@ import type {
   ReviewCandidate,
   ReviewItem,
 } from "@/components/dossier/types";
+import { getOpenSuggestionsByLine } from "@/lib/repo/ai-suggestions";
+import { getDossier } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct, searchProducts } from "@/lib/repo/products";
 import { getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
 import { getColorVariants } from "@/lib/repo/variants";
 import { getActor, requireSession } from "@/lib/session";
-import { decideReviewAction, linkManualProductAction } from "../../actions";
+import {
+  decideReviewAction,
+  dismissAiSuggestionAction,
+  linkManualProductAction,
+  useAiSuggestionAction,
+} from "../../actions";
 
 // Tab REVIEW — header en tabs komen uit layout.tsx, dus deze pagina rendert alleen zijn
 // eigen inhoud (fragment). De wachtrij is elke regel met reviewKind ≠ null; afgeronde
@@ -81,6 +88,10 @@ export default async function ReviewTab({
   const { id } = await params;
   const { regel, zoek } = await searchParams;
   const { pending, done } = await getReviewQueue(db, id);
+  // Fase voor de AI-suggestie-render-guard (regel 4) + de suggesties zelf (B4).
+  const dossier = await getDossier(db, id);
+  const phase = dossier?.phase === "awarded" ? ("awarded" as const) : ("tender" as const);
+  const suggestionsByLine = await getOpenSuggestionsByLine(db, id);
 
   // Verrijking per wachtend item: kandidaten (voor "welke van deze N" en de
   // variant-fallback) en échte kleurvarianten (alleen bij variant-reviews).
@@ -93,6 +104,7 @@ export default async function ReviewTab({
       if (r.reviewKind === "variant") {
         base.variants = await getColorVariants(db, r.id);
       }
+      base.aiSuggestions = suggestionsByLine.get(r.id) ?? [];
       return base;
     }),
   );
@@ -103,7 +115,8 @@ export default async function ReviewTab({
   const query = (zoek ?? "").trim();
   const rood: RedLinkLine[] = await Promise.all(
     redRows.map(async (r) => {
-      if (!regel || r.id !== regel || !query) return { ...r };
+      if (!regel || r.id !== regel || !query)
+        return { ...r, aiSuggestions: suggestionsByLine.get(r.id) ?? [] };
       const results = await searchProducts(db, {
         query,
         limit: 6,
@@ -120,6 +133,7 @@ export default async function ReviewTab({
           articleCode: p.articleCode,
           grossPrice: p.grossPrice,
         })),
+        aiSuggestions: suggestionsByLine.get(r.id) ?? [],
       };
     }),
   );
@@ -130,8 +144,11 @@ export default async function ReviewTab({
       pending={pendingItems}
       done={done.map(toReviewItem)}
       rood={rood}
+      phase={phase}
       decideAction={decideReviewAction}
       linkAction={linkManualProductAction}
+      aiUseAction={useAiSuggestionAction}
+      aiDismissAction={dismissAiSuggestionAction}
     />
   );
 }

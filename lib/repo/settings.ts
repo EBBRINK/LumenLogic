@@ -2,7 +2,7 @@
 // en LLM-verbruik. Zelfde patroon als de andere repo's: de db wordt geïnjecteerd, zodat de
 // app de Neon-HTTP-client meegeeft en tests een PGlite-client — dezelfde regels, bewijsbaar
 // in beide.
-import { asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { allowedEmails, appSettings, llmUsage } from "@/db/schema";
 import type { AppDb } from "./db";
 
@@ -98,5 +98,21 @@ export async function getLlmSpend(db: AppDb, now = new Date()): Promise<number> 
     .select({ total: sql<string>`coalesce(sum(${llmUsage.costEur}), 0)` })
     .from(llmUsage)
     .where(gte(llmUsage.createdAt, startOfMonth(now)))) as { total: string }[];
+  return Number(row?.total ?? 0);
+}
+
+// Zelfde teller, gefilterd op één doel (bv. 'vangnet' — het AI-vangnet van stap 8/B4).
+// Voor de uitsplitsing op de instellingenpagina; de cap blijft op het totaal gelden.
+export async function getLlmSpendForPurpose(
+  db: AppDb,
+  purpose: string,
+  now = new Date(),
+): Promise<number> {
+  const [row] = (await db
+    .select({ total: sql<string>`coalesce(sum(${llmUsage.costEur}), 0)` })
+    .from(llmUsage)
+    .where(
+      and(eq(llmUsage.purpose, purpose), gte(llmUsage.createdAt, startOfMonth(now))),
+    )) as { total: string }[];
   return Number(row?.total ?? 0);
 }

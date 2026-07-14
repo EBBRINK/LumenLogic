@@ -97,6 +97,18 @@ export type ColorVariantOption = {
   name: string;
 };
 
+// Eén AI-suggestie van het vangnet (B4) op een review-/rood-kaart of het regel-detail.
+// Alleen niet-verworpen suggesties bereiken de UI; het merk is nodig voor de extra
+// render-guard in tender-fase (defense in depth, ijzeren regel 4).
+export type AiSuggestionRow = {
+  id: string;
+  productId: string;
+  name: string;
+  brandName: string | null;
+  articleCode: string | null;
+  rationale: string;
+};
+
 // Een kandidaat op de review-kaart ("welke van deze N" / variant-fallback).
 export type ReviewCandidate = {
   productId: string;
@@ -126,6 +138,8 @@ export type ReviewItem = {
   reviewedAt?: string | null;
   reviewedBy?: string | null;
   reviewDecision?: string | null;
+  // Niet-verworpen AI-suggesties van het vangnet (B4) voor deze regel.
+  aiSuggestions?: AiSuggestionRow[];
 };
 
 // Zoekresultaat op de rood-kaart (handmatig linken) — uit visible_products.
@@ -148,6 +162,8 @@ export type RedLinkLine = {
   noMatchReason?: string | null;
   searchQuery?: string | null;
   results?: RedLinkResult[] | null;
+  // Niet-verworpen AI-suggesties van het vangnet (B4) voor deze regel.
+  aiSuggestions?: AiSuggestionRow[];
 };
 
 export type ComparedField = {

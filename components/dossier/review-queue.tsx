@@ -11,6 +11,7 @@
 // Rode regels zonder match staan onderaan in "Niet gevonden — handmatig linken":
 // de mens zoekt daar zélf (ijzeren regel 4 — het systeem doet géén suggesties).
 import { IconCheck, IconSearch } from "./icons";
+import { AiSuggestionBlock } from "./ai-suggestion-block";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +25,7 @@ import { formatEur } from "@/lib/format";
 import { StatusBadge } from "./status-badge";
 import type {
   Deviation,
+  Phase,
   RedLinkLine,
   ReviewCandidate,
   ReviewItem,
@@ -420,10 +422,16 @@ function PendingCard({
   dossierId,
   item,
   decideAction,
+  phase,
+  aiUseAction,
+  aiDismissAction,
 }: {
   dossierId: string;
   item: ReviewItem;
   decideAction: Action;
+  phase: Phase;
+  aiUseAction?: Action;
+  aiDismissAction?: Action;
 }) {
   // "Welke van deze N": alleen bij ≥2 schone kandidaten (lijst 'aantoonbaar' — volledig
   // beoordeelbaar, geen rood/onbekend). Eén schone kandidaat → de gewone geel-kaart.
@@ -439,6 +447,18 @@ function PendingCard({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {/* AI-vangnet (B4): niet-verworpen suggesties, duidelijk gelabeld. */}
+        {aiUseAction && aiDismissAction && (item.aiSuggestions?.length ?? 0) > 0 && (
+          <AiSuggestionBlock
+            dossierId={dossierId}
+            specLineId={item.id}
+            suggestions={item.aiSuggestions ?? []}
+            phase={phase}
+            brandText={item.brandText}
+            useAction={aiUseAction}
+            dismissAction={aiDismissAction}
+          />
+        )}
         {item.reviewKind === "geel" &&
           (clean.length >= 2 ? (
             <KeuzeCard
@@ -476,10 +496,16 @@ function RedLinkCard({
   dossierId,
   line,
   linkAction,
+  phase,
+  aiUseAction,
+  aiDismissAction,
 }: {
   dossierId: string;
   line: RedLinkLine;
   linkAction: Action;
+  phase: Phase;
+  aiUseAction?: Action;
+  aiDismissAction?: Action;
 }) {
   const results = line.results ?? null;
   return (
@@ -498,6 +524,18 @@ function RedLinkCard({
           Zoek zelf een vergelijkbaar product in de catalogus en link het; de regel
           wordt groen met het merkteken &ldquo;handmatig gekozen&rdquo;.
         </p>
+        {/* AI-vangnet (B4): suggesties zijn een startpunt — linken blijft de menskeuze. */}
+        {aiUseAction && aiDismissAction && (line.aiSuggestions?.length ?? 0) > 0 && (
+          <AiSuggestionBlock
+            dossierId={dossierId}
+            specLineId={line.id}
+            suggestions={line.aiSuggestions ?? []}
+            phase={phase}
+            brandText={line.brandText}
+            useAction={aiUseAction}
+            dismissAction={aiDismissAction}
+          />
+        )}
         <form
           method="get"
           action={`/projecten/${dossierId}/review`}
@@ -568,15 +606,23 @@ export function ReviewQueue({
   pending,
   done,
   rood = [],
+  // Default 'tender' = veilig (ijzeren regel 4): zonder expliciete fase worden
+  // AI-suggesties van een ander merk nooit gerenderd.
+  phase = "tender",
   decideAction,
   linkAction,
+  aiUseAction,
+  aiDismissAction,
 }: {
   dossierId: string;
   pending: ReviewItem[];
   done: ReviewItem[];
   rood?: RedLinkLine[];
+  phase?: Phase;
   decideAction: Action;
   linkAction?: Action;
+  aiUseAction?: Action;
+  aiDismissAction?: Action;
 }) {
   if (pending.length === 0 && done.length === 0 && rood.length === 0) {
     return (
@@ -608,6 +654,9 @@ export function ReviewQueue({
               dossierId={dossierId}
               item={item}
               decideAction={decideAction}
+              phase={phase}
+              aiUseAction={aiUseAction}
+              aiDismissAction={aiDismissAction}
             />
           ))}
         </div>
@@ -636,6 +685,9 @@ export function ReviewQueue({
               dossierId={dossierId}
               line={line}
               linkAction={linkAction}
+              phase={phase}
+              aiUseAction={aiUseAction}
+              aiDismissAction={aiDismissAction}
             />
           ))}
         </section>

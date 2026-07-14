@@ -33,6 +33,8 @@ import {
 } from "@/lib/repo/matching";
 import { recordPdfImport } from "@/lib/repo/imports";
 import { setDossierOrg } from "@/lib/repo/orgs";
+import { runVangnetSafe } from "@/lib/ai/vangnet";
+import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
 import { decideReview, flagForReview, linkManualProduct } from "@/lib/repo/review";
 import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
@@ -366,7 +368,45 @@ export async function editSpecLineAction(formData: FormData) {
   );
   // merk/type/specs kunnen de match veranderen → opnieuw matchen
   await runMatcher(db, specLineId, actor);
+  // AI-vangnet (stap 8) na de hermatch: awaited met vangrails (fout → event, nooit
+  // een kapotte edit); zonder key een direct skip-event.
+  await runVangnetSafe(db, dossierId, actor);
   redirect(`/projecten/${dossierId}/regel/${specLineId}`);
+}
+
+// AI-suggestie gebruiken als handmatige keuze (B4): loopt via de bestaande flow
+// (decideReview/linkManualProduct incl. zichtbaarheids-guard); de suggestie wordt
+// als historie gemarkeerd ('gebruikt door <actor>'). Een niet-meer-zichtbaar product
+// gooit in de repo — dan blijft alles ongewijzigd (zelfde vangnet als setStatusAction).
+export async function useAiSuggestionAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const suggestionId = String(formData.get("suggestionId") ?? "").trim();
+  if (suggestionId) {
+    try {
+      await useAiSuggestion(db, { suggestionId, actor: await getActor() });
+    } catch {
+      // product niet (meer) zichtbaar → suggestie en regel blijven ongewijzigd
+    }
+  }
+  revalidatePath(`/projecten/${dossierId}/review`);
+  revalidatePath(`/projecten/${dossierId}/regel/${specLineId}`);
+  revalidatePath(`/projecten/${dossierId}`);
+}
+
+// AI-suggestie verwerpen: dismissed_at/by + event; de regel zelf blijft onaangeroerd.
+export async function dismissAiSuggestionAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId"));
+  const specLineId = String(formData.get("specLineId"));
+  const suggestionId = String(formData.get("suggestionId") ?? "").trim();
+  if (suggestionId) {
+    await dismissSuggestion(db, { suggestionId, actor: await getActor() });
+  }
+  revalidatePath(`/projecten/${dossierId}/review`);
+  revalidatePath(`/projecten/${dossierId}/regel/${specLineId}`);
+  revalidatePath(`/projecten/${dossierId}`);
 }
 
 export async function deleteLineAction(formData: FormData) {

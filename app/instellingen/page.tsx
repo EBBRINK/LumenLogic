@@ -5,6 +5,7 @@ import { XisBlock } from "@/components/settings/xis-block";
 import type { XisEnvironment } from "@/components/settings/xis-block";
 import {
   getLlmSpend,
+  getLlmSpendForPurpose,
   getSetting,
   listAllowedEmails,
 } from "@/lib/repo/settings";
@@ -21,10 +22,11 @@ import {
 export default async function InstellingenPage() {
   await requireSession();
 
-  const [emails, budget, spent, xisEnv, xisKey] = await Promise.all([
+  const [emails, budget, spent, vangnetSpent, xisEnv, xisKey] = await Promise.all([
     listAllowedEmails(db),
     getSetting<number>(db, "llm_budget_eur"),
     getLlmSpend(db),
+    getLlmSpendForPurpose(db, "vangnet"), // uitsplitsing AI-vangnet (B4/stap 8)
     getSetting<string>(db, "xis_environment"),
     getSetting<string>(db, "xis_api_key"),
   ]);
@@ -54,6 +56,7 @@ export default async function InstellingenPage() {
         <LlmBudgetBlock
           budgetEur={budget}
           spentEur={spent}
+          vangnetEur={vangnetSpent}
           saveAction={saveBudgetAction}
         />
         <XisBlock

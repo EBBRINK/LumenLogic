@@ -4,6 +4,7 @@
 // op het voorstel-scherm, de mens vinkt aan wat klopt, en OCR/LLM staat standaard uit.
 import { eq } from "drizzle-orm";
 import { importRuns, type ImportRow } from "@/db/schema";
+import { runVangnetSafe } from "@/lib/ai/vangnet";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
 import { runMatcher } from "@/lib/repo/matching";
 import type { AppDb } from "./db";
@@ -137,6 +138,11 @@ export async function recordPdfImport(
     },
   });
 
+  // AI-vangnet (stap 8): tweede pass over de restregels, awaited maar met vangrails —
+  // fouten worden een ai_vangnet_failed-event, zonder key een skip-event; de import
+  // faalt er nooit door.
+  await runVangnetSafe(db, input.dossierId, input.actor);
+
   return { run, created };
 }
 
@@ -224,6 +230,9 @@ export async function confirmImportRun(
     actor,
     payload: { runId, added: created.length, ofRows: rows.length },
   });
+
+  // AI-vangnet (stap 8): zelfde vangrails als bij de PDF-import — nooit een importfout.
+  await runVangnetSafe(db, run.dossierId, actor);
 
   return { created };
 }
