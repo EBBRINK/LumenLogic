@@ -5,11 +5,34 @@ import type { MatchStatus, StatusCounts } from "./status";
 export type { MatchStatus, StatusCounts } from "./status";
 export type Phase = "tender" | "awarded";
 
+// B6: commerciële status + XIS-fase (bewust als losse unions, niet uit db/schema —
+// de presentational componenten blijven fixture-testbaar zonder repo).
+export type ProjectStatus =
+  | "concept"
+  | "estimate_gestuurd"
+  | "offerte"
+  | "gegund"
+  | "niet_gegund"
+  | "archief";
+
+export type XisPhase =
+  | "start"
+  | "engineering"
+  | "calculations"
+  | "presenting"
+  | "tender"
+  | "deal_making"
+  | "deliver"
+  | "aftersales"
+  | "win"
+  | "lost";
+
 export type DossierSummary = {
   id: string;
   name: string;
   customer: string | null;
   phase: Phase;
+  status: ProjectStatus;
   counts?: StatusCounts;
   lineCount?: number;
 };

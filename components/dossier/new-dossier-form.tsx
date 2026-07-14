@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { XIS_PHASE_LABELS, XIS_PHASE_ORDER } from "./project-status-badge";
 
-// Server-action-form (geen client-JS nodig). Fase-default = tender (regel 4).
+// Server-action-form (geen client-JS nodig). Een nieuw project start ALTIJD als
+// status 'concept' (geen statuskeuze hier); alleen de XIS-fase is te kiezen, default
+// 'start'. De veiligheidsstand (fase) wordt serverside afgeleid — default veilig (regel 4).
 // Org is optioneel: leeg = intern Brink-dossier (V1-default); een org koppelen is de
 // externe-uitrol-haak (L-03).
 export function NewDossierForm({
@@ -26,17 +29,21 @@ export function NewDossierForm({
         <Input id="customer" name="customer" placeholder="Opdrachtgever" />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="phase" className="text-sm font-medium">
-          Fase
+        <label htmlFor="xisPhase" className="text-sm font-medium">
+          XIS-fase
         </label>
         <select
-          id="phase"
-          name="phase"
-          defaultValue="tender"
+          id="xisPhase"
+          name="xisPhase"
+          required
+          defaultValue="start"
           className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
         >
-          <option value="tender">Tender (veilig — geen suggesties)</option>
-          <option value="awarded">Gegund</option>
+          {XIS_PHASE_ORDER.map((p) => (
+            <option key={p} value={p}>
+              {XIS_PHASE_LABELS[p]}
+            </option>
+          ))}
         </select>
       </div>
       {organizations.length > 0 && (

@@ -13,11 +13,18 @@ import {
   parseBestek,
   parseSpecCsv,
   setDayPrice,
-  setDossierPhase,
   setQuantity,
   updateQuoteHeader,
   updateSpecLine,
 } from "@/lib/repo/dossiers";
+import {
+  PROJECT_STATUSES,
+  XIS_PHASES,
+  setStatus,
+  setXisPhase,
+  type ProjectStatus,
+  type XisPhase,
+} from "@/lib/repo/project-status";
 import {
   chooseCandidate,
   runMatcher,
@@ -45,15 +52,19 @@ function strOrNull(v: FormDataEntryValue | null): string | null {
   return s.length ? s : null;
 }
 
+function asXisPhase(v: FormDataEntryValue | null): XisPhase {
+  return XIS_PHASES.includes(v as XisPhase) ? (v as XisPhase) : "start";
+}
+
 export async function createDossierAction(formData: FormData) {
   await requireSession();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
-  const phase = formData.get("phase") === "awarded" ? "awarded" : "tender";
+  // Geen statuskeuze bij aanmaken: altijd 'concept'. Alleen de XIS-fase (default start).
   const dossier = await createDossier(db, {
     name,
     customer: strOrNull(formData.get("customer")),
-    phase,
+    xisPhase: asXisPhase(formData.get("xisPhase")),
     actor: await getActor(),
   });
   // Optioneel: dossier aan een org koppelen (leeg = intern Brink-dossier).
@@ -344,10 +355,31 @@ export async function generateQuoteAction(formData: FormData) {
   redirect(`/projecten/${dossierId}/offerte`);
 }
 
-export async function setPhaseAction(formData: FormData) {
+// B6, stap 4: statuswijziging via de ene schrijver (lib/repo/project-status.ts) — de
+// afgeleide fase gaat in dezelfde update mee. Archief zonder reden wordt serverside
+// geweigerd; die fout vangen we hier op (de UI dwingt de reden al af — dit is het vangnet).
+export async function setStatusAction(formData: FormData) {
   await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const phase = formData.get("phase") === "awarded" ? "awarded" : "tender";
-  if (dossierId) await setDossierPhase(db, dossierId, phase, await getActor());
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  const status = formData.get("status");
+  if (!dossierId || !PROJECT_STATUSES.includes(status as ProjectStatus)) return;
+  try {
+    await setStatus(db, dossierId, status as ProjectStatus, await getActor(), {
+      reason: strOrNull(formData.get("reason")),
+    });
+  } catch {
+    // Reden verplicht bij archiveren → geen crash, project blijft ongewijzigd.
+  }
   revalidatePath(`/projecten/${dossierId}`);
+  revalidatePath("/projecten");
+}
+
+export async function setXisPhaseAction(formData: FormData) {
+  await requireSession();
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  const xisPhase = formData.get("xisPhase");
+  if (!dossierId || !XIS_PHASES.includes(xisPhase as XisPhase)) return;
+  await setXisPhase(db, dossierId, xisPhase as XisPhase, await getActor());
+  revalidatePath(`/projecten/${dossierId}`);
+  revalidatePath("/projecten");
 }

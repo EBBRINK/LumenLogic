@@ -10,8 +10,9 @@ import {
 } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
+import { derivePhase, type Phase, type XisPhase } from "./project-status";
 
-export type Phase = "tender" | "awarded";
+export type { Phase };
 
 // ── Dossiers ─────────────────────────────────────────────────────────────────
 export async function listDossiers(db: AppDb) {
@@ -21,16 +22,27 @@ export async function listDossiers(db: AppDb) {
     .orderBy(asc(projectDossiers.createdAt));
 }
 
+// Nieuw project: altijd status 'concept' (geen statuskeuze bij aanmaken); alleen de
+// XIS-fase is te kiezen (default 'start'). `phase` wordt afgeleid (B6, regel 4) —
+// dezelfde derivePhase als setStatus/setXisPhase, dus geen tweede waarheid.
 export async function createDossier(
   db: AppDb,
-  input: { name: string; customer?: string | null; phase?: Phase; actor?: string },
+  input: {
+    name: string;
+    customer?: string | null;
+    xisPhase?: XisPhase;
+    actor?: string;
+  },
 ) {
+  const xisPhase = input.xisPhase ?? "start";
   const [row] = await db
     .insert(projectDossiers)
     .values({
       name: input.name,
       customer: input.customer ?? null,
-      phase: input.phase ?? "tender", // default = veilig (regel 4)
+      status: "concept",
+      xisPhase,
+      phase: derivePhase("concept", xisPhase), // afgeleid; default = veilig (regel 4)
     })
     .returning();
   await logEvent(db, {
@@ -38,7 +50,12 @@ export async function createDossier(
     entityId: row.id,
     action: "dossier_created",
     actor: input.actor,
-    payload: { name: row.name, phase: row.phase },
+    payload: {
+      name: row.name,
+      status: row.status,
+      xisPhase: row.xisPhase,
+      phase: row.phase,
+    },
   });
   return row;
 }
@@ -52,24 +69,8 @@ export async function getDossier(db: AppDb, id: string) {
   return row ?? null;
 }
 
-export async function setDossierPhase(
-  db: AppDb,
-  id: string,
-  phase: Phase,
-  actor?: string,
-) {
-  await db
-    .update(projectDossiers)
-    .set({ phase, updatedAt: new Date() })
-    .where(eq(projectDossiers.id, id));
-  await logEvent(db, {
-    entity: "dossier",
-    entityId: id,
-    action: "phase_changed",
-    actor,
-    payload: { phase },
-  });
-}
+// setDossierPhase is verwijderd (B6): `phase` is afgeleid en kent één schrijver —
+// lib/repo/project-status.ts (setStatus/setXisPhase via derivePhase).
 
 // ── Spec-regels ──────────────────────────────────────────────────────────────
 // Elke spec-regel gejoined met het (eventueel) gematchte, nog-zichtbare product +

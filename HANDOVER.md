@@ -248,3 +248,18 @@ Frisse-ogen-review na oplevering; drie fixes doorgevoerd (43 tests groen):
 ## Open eindes
 - RLS staat uit op de bron-Supabase — bekend, niet van ons (alleen-lezen bron).
 - Eén gebruiker (Timo), geen rollen; rollen komen bij een echte multi-user-uitrol.
+
+## Status- en fasemodel (B6 stap 4, 2026-07-14)
+`phase` (tender/awarded) is nu AFGELEID met één schrijver: `lib/repo/project-status.ts`
+(`derivePhase`: awarded alléén bij status `gegund` óf xis_phase ∈ {deal_making, deliver,
+aftersales, win}). Phase-toggle, `setDossierPhase` en de lifecycle-code (controls, filter,
+`lib/repo/lifecycle.ts`) zijn verwijderd; alles draait op `status`. Bewuste keuzes:
+- **lifecycle-kolom** blijft in het schema staan (deprecated, wordt niet meer beschreven of
+  gelezen); oude `lifecycle_changed`-events blijven historie.
+- **deliveredAt wordt genegeerd** bij status `gegund`: het hoorde bij het oude
+  lifecycle-"opgeleverd" (armaturenboek overgedragen) en dat is niet hetzelfde als gunning.
+  Het gunningsmoment staat in het `status_changed`-event. Kolom deprecated, blijft staan.
+- **Read-only alléén bij archief** — bestaande "opgeleverde" dossiers (backfill 0006 →
+  status gegund) zijn daarmee weer bewerkbaar (bewust, zie plan B6).
+- `setStatus` naar `estimate_gestuurd` bevriest een bestaande, nog niet bevroren estimate
+  (I-06) + `quote_frozen`-event; zonder quote gebeurt er niets.

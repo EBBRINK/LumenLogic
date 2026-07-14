@@ -1,36 +1,30 @@
-// Fase-/lifecycle-filter voor de dossierlijst (§3.2-3): Alle · Tender · Gegund ·
-// Opgeleverd · Archief. Presentational — links met ?filter=…, de actieve draagt
-// aria-current. "Alle" (default) toont de lopende dossiers en verbergt gearchiveerde;
-// die staan bewust onder "Archief" (een verloren tender blijft data, nooit weggegooid).
+// Statusfilter voor de projectlijst (B6, stap 4) — vervangt het lifecycle-filter.
+// Presentational — links met ?filter=…, de actieve draagt aria-current. "Alle" (default)
+// toont alles behálve archief; gearchiveerde projecten staan bewust onder "Archief"
+// (een verloren tender blijft data, nooit weggegooid).
 import { cn } from "@/lib/utils";
+import { PROJECT_STATUS_META, PROJECT_STATUS_ORDER } from "./project-status-badge";
+import type { ProjectStatus } from "./types";
 
-export type DossierFilter =
-  | "alle"
-  | "tender"
-  | "gegund"
-  | "opgeleverd"
-  | "archief";
+export type ProjectStatusFilter = "alle" | ProjectStatus;
 
-const FILTERS: { value: DossierFilter; label: string }[] = [
+const FILTERS: { value: ProjectStatusFilter; label: string }[] = [
   { value: "alle", label: "Alle" },
-  { value: "tender", label: "Tender" },
-  { value: "gegund", label: "Gegund" },
-  { value: "opgeleverd", label: "Opgeleverd" },
-  { value: "archief", label: "Archief" },
+  ...PROJECT_STATUS_ORDER.map((s) => ({
+    value: s as ProjectStatusFilter,
+    label: PROJECT_STATUS_META[s].label,
+  })),
 ];
 
-export function LifecycleFilter({
+export function StatusFilter({
   active = "alle",
   basePath = "/projecten",
 }: {
-  active?: DossierFilter;
+  active?: ProjectStatusFilter;
   basePath?: string;
 }) {
   return (
-    <nav
-      className="flex flex-wrap gap-1 border-b"
-      aria-label="Filter op fase en lifecycle"
-    >
+    <nav className="flex flex-wrap gap-1 border-b" aria-label="Filter op status">
       {FILTERS.map((f) => {
         const isActive = f.value === active;
         const href =

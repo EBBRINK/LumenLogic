@@ -33,7 +33,7 @@ async function main() {
   const dossier = await createDossier(db, {
     name: NAME,
     customer: "Deerns / demo Eduard",
-    phase: "tender",
+    xisPhase: "tender",
     actor: "seed@brink",
   });
   await addSpecLines(db, dossier.id, LINES);

@@ -3,28 +3,33 @@ import { db } from "@/db/client";
 import { DossierList } from "@/components/dossier/dossier-list";
 import { NewDossierForm } from "@/components/dossier/new-dossier-form";
 import {
-  LifecycleFilter,
-  type DossierFilter,
-} from "@/components/dossier/lifecycle-filter";
+  StatusFilter,
+  type ProjectStatusFilter,
+} from "@/components/dossier/status-filter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StatusCounts } from "@/components/dossier/types";
-import { listDossiersFiltered } from "@/lib/repo/lifecycle";
+import { listDossiersFiltered } from "@/lib/repo/project-status";
 import { listOrganizations } from "@/lib/repo/orgs";
 import { getStatusCounts } from "@/lib/repo/matching";
 import { requireSession } from "@/lib/session";
 import { createDossierAction } from "./actions";
 
-const FILTERS: DossierFilter[] = [
+// Statusfilter (B6): zonder filter alles behálve archief.
+const FILTERS: ProjectStatusFilter[] = [
   "alle",
-  "tender",
+  "concept",
+  "estimate_gestuurd",
+  "offerte",
   "gegund",
-  "opgeleverd",
+  "niet_gegund",
   "archief",
 ];
 
-function asFilter(v: string | string[] | undefined): DossierFilter {
+function asFilter(v: string | string[] | undefined): ProjectStatusFilter {
   const s = Array.isArray(v) ? v[0] : v;
-  return FILTERS.includes(s as DossierFilter) ? (s as DossierFilter) : "alle";
+  return FILTERS.includes(s as ProjectStatusFilter)
+    ? (s as ProjectStatusFilter)
+    : "alle";
 }
 
 export default async function DossiersPage({
@@ -45,6 +50,7 @@ export default async function DossiersPage({
       name: d.name,
       customer: d.customer,
       phase: d.phase,
+      status: d.status,
       counts: (await getStatusCounts(db, d.id)) as StatusCounts,
     })),
   );
@@ -55,8 +61,8 @@ export default async function DossiersPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Projecten</h1>
           <p className="text-sm text-muted-foreground">
-            Kies een project of maak een nieuw aan. Fase-default = tender
-            (veilig).
+            Kies een project of maak een nieuw aan. Nieuw = concept; de
+            veiligheidsstand blijft default tender (veilig).
           </p>
         </div>
         <Link
@@ -67,7 +73,7 @@ export default async function DossiersPage({
         </Link>
       </header>
       <div className="mb-6">
-        <LifecycleFilter active={filter} />
+        <StatusFilter active={filter} />
       </div>
       <div className="grid gap-8 md:grid-cols-[1fr_20rem]">
         <section>

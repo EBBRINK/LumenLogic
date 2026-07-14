@@ -26,6 +26,7 @@ const dossiers: DossierSummary[] = [
     name: "Ziekenhuis Noord",
     customer: "Deerns",
     phase: "tender",
+    status: "concept",
     counts: { ...emptyCounts(), groen: 9, geel: 2, blauw: 2, rood: 1 },
   },
   {
@@ -33,6 +34,7 @@ const dossiers: DossierSummary[] = [
     name: "Kantoor Zuid",
     customer: "BAM Bouw",
     phase: "awarded",
+    status: "gegund",
     counts: { ...emptyCounts(), groen: 4, paars: 1 },
   },
 ];
