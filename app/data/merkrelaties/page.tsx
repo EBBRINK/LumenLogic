@@ -1,0 +1,58 @@
+// Merkrelaties — de relatie-/inwinningslaag over de ~430 bron-merken (plan-merkrelaties
+// K3): wie is benaderd, is er een geldige prijslijst, en hoe compleet is de data.
+// Toestemmings-as (disclosure) blijft op /admin/merken — bewust gescheiden.
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { db } from "@/db/client";
+import {
+  BrandRelationsTable,
+  type BrandRelationTableRow,
+} from "@/components/data/brand-relations-table";
+import { listBrandRelations } from "@/lib/repo/brand-relations";
+import { requireSession } from "@/lib/session";
+import { updateBrandRelationAction } from "./actions";
+
+export default async function MerkrelatiesPage() {
+  await requireSession();
+  const today = new Date();
+  const relations = await listBrandRelations(db, today);
+
+  const rows: BrandRelationTableRow[] = relations.map((r) => ({
+    brandId: r.brandId,
+    brandName: r.brandName,
+    brandCode: r.brandCode,
+    status: r.status,
+    lastContactAt: r.lastContactAt,
+    productCount: r.productCount,
+    priceListIndicator: r.priceListIndicator,
+    sharedBrandCode: r.sharedBrandCode,
+    scorecard: null,
+  }));
+
+  return (
+    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+      <Link
+        href="/data"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" /> Data
+      </Link>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Merkrelaties</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Per merk: relatiestatus, prijslijst-dekking en datacompleetheid.
+          Toestemming (disclosure) beheer je op{" "}
+          <Link href="/admin/merken" className="underline">
+            Admin · Merken
+          </Link>
+          .
+        </p>
+      </header>
+      <BrandRelationsTable
+        rows={rows}
+        todayIso={today.toISOString().slice(0, 10)}
+        updateAction={updateBrandRelationAction}
+      />
+    </main>
+  );
+}
