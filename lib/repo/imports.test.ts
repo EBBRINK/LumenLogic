@@ -8,6 +8,7 @@ import {
   confirmImportRun,
   createImportRun,
   getImportRun,
+  recordPdfImport,
 } from "@/lib/repo/imports";
 import type { ImportRow } from "@/db/schema";
 import { STATUS } from "@/components/dossier/status";
@@ -87,6 +88,72 @@ test("bevestigen maakt alleen de aangevinkte rows tot spec_lines + matcht ze", a
   // run staat na bevestigen op 'bevestigd'
   const after = await getImportRun(db, run.id);
   expect(after?.status).toBe("bevestigd");
+});
+
+// B2/stap 5: een PDF-import maakt direct een bevestigde run mét markdown-controlespoor,
+// en de spec-regels verwijzen via importRunId terug naar die run (herkomst blijft vindbaar).
+test("recordPdfImport: run 'bevestigd' mét rawMarkdown, regels gematcht + gekoppeld", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 SQ SP CEIL 3000K",
+    price: "310.00",
+    kelvin: 3000,
+  });
+  const dossier = await createDossier(db, { name: "Museum West" });
+
+  const markdown = "## Pagina 1\n\nLp301 XAL SASSO 100 3000K 20";
+  const { run, created } = await recordPdfImport(db, {
+    dossierId: dossier.id,
+    filename: "armaturenboek.pdf",
+    lines: [
+      {
+        fixtureCode: "Lp301",
+        quantity: 1,
+        brandText: "XAL",
+        productText: "SASSO 100",
+        reqKelvin: 3000,
+      },
+    ],
+    rawMarkdown: markdown,
+    actor: "test",
+  });
+
+  // de run is direct het controlespoor: bevestigd, met markdown, counts en bestandsnaam
+  expect(run.status).toBe("bevestigd");
+  expect(run.source).toBe("pdf");
+  expect(run.filename).toBe("armaturenboek.pdf");
+  expect(run.rawMarkdown).toBe(markdown);
+  expect(run.counts).toEqual({ total: 1, checked: 1 });
+
+  // de regel bestaat, is gematcht (matcher heeft gedraaid) en wijst terug naar de run
+  expect(created).toHaveLength(1);
+  expect(created[0].importRunId).toBe(run.id);
+  const lines = await getSpecLines(db, dossier.id);
+  expect(lines).toHaveLength(1);
+  expect(lines[0].fixtureCode).toBe("Lp301");
+  expect(lines[0].source).toBe("pdf");
+  expect(lines[0].status).toBe("groen");
+
+  // terug te lezen via getImportRun (de importrun-pagina + downloadroute doen dit)
+  const terug = await getImportRun(db, run.id);
+  expect(terug?.rawMarkdown).toBe(markdown);
+});
+
+test("recordPdfImport: geen tekstlaag → run zonder regels, notitie als controlespoor", async () => {
+  const db = await createTestDb();
+  const dossier = await createDossier(db, { name: "Beeld-PDF" });
+  const { run, created } = await recordPdfImport(db, {
+    dossierId: dossier.id,
+    filename: "scan.pdf",
+    lines: [],
+    rawMarkdown: "> geen tekstlaag aangetroffen",
+  });
+  expect(run.status).toBe("bevestigd");
+  expect(run.counts).toEqual({ total: 0, checked: 0 });
+  expect(run.rawMarkdown).toBe("> geen tekstlaag aangetroffen");
+  expect(created).toHaveLength(0);
+  expect(await getSpecLines(db, dossier.id)).toHaveLength(0);
 });
 
 test("annuleren/re-run: een al bevestigde run voegt niets extra toe (idempotent)", async () => {

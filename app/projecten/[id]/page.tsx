@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { AddSpecLineForm } from "@/components/dossier/add-spec-line-form";
+import { PdfUploadCard } from "@/components/dossier/pdf-upload-card";
 import { SpecLineTable } from "@/components/dossier/spec-line-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,18 +17,19 @@ import {
   linkBestekAction,
 } from "../actions";
 
-// Tab REGELS — de header en tabs komen uit layout.tsx. Deze pagina toont de
-// spec-regeltabel (aanvraagvolgorde, statuskleur, afwijkingen) + het toevoeg-paneel.
+// Tab REGELS — de header en tabs komen uit layout.tsx. Deze pagina toont de PDF-upload
+// als hoofdingang (stap 5), daarna de spec-regeltabel (aanvraagvolgorde, statuskleur,
+// afwijkingen) + het toevoeg-paneel voor de overige invoerwegen.
 export default async function RegelsTab({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pdf?: string }>;
+  searchParams: Promise<{ pdf?: string; run?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
-  const { pdf } = await searchParams;
+  const { pdf, run } = await searchParams;
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const lines = (await getSpecLines(db, id)) as unknown as SpecLineRow[];
@@ -43,11 +46,28 @@ export default async function RegelsTab({
           ) : (
             <>
               <span className="font-medium">{pdf}</span> spec-regels uit de PDF
-              geïmporteerd.
+              geïmporteerd en gematcht.
+            </>
+          )}
+          {run && (
+            <>
+              {" "}
+              <Link
+                href={`/projecten/${dossier.id}/import/${run}`}
+                className="font-medium underline underline-offset-2 hover:text-foreground"
+              >
+                Bekijk de importrun (brontekst)
+              </Link>
             </>
           )}
         </div>
       )}
+
+      {/* Stap 5: PDF-upload als eerste blok — de hoofdingang van een project. */}
+      <PdfUploadCard
+        dossierId={dossier.id}
+        importAction={importArmaturenboekPdfAction}
+      />
 
       <section className="mb-8">
         <div className="mb-2 flex items-baseline justify-between">
@@ -95,30 +115,6 @@ export default async function RegelsTab({
                 Koppel aantallen
               </Button>
             </div>
-          </form>
-
-          <form
-            action={importArmaturenboekPdfAction}
-            className="mt-6 flex flex-wrap items-center gap-3 border-t pt-6"
-          >
-            <input type="hidden" name="dossierId" value={dossier.id} />
-            <div>
-              <p className="text-sm font-medium">Armaturenboek-PDF importeren</p>
-              <p className="text-xs text-muted-foreground">
-                Leest de inhoudsopgave (code · merk · type). Alleen PDF&apos;s met
-                tekstlaag.
-              </p>
-            </div>
-            <input
-              type="file"
-              name="pdf"
-              accept="application/pdf"
-              required
-              className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
-            />
-            <Button type="submit" variant="secondary" size="sm">
-              Importeer PDF
-            </Button>
           </form>
         </CardContent>
       </Card>

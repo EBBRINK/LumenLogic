@@ -15,7 +15,26 @@ export type PdfImportResult = {
   lines: SpecLineInput[];
   hadText: boolean;
   rawRows: number;
+  // B2: de volledige tekstlaag als markdown ("## Pagina N" + regels zoals unpdf ze
+  // levert) — het controlespoor dat bij de importrun wordt bewaard.
+  markdown: string;
 };
+
+// Cap op de markdown (±2 MB tekst): een controlespoor moet volledig genoeg zijn om te
+// herleiden wat er in de PDF stond, maar mag de database-rij niet onbegrensd opblazen.
+export const MARKDOWN_CAP = 2 * 1024 * 1024;
+const TRUNCATION_NOTE = "> afgekapt op 2 MB";
+export const NO_TEXT_LAYER_NOTE = "> geen tekstlaag aangetroffen";
+
+// Tekstlaag per pagina → markdown-controlespoor. Regeleindes blijven zoals unpdf ze
+// levert (hasEOL); boven de cap kappen we af met een eerlijke notitie onderaan.
+export function pagesToMarkdown(pages: string[]): string {
+  const md = pages
+    .map((page, i) => `## Pagina ${i + 1}\n\n${page}`)
+    .join("\n\n");
+  if (md.length <= MARKDOWN_CAP) return md;
+  return `${md.slice(0, MARKDOWN_CAP)}\n\n${TRUNCATION_NOTE}`;
+}
 
 // Splitst "XAL SASSO 100" → { brand, type } door de langst mogelijke bekende merknaam
 // vooraan te matchen. Zo blijven "Wever & Ducré", "LED Linear", "Landscape Forms Inc" heel.
@@ -105,9 +124,14 @@ export async function extractSpecLinesFromPdf(
   brandNames: string[],
 ): Promise<PdfImportResult> {
   const pdf = await getDocumentProxy(bytes);
-  const { text } = await extractText(pdf, { mergePages: true });
-  const merged = Array.isArray(text) ? text.join("\n") : text;
+  // Per pagina extraheren (mergePages: false): zo behouden we regeleindes voor de
+  // markdown; voor de parser plakken we de pagina's aan elkaar (die normaliseert
+  // whitespace toch al, dus dit is gelijk aan de oude mergePages-uitkomst).
+  const { text } = await extractText(pdf, { mergePages: false });
+  const pages = Array.isArray(text) ? text : [text];
+  const merged = pages.join("\n");
   const hadText = merged.trim().length > 0;
   const lines = hadText ? parseTocText(merged, brandNames) : [];
-  return { lines, hadText, rawRows: lines.length };
+  const markdown = hadText ? pagesToMarkdown(pages) : NO_TEXT_LAYER_NOTE;
+  return { lines, hadText, rawRows: lines.length, markdown };
 }

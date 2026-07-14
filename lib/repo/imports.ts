@@ -61,6 +61,85 @@ export async function createImportRun(
   return run;
 }
 
+// B2/stap 5: een PDF-import is géén voorstel — de regels zijn deterministisch geparst en
+// gaan direct het dossier in (bestaand gedrag). De run bestaat als vaste plek voor het
+// controlespoor: rows-snapshot, counts, bestandsnaam en de volledige tekstlaag als
+// markdown (`raw_markdown`, cap ~2 MB). Status direct 'bevestigd'; de CSV-voorstel-flow
+// (createImportRun + confirmImportRun) blijft ongewijzigd.
+export async function recordPdfImport(
+  db: AppDb,
+  input: {
+    dossierId: string;
+    filename?: string | null;
+    lines: SpecLineInput[];
+    rawMarkdown: string;
+    actor?: string;
+  },
+) {
+  const rows: ImportRow[] = input.lines.map((l) => ({
+    fixtureCode: l.fixtureCode,
+    quantity: l.quantity ?? null,
+    brandText: l.brandText ?? null,
+    productText: l.productText ?? null,
+    zone: l.zone ?? null,
+    specs: {
+      ...(l.reqKelvin != null ? { kelvin: l.reqKelvin } : {}),
+      ...(l.reqCri != null ? { cri: l.reqCri } : {}),
+      ...(l.reqIp != null ? { ip: l.reqIp } : {}),
+      ...(l.reqWatt != null ? { watt: l.reqWatt } : {}),
+      ...(l.reqLumen != null ? { lumen: l.reqLumen } : {}),
+      ...(l.reqBeamAngle != null ? { beamAngle: l.reqBeamAngle } : {}),
+      ...(l.reqDimmable != null ? { dimmable: l.reqDimmable } : {}),
+    },
+    source: "pdf",
+    checked: true, // deterministisch geparst → alles telt als bevestigd
+  }));
+
+  const [run] = await db
+    .insert(importRuns)
+    .values({
+      dossierId: input.dossierId,
+      source: "pdf",
+      filename: input.filename ?? null,
+      status: "bevestigd",
+      rows,
+      counts: { total: rows.length, checked: rows.length },
+      rawMarkdown: input.rawMarkdown,
+      actor: input.actor ?? null,
+    })
+    .returning();
+
+  const created = input.lines.length
+    ? await addSpecLines(
+        db,
+        input.dossierId,
+        input.lines.map((l) => ({
+          ...l,
+          source: "pdf" as const,
+          importRunId: run.id,
+        })),
+      )
+    : [];
+  for (const line of created) {
+    await runMatcher(db, line.id, input.actor);
+  }
+
+  await logEvent(db, {
+    entity: "dossier",
+    entityId: input.dossierId,
+    action: "import_run_created",
+    actor: input.actor,
+    payload: {
+      runId: run.id,
+      source: "pdf",
+      rows: rows.length,
+      status: "bevestigd",
+    },
+  });
+
+  return { run, created };
+}
+
 export async function getImportRun(db: AppDb, runId: string) {
   const [row] = await db
     .select()

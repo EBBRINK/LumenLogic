@@ -31,6 +31,7 @@ import {
   setLineStatus,
   unlinkMatch,
 } from "@/lib/repo/matching";
+import { recordPdfImport } from "@/lib/repo/imports";
 import { setDossierOrg } from "@/lib/repo/orgs";
 import { decideReview, flagForReview } from "@/lib/repo/review";
 import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
@@ -139,25 +140,29 @@ export async function importArmaturenboekPdfAction(formData: FormData) {
   const brandNames = (
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
-  const { lines, hadText } = await extractSpecLinesFromPdf(bytes, brandNames);
-  if (lines.length) {
-    const rows = await addSpecLines(
-      db,
-      dossierId,
-      lines.map((l) => ({ ...l, source: "pdf" as const })),
-    );
-    for (const r of rows) await runMatcher(db, r.id, actor);
-  }
+  const { lines, hadText, markdown } = await extractSpecLinesFromPdf(
+    bytes,
+    brandNames,
+  );
+  // B2/stap 5: de import krijgt altijd een run (status 'bevestigd') als vaste plek voor
+  // het markdown-controlespoor — ook bij nul regels of een ontbrekende tekstlaag.
+  const { run } = await recordPdfImport(db, {
+    dossierId,
+    filename: file.name,
+    lines,
+    rawMarkdown: markdown,
+    actor,
+  });
   await logEvent(db, {
     entity: "dossier",
     entityId: dossierId,
     action: "pdf_import",
     actor,
-    payload: { file: file.name, hadText, imported: lines.length },
+    payload: { file: file.name, hadText, imported: lines.length, runId: run.id },
   });
   revalidatePath(`/projecten/${dossierId}`);
   redirect(
-    `/projecten/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}`,
+    `/projecten/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}&run=${run.id}`,
   );
 }
 
