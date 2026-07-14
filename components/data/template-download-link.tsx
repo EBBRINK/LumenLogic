@@ -1,3 +1,5 @@
+"use client";
+
 // Downloadknop voor het merk-Excel-template (stap 6). Gewone <a> naar de GET-route —
 // de route logt het event (regel 5) en zet Content-Disposition: attachment.
 // Bestandsnaam als literal (niet uit lib/excel-template) zodat exceljs nooit in de

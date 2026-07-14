@@ -4,15 +4,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { brandRelations, brands } from "@/db/schema";
+import { brandRelations, brands, priceLists } from "@/db/schema";
+import { BrandMessageBlock } from "@/components/data/brand-message-block";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
-import { getBrandCompleteness } from "@/lib/repo/brand-relations";
+import { buildBrandMessage } from "@/lib/brand-message";
+import {
+  getBrandCompleteness,
+  priceListIndicator,
+} from "@/lib/repo/brand-relations";
 import { requireSession } from "@/lib/session";
-import { updateBrandRelationAction } from "../actions";
+import {
+  logBrandMessagePreparedAction,
+  updateBrandRelationAction,
+} from "../actions";
 
 export default async function MerkrelatieDetailPage({
   params,
@@ -41,6 +49,21 @@ export default async function MerkrelatieDetailPage({
 
   const completeness = await getBrandCompleteness(db, brandId);
 
+  // Bericht (stap 7): prijslijst-stand via dezelfde indicator-logica als het overzicht.
+  const [latestList] = await db
+    .select({ validUntil: sql<string | null>`max(${priceLists.validUntil})` })
+    .from(priceLists)
+    .where(eq(priceLists.brandId, brandId));
+  const validUntil = latestList?.validUntil ?? null;
+  const message = buildBrandMessage({
+    brandName: row.name,
+    contactName: row.contactName,
+    productCount: completeness.productCount,
+    priceListIndicator: priceListIndicator(validUntil),
+    priceListValidUntil: validUntil,
+    buckets: completeness.buckets,
+  });
+
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <Link
@@ -67,7 +90,6 @@ export default async function MerkrelatieDetailPage({
             .
           </p>
         </div>
-        <TemplateDownloadLink />
       </header>
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
@@ -82,6 +104,18 @@ export default async function MerkrelatieDetailPage({
             notes: row.notes,
           }}
           updateAction={updateBrandRelationAction}
+        />
+      </section>
+
+      <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-medium">Bericht klaarzetten</h2>
+          <TemplateDownloadLink />
+        </div>
+        <BrandMessageBlock
+          brandId={row.id}
+          message={message}
+          onCopied={logBrandMessagePreparedAction}
         />
       </section>
 

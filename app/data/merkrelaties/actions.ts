@@ -10,6 +10,7 @@ import {
   upsertBrandRelation,
   type BrandRelationPatch,
 } from "@/lib/repo/brand-relations";
+import { logEvent } from "@/lib/repo/events";
 import { getActor, requireSession } from "@/lib/session";
 
 const STATUSSEN: BrandRelationStatus[] = [
@@ -47,4 +48,18 @@ export async function updateBrandRelationAction(formData: FormData) {
   revalidatePath("/data/merkrelaties");
   revalidatePath(`/data/merkrelaties/${brandId}`);
   revalidatePath("/data");
+}
+
+// K7/regel 5: 'brand_message_prepared' loggen we bij de expliciete gebruikersactie
+// (kopiëren), niet bij elke page-render — dat zou de events-tabel vervuilen met ruis
+// (zelfde afweging als brand_template_downloaded: pas bij de download zelf).
+export async function logBrandMessagePreparedAction(brandId: string) {
+  await requireSession();
+  if (!brandId) return;
+  await logEvent(db, {
+    entity: "brand",
+    entityId: brandId,
+    action: "brand_message_prepared",
+    actor: await getActor(),
+  });
 }
