@@ -50,6 +50,12 @@ const MAX_TOKENS_PER_CALL = 700;
 const MAX_TURNS_PER_LINE = 6;
 const MAX_SUGGESTIONS_PER_LINE = 3;
 const SEARCH_LIMIT = 8;
+// Tijdgrenzen: de run wordt awaited in de import-/edit-respons, dus hangen mag niet.
+// Per API-call 30 s (SDK-default is ~10 min) met hooguit één retry; per run een harde
+// grens — overschreden tussen regels → run stopt netjes met een skip-event, de rest
+// van de regels komt bij de volgende import/hermatch vanzelf weer aan de beurt.
+const CALL_TIMEOUT_MS = 30_000;
+export const VANGNET_MAX_MS = 120_000;
 // Kosten per miljoen tokens voor claude-haiku-4-5 ($1 in / $5 uit); we rekenen bewust
 // conservatief 1 USD ≈ 1 EUR zodat de budgetteller (llm_usage.cost_eur, L-06) nooit
 // te laag telt.
@@ -100,7 +106,13 @@ export function createAnthropicVangnetClient(apiKey: string): VangnetClient {
     async createMessage(params) {
       if (!sdkClient) {
         const { default: Anthropic } = await import("@anthropic-ai/sdk");
-        sdkClient = new Anthropic({ apiKey });
+        // timeout in ms (TS-SDK); maxRetries 1 — de run draait in de request-cyclus
+        // van een import/edit, dus kort falen gaat boven lang wachten.
+        sdkClient = new Anthropic({
+          apiKey,
+          timeout: CALL_TIMEOUT_MS,
+          maxRetries: 1,
+        });
       }
       const res = await sdkClient.messages.create({
         model: params.model,
@@ -527,9 +539,12 @@ export type VangnetRunResult = {
 export async function runVangnet(
   db: AppDb,
   dossierId: string,
-  opts: { client?: VangnetClient; actor?: string } = {},
+  // `now` is injecteerbaar zodat de tijdsgrens-logica testbaar is met een nep-klok.
+  opts: { client?: VangnetClient; actor?: string; now?: () => number } = {},
 ): Promise<VangnetRunResult> {
   const result: VangnetRunResult = { checked: [], suggested: 0, discarded: 0 };
+  const now = opts.now ?? Date.now;
+  const startMs = now();
 
   // Zonder key geen vangnet: netjes overslaan met een event, nooit een fout.
   const apiKey = envApiKey();
@@ -569,7 +584,26 @@ export async function runVangnet(
 
   const lines = await selectLines(db, dossierId, phase);
 
-  for (const line of lines) {
+  for (const [i, line] of lines.entries()) {
+    // Harde tijdsgrens per run: de vangnet-run wordt awaited in de import-/edit-
+    // respons, dus na VANGNET_MAX_MS stoppen we tussen twee regels — skip-event met
+    // wat er nog open stond, en de import slaagt gewoon.
+    const elapsedMs = now() - startMs;
+    if (elapsedMs > VANGNET_MAX_MS) {
+      await logEvent(db, {
+        entity: "dossier",
+        entityId: dossierId,
+        action: "ai_vangnet_skipped_timeout",
+        actor: opts.actor,
+        payload: {
+          elapsedMs,
+          maxMs: VANGNET_MAX_MS,
+          remaining: lines.length - i,
+          checked: result.checked.length,
+        },
+      });
+      break;
+    }
     // Budgetstop óók tussen regels: elke API-call schrijft llm_usage, dus de teller
     // is binnen de run actueel — een lange restlijst kan de cap niet doorbranden.
     if (result.checked.length > 0) {

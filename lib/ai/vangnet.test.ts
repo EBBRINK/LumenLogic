@@ -17,6 +17,7 @@ import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import {
   parseSuggestions,
   runVangnet,
+  VANGNET_MAX_MS,
   VANGNET_MODEL,
   type VangnetClient,
   type VangnetMessageParams,
@@ -274,6 +275,81 @@ test("budget overschreden → skip + event, geen API-calls", async () => {
   expect(result.checked).toEqual([]);
   expect(calls.length).toBe(0);
   expect((await eventsByAction(db, "ai_vangnet_skipped_budget")).length).toBe(1);
+});
+
+// ── Tijdsgrens per run ───────────────────────────────────────────────────────
+// De run wordt awaited in de import-/edit-respons: na VANGNET_MAX_MS stopt hij
+// tussen twee regels met een skip-event (nep-klok geïnjecteerd via opts.now).
+test("tijdsgrens overschreden tussen regels → run stopt netjes + skip-event met restant", async () => {
+  const db = await createTestDb();
+  const dossier = await seedDossier(db);
+  const line1 = await addLine(db, dossier.id, {
+    fixtureCode: "Lr1", status: "rood", sortOrder: 1,
+  });
+  const line2 = await addLine(db, dossier.id, {
+    fixtureCode: "Lr2", status: "rood", sortOrder: 2,
+  });
+  const line3 = await addLine(db, dossier.id, {
+    fixtureCode: "Lr3", status: "rood", sortOrder: 3,
+  });
+
+  // Nep-klok: start op 0; ná de eerste API-call springt de tijd over de grens.
+  let t = 0;
+  const { client: inner, calls } = mockClient([finalJson([]), finalJson([])]);
+  const client: VangnetClient = {
+    async createMessage(params) {
+      const res = await inner.createMessage(params);
+      t = VANGNET_MAX_MS + 1; // de eerste regel 'duurde' langer dan de hele grens
+      return res;
+    },
+  };
+
+  const result = await runVangnet(db, dossier.id, {
+    client,
+    actor: ACTOR,
+    now: () => t,
+  });
+
+  // Alleen de eerste regel is behandeld; daarna netjes gestopt — geen fout.
+  expect(result.checked).toEqual([line1.id]);
+  expect(calls.length).toBe(1);
+  const evts = await eventsByAction(db, "ai_vangnet_skipped_timeout");
+  expect(evts.length).toBe(1);
+  const payload = evts[0].payload as {
+    remaining: number;
+    checked: number;
+    elapsedMs: number;
+    maxMs: number;
+  };
+  expect(payload.remaining).toBe(2); // line2 + line3 stonden nog open
+  expect(payload.checked).toBe(1);
+  expect(payload.elapsedMs).toBeGreaterThan(VANGNET_MAX_MS);
+  expect(payload.maxMs).toBe(VANGNET_MAX_MS);
+  // de run-samenvatting komt gewoon nog (de aanroeper merkt niets van de stop)
+  expect((await eventsByAction(db, "ai_vangnet_run")).length).toBe(1);
+  // en de onbehandelde regels zijn onaangeroerd
+  expect((await getLine(db, line2.id)).status).toBe("rood");
+  expect((await getLine(db, line3.id)).status).toBe("rood");
+});
+
+test("binnen de tijdsgrens: alle regels behandeld, geen timeout-event", async () => {
+  const db = await createTestDb();
+  const dossier = await seedDossier(db);
+  await addLine(db, dossier.id, { fixtureCode: "Lr1", status: "rood", sortOrder: 1 });
+  await addLine(db, dossier.id, { fixtureCode: "Lr2", status: "rood", sortOrder: 2 });
+
+  let t = 0;
+  const { client: inner } = mockClient([finalJson([]), finalJson([])]);
+  const client: VangnetClient = {
+    async createMessage(params) {
+      const res = await inner.createMessage(params);
+      t += 1_000; // ruim binnen de grens per regel
+      return res;
+    },
+  };
+  const result = await runVangnet(db, dossier.id, { client, now: () => t });
+  expect(result.checked.length).toBe(2);
+  expect((await eventsByAction(db, "ai_vangnet_skipped_timeout")).length).toBe(0);
 });
 
 // ── Zonder key ───────────────────────────────────────────────────────────────
