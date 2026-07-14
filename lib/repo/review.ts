@@ -38,6 +38,11 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
 // status), wel werkvoorraad — de review-pagina toont ze in een eigen sectie waar de
 // mens zélf een vergelijkbaar product zoekt en linkt (ijzeren regel 4: het systeem
 // doet hier géén suggesties; zoeken + klikken is een menshandeling).
+// Regels mét een reviewKind zijn uitgesloten (bewust besluit, reviewer-bevinding
+// 2026-07-14): een afgewezen gele regel houdt reviewKind='geel' + reviewedAt en zou
+// anders dubbel verschijnen — in "Afgerond" én hier. De afwijzing is een genomen
+// besluit, geen open werkvoorraad; handmatig linken kan dan altijd nog via het
+// regel-detail ("Andere match").
 export async function getRedLinkLines(db: AppDb, dossierId: string) {
   return db
     .select({
@@ -53,6 +58,7 @@ export async function getRedLinkLines(db: AppDb, dossierId: string) {
         eq(specLines.dossierId, dossierId),
         eq(specLines.status, "rood"),
         isNull(specLines.matchedProductId),
+        isNull(specLines.reviewKind),
       ),
     )
     .orderBy(asc(specLines.sortOrder), asc(specLines.createdAt));
@@ -64,11 +70,14 @@ export async function getRedLinkLines(db: AppDb, dossierId: string) {
 // moet die werkvoorraad eerlijk tonen. Zodra gelinkt is de regel groen en valt hij
 // uit beide tellingen (er is geen blijvend "afgerond"-spoor voor rood-linken op de
 // badge; het audit-spoor leeft in events + chosenBy/chosenReason).
+// Zelfde uitsluiting als getRedLinkLines: regels mét reviewKind tellen alleen via de
+// review-tak — een afgewezen gele regel (reviewKind blijft staan, reviewedAt gezet)
+// telt dus niet eeuwig als 'wachtend'; badge en pagina blijven consistent.
 export async function getReviewCounts(
   db: AppDb,
   dossierId: string,
 ): Promise<{ pending: number; total: number }> {
-  const roodOpen = sql`(${specLines.status} = 'rood' and ${specLines.matchedProductId} is null)`;
+  const roodOpen = sql`(${specLines.status} = 'rood' and ${specLines.matchedProductId} is null and ${specLines.reviewKind} is null)`;
   const [row] = await db
     .select({
       total: sql<number>`count(*) filter (where ${specLines.reviewKind} is not null or ${roodOpen})`,
@@ -193,6 +202,15 @@ export async function decideReview(
   // Bevestigende productkeuze → groen + merkteken (zie het blokcommentaar hierboven).
   let chosenProductId: string | null = null;
   if (input.decision === "accepteer" || input.decision === "variant") {
+    if (input.productId) {
+      // Server-side guard (regel 3, zelfde als linkManualProduct): een expliciet
+      // meegegeven productId komt uit het formulier en moet een nú zichtbaar product
+      // zijn — verzonnen of onzichtbaar id → weigeren, de regel blijft ongewijzigd
+      // (er is op dit punt nog niets gemuteerd).
+      const { getVisibleProduct } = await import("./products");
+      const product = await getVisibleProduct(db, input.productId);
+      if (!product) throw new Error("product niet zichtbaar of onbekend");
+    }
     chosenProductId =
       input.productId ??
       (input.decision === "accepteer"

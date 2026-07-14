@@ -13,6 +13,7 @@ import {
   flagForReview,
   getReviewCounts,
   getRedLinkLines,
+  getReviewQueue,
   linkManualProduct,
 } from "@/lib/repo/review";
 
@@ -159,6 +160,50 @@ test("variant mét productId → groen + matched; onbekende zuster krijgt kandid
   expect(chosen[0].chosenReason).toBe("kleurvariant gekozen in review");
 });
 
+// Server-side guard (reviewer-bevinding): een expliciet productId uit het formulier
+// moet een nú zichtbaar product zijn — verzonnen of onzichtbaar id → weigeren, en de
+// regel blijft volledig ongewijzigd (zelfde guard als linkManualProduct).
+test("decideReview weigert een verzonnen of onzichtbaar productId, regel ongewijzigd", async () => {
+  const s = await seedTwoCleanYellow();
+  // verzonnen id bij 'accepteer'
+  await expect(
+    decideReview(s.db, {
+      specLineId: s.lineId,
+      decision: "accepteer",
+      productId: crypto.randomUUID(),
+      actor: ACTOR,
+    }),
+  ).rejects.toThrow(/niet zichtbaar/);
+  // onzichtbaar product (zelfde merk, geen geldige prijs) bij 'variant'
+  const schema = await import("@/db/schema");
+  const invisible = crypto.randomUUID();
+  await s.db.insert(schema.products).values({
+    id: invisible,
+    name: "VELA ROUND 600 BLACK",
+    brandId: s.brandId,
+    brandName: "XAL",
+  });
+  await flagForReview(s.db, s.lineId, "variant");
+  await expect(
+    decideReview(s.db, {
+      specLineId: s.lineId,
+      decision: "variant",
+      productId: invisible,
+      variantColor: "black",
+      actor: ACTOR,
+    }),
+  ).rejects.toThrow(/niet zichtbaar/);
+
+  // de regel is in beide gevallen onaangeroerd gebleven
+  const after = await getLine(s.db, s.lineId);
+  expect(after.status).toBe("geel");
+  expect(after.matchedProductId).toBeNull();
+  expect(after.reviewedAt).toBeNull();
+  expect(after.reviewDecision).toBeNull();
+  expect(after.reqColor).toBeNull();
+  expect((await chosenCandidates(s.db, s.lineId)).length).toBe(0);
+});
+
 test("afwijzen blijft → rood, reden verplicht, geen match gezet", async () => {
   const s = await seedTwoCleanYellow();
   await expect(
@@ -176,6 +221,47 @@ test("afwijzen blijft → rood, reden verplicht, geen match gezet", async () => 
   expect(after.matchedProductId).toBeNull();
   expect(after.noMatchReason).toContain("hoger vermogen");
   expect((await chosenCandidates(s.db, s.lineId)).length).toBe(0);
+});
+
+// Reviewer-bevinding: een afgewezen gele regel (reviewKind blijft staan, reviewedAt
+// gezet, status rood zonder match) mag NIET dubbel op de reviewpagina verschijnen —
+// alleen in "Afgerond", niet in de rood-linksectie; en de badge telt hem niet als
+// wachtend. Een verse rode regel (zonder reviewKind) hoort wél in de rood-sectie.
+test("afgewezen regel staat alleen in Afgerond — niet in de rood-sectie, niet als wachtend", async () => {
+  const s = await seedTwoCleanYellow();
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "afgewezen",
+    reason: "klant accepteert geen hoger vermogen",
+    actor: ACTOR,
+  });
+
+  // alleen in "Afgerond" (review-wachtrij), niet in de rood-linksectie
+  const { pending, done } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending.length).toBe(0);
+  expect(done.map((d) => d.id)).toEqual([s.lineId]);
+  expect(await getRedLinkLines(s.db, s.dossierId)).toEqual([]);
+
+  // badge: het besluit is genomen — niet eeuwig 'wachtend', wel in het totaal
+  const counts = await getReviewCounts(s.db, s.dossierId);
+  expect(counts.pending).toBe(0);
+  expect(counts.total).toBe(1);
+
+  // een VERSE rode regel (geen reviewKind) telt wél als werkvoorraad
+  const [fresh] = await s.db
+    .insert(specLines)
+    .values({
+      dossierId: s.dossierId,
+      fixtureCode: "Lr999",
+      brandText: "XAL",
+      productText: "PHANTOMDELUXE ZX9000",
+      status: "rood",
+    })
+    .returning();
+  expect((await getRedLinkLines(s.db, s.dossierId)).map((r) => r.id)).toEqual([
+    fresh.id,
+  ]);
+  expect((await getReviewCounts(s.db, s.dossierId)).pending).toBe(1);
 });
 
 // Rood → handmatig linken: menshandeling (zoeken + klikken), regel wordt groen met

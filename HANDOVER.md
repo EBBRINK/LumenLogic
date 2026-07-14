@@ -287,6 +287,9 @@ menskeuze. Bewuste besluiten:
   Review-tab-badge — de review-pagina bevat er werk voor (sectie "Niet gevonden —
   handmatig linken"). Na het linken is de regel groen en valt hij uit de telling;
   het audit-spoor leeft in events (`manual_link`) + chosenBy/chosenReason.
+  Uitzondering (reviewer-bevinding): regels mét een reviewKind — zoals een
+  afgewezen gele regel — blijven alleen in "Afgerond" en tellen niet als wachtend;
+  handmatig linken kan dan nog via het regel-detail ("Andere match").
 - **Kleurvarianten**: échte zusterproducten (zelfde merk, zelfde naam minus
   kleur-token) uit `visible_products`. De kleur-tokens (EN+NL woordenlijst, ook
   samengesteld "BLACK/GOLD") leven in de naam-parser (`lib/enrichment/parser.ts`,
