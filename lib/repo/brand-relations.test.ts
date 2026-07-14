@@ -6,9 +6,12 @@ import { asc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
 import { brandRelations, brands, events } from "@/db/schema";
 import {
+  getAllBrandCompleteness,
+  getBrandCompleteness,
   listBrandRelations,
   priceListIndicator,
   upsertBrandRelation,
+  PRICE_FIELD_KEY,
 } from "@/lib/repo/brand-relations";
 
 const TODAY = new Date("2026-07-14T12:00:00Z");
@@ -152,4 +155,93 @@ test("K8: merken met een gedeelde brand_code krijgen de dubbele-code-markering",
   expect(by(a).sharedBrandCode).toBe(true);
   expect(by(b).sharedBrandCode).toBe(true);
   expect(by(c).sharedBrandCode).toBe(false);
+});
+
+// ── Compleetheids-aggregatie (stap 4) ────────────────────────────────────────
+
+test("compleetheid: verwachte ratio's op deels gevulde producten", async () => {
+  const db = await createTestDb();
+  // Product 1: veel gevuld; product 2: kaal (zelfde merk, zelfde geldige lijst).
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Merk Deels", name: "P1", supplierArticleCode: "A-1",
+    categoryPath: "Binnen > Downlights", kelvin: 3000, cri: 90,
+    warrantyMonths: 60,
+  });
+  const { addProductToBrand } = await import("@/db/test-db");
+  await addProductToBrand(db, {
+    brandId, priceListId, name: "P2", supplierArticleCode: "A-2", kelvin: 2700,
+  });
+
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.hasProducts).toBe(true);
+  expect(c.productCount).toBe(2);
+  expect(c.filledByField.supplier_article_code).toBe(2);
+  expect(c.filledByField.kelvin).toBe(2);
+  expect(c.filledByField.cri).toBe(1);
+  expect(c.filledByField.warranty_months).toBe(1);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(2); // beide op de geldige lijst
+
+  const byKey = Object.fromEntries(c.buckets.map((b) => [b.bucket.key, b.score]));
+  // Bucket 1 (must meetbaar: supplier_article_code, name, category_path):
+  // sac 2/2, name 2/2, category 1/2 → gemiddelde (1 + 1 + 0.5) / 3.
+  expect(byKey.basis_identiteit.must.ratio).toBeCloseTo(2.5 / 3, 5);
+  expect(byKey.basis_identiteit.must.filled).toBe(2); // sac + name overal gevuld
+  // Bucket 2: prijs = enige meetbare must → ratio 1.
+  expect(byKey.commercie.must.ratio).toBe(1);
+  // Bucket 6 fotometrie (meetbaar: kelvin, lumen, cri, beam_angle):
+  // kelvin 2/2 =1, cri 1/2 =0.5, lumen 0, beam 0 → gemiddelde 0.375.
+  expect(byKey.fotometrie.wanna.ratio).toBeCloseTo(0.375, 5);
+  // Bucket 9 documentatie: niets meetbaar in v1.
+  expect(byKey.documentatie_links.measurableTotal).toBe(0);
+});
+
+test("regel 2: het prijsbedrag wijzigen verandert de compleetheid niet", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Merk Prijs", name: "P1", price: "100.00",
+  });
+  const before = await getBrandCompleteness(db, brandId);
+  await db.execute(
+    sql`update prices set gross_price = 99999.99 where product_id = ${productId}`,
+  );
+  const after = await getBrandCompleteness(db, brandId);
+  expect(after).toEqual(before);
+});
+
+test("prijs-EXISTS respecteert valid_until: verlopen lijst telt niet als prijs", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Merk Verlopen Lijst", name: "P1",
+    validFrom: "2024-01-01", validUntil: "2025-01-01",
+  });
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(0);
+  const commercie = c.buckets.find((b) => b.bucket.key === "commercie")!;
+  expect(commercie.score.must.ratio).toBe(0);
+});
+
+test("getBrandCompleteness en getAllBrandCompleteness geven identieke cijfers", async () => {
+  const db = await createTestDb();
+  const a = await seedBrandProduct(db, {
+    brand: "Merk Een", name: "P1", kelvin: 3000, color1: "wit",
+  });
+  const b = await seedBrandProduct(db, {
+    brand: "Merk Twee", name: "P2", cri: 80,
+  });
+  const all = await getAllBrandCompleteness(db);
+  expect(all.get(a.brandId)).toEqual(await getBrandCompleteness(db, a.brandId));
+  expect(all.get(b.brandId)).toEqual(await getBrandCompleteness(db, b.brandId));
+});
+
+test("merk zonder producten: hasProducts=false (UI toont n.v.t.) en géén map-entry", async () => {
+  const db = await createTestDb();
+  const kaalId = crypto.randomUUID();
+  await db.insert(brands).values({ id: kaalId, name: "Merk Leeg", slug: "merk-leeg" });
+
+  const c = await getBrandCompleteness(db, kaalId);
+  expect(c.hasProducts).toBe(false);
+  expect(c.productCount).toBe(0);
+
+  const all = await getAllBrandCompleteness(db);
+  expect(all.has(kaalId)).toBe(false);
 });

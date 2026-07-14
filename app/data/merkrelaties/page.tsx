@@ -8,26 +8,41 @@ import {
   BrandRelationsTable,
   type BrandRelationTableRow,
 } from "@/components/data/brand-relations-table";
-import { listBrandRelations } from "@/lib/repo/brand-relations";
+import { bucketBlok } from "@/components/data/scorecard-blokken";
+import {
+  getAllBrandCompleteness,
+  listBrandRelations,
+} from "@/lib/repo/brand-relations";
 import { requireSession } from "@/lib/session";
 import { updateBrandRelationAction } from "./actions";
 
 export default async function MerkrelatiesPage() {
   await requireSession();
   const today = new Date();
-  const relations = await listBrandRelations(db, today);
+  const [relations, completeness] = await Promise.all([
+    listBrandRelations(db, today),
+    getAllBrandCompleteness(db),
+  ]);
 
-  const rows: BrandRelationTableRow[] = relations.map((r) => ({
-    brandId: r.brandId,
-    brandName: r.brandName,
-    brandCode: r.brandCode,
-    status: r.status,
-    lastContactAt: r.lastContactAt,
-    productCount: r.productCount,
-    priceListIndicator: r.priceListIndicator,
-    sharedBrandCode: r.sharedBrandCode,
-    scorecard: null,
-  }));
+  const rows: BrandRelationTableRow[] = relations.map((r) => {
+    const c = completeness.get(r.brandId);
+    return {
+      brandId: r.brandId,
+      brandName: r.brandName,
+      brandCode: r.brandCode,
+      status: r.status,
+      lastContactAt: r.lastContactAt,
+      productCount: r.productCount,
+      priceListIndicator: r.priceListIndicator,
+      sharedBrandCode: r.sharedBrandCode,
+      // Geen producten → null → "n.v.t." (geen 0% rood).
+      scorecard: c
+        ? c.buckets.map(({ bucket, score }) =>
+            bucketBlok(bucket, score, c.hasProducts),
+          )
+        : null,
+    };
+  });
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">

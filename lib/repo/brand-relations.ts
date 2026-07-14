@@ -11,17 +11,25 @@
 //   • K8: brands.brand_code is niet uniek (bv. L052 dubbel) — merken die een code
 //     delen krijgen een dubbele-code-markering, zodat niemand dubbel belt.
 
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql, type SQL } from "drizzle-orm";
 import {
   brandRelations,
   brands,
   priceLists,
+  prices,
   products,
   type BrandRelationStatus,
 } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { daysUntil } from "./enrichment";
+import {
+  bucketScore,
+  measurableFields,
+  FIELD_CATALOG,
+  type BucketScore,
+  type CatalogBucket,
+} from "@/lib/field-catalog";
 
 // Prijslijst-indicator voor het overzicht. 'verloopt_binnenkort' volgt dezelfde
 // 30-dagen-horizon als de waarschuwingsbuckets van listPriceListStatus.
@@ -121,6 +129,102 @@ export async function listBrandRelations(
     sharedBrandCode:
       r.brandCode != null && (codeCounts.get(r.brandCode) ?? 0) > 1,
   }));
+}
+
+// ── Compleetheids-aggregatie (stap 4) ────────────────────────────────────────
+// Eén SQL met count(*) filter (where <kolom> is not null) per meetbaar veld,
+// gegenereerd uit measurableFields(). Het prijs-veld (measure.kind "price") zit
+// daar bewust NIET in: dat meten we via EXISTS op prices ⨝ price_lists met
+// valid_until >= current_date — het BEDRAG wordt nooit gelezen (ijzeren regel 2).
+
+export const PRICE_FIELD_KEY = "list_price_excl_vat";
+
+export type BrandCompleteness = {
+  brandId: string;
+  productCount: number;
+  hasProducts: boolean; // false → UI toont "n.v.t." i.p.v. 0% rood
+  // Per veld-key: bij hoeveel producten het veld gevuld is (incl. het prijs-veld).
+  filledByField: Record<string, number>;
+  buckets: { bucket: CatalogBucket; score: BucketScore }[];
+};
+
+// Selectie-fragmenten, gedeeld door getBrandCompleteness en getAllBrandCompleteness
+// zodat beide codepaden per definitie identieke cijfers geven.
+function completenessSelection(): Record<string, SQL<unknown>> {
+  const selection: Record<string, SQL<unknown>> = {
+    brand_id: sql`${products.brandId}`,
+    product_count: sql`count(*)`,
+  };
+  for (const { field } of measurableFields()) {
+    if (field.measure.kind !== "column") continue;
+    const column = field.measure.column;
+    if (!/^[a-z0-9_]+$/.test(column)) {
+      throw new Error(`Ongeldige kolomnaam in field-catalog: ${column}`);
+    }
+    selection[field.key] = sql`count(*) filter (where ${sql.raw(`"${column}"`)} is not null)`;
+  }
+  // Prijs: EXISTS op een GELDIGE prijslijst — nooit het bedrag (regel 2).
+  selection[PRICE_FIELD_KEY] = sql`count(*) filter (where exists (
+    select 1 from ${prices} pr
+    join ${priceLists} pl on pl.id = pr.price_list_id
+    where pr.product_id = ${sql.raw('"products"."id"')} and pl.valid_until >= current_date
+  ))`;
+  return selection;
+}
+
+function toCompleteness(
+  brandId: string,
+  row: Record<string, unknown> | undefined,
+): BrandCompleteness {
+  const productCount = row ? Number(row.product_count) : 0;
+  const filledByField: Record<string, number> = {};
+  if (row) {
+    for (const key of Object.keys(row)) {
+      if (key === "brand_id" || key === "product_count") continue;
+      filledByField[key] = Number(row[key]);
+    }
+  }
+  return {
+    brandId,
+    productCount,
+    hasProducts: productCount > 0,
+    filledByField,
+    buckets: [...FIELD_CATALOG]
+      .sort((a, b) => a.order - b.order)
+      .map((bucket) => ({
+        bucket,
+        score: bucketScore(bucket, filledByField, productCount),
+      })),
+  };
+}
+
+export async function getBrandCompleteness(
+  db: AppDb,
+  brandId: string,
+): Promise<BrandCompleteness> {
+  const rows = await db
+    .select(completenessSelection())
+    .from(products)
+    .where(eq(products.brandId, brandId))
+    .groupBy(products.brandId);
+  return toCompleteness(brandId, rows[0] as Record<string, unknown> | undefined);
+}
+
+// Voor het overzicht: alle merken mét producten in één query (geen N+1).
+// Merken zonder producten ontbreken in de map — de UI toont daar "n.v.t.".
+export async function getAllBrandCompleteness(
+  db: AppDb,
+): Promise<Map<string, BrandCompleteness>> {
+  const rows = (await db
+    .select(completenessSelection())
+    .from(products)
+    .groupBy(products.brandId)) as Record<string, unknown>[];
+  const map = new Map<string, BrandCompleteness>();
+  for (const row of rows) {
+    const brandId = String(row.brand_id);
+    map.set(brandId, toCompleteness(brandId, row));
+  }
+  return map;
 }
 
 export type BrandRelationPatch = Partial<{
