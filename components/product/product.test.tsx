@@ -70,7 +70,7 @@ test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
   );
   // Prijs zichtbaar (€ 310,00 — assert op het getal i.v.m. de currency-spatie).
   await expect.element(page.getByText("310,00")).toBeInTheDocument();
-  // Geen prijsaanvraag in tier1.
+  // Geen pricerequest in tier1.
   expect(document.body.textContent ?? "").not.toContain("Prijs via Brink");
 });
 

@@ -21,7 +21,7 @@ export async function setTierAction(formData: FormData) {
   const tier = String(formData.get("tier") ?? "").trim() as DisclosureTier;
   if (!brandId || !TIERS.includes(tier)) return;
   await setBrandTier(db, brandId, tier, await getActor());
-  revalidatePath("/admin/merken");
+  revalidatePath("/admin/brands");
   revalidatePath("/admin");
 }
 
@@ -33,7 +33,7 @@ export async function setFieldVisibilityAction(formData: FormData) {
   if (!brandId || !field) return;
   const visible = String(formData.get("visible") ?? "") === "true";
   await setBrandFieldOverride(db, brandId, field, visible, await getActor());
-  revalidatePath("/admin/merken");
+  revalidatePath("/admin/brands");
 }
 
 // UPLOAD goedkeuren (H-11).

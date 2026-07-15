@@ -24,32 +24,32 @@ export const PROJECT_STATUS_META: Record<ProjectStatus, ProjectStatusMeta> = {
   concept: {
     label: "Concept",
     tint: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    meaning: "In bewerking — er is nog niets de deur uit.",
+    meaning: "Work in progress — nothing has gone out yet.",
   },
   estimate_gestuurd: {
-    label: "Estimate gestuurd",
+    label: "Estimate sent",
     tint: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
-    meaning: "De estimate is uitgestuurd; kopblok en aantallen staan op slot.",
+    meaning: "The estimate has been sent; header and quantities are locked.",
   },
   offerte: {
-    label: "Offerte",
+    label: "Quote",
     tint: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
-    meaning: "Offertetraject loopt (buiten de tool, in XIS).",
+    meaning: "Quote in progress (outside the tool, in XIS).",
   },
   gegund: {
-    label: "Gegund",
+    label: "Won",
     tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-    meaning: "Gegund — alternatieven-suggesties mogen aan (fase: gegund).",
+    meaning: "Won — alternative suggestions may be enabled (phase: awarded).",
   },
   niet_gegund: {
-    label: "Niet gegund",
+    label: "Lost",
     tint: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-    meaning: "Niet gegund — blijft bewerkbaar; een verloren tender is data.",
+    meaning: "Lost — stays editable; a lost tender is data.",
   },
   archief: {
-    label: "Archief",
+    label: "Archived",
     tint: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
-    meaning: "Gearchiveerd mét reden — read-only.",
+    meaning: "Archived with a reason — read-only.",
   },
 };
 

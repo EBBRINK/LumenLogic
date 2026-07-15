@@ -11,7 +11,7 @@ const TEMPLATE_FILENAME = "brinklicht-product-data-template.xlsx";
 export function TemplateDownloadLink() {
   return (
     <a
-      href="/data/merkrelaties/template"
+      href="/data/brand-relations/template"
       download={TEMPLATE_FILENAME}
       className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground ring-1 ring-foreground/10 hover:bg-secondary/80"
     >

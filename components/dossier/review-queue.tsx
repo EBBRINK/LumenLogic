@@ -66,7 +66,7 @@ function EntityLine({
 function OtherMatch({ dossierId, itemId }: { dossierId: string; itemId: string }) {
   return (
     <Button asChild size="sm" variant="outline">
-      <a href={`/projecten/${dossierId}/regel/${itemId}`}>
+      <a href={`/projects/${dossierId}/line/${itemId}`}>
         <IconSearch /> Andere match
       </a>
     </Button>
@@ -538,7 +538,7 @@ function RedLinkCard({
         )}
         <form
           method="get"
-          action={`/projecten/${dossierId}/review`}
+          action={`/projects/${dossierId}/review`}
           className="flex flex-wrap items-center gap-2"
         >
           <input type="hidden" name="regel" value={line.id} />

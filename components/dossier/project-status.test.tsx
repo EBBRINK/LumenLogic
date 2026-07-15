@@ -41,7 +41,7 @@ const dossiers: DossierSummary[] = [
   { id: "d6", name: "Vervallen project", customer: null, phase: "tender", status: "archief" },
 ];
 
-// Nagebouwde projectkop (zelfde opbouw als app/projecten/[id]/layout.tsx) — zo staat
+// Nagebouwde projectkop (zelfde opbouw als app/projects/[id]/layout.tsx) — zo staat
 // de header mét status-dropdown, XIS-fase-select en afgeleide fase-badge op de foto.
 function Projectkop({
   status,
@@ -175,7 +175,7 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
     .not.toHaveAttribute("aria-current");
   await expect
     .element(page.getByRole("link", { name: "Niet gegund" }))
-    .toHaveAttribute("href", "/projecten?filter=niet_gegund");
+    .toHaveAttribute("href", "/projects?filter=niet_gegund");
 });
 
 // Kop: status-dropdown met de zes statussen + XIS-fase-select met de tien NL-labels.

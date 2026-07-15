@@ -179,7 +179,7 @@ export function BrandRelationsTable({
               <TableRow key={r.brandId}>
                 <TableCell className="font-medium">
                   <a
-                    href={`/data/merkrelaties/${r.brandId}`}
+                    href={`/data/brand-relations/${r.brandId}`}
                     className="hover:underline"
                   >
                     {r.brandName}

@@ -63,7 +63,7 @@ function ResultCard({ item }: { item: CatalogResult }) {
   return (
     <li>
       <a
-        href={`/producten/${item.id}`}
+        href={`/products/${item.id}`}
         className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40"
       >
         <div className="min-w-0">
@@ -133,7 +133,7 @@ export function CatalogSearch({
   const total = aantoonbaar.length + onvolledig.length;
   return (
     <div className="flex flex-col gap-6">
-      <form method="get" action="/catalogus" className="flex flex-col gap-3">
+      <form method="get" action="/catalog" className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Merk" hint="Het merk hebben we altijd — begin daar.">
             <select

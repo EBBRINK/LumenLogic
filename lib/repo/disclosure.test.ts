@@ -1,5 +1,5 @@
-// De disclosure-beslisboom (§4.11) is de gedeelde gating-contract van /producten,
-// /catalogus en /merk — hier gelockt op de tier × context-matrix + de per-veld-override.
+// De disclosure-beslisboom (§4.11) is de gedeelde gating-contract van /products,
+// /catalog en /brand — hier gelockt op de tier × context-matrix + de per-veld-override.
 import { expect, test } from "vitest";
 import {
   fieldVisible,

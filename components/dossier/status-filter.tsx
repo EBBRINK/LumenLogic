@@ -18,7 +18,7 @@ const FILTERS: { value: ProjectStatusFilter; label: string }[] = [
 
 export function StatusFilter({
   active = "alle",
-  basePath = "/projecten",
+  basePath = "/projects",
 }: {
   active?: ProjectStatusFilter;
   basePath?: string;

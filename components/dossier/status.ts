@@ -2,6 +2,8 @@
 // gelijk": dezelfde kleur betekent op elk scherm hetzelfde. Esthetiek = eerlijkheid:
 // rustige tinten, geen rode alarmen — blauw is een data-gat (onze actie), rood is
 // "actie bij de klant", niet een fout. Systeemfouten zijn het enige andere rood.
+// UI-taal: Engels (XIS-terminologie). De code-namen van de statussen blijven bewust NL
+// ("groen"/"geel"/… als DB/enum-waarde); alleen de zichtbare labels zijn Engels.
 
 export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars";
 
@@ -20,47 +22,47 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
     word: "Open",
     dot: "bg-slate-400",
     tint: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    meaning: "Nog niet gematcht.",
+    meaning: "Not matched yet.",
     countsInTotal: false,
   },
   groen: {
-    label: "Groen",
-    word: "Groen",
+    label: "Green",
+    word: "Green",
     dot: "bg-emerald-500",
     tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-    meaning: "Product hebben we; alle specs binnen de groene marge.",
+    meaning: "We have the product; all specs within the green margin.",
     countsInTotal: true,
   },
   geel: {
-    label: "Geel",
-    word: "Geel",
+    label: "Yellow",
+    word: "Yellow",
     dot: "bg-amber-500",
     tint: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-    meaning: "Zelfde merk, afwijking binnen de gele marge. Brink reviewt en stelt voor.",
+    meaning: "Same brand, deviation within the yellow margin. Brink reviews and proposes.",
     countsInTotal: true,
   },
   blauw: {
-    label: "Blauw",
-    word: "Blauw",
+    label: "Blue",
+    word: "Blue",
     dot: "bg-sky-500",
     tint: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
-    meaning: "Merk nog niet in de catalogus — datagat, onze actie (merk inladen).",
+    meaning: "Brand not in the catalog yet — data gap, our action (load the brand).",
     countsInTotal: false,
   },
   rood: {
-    label: "Rood",
-    word: "Rood",
+    label: "Red",
+    word: "Red",
     dot: "bg-rose-500",
     tint: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
-    meaning: "Merk wél, dit product niet. Actie bij de klant.",
+    meaning: "Brand yes, this product no. Action on the customer's side.",
     countsInTotal: false,
   },
   paars: {
-    label: "Paars",
-    word: "Paars",
+    label: "Purple",
+    word: "Purple",
     dot: "bg-violet-500",
     tint: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
-    meaning: "Buiten assortiment (geen verlichting). Expliciet melden, niet weglaten.",
+    meaning: "Outside the assortment (not lighting). Report explicitly, never omit.",
     countsInTotal: true, // wél getoond op de estimate, maar als p.m. (niet opgeteld)
   },
 };

@@ -45,7 +45,7 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(doc);
       await expect.element(document.body).toBeInTheDocument();
-      await page.screenshot({ path: `./substitutie.${theme}.${device}.test.png` });
+      await page.screenshot({ path: `./substitution.${theme}.${device}.test.png` });
     });
   }
 }
@@ -59,7 +59,7 @@ test("SubstitutionDoc: toont beide armaturen, de duurzaamheidswinst en de bronvo
   // Kostentekst (F-08) als losse tekst, niet als sortering.
   await expect.element(page.getByText(/Besparing/)).toBeInTheDocument();
   // Bronvoetnoot: alle cijfers zijn merk-opgave.
-  await expect.element(page.getByText(/merk-opgave/)).toBeInTheDocument();
+  await expect.element(page.getByText(/brand-opgave/)).toBeInTheDocument();
 });
 
 test("SubstitutionDoc: ontbrekende data blijft eerlijk zichtbaar, niet weggelaten", async () => {

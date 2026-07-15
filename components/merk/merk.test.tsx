@@ -92,7 +92,7 @@ for (const [name, ui] of Object.entries(screens)) {
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
         await expect.element(document.body).toBeInTheDocument();
-        await page.screenshot({ path: `./merk-${name}.${theme}.${device}.test.png` });
+        await page.screenshot({ path: `./brand-${name}.${theme}.${device}.test.png` });
       });
     }
   }

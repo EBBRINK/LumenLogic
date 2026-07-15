@@ -117,7 +117,7 @@ const screens = {
     </Screen>
   ),
   // Actiebalk zoals de offerte-pagina hem samenstelt (zelfde opbouw als
-  // app/projecten/[id]/offerte/page.tsx): ververs-knop, printknop en de
+  // app/projects/[id]/quote/page.tsx): ververs-knop, printknop en de
   // downloadknop "Download PDF" die naar de PDF-route wijst.
   "estimate-downloadknop": (
     <Screen>
@@ -135,7 +135,7 @@ const screens = {
             </form>
             <PrintButton />
             <Button asChild variant="outline" size="sm">
-              <a href="/projecten/d1/offerte/pdf" download>
+              <a href="/projects/d1/quote/pdf" download>
                 Download PDF
               </a>
             </Button>
@@ -235,7 +235,7 @@ test("downloadknop staat naast de printknop en wijst naar de PDF-route", async (
   await renderServer(screens["estimate-downloadknop"]);
   const link = page.getByRole("link", { name: "Download PDF" });
   await expect.element(link).toBeInTheDocument();
-  await expect.element(link).toHaveAttribute("href", "/projecten/d1/offerte/pdf");
+  await expect.element(link).toHaveAttribute("href", "/projects/d1/quote/pdf");
   await expect.element(link).toHaveAttribute("download");
   await expect
     .element(page.getByRole("button", { name: "Print / PDF" }))

@@ -532,7 +532,7 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
   expect(count("manual_link")).toBe(1); // rood handmatig gelinkt
   expect(count("quote_generated")).toBe(1); // offertegeneratie
   // NB: `estimate_pdf_generated` wordt in de downloadroute gelogd
-  // (app/projecten/[id]/offerte/pdf/route.ts) — buiten deze repo-laag-test.
+  // (app/projects/[id]/quote/pdf/route.ts) — buiten deze repo-laag-test.
   expect(count("quote_frozen")).toBe(1);
   expect(count("status_changed")).toBe(2); // gestuurd + gegund
 

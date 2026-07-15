@@ -31,10 +31,10 @@ export default async function DataPage() {
   ).length;
 
   const badge: Record<string, number> = {
-    "/data/verrijking": openRuns,
-    "/data/inladen": waiting,
-    "/data/prijslijsten": expired,
-    "/data/merkrelaties": dataOntvangen,
+    "/data/enrichment": openRuns,
+    "/data/loading": waiting,
+    "/data/price-lists": expired,
+    "/data/brand-relations": dataOntvangen,
   };
 
   return (

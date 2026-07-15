@@ -23,7 +23,7 @@ export default async function AdminOverviewPage() {
 
   const sections = [
     {
-      href: "/admin/merken",
+      href: "/admin/brands",
       title: "Merken & zichtbaarheid",
       count: `${brands.length} merken`,
       desc: "Disclosure-tier en per-veld-uitzonderingen.",
@@ -35,7 +35,7 @@ export default async function AdminOverviewPage() {
       desc: "Merk-uploads goedkeuren en de PDL-import.",
     },
     {
-      href: "/admin/gebruikers",
+      href: "/admin/users",
       title: "Gebruikers",
       count: `${memberships.length} leden`,
       desc: "Rollen over alle organisaties.",

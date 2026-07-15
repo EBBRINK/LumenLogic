@@ -62,7 +62,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect.element(page.getByText("LLM-budget")).toBeInTheDocument();
       await expect.element(page.getByText("XIS-koppeling")).toBeInTheDocument();
       await page.screenshot({
-        path: `./instellingen.${theme}.${device}.test.png`,
+        path: `./settings.${theme}.${device}.test.png`,
       });
     });
   }

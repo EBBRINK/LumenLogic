@@ -127,7 +127,7 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
               </TableCell>
               <TableCell className="text-right">
                 <Button asChild size="sm" variant="outline">
-                  <a href={`/data/verrijking/${r.id}`}>Bekijk</a>
+                  <a href={`/data/enrichment/${r.id}`}>Bekijk</a>
                 </Button>
               </TableCell>
             </TableRow>

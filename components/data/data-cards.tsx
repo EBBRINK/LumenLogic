@@ -5,27 +5,27 @@ export type DataCard = { href: string; title: string; desc: string };
 
 export const DATA_CARDS: DataCard[] = [
   {
-    href: "/data/verrijking",
+    href: "/data/enrichment",
     title: "Verrijking",
     desc: "Parser over merknamen, steekproef controleren en publiceren.",
   },
   {
-    href: "/data/inladen",
+    href: "/data/loading",
     title: "Inladen",
     desc: "Blauw-wachtrij: gevraagde merken die nog niet in de catalogus staan.",
   },
   {
-    href: "/data/prijslijsten",
+    href: "/data/price-lists",
     title: "Prijslijsten",
     desc: "Verloopt-binnenkort en verlopen lijsten (dekkingsgaten).",
   },
   {
-    href: "/data/evaluatie",
+    href: "/data/evaluation",
     title: "Evaluatie",
     desc: "Hit-rate van de matcher meten tegen de evaluatieset.",
   },
   {
-    href: "/data/merkrelaties",
+    href: "/data/brand-relations",
     title: "Merkrelaties",
     desc: "Relatiestatus en datacompleetheid per merk; data-inwinning.",
   },

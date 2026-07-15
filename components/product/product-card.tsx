@@ -143,7 +143,7 @@ function PriceBlock({
     );
   }
   if (disclosure.priceGated) {
-    // J-03: de prijsaanvraag is een lead. De knop post naar de server-action (createLead).
+    // J-03: de pricerequest is een lead. De knop post naar de server-action (createLead).
     return (
       <form action={requestAction} className="flex flex-col items-start gap-1.5">
         <input type="hidden" name="productId" value={spec.id ?? ""} />

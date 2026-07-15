@@ -79,7 +79,7 @@ test("tekst staat readonly in de textarea; templateknop ernaast", async () => {
   await expect.element(textarea).toHaveAttribute("readonly");
   await expect
     .element(page.getByRole("link", { name: /Excel-template downloaden/ }))
-    .toHaveAttribute("href", "/data/merkrelaties/template");
+    .toHaveAttribute("href", "/data/brand-relations/template");
 });
 
 // Onder volle parallelle testlast hydrateert het client-eiland soms traag of pas na

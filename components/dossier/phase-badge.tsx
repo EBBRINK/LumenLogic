@@ -13,7 +13,7 @@ export function PhaseBadge({ phase }: { phase: Phase }) {
   }
   return (
     <Badge className="gap-1">
-      <IconUnlock className="size-3" /> Gegund
+      <IconUnlock className="size-3" /> Awarded
     </Badge>
   );
 }

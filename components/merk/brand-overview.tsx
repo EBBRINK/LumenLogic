@@ -11,19 +11,19 @@ import {
 export function BrandOverview({ brandName }: { brandName: string }) {
   const doors = [
     {
-      href: "/merk/data",
+      href: "/brand/data",
       title: "Data inzien",
       description:
         "Bekijk de producten en specificaties die van jouw merk zijn opgenomen.",
     },
     {
-      href: "/merk/prijslijsten",
+      href: "/brand/price-lists",
       title: "Prijslijst aanleveren",
       description:
         "Upload een nieuwe prijslijst. Elke aanlevering gaat eerst naar controle.",
     },
     {
-      href: "/merk/dashboard",
+      href: "/brand/dashboard",
       title: "Dashboard",
       description:
         "Geaggregeerd: hoe vaak jouw producten zijn overwogen en gekozen.",

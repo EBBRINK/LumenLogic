@@ -110,7 +110,7 @@ for (const theme of ["light", "dark"] as const) {
         .element(page.getByText("SASSO 100 SQ SP CEIL 17,9W cob LED 2700K 220-240V"))
         .toBeInTheDocument();
       await expect.element(page.getByText("€ 310,00")).toBeInTheDocument();
-      await page.screenshot({ path: `./catalogus.${theme}.${device}.test.png` });
+      await page.screenshot({ path: `./catalog.${theme}.${device}.test.png` });
     });
   }
 }

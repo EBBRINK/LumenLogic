@@ -146,7 +146,7 @@ test("'geen reactie'-filter: alléén benaderd + laatste contact ouder dan de dr
 test("kaart op /data: 'Merkrelaties' met badge-aantal (data ontvangen)", async () => {
   await renderServer(
     <Screen>
-      <DataCards badge={{ "/data/merkrelaties": 3 }} />
+      <DataCards badge={{ "/data/brand-relations": 3 }} />
     </Screen>,
   );
   await expect.element(page.getByText("Merkrelaties")).toBeInTheDocument();

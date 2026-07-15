@@ -2,7 +2,7 @@
 // deterministisch). Licht/donker × mobiel/desktop — dit is het "zicht" op de UI.
 //
 // NB: het regel-detailscherm (MatchCandidates, twee kandidatenlijsten + afronding) wordt
-// getest in regel-detail.test.tsx; de estimate/offerte in estimate.test.tsx. De
+// getest in regel-detail.test.tsx; de estimate/quote in estimate.test.tsx. De
 // fase-poort van ijzeren regel 4 (tender toont géén alternatieven-suggesties) leeft op
 // repo-niveau en wordt getest in lib/repo/rules.test.ts. Hier houden we de twee schermen
 // die nergens anders in beeld komen: de dossierlijst en de spec-regeltabel.

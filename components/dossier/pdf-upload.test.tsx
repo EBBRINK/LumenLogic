@@ -56,7 +56,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 }
 
 // De projectpagina in het klein: PDF-upload éérst, dan de regels, dan de overige
-// invoerwegen — dezelfde volgorde als app/projecten/[id]/page.tsx.
+// invoerwegen — dezelfde volgorde als app/projects/[id]/page.tsx.
 function ProjectRegelsScreen() {
   return (
     <Screen>
@@ -98,7 +98,7 @@ function ImportRunScreen() {
       </p>
       <ImportMarkdown
         markdown={markdown}
-        downloadHref="/projecten/d1/import/r1/markdown"
+        downloadHref="/projects/d1/import/r1/markdown"
         defaultOpen
       />
     </Screen>
@@ -162,5 +162,5 @@ test("importrun toont brontekst (markdown) met downloadknop", async () => {
     .toBeInTheDocument();
   await expect.element(page.getByText("## Pagina 1")).toBeInTheDocument();
   const link = container.querySelector('a[download]');
-  expect(link?.getAttribute("href")).toBe("/projecten/d1/import/r1/markdown");
+  expect(link?.getAttribute("href")).toBe("/projects/d1/import/r1/markdown");
 });

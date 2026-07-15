@@ -19,23 +19,23 @@ export function DossierTabs({
   reviewTotal: number;
 }) {
   const pathname = usePathname();
-  const base = `/projecten/${dossierId}`;
+  const base = `/projects/${dossierId}`;
   const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
     { href: base, label: "Regels", match: (p) => p === base || p.startsWith(`${base}/regel`) || p.startsWith(`${base}/import`) },
     { href: `${base}/review`, label: "Review", match: (p) => p.startsWith(`${base}/review`) },
-    { href: `${base}/offerte`, label: "Estimate", match: (p) => p.startsWith(`${base}/offerte`) },
+    { href: `${base}/quote`, label: "Estimate", match: (p) => p.startsWith(`${base}/quote`) },
   ];
   if (phase === "awarded") {
     tabs.push({
-      href: `${base}/werkvoorbereiding`,
+      href: `${base}/work-prep`,
       label: "Werkvoorbereiding",
-      match: (p) => p.startsWith(`${base}/werkvoorbereiding`),
+      match: (p) => p.startsWith(`${base}/work-prep`),
     });
   }
   tabs.push({
-    href: `${base}/armaturenboek`,
+    href: `${base}/luminaire-schedule`,
     label: "Armaturenboek",
-    match: (p) => p.startsWith(`${base}/armaturenboek`),
+    match: (p) => p.startsWith(`${base}/luminaire-schedule`),
   });
 
   return (
