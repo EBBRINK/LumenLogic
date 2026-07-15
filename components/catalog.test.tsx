@@ -19,7 +19,7 @@ const viewports = {
 const brands = ["Glamox", "Wever & Ducré", "XAL"];
 
 const values: CatalogValues = {
-  merk: "XAL",
+  brand: "XAL",
   q: "SASSO 100",
   kelvin: "2700",
   cri: "90",
@@ -101,7 +101,7 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(searchedUi);
       await expect.element(document.body).toBeInTheDocument();
       // merk-select + beide lijsten + een geprijsd product zichtbaar
-      await expect.element(page.getByTestId("merk-select")).toBeInTheDocument();
+      await expect.element(page.getByTestId("brand-select")).toBeInTheDocument();
       await expect.element(page.getByText("Voldoet aantoonbaar")).toBeInTheDocument();
       await expect
         .element(page.getByText("Mogelijk — data onvolledig"))
@@ -115,13 +115,13 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("merk-select toont alle merken als opties", async () => {
+test("brand-select toont alle merken als opties", async () => {
   await renderServer(searchedUi);
   for (const b of brands) {
     await expect.element(page.getByRole("option", { name: b })).toBeInTheDocument();
   }
   await expect
-    .element(page.getByRole("option", { name: "Alle merken" }))
+    .element(page.getByRole("option", { name: "All brands" }))
     .toBeInTheDocument();
 });
 
@@ -139,7 +139,7 @@ test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
     </div>,
   );
   await expect
-    .element(page.getByText("Kies een merk of typ vrije tekst en zoek in de catalogus."))
+    .element(page.getByText("Choose a brand or type free text and search the catalog."))
     .toBeInTheDocument();
   expect(page.getByText("Voldoet aantoonbaar").query()).toBeNull();
 });

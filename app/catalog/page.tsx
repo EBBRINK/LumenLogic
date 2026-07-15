@@ -59,7 +59,7 @@ function classify(
     let fails = false;
 
     if (crit.kelvin != null) {
-      if (c.kelvin == null) missing.push("kleurtemp.");
+      if (c.kelvin == null) missing.push("color temp.");
       else if (c.kelvin !== crit.kelvin) fails = true;
     }
     if (crit.cri != null) {
@@ -89,7 +89,7 @@ export default async function CatalogusPage({
   const sp = await searchParams;
 
   const values: CatalogValues = {
-    merk: str(sp.merk),
+    brand: str(sp.brand),
     q: str(sp.q),
     kelvin: str(sp.kelvin),
     cri: str(sp.cri),
@@ -115,14 +115,14 @@ export default async function CatalogusPage({
 
   // Alleen zoeken met een anker: merk of vrije tekst. Losse specfilters zonder anker geven
   // geen resultaten (searchProducts vereist query of merk) — het merk is het startpunt.
-  const searched = values.merk.length > 0 || values.q.length > 0;
+  const searched = values.brand.length > 0 || values.q.length > 0;
 
   let aantoonbaar: CatalogResult[] = [];
   let onvolledig: CatalogResult[] = [];
   if (searched) {
     const candidates = await searchProducts(db, {
       query: values.q,
-      brand: values.merk,
+      brand: values.brand,
       limit: 40,
       actor: await getActor(),
     });
@@ -131,9 +131,9 @@ export default async function CatalogusPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Catalogus</h1>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Catalog</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        Zoek los in de zichtbare catalogus. Prijs wordt getoond, nooit gesorteerd.
+        Search the visible catalog freely. Price is shown, never sorted.
       </p>
       <CatalogSearch
         brands={brands}

@@ -14,7 +14,7 @@ export default async function AnalyticsPage() {
         href="/projects"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Projecten
+        <ArrowLeft className="size-3.5" /> Projects
       </Link>
       <AnalyticsView data={data} />
     </main>

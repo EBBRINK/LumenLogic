@@ -36,13 +36,13 @@ export default async function ProductPage({
     <main className="mx-auto w-full max-w-6xl px-6 py-8 pb-32">
       <div className="mb-4">
         <Link href="/catalog" className="text-sm text-muted-foreground hover:text-foreground">
-          ← Terug naar catalogus
+          ← Back to catalog
         </Link>
       </div>
 
       {pricerequest === "sent" && (
         <div className="mb-6 rounded-lg border bg-muted/40 p-3 text-sm">
-          Je pricerequest staat klaar bij Brink. Je hoort van ons zodra de adviesprijs bekend is.
+          Your price request is ready at Brink. You'll hear from us as soon as the list price is known.
         </div>
       )}
 
@@ -59,7 +59,7 @@ export default async function ProductPage({
           <AddToCompareButton
             item={{
               id: String(spec.id ?? id),
-              name: spec.name ?? "Naamloos product",
+              name: spec.name ?? "Unnamed product",
               brandName: spec.brandName,
               fields: compareFields,
             }}

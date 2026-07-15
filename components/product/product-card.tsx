@@ -57,19 +57,19 @@ function txt(v: string | null | undefined): string | null {
 // hier bewust NIET tussen: geld loopt volledig via de disclosure-prijsblok.
 const FIELD_DEFS: { key: string; label: string; render: (s: ProductSpec) => string | null }[] =
   [
-    { key: "kelvin", label: "Kleurtemperatuur", render: (s) => (s.kelvin != null ? `${s.kelvin} K` : null) },
-    { key: "cri", label: "Kleurweergave (CRI)", render: (s) => (s.cri != null ? `Ra ${s.cri}` : null) },
-    { key: "lumenOutput", label: "Lichtstroom", render: (s) => (s.lumenOutput != null ? `${s.lumenOutput} lm` : null) },
-    { key: "maxWattage", label: "Vermogen", render: (s) => (txt(s.maxWattage) != null ? `${txt(s.maxWattage)} W` : null) },
-    { key: "beamAngle", label: "Straalhoek", render: (s) => (txt(s.beamAngle) != null ? `${txt(s.beamAngle)}°` : null) },
-    { key: "ipValue", label: "IP-waarde", render: (s) => txt(s.ipValue) },
-    { key: "dimmable", label: "Dimbaar", render: (s) => txt(s.dimmable) },
-    { key: "color1", label: "Kleur", render: (s) => txt(s.color1) },
-    { key: "warrantyMonths", label: "Garantie", render: (s) => (s.warrantyMonths != null ? `${s.warrantyMonths} mnd` : null) },
-    { key: "repairability", label: "Repareerbaarheid", render: (s) => txt(s.repairability) },
-    { key: "epdLifetimeHours", label: "Levensduur (EPD)", render: (s) => (s.epdLifetimeHours != null ? `${s.epdLifetimeHours} uur` : null) },
-    { key: "countryOfOrigin", label: "Land van herkomst", render: (s) => txt(s.countryOfOrigin) },
-    { key: "categoryPath", label: "Categorie", render: (s) => txt(s.categoryPath) },
+    { key: "kelvin", label: "Color temperature", render: (s) => (s.kelvin != null ? `${s.kelvin} K` : null) },
+    { key: "cri", label: "Color rendering (CRI)", render: (s) => (s.cri != null ? `Ra ${s.cri}` : null) },
+    { key: "lumenOutput", label: "Lumen output", render: (s) => (s.lumenOutput != null ? `${s.lumenOutput} lm` : null) },
+    { key: "maxWattage", label: "Power", render: (s) => (txt(s.maxWattage) != null ? `${txt(s.maxWattage)} W` : null) },
+    { key: "beamAngle", label: "Beam angle", render: (s) => (txt(s.beamAngle) != null ? `${txt(s.beamAngle)}°` : null) },
+    { key: "ipValue", label: "IP value", render: (s) => txt(s.ipValue) },
+    { key: "dimmable", label: "Dimmable", render: (s) => txt(s.dimmable) },
+    { key: "color1", label: "Color", render: (s) => txt(s.color1) },
+    { key: "warrantyMonths", label: "Warranty", render: (s) => (s.warrantyMonths != null ? `${s.warrantyMonths} mo` : null) },
+    { key: "repairability", label: "Repairability", render: (s) => txt(s.repairability) },
+    { key: "epdLifetimeHours", label: "Lifetime (EPD)", render: (s) => (s.epdLifetimeHours != null ? `${s.epdLifetimeHours} h` : null) },
+    { key: "countryOfOrigin", label: "Country of origin", render: (s) => txt(s.countryOfOrigin) },
+    { key: "categoryPath", label: "Category", render: (s) => txt(s.categoryPath) },
   ];
 
 export type SpecRow = { key: string; label: string; value: string; source: string | null };
@@ -105,7 +105,7 @@ export function objectiveFields(
 }
 
 function herkomstLabel(source: string): string {
-  if (source === "parsed-from-name") return "afgeleid uit naam";
+  if (source === "parsed-from-name") return "derived from name";
   return source;
 }
 
@@ -114,7 +114,7 @@ function herkomstLabel(source: string): string {
 function HerkomstTag({ source }: { source: string }) {
   return (
     <span
-      title={`Herkomst: ${source}`}
+      title={`Source: ${source}`}
       className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
     >
       {herkomstLabel(source)}
@@ -138,7 +138,7 @@ function PriceBlock({
     return (
       <div className="flex items-baseline gap-2">
         <span className="text-2xl font-semibold tabular-nums">{formatEur(price?.grossPrice)}</span>
-        <span className="text-sm text-muted-foreground">adviesprijs</span>
+        <span className="text-sm text-muted-foreground">list price</span>
       </div>
     );
   }
@@ -149,10 +149,10 @@ function PriceBlock({
         <input type="hidden" name="productId" value={spec.id ?? ""} />
         <input type="hidden" name="brandId" value={spec.brandId ?? ""} />
         <Button type="submit" variant="outline">
-          Prijs via Brink aanvragen
+          Request price via Brink
         </Button>
         <p className="text-xs text-muted-foreground">
-          De adviesprijs is bij dit merk op aanvraag.
+          The list price for this brand is on request.
         </p>
       </form>
     );
@@ -177,7 +177,7 @@ export function ProductCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl leading-tight">{spec.name ?? "Naamloos product"}</CardTitle>
+        <CardTitle className="text-xl leading-tight">{spec.name ?? "Unnamed product"}</CardTitle>
         {txt(spec.brandName) && (
           <p className="text-sm text-muted-foreground">{spec.brandName}</p>
         )}
@@ -187,7 +187,7 @@ export function ProductCard({
 
         {disclosure.awaitingData ? (
           <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-            Data in afwachting van merk.
+            Data awaiting brand.
           </p>
         ) : rows.length > 0 ? (
           <dl className="grid grid-cols-1 gap-x-10 gap-y-0 sm:grid-cols-2">
@@ -205,7 +205,7 @@ export function ProductCard({
             ))}
           </dl>
         ) : disclosure.showSpecs ? (
-          <p className="text-sm text-muted-foreground">Geen specificaties beschikbaar.</p>
+          <p className="text-sm text-muted-foreground">No specifications available.</p>
         ) : null}
       </CardContent>
     </Card>
