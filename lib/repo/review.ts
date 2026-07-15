@@ -6,6 +6,7 @@
 // STATUS, geen review-flag — die regels krijgen dus geen reviewKind, maar een eigen query.
 import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { specLineCandidates, specLines } from "@/db/schema";
+import { triggerVangnet } from "@/lib/ai/vangnet";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 
@@ -24,6 +25,10 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
       deviations: specLines.deviations,
       reqColor: specLines.reqColor,
       sortOrder: specLines.sortOrder,
+      // OCR-herkomst (bouwstap 7/8): de OcrCard toont hiermee het paginanummer en
+      // linkt naar het opgeslagen paginabeeld — de échte bron van de lezing (B6).
+      sourcePage: specLines.sourcePage,
+      importRunId: specLines.importRunId,
     })
     .from(specLines)
     .where(eq(specLines.dossierId, dossierId))
@@ -195,6 +200,21 @@ export async function decideReview(
     throw new Error("Reason required when rejecting");
   }
 
+  // B8 (OCR-gating): de vóór-toestand van de regel bepaalt of er straks een vangnet-
+  // trigger volgt. Zolang een OCR-review openstaat sluit selectLines de regel uit
+  // (een verhallucineerd merk mag de merkvergrendelde zoektool niet sturen); zodra
+  // de mens de lezing beoordeeld heeft mag het vangnet de regel alsnog oppakken —
+  // zelfde trigger-patroon als de imports (triggerVangnet, fire-and-forget via after).
+  const [before] = await db
+    .select({
+      dossierId: specLines.dossierId,
+      reviewKind: specLines.reviewKind,
+      reviewedAt: specLines.reviewedAt,
+    })
+    .from(specLines)
+    .where(eq(specLines.id, input.specLineId))
+    .limit(1);
+
   const set: Record<string, unknown> = {
     reviewedAt: new Date(),
     reviewedBy: input.actor ?? "system",
@@ -257,6 +277,13 @@ export async function decideReview(
       productId: chosenProductId,
     },
   });
+
+  // B8: een zojuist afgeronde ÓPEN OCR-review geeft de regel(s) vrij voor het vangnet.
+  // Alleen bij de overgang open → afgerond (geen her-trigger bij een tweede besluit);
+  // triggerVangnet is niet-blokkerend en faalt nooit richting de aanroeper.
+  if (before?.reviewKind === "ocr" && !before.reviewedAt) {
+    await triggerVangnet(db, before.dossierId, input.actor);
+  }
 }
 
 // Handmatig een vergelijkbaar product linken op een rode regel (stap 7, herontwerp §4).

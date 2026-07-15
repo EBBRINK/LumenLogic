@@ -397,12 +397,31 @@ function OcrCard({
   item: ReviewItem;
   decideAction: Action;
 }) {
+  // B6: de échte bron van een OCR-regel is het opgeslagen paginabeeld — toon het
+  // paginanummer en link ernaar (nieuw tabblad) zodat de reviewer het boek naast
+  // de gelezen waarden kan leggen. Alleen als de regel zijn herkomst draagt.
+  const hasSource = item.importRunId != null && item.sourcePage != null;
   return (
     <>
       <p className="text-sm text-muted-foreground">
         Check the imported line — OCR import can misread characters. Confirm if the
         line is correct, or open it for another match.
       </p>
+      {hasSource && (
+        <p className="text-sm text-muted-foreground">
+          Read from page{" "}
+          <span className="font-medium text-foreground">{item.sourcePage}</span>
+          {" · "}
+          <a
+            href={`/projects/${dossierId}/ocr-image/${item.importRunId}/${item.sourcePage}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            View page image
+          </a>
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <form action={decideAction}>
           <input type="hidden" name="dossierId" value={dossierId} />

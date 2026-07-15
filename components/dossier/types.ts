@@ -140,6 +140,10 @@ export type ReviewItem = {
   reviewDecision?: string | null;
   // Niet-verworpen AI-suggesties van het vangnet (B4) voor deze regel.
   aiSuggestions?: AiSuggestionRow[];
+  // OCR-herkomst (bouwstap 7/8): pagina + run voor de "View page image"-link op
+  // de OcrCard — zodat de reviewer het boek naast de gelezen waarden kan leggen.
+  sourcePage?: number | null;
+  importRunId?: string | null;
 };
 
 // Zoekresultaat op de rood-kaart (handmatig linken) — uit visible_products.

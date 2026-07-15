@@ -376,6 +376,59 @@ estimate-PDF terugleesbaar (offertenummer, totalen, p.m., beide merktekens) → 
 - **Echte XIS-API** — export is een idempotent snapshot in het payload-formaat; de echte
   Lynx-POST wacht op API-keys (extern).
 
+## Onderdeel OCR voor beeld-PDF's — werkend af 2026-07-15
+
+Plan: `docs/plan-ocr-beeld-pdf.md` (B1–B10, bouwstappen 1–8). Een armaturenboek dat als
+beeld geëxporteerd is (0 tekens tekstlaag, zoals het echte Deerns-boek) wordt nu wél
+geïmporteerd: client-side rasterisatie (pdfjs uit unpdf, 1568 px langste zijde) → per
+pagina server-action → Claude-vision (Haiku, geforceerde `lever_regels`-tool, "verzin
+niets") → dezelfde deterministische pipeline (splitBrandType → parseProductName →
+matcher) → verplichte review.
+
+### Wat werkt
+
+- **Keten**: upload-kaart detecteert beeld-PDF → `startOcrRun` → client-loop per pagina
+  (voortgang, hervatten na dichtgeklapte tab via `unique(run,page)` als lock, B5) →
+  `finishOcrRun` met eerlijk transcript ("OCR transcript (model output)", B6 — de échte
+  bron zijn de opgeslagen paginabeelden, geserveerd via
+  `/projects/[id]/ocr-image/[runId]/[page]` met sessie- + eigendomscheck).
+- **€1-plafond per boek hard** (B4): beeldrij éérst (lock), dan reservering (€0,02) in
+  `llm_usage` (purpose 'ocr', mét `import_run_id`), na de call bijgewerkt naar echte
+  tokenkosten. Effectief plafond: €1 + hooguit één paginaprijs. Maandbudget (L-06)
+  geldt daarnaast; uitsplitsing "Of which OCR" op /settings.
+- **Review-semantiek (B7)**: elke OCR-regel zonder matcher-flag krijgt reviewKind 'ocr'
+  (`sourceConfidence` constant 'middel'; ongeldig codeformaat 'laag'); matcher-geel
+  houdt 'geel' — "OCR goed gelezen" en "match akkoord" zijn twee besluiten, één review
+  per regel. Rode regels keren ná de afgeronde OCR-review terug in de
+  handmatig-linken-werkvoorraad (versoepeling in `getRedLinkLines`/badge).
+- **Vangnet-gating (B8, hard)**: `selectLines` in `lib/ai/vangnet.ts` sluit regels met
+  een ÓPEN OCR-review uit — een verhallucineerd merk mag nooit de merkvergrendelde
+  zoektool sturen vóór een mens de bron zag. `finishOcrRun` triggert het vangnet NIET;
+  de trigger zit in `decideReview` (repo-laag, zelfde `triggerVangnet`-patroon als de
+  imports) en vuurt alleen bij de overgang open → afgerond van een 'ocr'-review.
+- **OCR-review-UI**: de bestaande OcrCard in de review-wachtrij, verrijkt met het
+  paginanummer + "View page image"-link (nieuw tabblad) naar het opgeslagen paginabeeld.
+- **Acceptatietest**: `tests/acceptatie-ocr.test.ts` — hele keten op PGlite met
+  gemockte vision-client (groen/geel/rood, dedupe, transcript, kosten mét importRunId,
+  events-keten, B8-gating vóór en trigger ná review, quote + estimate-PDF met de
+  OCR-regels in stukprijs-modus).
+
+### Bewuste besluiten & open eindes
+
+- **Tinder-deck geparkeerd op Timo's verzoek** ("ik kom eerst met voorbeelden") — de
+  bestaande OcrCard is voorlopig dé OCR-review. Het deck (paginabeeld naast waarden,
+  sneltoetsen, inline corrigeren) staat beschreven in het plan (B7) en kan er later op.
+- **Uitsnedes/bounding boxes per regel** = latere verfijning (open einde in het plan);
+  nu linkt de kaart naar het hele paginabeeld.
+- **no_key-gedrag**: zonder `ANTHROPIC_API_KEY` slaat een pagina netjes over
+  (`ocr_skipped_no_key`), de zojuist geplaatste beeldrij wordt weer verwijderd (anders
+  zou hervatten die pagina voorgoed overslaan) en de run blijft 'bezig' — key zetten →
+  hervatten werkt. Budget op → run terminaal 'gestopt'.
+- **Migratie `0009_ocr` is nog NIET op Neon toegepast** (ocr_page_images,
+  llm_usage.import_run_id, ocr_status) — eerst mergen, dan migreren.
+- **Hervatten**: openstaande run → "Resume OCR (N of M pages done)" op de upload-kaart;
+  idempotent dankzij de beeldrij-lock (dubbel gestuurde pagina kost nooit dubbel).
+
 ## Onderdeel Merkrelaties & data-inwinning — afgerond 2026-07-14
 
 Plan: `docs/plan-merkrelaties.md` (stappen 1–8). Overzicht `/data/merkrelaties`

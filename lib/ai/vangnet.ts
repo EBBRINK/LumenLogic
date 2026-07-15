@@ -491,6 +491,12 @@ async function overBudget(db: AppDb): Promise<{ over: boolean; budget: number | 
 // zonder besluit (dus daadwerkelijk in review); NOOIT groen; 'blauw' alléén als het
 // dossier 'awarded' is (regel 4 — een blauw-suggestie is per definitie een ander merk).
 // Regels met al-niet-verworpen AI-suggesties worden overgeslagen (geen dubbele kosten).
+//
+// B8 (OCR-gating, hard): een regel met een ÓPEN OCR-review (reviewKind 'ocr' en nog
+// geen reviewedAt) doet NOOIT mee — het gelezen merk kan verhallucineerd zijn, en het
+// vangnet zou daarmee de merkvergrendelde zoektool sturen vóór een mens de bron zag.
+// Ná afronding van de OCR-review (reviewedAt gezet) doet de regel gewoon weer mee;
+// decideReview triggert het vangnet dan opnieuw (lib/repo/review.ts).
 async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
   const statusConds = [
     inArray(specLines.status, ["rood", "open"]),
@@ -501,6 +507,13 @@ async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
     ),
     ...(phase === "awarded" ? [eq(specLines.status, "blauw")] : []),
   ];
+  // NOT (reviewKind = 'ocr' AND reviewedAt IS NULL), null-veilig uitgeschreven:
+  // een kale NOT(...) over een NULL-reviewKind zou de regel óók uitsluiten.
+  const geenOpenOcrReview = or(
+    isNull(specLines.reviewKind),
+    sql`${specLines.reviewKind} <> 'ocr'`,
+    isNotNull(specLines.reviewedAt),
+  );
   return db
     .select()
     .from(specLines)
@@ -508,6 +521,7 @@ async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
       and(
         eq(specLines.dossierId, dossierId),
         or(...statusConds),
+        geenOpenOcrReview,
         notExists(
           db
             .select({ id: aiSuggestions.id })
