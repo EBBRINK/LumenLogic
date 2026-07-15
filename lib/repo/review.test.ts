@@ -264,6 +264,74 @@ test("afgewezen regel staat alleen in Afgerond — niet in de rood-sectie, niet 
   expect((await getReviewCounts(s.db, s.dossierId)).pending).toBe(1);
 });
 
+// B7-versoepeling (bouwstap 4, reviewer-2): een rode OCR-regel met een ÁFGERONDE
+// ocr-review ("Goed" in het deck — de lezing klopt, maar er is nog geen match) valt
+// terug in de rood-werkvoorraad en telt als wachtend. Zolang de ocr-review open
+// staat hoort hij alleen in de review-wachtrij (niet dubbel).
+test("rode OCR-regel: open review → alleen wachtrij; afgeronde review → rood-sectie", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "OCR rood" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lo501",
+      brandText: "XAL",
+      productText: "FANTOOM 9000",
+      source: "ocr",
+      status: "rood",
+      reviewKind: "ocr",
+    })
+    .returning();
+
+  // Open ocr-review: wél in de review-wachtrij, NIET (ook) in de rood-sectie.
+  expect((await getReviewQueue(db, dossier.id)).pending.map((p) => p.id)).toEqual([
+    line.id,
+  ]);
+  expect(await getRedLinkLines(db, dossier.id)).toEqual([]);
+  expect((await getReviewCounts(db, dossier.id)).pending).toBe(1);
+
+  // "Goed" in het deck ('gecontroleerd' is status-neutraal): lezing bevestigd,
+  // regel blijft rood zonder match → terug in de rood-werkvoorraad + badge.
+  await decideReview(db, {
+    specLineId: line.id,
+    decision: "gecontroleerd",
+    actor: ACTOR,
+  });
+  const after = await getRedLinkLines(db, dossier.id);
+  expect(after.map((r) => r.id)).toEqual([line.id]);
+  const counts = await getReviewCounts(db, dossier.id);
+  expect(counts.pending).toBe(1); // nog steeds werkvoorraad: handmatig linken
+  expect(counts.total).toBe(1);
+
+  // Wordt de lezing juist AFGEWEZEN, dan is het een genomen besluit — geen
+  // werkvoorraad meer (zelfde regel als de afgewezen gele regel hierboven).
+  const [rejected] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lo502",
+      source: "ocr",
+      status: "rood",
+      reviewKind: "ocr",
+    })
+    .returning();
+  await decideReview(db, {
+    specLineId: rejected.id,
+    decision: "afgewezen",
+    reason: "verkeerd gelezen — regel bestaat niet",
+    actor: ACTOR,
+  });
+  expect((await getRedLinkLines(db, dossier.id)).map((r) => r.id)).toEqual([
+    line.id,
+  ]);
+  expect((await getReviewCounts(db, dossier.id)).pending).toBe(1);
+});
+
 // Rood → handmatig linken: menshandeling (zoeken + klikken), regel wordt groen met
 // merkteken, event manual_link, en de regel verdwijnt uit de link-werkvoorraad.
 test("linkManualProduct: rood → groen + merkteken + manual_link-event + telling zakt", async () => {

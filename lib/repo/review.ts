@@ -4,7 +4,7 @@
 // Daarnaast (stap 7, herontwerp 2026-07-14): rode regels zonder match horen als
 // werkvoorraad op de review-pagina ("Niet gevonden — handmatig linken"). Rood is een
 // STATUS, geen review-flag — die regels krijgen dus geen reviewKind, maar een eigen query.
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { specLineCandidates, specLines } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
@@ -38,11 +38,22 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
 // status), wel werkvoorraad — de review-pagina toont ze in een eigen sectie waar de
 // mens zélf een vergelijkbaar product zoekt en linkt (ijzeren regel 4: het systeem
 // doet hier géén suggesties; zoeken + klikken is een menshandeling).
-// Regels mét een reviewKind zijn uitgesloten (bewust besluit, reviewer-bevinding
-// 2026-07-14): een afgewezen gele regel houdt reviewKind='geel' + reviewedAt en zou
-// anders dubbel verschijnen — in "Afgerond" én hier. De afwijzing is een genomen
-// besluit, geen open werkvoorraad; handmatig linken kan dan altijd nog via het
-// regel-detail ("Andere match").
+// Uitsluiting versoepeld (B7/reviewer-2, bouwstap 4): niet langer "geen reviewKind"
+// maar "geen ÓPEN review en niet afgewezen". Een rode OCR-regel houdt na "Goed" in
+// het deck zijn reviewKind='ocr' + reviewedAt — de lezing is bevestigd, maar de
+// regel is nog steeds rood zonder match en hoort dus terug in deze werkvoorraad
+// ("blijft rood → daarna handmatig linken"). Een AFGEWEZEN regel (reviewDecision
+// 'afgewezen', bewust besluit 2026-07-14) blijft uitgesloten: die zou anders dubbel
+// verschijnen — in "Afgerond" én hier. De afwijzing is een genomen besluit, geen
+// open werkvoorraad; handmatig linken kan dan altijd nog via het regel-detail.
+const geenOpenReview = or(
+  isNull(specLines.reviewKind),
+  and(
+    isNotNull(specLines.reviewedAt),
+    sql`${specLines.reviewDecision} is distinct from 'afgewezen'`,
+  ),
+);
+
 export async function getRedLinkLines(db: AppDb, dossierId: string) {
   return db
     .select({
@@ -58,7 +69,7 @@ export async function getRedLinkLines(db: AppDb, dossierId: string) {
         eq(specLines.dossierId, dossierId),
         eq(specLines.status, "rood"),
         isNull(specLines.matchedProductId),
-        isNull(specLines.reviewKind),
+        geenOpenReview,
       ),
     )
     .orderBy(asc(specLines.sortOrder), asc(specLines.createdAt));
@@ -70,14 +81,15 @@ export async function getRedLinkLines(db: AppDb, dossierId: string) {
 // moet die werkvoorraad eerlijk tonen. Zodra gelinkt is de regel groen en valt hij
 // uit beide tellingen (er is geen blijvend "afgerond"-spoor voor rood-linken op de
 // badge; het audit-spoor leeft in events + chosenBy/chosenReason).
-// Zelfde uitsluiting als getRedLinkLines: regels mét reviewKind tellen alleen via de
-// review-tak — een afgewezen gele regel (reviewKind blijft staan, reviewedAt gezet)
-// telt dus niet eeuwig als 'wachtend'; badge en pagina blijven consistent.
+// Zelfde versoepelde uitsluiting als getRedLinkLines (B7, bouwstap 4): rood telt mee
+// als er geen ópen review (meer) is en de regel niet is afgewezen. Een rode OCR-regel
+// mét afgeronde ocr-review telt dus wél als wachtend (er moet nog gelinkt worden);
+// een afgewezen gele regel niet (besluit genomen); badge en pagina blijven consistent.
 export async function getReviewCounts(
   db: AppDb,
   dossierId: string,
 ): Promise<{ pending: number; total: number }> {
-  const roodOpen = sql`(${specLines.status} = 'rood' and ${specLines.matchedProductId} is null and ${specLines.reviewKind} is null)`;
+  const roodOpen = sql`(${specLines.status} = 'rood' and ${specLines.matchedProductId} is null and (${specLines.reviewKind} is null or (${specLines.reviewedAt} is not null and ${specLines.reviewDecision} is distinct from 'afgewezen')))`;
   const [row] = await db
     .select({
       total: sql<number>`count(*) filter (where ${specLines.reviewKind} is not null or ${roodOpen})`,

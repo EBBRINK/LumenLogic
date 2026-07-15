@@ -9,6 +9,7 @@ import {
   createDossier,
   deleteSpecLine,
   generateQuote,
+  getDossier,
   linkQuantities,
   parseBestek,
   parseSpecCsv,
@@ -31,7 +32,9 @@ import {
   setLineStatus,
   unlinkMatch,
 } from "@/lib/repo/matching";
-import { recordPdfImport } from "@/lib/repo/imports";
+import { recordPdfImport, getImportRun } from "@/lib/repo/imports";
+import { finishOcrRun, processOcrPage, startOcrRun } from "@/lib/repo/ocr";
+import { envApiKey } from "@/lib/ai/shared";
 import { setDossierOrg } from "@/lib/repo/orgs";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
@@ -193,6 +196,129 @@ export async function importArmaturenboekPagesAction(input: {
   redirect(
     `/projects/${dossierId}?pdf=${hadText ? String(lines.length) : "no-text-layer"}&run=${run.id}`,
   );
+}
+
+// ── OCR-import (plan-ocr-beeld-pdf, bouwstap 4/5) ────────────────────────────
+// De client-loop (stap 5) rendert de beeld-PDF per pagina en stuurt elk beeld als
+// FormData naar ocrPageAction; start/afronden gaan hieronder. Elk beeld past ruim
+// binnen Next's action-bodylimiet (JPEG van 1568px lange zijde ≈ 200–500 kB).
+const OCR_IMAGE_CAP = 2 * 1024 * 1024; // hard plafond per paginabeeld
+const OCR_MAX_PAGES = 500;
+
+// Run starten (of hervatten, B5: zelfde dossier + bestand + ocrStatus 'bezig').
+// Geen key → eerlijke melding vóór er ook maar iets gerenderd of geüpload wordt.
+export async function startOcrImportAction(input: {
+  dossierId: string;
+  filename: string;
+  pageCount: number;
+}): Promise<
+  | { error: string }
+  | { runId: string; resumed: boolean; donePages: number[] }
+> {
+  await requireSession();
+  const actor = await getActor();
+  const dossierId =
+    typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
+  const filename =
+    (typeof input?.filename === "string" ? input.filename.trim() : "").slice(
+      0,
+      255,
+    ) || "armaturenboek.pdf";
+  const pageCount = Number(input?.pageCount);
+  if (!dossierId || !Number.isInteger(pageCount) || pageCount < 1) {
+    return { error: "Invalid OCR request." };
+  }
+  if (pageCount > OCR_MAX_PAGES) {
+    return { error: `This PDF has more than ${OCR_MAX_PAGES} pages.` };
+  }
+  if (!envApiKey()) {
+    return {
+      error:
+        "OCR is unavailable: no AI key is configured. Add the fixture rows manually or via CSV.",
+    };
+  }
+  if (!(await getDossier(db, dossierId))) {
+    return { error: "Unknown project." };
+  }
+  const { run, resumed, donePages } = await startOcrRun(db, {
+    dossierId,
+    filename,
+    pageCount,
+    actor,
+  });
+  return { runId: run.id, resumed, donePages };
+}
+
+// Eén pagina: FormData met runId/dossierId/page/width/height + het beeld als File.
+// De beeldrij-lock en het €1-plafond leven in de repo-laag (B4); hier alleen
+// sessie, eigendom (run hoort bij dit dossier) en groottes.
+export async function ocrPageAction(formData: FormData): Promise<
+  | { error: string }
+  | { alreadyDone: true }
+  | { stopped: "budget" | "no_key" }
+  | { failed: string }
+  | { created: number; duplicates: number }
+> {
+  await requireSession();
+  const actor = await getActor();
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  const runId = String(formData.get("runId") ?? "").trim();
+  const page = intOrNull(formData.get("page"));
+  const width = intOrNull(formData.get("width"));
+  const height = intOrNull(formData.get("height"));
+  const image = formData.get("image");
+  if (!dossierId || !runId || !page || page < 1 || !width || !height) {
+    return { error: "Invalid OCR page request." };
+  }
+  if (!(image instanceof File) || !image.type.startsWith("image/")) {
+    return { error: "No page image supplied." };
+  }
+  if (image.size > OCR_IMAGE_CAP) {
+    return { error: "Page image is larger than 2 MB." };
+  }
+  const run = await getImportRun(db, runId);
+  if (!run || run.dossierId !== dossierId || run.source !== "ocr") {
+    return { error: "Unknown OCR run for this project." };
+  }
+  if (run.ocrStatus !== "bezig") {
+    return { error: "This OCR run is no longer active." };
+  }
+
+  const result = await processOcrPage(db, {
+    runId,
+    page,
+    imageBytes: new Uint8Array(await image.arrayBuffer()),
+    mime: image.type,
+    width,
+    height,
+    actor,
+  });
+  if ("alreadyDone" in result) return { alreadyDone: true };
+  if ("skipped" in result) {
+    return { stopped: result.skipped === "no_key" ? "no_key" : "budget" };
+  }
+  if ("failed" in result) return { failed: result.failed };
+  // Regels verschijnen progressief op de projectpagina terwijl de loop draait.
+  revalidatePath(`/projects/${dossierId}`);
+  return { created: result.created, duplicates: result.duplicates };
+}
+
+// Afronden: transcript + ocrStatus 'klaar' + ocr_done-event, daarna terug naar de
+// projectpagina met ?ocr=<aantal regels>&run=<id> (zelfde patroon als ?pdf=…).
+export async function finishOcrAction(formData: FormData) {
+  await requireSession();
+  const actor = await getActor();
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  const runId = String(formData.get("runId") ?? "").trim();
+  if (!dossierId || !runId) return { error: "Invalid OCR request." };
+  const run = await getImportRun(db, runId);
+  if (!run || run.dossierId !== dossierId || run.source !== "ocr") {
+    return { error: "Unknown OCR run for this project." };
+  }
+  const finished = await finishOcrRun(db, { runId, actor });
+  const counts = (finished.counts ?? {}) as Record<string, number>;
+  revalidatePath(`/projects/${dossierId}`);
+  redirect(`/projects/${dossierId}?ocr=${counts.checked ?? 0}&run=${runId}`);
 }
 
 // Matcher (opnieuw) draaien op één regel.

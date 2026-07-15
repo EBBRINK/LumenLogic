@@ -19,9 +19,15 @@
 // Reserveringspatroon — gekozen: UPDATE-IN-PLACE. Vóór de API-call schrijven we een
 // llm_usage-rij met een geschatte kost (OCR_RESERVE_EUR); ná de call werken we
 // diezelfde rij bij naar de echte tokenkosten. Zo telt de SUM-check een in-flight
-// call altijd mee (twee "gelijktijdige" pagina's kunnen samen het plafond niet
-// doorbranden) en blijft er precies één rij per call over — verwijderen+opnieuw
-// inserten zou een venster openen waarin de call onzichtbaar is. Faalt de call, dan
+// call mee zodra de reservering geschreven is, en blijft er precies één rij per
+// call over — verwijderen+opnieuw inserten zou een venster openen waarin de call
+// onzichtbaar is. Nuance gelijktijdigheid (reviewer bouwstap 3): check+insert is
+// hier NIET atomisch — twee écht gelijktijdige checks kunnen elkaars reservering
+// missen. Dat het plafond tóch hard is komt van de laag erboven: de beeldrij-lock
+// (unique(run,page) in lib/repo/ocr.ts, éérst inserten) laat elke pagina hooguit
+// één keer tot deze functie door, en de client-loop stuurt strikt sequentieel.
+// De reservering is dus verdediging-in-de-diepte, niet de primaire grendel.
+// Faalt de call, dan
 // blíjft de reservering staan als conservatieve kostenpost (een timeout kan aan de
 // API-kant tóch gekost hebben; te hoog tellen is veilig, te laag niet). Effectief
 // plafond: €1 + maximaal één paginaprijs, want de check gebeurt vóór de reservering.

@@ -40,7 +40,9 @@ export function pagesToMarkdown(pages: string[]): string {
 
 // Splitst "XAL SASSO 100" → { brand, type } door de langst mogelijke bekende merknaam
 // vooraan te matchen. Zo blijven "Wever & Ducré", "LED Linear", "Landscape Forms Inc" heel.
-function splitBrandType(
+// Geëxporteerd (bouwstap 4): de OCR-repo-laag (lib/repo/ocr.ts) knipt met exact dezelfde
+// helper wanneer vision geen merk las — parser en OCR lopen zo nooit uiteen.
+export function splitBrandType(
   rest: string,
   brandNames: string[],
 ): { brand: string | null; type: string } {
