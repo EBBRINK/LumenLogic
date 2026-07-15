@@ -57,6 +57,13 @@
       "when": 1784070000000,
       "tag": "0008_merkrelaties",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784080000000,
+      "tag": "0009_ocr",
+      "breakpoints": true
     }
   ]
 }
