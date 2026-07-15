@@ -1,13 +1,15 @@
 // Master-template voor merken (plan-merkrelaties K5 + Timo-besluit 3: écht .xlsx via
 // exceljs). Pure builder: leest UITSLUITEND lib/field-catalog.ts — alleen 📄-velden
 // (inExcel én !internalOnly, dubbel gefilterd in excelColumns()), volgorde = bucket-
-// volgorde. Eén werkblad "Productdata" met drie koprijen (bucketgroep / veldlabel /
-// instructie) + leeg invulgebied, plus een werkblad "Uitleg". 🔒-velden komen hier per
-// constructie nooit in terecht; de negatieve test parse't de buffer terug.
+// volgorde. Het template is volledig ENGELSTALIG (labelEn/instructionEn — het gaat naar
+// internationale merken); de app-UI blijft Nederlands. Eén werkblad "Product data" met
+// drie koprijen (bucketgroep / veldlabel / instructie) + leeg invulgebied, plus een
+// werkblad "Instructions". 🔒-velden komen hier per constructie nooit in terecht; de
+// negatieve test parse't de buffer terug.
 import ExcelJS from "exceljs";
 import { excelColumns } from "@/lib/field-catalog";
 
-export const TEMPLATE_FILENAME = "merkdata-template-brinklicht.xlsx";
+export const TEMPLATE_FILENAME = "brinklicht-product-data-template.xlsx";
 
 // Aantal lege invulrijen onder de koppen (louter cosmetisch — Excel groeit gewoon door).
 const INVULRIJEN = 200;
@@ -21,13 +23,13 @@ export async function buildMasterTemplateXlsx(): Promise<Uint8Array> {
   wb.creator = "Brink Licht — Lumen Logic";
   wb.created = new Date();
 
-  const ws = wb.addWorksheet("Productdata", {
+  const ws = wb.addWorksheet("Product data", {
     views: [{ state: "frozen", ySplit: 3 }],
   });
 
   // Rij 2 en 3 eerst als platte waarden; rij 1 (bucketgroepen) daarna met merges.
-  ws.getRow(2).values = columns.map(({ field }) => field.labelNl);
-  ws.getRow(3).values = columns.map(({ field }) => field.instructie);
+  ws.getRow(2).values = columns.map(({ field }) => field.labelEn);
+  ws.getRow(3).values = columns.map(({ field }) => field.instructionEn);
 
   // Rij 1: per bucket één samengevoegde cel met de bucketnaam, licht gekleurd.
   let start = 1; // 1-based kolomindex
@@ -38,7 +40,7 @@ export async function buildMasterTemplateXlsx(): Promise<Uint8Array> {
     while (end < columns.length && columns[end].bucket.key === bucket.key) end++;
     if (end > start) ws.mergeCells(1, start, 1, end);
     const cell = ws.getCell(1, start);
-    cell.value = bucket.labelNl;
+    cell.value = bucket.labelEn;
     cell.font = { bold: true };
     cell.alignment = { horizontal: "center" };
     const tint = BUCKET_TINTEN[bucketIndex % BUCKET_TINTEN.length];
@@ -60,23 +62,23 @@ export async function buildMasterTemplateXlsx(): Promise<Uint8Array> {
   ws.getRow(3).height = 42;
   columns.forEach(({ field }, i) => {
     const col = ws.getColumn(i + 1);
-    col.width = Math.min(40, Math.max(16, field.labelNl.length + 4));
+    col.width = Math.min(40, Math.max(16, field.labelEn.length + 4));
   });
   ws.getRow(1).height = 20;
   // Leeg invulgebied (geen inhoud, alleen dat het blad "af" oogt).
   for (let r = 4; r < 4 + INVULRIJEN; r++) ws.getRow(r);
 
-  // Werkblad "Uitleg": korte NL-instructie voor het merk.
-  const uitleg = wb.addWorksheet("Uitleg");
+  // Werkblad "Instructions": korte Engelse instructie voor het merk.
+  const uitleg = wb.addWorksheet("Instructions");
   uitleg.getColumn(1).width = 100;
   const regels = [
-    "Merkdata-template — Brink Licht (Lumen Logic)",
+    "Product data template — Brink Licht (Lumen Logic)",
     "",
-    "Vul op het tabblad 'Productdata' per rij één product in, vanaf rij 4.",
-    "Rij 1 groepeert de velden, rij 2 bevat de veldnamen en rij 3 een korte invul-instructie met eenheid en voorbeeld.",
-    "Velden die voor uw producten niet van toepassing zijn mag u gewoon leeglaten.",
-    "Gebruik de eenheden uit de instructie-rij (bv. centimeters, kelvin, lumen) en laat de kolomvolgorde ongewijzigd.",
-    "Stuur het ingevulde bestand terug naar uw contactpersoon bij Brink Licht.",
+    "Fill in one product per row on the 'Product data' tab, starting at row 4.",
+    "Row 1 groups the fields, row 2 contains the field names and row 3 a short instruction with unit and example.",
+    "Fields that do not apply to your products may simply be left empty.",
+    "Use the units from the instruction row (e.g. centimetres, kelvin, lumens) and keep the column order unchanged.",
+    "Please return the completed file to your contact at Brink Licht.",
   ];
   regels.forEach((tekst, i) => {
     const cell = uitleg.getCell(i + 1, 1);

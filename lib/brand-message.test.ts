@@ -105,7 +105,7 @@ test("alles compleet → compliment i.p.v. missende-data-lijst", () => {
 test("verwijzing naar het template en afsluiting zijn er altijd", () => {
   for (const input of [basis, { ...basis, productCount: 0, buckets: maakBuckets({}, 0) }]) {
     const tekst = buildBrandMessage(input);
-    expect(tekst).toContain("merkdata-template-brinklicht.xlsx");
+    expect(tekst).toContain("brinklicht-product-data-template.xlsx");
     expect(tekst).toContain("Met vriendelijke groet,");
   }
 });

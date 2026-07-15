@@ -22,6 +22,16 @@ test("catalog: 10 buckets, oplopende order, unieke veld-keys", () => {
   expect(GEEN_REACTIE_DAGEN).toBeGreaterThan(0);
 });
 
+test("tweetalig: elk veld heeft niet-lege labelEn en instructionEn, elke bucket labelEn", () => {
+  for (const bucket of FIELD_CATALOG) {
+    expect(bucket.labelEn.trim(), `bucket ${bucket.key}`).not.toBe("");
+    for (const f of bucket.fields) {
+      expect(f.labelEn.trim(), `labelEn van ${f.key}`).not.toBe("");
+      expect(f.instructionEn.trim(), `instructionEn van ${f.key}`).not.toBe("");
+    }
+  }
+});
+
 test("🔒-velden: internalOnly ⇒ nooit in het Excel", () => {
   const internal = FIELD_CATALOG.flatMap((b) => b.fields).filter(
     (f) => f.internalOnly,

@@ -105,7 +105,7 @@ export function buildBrandMessage(input: BrandMessageInput): string {
 
   regels.push("");
   regels.push(
-    "In de bijlage vindt u ons Excel-template (merkdata-template-brinklicht.xlsx). Zou u dit per product willen invullen? Velden die voor uw producten niet van toepassing zijn, mag u gewoon leeglaten.",
+    "In de bijlage vindt u ons Excel-template (brinklicht-product-data-template.xlsx). Zou u dit per product willen invullen? Velden die voor uw producten niet van toepassing zijn, mag u gewoon leeglaten.",
   );
   regels.push("");
   regels.push("Alvast hartelijk dank voor uw moeite.");

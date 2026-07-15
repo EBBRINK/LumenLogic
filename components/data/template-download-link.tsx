@@ -6,7 +6,7 @@
 // client-/testbundel van dit component belandt; de route bepaalt de echte naam.
 import { FileSpreadsheet } from "lucide-react";
 
-const TEMPLATE_FILENAME = "merkdata-template-brinklicht.xlsx";
+const TEMPLATE_FILENAME = "brinklicht-product-data-template.xlsx";
 
 export function TemplateDownloadLink() {
   return (
