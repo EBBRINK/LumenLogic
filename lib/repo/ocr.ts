@@ -316,7 +316,8 @@ function regelToSpecLine(
 // ── Afronden (B6) ────────────────────────────────────────────────────────────
 // raw_markdown = "OCR transcript (model output)": wat het MODEL las, per pagina.
 // De kopregel zegt dat expliciet — de échte bron zijn de paginabeelden, die even
-// lang leven als de run en via /api/ocr-image bereikbaar zijn. Idempotent: een al
+// lang leven als de run en via /projects/[id]/ocr-image bereikbaar zijn (mét
+// dossier-eigendomscheck, zoals de markdown-route). Idempotent: een al
 // afgeronde run wordt niet opnieuw afgerond (geen dubbel event).
 // Het vangnet wordt hier bewust NIET getriggerd (B8, zie kop-commentaar).
 export async function finishOcrRun(

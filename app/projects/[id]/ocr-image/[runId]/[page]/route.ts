@@ -1,20 +1,28 @@
 // B2: paginabeeld van een OCR-run — de échte bron van de import (B6), getoond in
-// het Tinder-deck (stap 6/7). Zelfde toegangsregel als de markdown-route: sessie
-// verplicht. Dit is de enige plek die (via getOcrPageImage, de enige bytes-lezer
-// in de repo-laag) de beeldbytes serveert. Cache privé: het beeld is onveranderlijk
+// het Tinder-deck (stap 6/7). Zelfde toegangsregels als de markdown-route hiernaast:
+// sessie verplicht én de run moet bij dit project horen (geen kruislekken tussen
+// dossiers). Dit is de enige plek die (via getOcrPageImage, de enige bytes-lezer in
+// de repo-laag) de beeldbytes serveert. Cache privé: het beeld is onveranderlijk
 // per (run, pagina), maar hoort nooit in een gedeelde cache.
 import { db } from "@/db/client";
+import { getImportRun } from "@/lib/repo/imports";
 import { getOcrPageImage } from "@/lib/repo/ocr";
 import { requireSession } from "@/lib/session";
 
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ runId: string; page: string }> },
+  { params }: { params: Promise<{ id: string; runId: string; page: string }> },
 ) {
   await requireSession();
-  const { runId, page } = await params;
+  const { id, runId, page } = await params;
   const pageNum = Number.parseInt(page, 10);
   if (!/^[0-9a-f-]{36}$/i.test(runId) || !Number.isInteger(pageNum) || pageNum < 1) {
+    return new Response("Niet gevonden", { status: 404 });
+  }
+  // Eigendomscheck (zoals de markdown-route): run onbekend of van een ander
+  // dossier → zelfde 404, geen onderscheid naar buiten.
+  const run = await getImportRun(db, runId);
+  if (!run || run.dossierId !== id) {
     return new Response("Niet gevonden", { status: 404 });
   }
   const image = await getOcrPageImage(db, runId, pageNum);
