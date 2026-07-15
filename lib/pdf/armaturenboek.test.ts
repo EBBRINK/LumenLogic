@@ -5,11 +5,13 @@
 import { expect, test } from "vitest";
 // Fixture-PDF mét tekstlaag (gegenereerd door scripts/gen-test-armaturenboek.ts).
 import boekUrl from "@/docs/examples/test-armaturenboek.pdf?url";
+import { extractPagesFromPdf } from "./extract";
 import {
   MARKDOWN_CAP,
   NO_TEXT_LAYER_NOTE,
   extractSpecLinesFromPdf,
   pagesToMarkdown,
+  parseSpecLinesFromPages,
   parseTocText,
 } from "./armaturenboek";
 
@@ -80,6 +82,27 @@ test("extractSpecLinesFromPdf: markdown-controlespoor + regels uit het test-arma
   expect(result.markdown).toContain("SASSO 100");
   expect(result.markdown).toContain("Armaturenboek");
   expect(result.markdown).not.toContain("afgekapt");
+});
+
+// 413-fix deel 1: het client-pad (extractie in de browser) + het server-pad (pure
+// parsing van pagina-tekst) moeten samen exact hetzelfde opleveren als de oude
+// alles-op-de-server-functie. Dit is de pariteitsgarantie voor de refactor.
+test("parseSpecLinesFromPages(extractPagesFromPdf(...)) is identiek aan extractSpecLinesFromPdf", async () => {
+  const bytes = new Uint8Array(await (await fetch(boekUrl)).arrayBuffer());
+  // pdfjs neemt de buffer over (detached) → elke extractie een eigen kopie.
+  const oud = await extractSpecLinesFromPdf(bytes.slice(), BRANDS);
+  const pages = await extractPagesFromPdf(bytes.slice());
+  const nieuw = parseSpecLinesFromPages(pages, BRANDS);
+  expect(nieuw).toEqual(oud);
+  expect(nieuw.lines.length).toBeGreaterThan(0);
+});
+
+// Geen tekstlaag (lege pagina's) → zelfde eerlijke uitkomst als het oude PDF-pad.
+test("parseSpecLinesFromPages: lege pagina's → hadText false + notitie", () => {
+  const result = parseSpecLinesFromPages(["", "  \n "], BRANDS);
+  expect(result.hadText).toBe(false);
+  expect(result.lines).toHaveLength(0);
+  expect(result.markdown).toBe(NO_TEXT_LAYER_NOTE);
 });
 
 // Minimale geldige PDF met één lege pagina — geen tekstlaag, zoals beeld-geëxporteerde

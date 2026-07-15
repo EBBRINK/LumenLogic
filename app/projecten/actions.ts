@@ -33,10 +33,10 @@ import {
 } from "@/lib/repo/matching";
 import { recordPdfImport } from "@/lib/repo/imports";
 import { setDossierOrg } from "@/lib/repo/orgs";
-import { runVangnetSafe } from "@/lib/ai/vangnet";
+import { triggerVangnet } from "@/lib/ai/vangnet";
 import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
 import { decideReview, flagForReview, linkManualProduct } from "@/lib/repo/review";
-import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
+import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
 import { requireSession, getActor } from "@/lib/session";
 
@@ -132,25 +132,52 @@ export async function linkBestekAction(formData: FormData) {
   revalidatePath(`/projecten/${dossierId}`);
 }
 
-export async function importArmaturenboekPdfAction(formData: FormData) {
+// 413-fix: de PDF zelf komt nooit meer op de server. De upload-kaart (client component)
+// extraheert de tekstlaag in de browser en stuurt alleen { filename, pages } als JSON —
+// een 5,5+ MB boek blijft zo ruim onder Next's action-bodylimiet en Vercel's ~4,5 MB
+// request-limiet. Cap op de totale tekst: 5 MB tekst is extreem ruim (het 5,5 MB-
+// voorbeeldboek levert < 100 kB tekstlaag); alles daarboven is geen inhoudsopgave.
+const PAGES_TEXT_CAP = 5 * 1024 * 1024;
+
+export async function importArmaturenboekPagesAction(input: {
+  dossierId: string;
+  filename: string;
+  pages: string[];
+}): Promise<{ error: string } | void> {
   await requireSession();
   const actor = await getActor();
-  const dossierId = String(formData.get("dossierId"));
-  const file = formData.get("pdf");
-  if (!dossierId || !(file instanceof File) || file.size === 0) return;
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const dossierId =
+    typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
+  const filename =
+    (typeof input?.filename === "string" ? input.filename.trim() : "").slice(
+      0,
+      255,
+    ) || "armaturenboek.pdf";
+  const pages =
+    Array.isArray(input?.pages) &&
+    input.pages.every((p) => typeof p === "string")
+      ? input.pages
+      : null;
+  if (!dossierId || !pages) return { error: "Ongeldige import-aanroep." };
+  const totalChars = pages.reduce((n, p) => n + p.length, 0);
+  if (totalChars > PAGES_TEXT_CAP) {
+    return {
+      error:
+        "De tekstlaag van deze PDF is groter dan 5 MB — dat kan geen armaturenboek-inhoudsopgave zijn.",
+    };
+  }
   const brandNames = (
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
-  const { lines, hadText, markdown } = await extractSpecLinesFromPdf(
-    bytes,
+  const { lines, hadText, markdown } = parseSpecLinesFromPages(
+    pages,
     brandNames,
   );
   // B2/stap 5: de import krijgt altijd een run (status 'bevestigd') als vaste plek voor
   // het markdown-controlespoor — ook bij nul regels of een ontbrekende tekstlaag.
   const { run } = await recordPdfImport(db, {
     dossierId,
-    filename: file.name,
+    filename,
     lines,
     rawMarkdown: markdown,
     actor,
@@ -160,7 +187,7 @@ export async function importArmaturenboekPdfAction(formData: FormData) {
     entityId: dossierId,
     action: "pdf_import",
     actor,
-    payload: { file: file.name, hadText, imported: lines.length, runId: run.id },
+    payload: { file: filename, hadText, imported: lines.length, runId: run.id },
   });
   revalidatePath(`/projecten/${dossierId}`);
   redirect(
@@ -368,9 +395,9 @@ export async function editSpecLineAction(formData: FormData) {
   );
   // merk/type/specs kunnen de match veranderen → opnieuw matchen
   await runMatcher(db, specLineId, actor);
-  // AI-vangnet (stap 8) na de hermatch: awaited met vangrails (fout → event, nooit
-  // een kapotte edit); zonder key een direct skip-event.
-  await runVangnetSafe(db, dossierId, actor);
+  // AI-vangnet (stap 8) na de hermatch: via after() ná de response (de edit wacht er
+  // niet op); vangrails in runVangnetSafe blijven — fout → event, nooit een kapotte edit.
+  await triggerVangnet(db, dossierId, actor);
   redirect(`/projecten/${dossierId}/regel/${specLineId}`);
 }
 

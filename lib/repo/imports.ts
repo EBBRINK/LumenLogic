@@ -4,7 +4,7 @@
 // op het voorstel-scherm, de mens vinkt aan wat klopt, en OCR/LLM staat standaard uit.
 import { eq } from "drizzle-orm";
 import { importRuns, type ImportRow } from "@/db/schema";
-import { runVangnetSafe } from "@/lib/ai/vangnet";
+import { triggerVangnet } from "@/lib/ai/vangnet";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
 import { runMatcher } from "@/lib/repo/matching";
 import type { AppDb } from "./db";
@@ -138,10 +138,11 @@ export async function recordPdfImport(
     },
   });
 
-  // AI-vangnet (stap 8): tweede pass over de restregels, awaited maar met vangrails —
-  // fouten worden een ai_vangnet_failed-event, zonder key een skip-event; de import
-  // faalt er nooit door.
-  await runVangnetSafe(db, input.dossierId, input.actor);
+  // AI-vangnet (stap 8): tweede pass over de restregels. In een Next-request draait het
+  // via after() ná de response (import blokkeert er niet meer op); in tests/scripts
+  // awaited met vangrails — fouten worden een ai_vangnet_failed-event, zonder key een
+  // skip-event; de import faalt er nooit door.
+  await triggerVangnet(db, input.dossierId, input.actor);
 
   return { run, created };
 }
@@ -231,8 +232,8 @@ export async function confirmImportRun(
     payload: { runId, added: created.length, ofRows: rows.length },
   });
 
-  // AI-vangnet (stap 8): zelfde vangrails als bij de PDF-import — nooit een importfout.
-  await runVangnetSafe(db, run.dossierId, actor);
+  // AI-vangnet (stap 8): zelfde niet-blokkerende trigger als bij de PDF-import.
+  await triggerVangnet(db, run.dossierId, actor);
 
   return { created };
 }

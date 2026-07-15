@@ -4,7 +4,7 @@
 // Belangrijk: veel armaturenboeken (o.a. het Deerns-voorbeeld in docs/examples) zijn
 // als beeld/outline geëxporteerd en hebben GÉÉN tekstlaag — dan valt er niets te parsen.
 // Dat melden we eerlijk (fail loud), i.p.v. stil niets te importeren.
-import { extractText, getDocumentProxy } from "unpdf";
+import { extractPagesFromPdf } from "@/lib/pdf/extract";
 import type { SpecLineInput } from "@/lib/repo/dossiers";
 import { parseProductName } from "@/lib/enrichment/parser";
 
@@ -119,19 +119,28 @@ export function parseTocText(
   return lines;
 }
 
-export async function extractSpecLinesFromPdf(
-  bytes: Uint8Array,
+// Pure parsing van al-geëxtraheerde pagina-tekst (413-fix deel 1): dit is voortaan het
+// server-pad — de browser extraheert (lib/pdf/extract.ts), de server parst alleen nog
+// tekst en heeft geen pdfjs meer nodig. Zelfde uitkomst als extractSpecLinesFromPdf:
+// voor de parser plakken we de pagina's aan elkaar (die normaliseert whitespace toch
+// al), voor de markdown blijven de regeleindes per pagina staan.
+export function parseSpecLinesFromPages(
+  pages: string[],
   brandNames: string[],
-): Promise<PdfImportResult> {
-  const pdf = await getDocumentProxy(bytes);
-  // Per pagina extraheren (mergePages: false): zo behouden we regeleindes voor de
-  // markdown; voor de parser plakken we de pagina's aan elkaar (die normaliseert
-  // whitespace toch al, dus dit is gelijk aan de oude mergePages-uitkomst).
-  const { text } = await extractText(pdf, { mergePages: false });
-  const pages = Array.isArray(text) ? text : [text];
+): PdfImportResult {
   const merged = pages.join("\n");
   const hadText = merged.trim().length > 0;
   const lines = hadText ? parseTocText(merged, brandNames) : [];
   const markdown = hadText ? pagesToMarkdown(pages) : NO_TEXT_LAYER_NOTE;
   return { lines, hadText, rawRows: lines.length, markdown };
+}
+
+// PDF → pages → parse, in één stap. Blijft bestaan voor tests en scripts (o.a. de
+// PGlite-acceptatietest); de server-action gebruikt parseSpecLinesFromPages direct.
+export async function extractSpecLinesFromPdf(
+  bytes: Uint8Array,
+  brandNames: string[],
+): Promise<PdfImportResult> {
+  const pages = await extractPagesFromPdf(bytes);
+  return parseSpecLinesFromPages(pages, brandNames);
 }

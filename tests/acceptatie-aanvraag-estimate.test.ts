@@ -3,7 +3,7 @@
 // test-armaturenboek (docs/examples/test-armaturenboek.pdf, 20 regels).
 //
 // De keten: project aanmaken → PDF importeren (recordPdfImport met echte
-// extractSpecLinesFromPdf-output incl. markdown-controlespoor) → matcher
+// parseSpecLinesFromPages-output incl. markdown-controlespoor) → matcher
 // (vijfstatussen + geel auto-door, B3) → AI-vangnet met gemockte client (B4,
 // suggesties-only) → review afronden (accepteer / variant / handmatig linken) →
 // estimate genereren + PDF terugleesbaar (unpdf) → statusflow (estimate_gestuurd
@@ -50,7 +50,8 @@ import {
   VANGNET_MODEL,
   type VangnetClient,
 } from "@/lib/ai/vangnet";
-import { extractSpecLinesFromPdf } from "@/lib/pdf/armaturenboek";
+import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
+import { extractPagesFromPdf } from "@/lib/pdf/extract";
 import { renderEstimatePdf } from "@/lib/pdf/estimate";
 import {
   createDossier,
@@ -209,7 +210,9 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
 
-  const parsed = await extractSpecLinesFromPdf(bytes, brandNames);
+  // Productiepad sinds de 413-fix: extractie (browser) → pure parsing (server).
+  const pages = await extractPagesFromPdf(bytes);
+  const parsed = parseSpecLinesFromPages(pages, brandNames);
   expect(parsed.hadText).toBe(true);
   expect(parsed.lines).toHaveLength(20); // het volledige boek, niets weggelaten
   expect(parsed.markdown.startsWith("## Pagina 1")).toBe(true);

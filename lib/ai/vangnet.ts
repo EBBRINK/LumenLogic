@@ -779,6 +779,27 @@ async function runLine(
   return { suggested, discarded };
 }
 
+// Niet-blokkerende trigger voor import/hermatch (413/latency-fix deel 2): binnen een
+// Next-request plannen we het vangnet via after() — het draait dan NÁ de response, de
+// gebruiker wacht er niet meer op; de review-pagina toont suggesties zodra ze er zijn.
+// Buiten een request-scope (vitest/PGlite, scripts) gooit after() synchroon of is
+// next/server niet laadbaar — dan awaiten we direct, exact het oude gedrag. Daardoor
+// blijven de bestaande tests de vangnet-events direct na de aanroep zien; het
+// after()-pad zelf is in vitest alleen indirect testbaar (geen request-scope).
+export async function triggerVangnet(
+  db: AppDb,
+  dossierId: string,
+  actor?: string,
+): Promise<void> {
+  try {
+    // dynamisch: geen harde next/server-afhankelijkheid in test-/scriptomgevingen
+    const { after } = await import("next/server");
+    after(() => runVangnetSafe(db, dossierId, actor));
+  } catch {
+    await runVangnetSafe(db, dossierId, actor);
+  }
+}
+
 // Trigger-wrapper voor import/hermatch: awaited maar met vangrails — een vangnet-fout
 // wordt een event (ai_vangnet_failed) en laat de import of edit nooit falen.
 export async function runVangnetSafe(

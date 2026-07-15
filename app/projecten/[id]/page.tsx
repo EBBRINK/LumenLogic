@@ -13,7 +13,7 @@ import {
   addSpecCsvAction,
   addSpecLineAction,
   deleteLineAction,
-  importArmaturenboekPdfAction,
+  importArmaturenboekPagesAction,
   linkBestekAction,
 } from "../actions";
 
@@ -66,7 +66,7 @@ export default async function RegelsTab({
       {/* Stap 5: PDF-upload als eerste blok — de hoofdingang van een project. */}
       <PdfUploadCard
         dossierId={dossier.id}
-        importAction={importArmaturenboekPdfAction}
+        importAction={importArmaturenboekPagesAction}
       />
 
       <section className="mb-8">
