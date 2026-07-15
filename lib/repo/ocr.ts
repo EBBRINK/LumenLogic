@@ -18,12 +18,13 @@
 //     nooit de merkvergrendelde zoektool sturen vóór een mens de bron zag — de
 //     vangnet-trigger komt in stap 7 vanuit de review-decide-flow.
 //   • Regel 5: start/hervatten/skip/afronden krijgen elk hun event.
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   brands,
   importRuns,
   llmUsage,
   ocrPageImages,
+  specLineCandidates,
   specLines,
   type ImportRow,
 } from "@/db/schema";
@@ -130,7 +131,167 @@ export type ProcessOcrPageResult =
   | { skipped: "no_key" | "budget_run" | "budget_month"; stopped: boolean }
   // Vision-call mislukt (event ocr_page_failed is al gelogd); doorgaan met de rest.
   | { failed: string }
-  | { created: number; duplicates: number; costEur: number };
+  | { created: number; duplicates: number; upgraded: number; costEur: number };
+
+// ── Rijkste-wint-dedup (item A, docs/probleem-ocr-toc-verdringt-specs.md) ───
+// Rijkdom = aantal niet-null GEVRAAGDE specvelden — bewust niet ruweTekst-lengte:
+// een lange lezing kan alsnog geen extra spec bevatten, en een korte kan er zes
+// hebben. Werkt op zowel een net-geparste SpecLineInput als een bestaande
+// specLines-rij (numeric-kolommen komen als string terug uit drizzle — "!= null"
+// is genoeg, de waarde zelf doet er voor het tellen niet toe).
+type SpecRichnessFields = {
+  reqKelvin?: number | string | null;
+  reqCri?: number | string | null;
+  reqIp?: string | null;
+  reqWatt?: number | string | null;
+  reqLumen?: number | string | null;
+  reqBeamAngle?: number | string | null;
+  reqDimmable?: string | null;
+};
+export function specRichness(line: SpecRichnessFields): number {
+  const fields: (keyof SpecRichnessFields)[] = [
+    "reqKelvin",
+    "reqCri",
+    "reqIp",
+    "reqWatt",
+    "reqLumen",
+    "reqBeamAngle",
+    "reqDimmable",
+  ];
+  return fields.reduce((n, f) => (line[f] != null ? n + 1 : n), 0);
+}
+
+// Bestaande spec_line van DEZE run+code — bewust gescoopt op importRunId (nooit
+// dossier-breed): een andere run of een handmatige regel met toevallig dezelfde
+// fixtureCode mag nooit "geüpgraded" worden door deze OCR-lezing.
+async function getOwnOcrLine(db: AppDb, runId: string, fixtureCode: string) {
+  const [line] = await db
+    .select()
+    .from(specLines)
+    .where(
+      and(eq(specLines.importRunId, runId), eq(specLines.fixtureCode, fixtureCode)),
+    )
+    .limit(1);
+  return line ?? null;
+}
+
+// Upgrade van een bestaande OCR-regel met een rijkere lezing (bv. de inhoudsopgave
+// won eerst, de detailpagina komt later met alle cijfers). Twee blokkerende
+// reviewer-gaten uit het besluitdocument, allebei hier gefixt:
+//  1. Spookmatch: runMatcher laat matchedProductId ongemoeid tenzij er een NIEUWE
+//     auto-geel-kandidaat is — een mens-gekozen (of eerder auto-gekozen) match kan
+//     na de upgrade dus blijven hangen terwijl de nieuwe specs een heel andere (of
+//     geen) kandidaat opleveren. Ná runMatcher expliciet vergelijken en zo nodig
+//     loskoppelen — anders verdwijnt de regel stilzwijgend uit de "handmatig
+//     linken"-werkvoorraad (getRedLinkLines filtert op matchedProductId IS NULL).
+//  2. Verloren audit-spoor: runMatcher verwijdert en herbouwt alle candidates
+//     zonder een eerdere chosen/chosenBy/chosenReason te bewaren — de oude keuze
+//     dus VÓÓR het herdraaien uitlezen en meesturen in het event (ijzeren regel 5).
+//
+// Geen db.transaction() hier: de production-client (db/client.ts) draait op
+// drizzle-orm/neon-http, en die driver ondersteunt géén interactieve transacties
+// ("No transactions support in neon-http driver" — drizzle-orm/neon-http/session.js).
+// AppDb is bewust hetzelfde type voor app (neon-http) en tests (PGlite), dus een
+// db.transaction() zou hier in de tests slagen maar in productie altijd stuk gaan.
+// De stappen hieronder lopen daarom sequentieel, zonder atomische garantie. Het
+// race-risico (twee overlappende page-verwerkingen voor dezelfde run/code) is
+// hetzelfde geaccepteerde risico als eerder in dit project: single-user, een
+// sequentiële client-loop maakt een echte gelijktijdige aanroep voor dezelfde run
+// praktisch onmogelijk. Geen nieuwe unique-constraint/migratie hiervoor.
+async function upgradeOcrLine(
+  db: AppDb,
+  input: {
+    existing: typeof specLines.$inferSelect;
+    line: SpecLineInput;
+    fixtureCode: string;
+    page: number;
+    actor?: string;
+  },
+): Promise<void> {
+  const { existing, line, fixtureCode, page, actor } = input;
+
+  // a) Oude match-koppeling + chosen-kandidaat bewaren VÓÓR het herdraaien — na
+  // runMatcher zijn de oude candidates al weg (idempotent verwijderd/herbouwd).
+  const oldMatchedProductId = existing.matchedProductId;
+  let previousChoice:
+    | { productId: string; chosenBy: string | null; chosenReason: string | null }
+    | null = null;
+  if (oldMatchedProductId) {
+    const [chosen] = await db
+      .select({
+        chosenBy: specLineCandidates.chosenBy,
+        chosenReason: specLineCandidates.chosenReason,
+      })
+      .from(specLineCandidates)
+      .where(
+        and(
+          eq(specLineCandidates.specLineId, existing.id),
+          eq(specLineCandidates.productId, oldMatchedProductId),
+        ),
+      )
+      .limit(1);
+    previousChoice = {
+      productId: oldMatchedProductId,
+      chosenBy: chosen?.chosenBy ?? null,
+      chosenReason: chosen?.chosenReason ?? null,
+    };
+  }
+
+  // b) Eigen kleine update met de nieuwe specvelden — NIET via de gedeelde
+  // updateSpecLine (die is voor menselijke edits, dit is een rijkere OCR-lezing).
+  // reqWatt/reqBeamAngle/reqSizeCm zijn numeric-kolommen → String(...), zelfde
+  // conventie als addSpecLines/updateSpecLine in lib/repo/dossiers.ts.
+  await db
+    .update(specLines)
+    .set({
+      brandText: line.brandText ?? null,
+      productText: line.productText ?? null,
+      reqKelvin: line.reqKelvin ?? null,
+      reqCri: line.reqCri ?? null,
+      reqIp: line.reqIp ?? null,
+      reqWatt: line.reqWatt != null ? String(line.reqWatt) : null,
+      reqLumen: line.reqLumen ?? null,
+      reqBeamAngle: line.reqBeamAngle != null ? String(line.reqBeamAngle) : null,
+      reqDimmable: line.reqDimmable ?? null,
+      sourceConfidence: line.sourceConfidence ?? null,
+      sourcePage: page,
+      reviewKind: "ocr",
+      reviewedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(specLines.id, existing.id));
+
+  // c) Hermatchen op de nieuwe, rijkere specs.
+  const outcome = await runMatcher(db, existing.id, actor);
+
+  // d) Spookmatch-fix: "nieuw berekende match" = de auto-geel-kandidaat van déze
+  // evaluatie (runMatcher zet alleen die expliciet op de regel). Is die er niet,
+  // of is het een andere kandidaat dan de oude, dan is de oude koppeling een
+  // spookmatch geworden — expliciet loskoppelen.
+  const newMatchedProductId = outcome.unambiguousYellow?.productId ?? null;
+  if (oldMatchedProductId && newMatchedProductId !== oldMatchedProductId) {
+    await db
+      .update(specLines)
+      .set({ matchedProductId: null })
+      .where(eq(specLines.id, existing.id));
+  }
+
+  // e) Audit-event: de oude keuze mag nooit stilzwijgend verdwijnen (ijzeren regel 5).
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: existing.id,
+    action: "ocr_line_upgraded",
+    actor,
+    payload: {
+      fixtureCode,
+      oldRichness: specRichness(existing),
+      newRichness: specRichness(line),
+      oldPage: existing.sourcePage,
+      newPage: page,
+      ...(previousChoice ? { previousChoice } : {}),
+    },
+  });
+}
 
 // ── Eén pagina verwerken ─────────────────────────────────────────────────────
 // VOLGORDE-AFSPRAAK (B4): éérst de beeldrij, dán pas de vision-call. De unique
@@ -220,7 +381,10 @@ export async function processOcrPage(
 
   // (c) Regels verwerken. Dedupe op armatuurcode tegen álles wat deze run al las
   // (run.rows is de volledige leesgeschiedenis, incl. eerdere pagina's): een boek
-  // noemt een armatuur vaak op meerdere pagina's, maar één code = één spec-regel.
+  // noemt een armatuur vaak op meerdere pagina's. Vroeger won de eerste lezing
+  // altijd; nu wint de RIJKSTE lezing (item A, docs/probleem-ocr-toc-verdringt-
+  // specs.md) — een arme inhoudsopgave-rij wordt overschreven zodra de rijkere
+  // detailpagina van dezelfde code langskomt.
   const existingCodes = new Set(
     ((run.rows ?? []) as ImportRow[]).map((r) => r.fixtureCode),
   );
@@ -228,17 +392,17 @@ export async function processOcrPage(
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
 
+  // Mutabele kopie van de al opgebouwde rows: bij een upgrade zetten we de
+  // eerdere winnende entry van dezelfde code terug op checked:false (stap f).
+  const priorRows = [...((run.rows ?? []) as ImportRow[])];
   const newRows: ImportRow[] = [];
-  const inputs: SpecLineInput[] = [];
+  let created = 0;
   let duplicates = 0;
+  let upgraded = 0;
+
   for (const regel of result.regels) {
     const line = regelToSpecLine(regel, opts.page, run.id, brandNames);
-    const isDuplicate = existingCodes.has(regel.armatuurcode);
-    if (!isDuplicate) existingCodes.add(regel.armatuurcode);
-    else duplicates++;
-    // Élke gelezen regel komt in run.rows (mét ruwe_tekst → het transcript, B6);
-    // checked zegt eerlijk of hij een spec-regel werd (duplicaat → false).
-    newRows.push({
+    const baseRow: ImportRow = {
       fixtureCode: regel.armatuurcode,
       quantity: line.quantity ?? null,
       brandText: line.brandText ?? null,
@@ -246,37 +410,73 @@ export async function processOcrPage(
       source: "ocr",
       rawText: regel.ruweTekst,
       page: opts.page,
-      checked: !isDuplicate,
-    });
-    if (!isDuplicate) inputs.push(line);
-  }
+      checked: false,
+    };
 
-  const created = inputs.length
-    ? await addSpecLines(db, run.dossierId, inputs)
-    : [];
-  for (const line of created) {
-    await runMatcher(db, line.id, opts.actor);
-  }
-  // B7: OCR-review op elke nieuwe regel die nog géén reviewKind heeft. De matcher
-  // zette zonet eventueel 'geel' — die flag blijft staan (één review per regel;
-  // de gele kaart toont de bron erbij, dus de lezing wordt daar mee-beoordeeld).
-  if (created.length) {
-    await db
-      .update(specLines)
-      .set({ reviewKind: "ocr", reviewedAt: null, updatedAt: new Date() })
-      .where(
-        and(
-          inArray(
-            specLines.id,
-            created.map((l) => l.id),
-          ),
-          isNull(specLines.reviewKind),
-        ),
-      );
+    if (!existingCodes.has(regel.armatuurcode)) {
+      // Nog nooit gezien in deze run → huidig pad (created), ongewijzigd.
+      existingCodes.add(regel.armatuurcode);
+      const [createdLine] = await addSpecLines(db, run.dossierId, [line]);
+      await runMatcher(db, createdLine.id, opts.actor);
+      // B7: OCR-review op elke nieuwe regel die nog géén reviewKind heeft. De
+      // matcher draaide zonet en kan 'geel' hebben gezet — dat moet in de DB
+      // gecheckt worden (isNull-where), niet op het createdLine-object van vóór
+      // runMatcher: die flag blijft staan (één review per regel; de gele kaart
+      // toont de bron erbij).
+      await db
+        .update(specLines)
+        .set({ reviewKind: "ocr", reviewedAt: null, updatedAt: new Date() })
+        .where(
+          and(eq(specLines.id, createdLine.id), isNull(specLines.reviewKind)),
+        );
+      created++;
+      newRows.push({ ...baseRow, checked: true });
+      continue;
+    }
+
+    // Code al bekend in deze run — kijk of er echt al een eigen spec_line voor
+    // bestaat (gescoopt op run+code). Binnen dezelfde pagina kan dezelfde code
+    // twee keer voorkomen vóórdat de eerste al is weggeschreven — dat blijft,
+    // net als voorheen, gewoon een duplicaat (geen spec_line om tegen te upgraden).
+    const existing = await getOwnOcrLine(db, run.id, regel.armatuurcode);
+    if (!existing) {
+      duplicates++;
+      newRows.push(baseRow);
+      continue;
+    }
+
+    const newRichness = specRichness(line);
+    const oldRichness = specRichness(existing);
+    if (newRichness <= oldRichness) {
+      // Gelijke of armere rijkdom: bestaande lezing blijft staan (ties geen churn).
+      duplicates++;
+      newRows.push(baseRow);
+      continue;
+    }
+
+    // Rijkere lezing → upgrade (spookmatch-fix + audit-bewaring zitten in
+    // upgradeOcrLine hierboven).
+    await upgradeOcrLine(db, {
+      existing,
+      line,
+      fixtureCode: regel.armatuurcode,
+      page: opts.page,
+      actor: opts.actor,
+    });
+    upgraded++;
+    newRows.push({ ...baseRow, checked: true });
+    // f) De eerdere winnende entry van deze code (uit een vorige pagina) is niet
+    // langer de "checked" lezing — precies één rij per code mag checked:true zijn.
+    for (const r of priorRows) {
+      if (r.fixtureCode === regel.armatuurcode && r.checked) {
+        r.checked = false;
+        break;
+      }
+    }
   }
 
   // Run-snapshot bijwerken: rows groeit per pagina aan, counts tellen mee.
-  const rows = [...((run.rows ?? []) as ImportRow[]), ...newRows];
+  const rows = [...priorRows, ...newRows];
   const counts = {
     ...(run.counts ?? {}),
     total: rows.length,
@@ -287,7 +487,7 @@ export async function processOcrPage(
     .set({ rows, counts, updatedAt: new Date() })
     .where(eq(importRuns.id, opts.runId));
 
-  return { created: created.length, duplicates, costEur: result.costEur };
+  return { created, duplicates, upgraded, costEur: result.costEur };
 }
 
 // Eén gelezen regel → SpecLineInput, met de bestaande deterministische helpers:

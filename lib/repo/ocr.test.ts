@@ -30,6 +30,7 @@ import {
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
+import { decideReview } from "@/lib/repo/review";
 
 const ACTOR = "eduard@brinklicht.nl";
 const USAGE = { input_tokens: 2000, output_tokens: 300 }; // → €0,0035 per pagina
@@ -679,4 +680,251 @@ test("vision-fout → {failed}, beeldrij weg (hervatten leest de pagina alsnog)"
     actor: ACTOR,
   });
   expect(ok).toMatchObject({ created: 1 });
+});
+
+// ── Item A (docs/probleem-ocr-toc-verdringt-specs.md, Besluit fase 2): rijkste
+// lezing wint de dedup — een ToC-rij (arm, geen specs) mag niet blijvend winnen
+// van de detailpagina van dezelfde code (rijk, wél specs) die later langskomt.
+test("ToC-lezing (arm) → detailpagina-lezing (rijk), zelfde code: de rijkere lezing wint", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  // Pagina 1: inhoudsopgave-achtige rij — code, merk, type, geen specs.
+  const p1 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p1).toMatchObject({ created: 1, duplicates: 0, upgraded: 0 });
+
+  const [afterPage1] = await runLines(db, run.id);
+  expect(afterPage1.reqKelvin).toBeNull();
+  expect(afterPage1.reqWatt).toBeNull();
+  expect(afterPage1.sourcePage).toBe(1);
+
+  // Pagina 2: detailpagina van dezelfde code — nu wél alle specs.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  // Zelfde spec_line-id, nu met de specs + herkomst van de tweede (rijkere) lezing.
+  const linesAfter = await runLines(db, run.id);
+  expect(linesAfter.length).toBe(1);
+  const [upgraded] = linesAfter;
+  expect(upgraded.id).toBe(afterPage1.id);
+  expect(upgraded.reqWatt).toBe("17.90");
+  expect(upgraded.reqKelvin).toBe(3000);
+  expect(upgraded.reqCri).toBe(90);
+  expect(upgraded.sourcePage).toBe(2);
+
+  const upgradedEvents = await eventsByAction(db, "ocr_line_upgraded");
+  expect(upgradedEvents.length).toBe(1);
+  expect(upgradedEvents[0].payload).toMatchObject({
+    fixtureCode: "Lp301",
+    oldRichness: 0,
+    newRichness: 3,
+    oldPage: 1,
+    newPage: 2,
+  });
+});
+
+// ── Gelijke rijkdom: ties blijven bij de bestaande lezing (geen onnodige churn).
+test("gelijke rijkdom blijft liggen: geen upgrade, geen tweede event, geen rematch", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100 3000K",
+          ruwe_tekst: "Lp301 XAL SASSO 100 3000K",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          // Zelfde rijkdom (alleen kelvin) maar een andere waarde — als de upgrade
+          // per ongeluk toch draait, zou dit zichtbaar worden (3200 i.p.v. 3000).
+          type: "SASSO 100 3200K",
+          ruwe_tekst: "Lp301 XAL SASSO 100 3200K (tweede lezing, zelfde rijkdom)",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 1, upgraded: 0 });
+
+  const [line] = await runLines(db, run.id);
+  expect(line.reqKelvin).toBe(3000); // de eerste (bestaande) lezing blijft staan
+  expect(line.sourcePage).toBe(1);
+
+  expect((await eventsByAction(db, "ocr_line_upgraded")).length).toBe(0);
+  // Geen rematch: precies één matched_status-event voor deze regel (van de creatie).
+  const matched = (await eventsByAction(db, "matched_status")).filter(
+    (e) => e.entityId === line.id,
+  );
+  expect(matched.length).toBe(1);
+});
+
+// ── KRITIEK: een mens had de arme lezing al goedgekeurd (matchedProductId + chosenBy)
+// vóórdat de rijkere detailpagina langskwam. Twee reviewer-gaten uit het besluit-
+// document (spookmatch + audit-bewaring) moeten hier allebei standhouden.
+test("mens had de arme lezing al goedgekeurd: upgrade maakt de spookmatch los, bewaart de oude keuze in het event", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  // X: een mens-gekozen product dat met GEEN redelijke lezing van "XAL SASSO 100"
+  // zou matchen (ander merk) — zo kan de rematch X nooit toevallig weer kiezen.
+  const { productId: productX } = await seedBrandProduct(db, {
+    brand: "Zonneveld Verlichting",
+    name: "Onbedoeld gekozen product",
+    kelvin: 6500,
+  });
+
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  // Pagina 1: arme ToC-lezing.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  const [beforeChoice] = await runLines(db, run.id);
+
+  // Een mens keurt de lezing/match goed en kiest expliciet product X.
+  await decideReview(db, {
+    specLineId: beforeChoice.id,
+    decision: "accepteer",
+    productId: productX,
+    reason: "handmatig gekozen tijdens review",
+    actor: "iemand@brink.nl",
+  });
+  const [afterChoice] = await runLines(db, run.id);
+  expect(afterChoice.matchedProductId).toBe(productX);
+
+  // Pagina 2: de detailpagina met specs die NIET bij X passen (X is 6500K, hier
+  // vraagt de lezing 3000K van een heel ander merk-gebonden product).
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  const [afterUpgrade] = await runLines(db, run.id);
+  // Spookmatch-fix: de oude (mens-gekozen) koppeling is losgemaakt, niet blijven hangen.
+  expect(afterUpgrade.matchedProductId).not.toBe(productX);
+  expect(afterUpgrade.matchedProductId).toBeNull();
+
+  // Audit-bewaring: de oude keuze verdwijnt niet stilzwijgend uit het logboek.
+  const upgradedEvents = await eventsByAction(db, "ocr_line_upgraded");
+  expect(upgradedEvents.length).toBe(1);
+  expect(upgradedEvents[0].payload).toMatchObject({
+    fixtureCode: "Lp301",
+    previousChoice: {
+      productId: productX,
+      chosenBy: "iemand@brink.nl",
+    },
+  });
 });
