@@ -2,7 +2,7 @@
 // (klein, deterministisch). Licht/donker × mobiel/desktop, plus expliciete asserts op
 // alle kaarttypes (stap 7): geel-kaart, "welke van deze N"-kaart, variantkaart met
 // échte catalogus-kleuren, variant-fallback (kandidatenlijst — nooit verzonnen
-// kleuren) en de rood-sectie "Niet gevonden — handmatig linken" met zoekveld,
+// kleuren) en de rood-sectie "Not found — link manually" met zoekveld,
 // resultaten en link-knop.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
@@ -252,23 +252,23 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
   );
   // Titel telt wachtend (pending + rood-linken) en afgerond.
   await expect
-    .element(page.getByText(/6 wachtend, 1 afgerond/))
+    .element(page.getByText(/6 pending, 1 done/))
     .toBeInTheDocument();
 
-  // Geel-kaart én N-keuze-kaart dragen accepteer + afwijzen (met verplicht redenveld).
+  // Geel-kaart én N-keuze-kaart dragen accepteer + afwijzen (met required redenveld).
   expect(
-    page.getByRole("button", { name: /Accepteer als voorstel/ }).elements().length,
+    page.getByRole("button", { name: /Accept as proposal/ }).elements().length,
   ).toBe(2);
-  expect(page.getByRole("button", { name: /Wijs af/ }).elements().length).toBe(2);
+  expect(page.getByRole("button", { name: /Reject/ }).elements().length).toBe(2);
   await expect
-    .element(page.getByText(/Reden \(verplicht/).first())
+    .element(page.getByText(/Reason \(required/).first())
     .toBeInTheDocument();
 
   // N-keuze: alleen de schone kandidaten als keuzeknop (2), plus de variant-fallback (1).
   await expect
-    .element(page.getByText(/2 passende kandidaten — welke moet het worden/))
+    .element(page.getByText(/2 matching candidates — which should it be/))
     .toBeInTheDocument();
-  expect(page.getByRole("button", { name: /Kies deze/ }).elements().length).toBe(3);
+  expect(page.getByRole("button", { name: /Choose this/ }).elements().length).toBe(3);
   await expect.element(page.getByText("VELA ROUND 900")).toBeInTheDocument();
 
   // Variantkaart: échte catalogus-kleuren als knop — geen verzonnen standaardlijst.
@@ -282,31 +282,31 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
 
   // Variant-fallback benoemt de fallback expliciet.
   await expect
-    .element(page.getByText(/Geen kleurvarianten van dit product/))
+    .element(page.getByText(/No color variants of this product/))
     .toBeInTheDocument();
 
   // Rood-sectie: eigen kop, zoekveld en link-knoppen bij de gevonden resultaten.
   await expect
-    .element(page.getByText(/Niet gevonden — handmatig linken \(2\)/))
+    .element(page.getByText(/Not found — link manually \(2\)/))
     .toBeInTheDocument();
   await expect
     .element(
       page.getByRole("textbox", {
-        name: /Zoek vergelijkbaar product voor Lr701/,
+        name: /Search comparable product for Lr701/,
       }),
     )
     .toBeInTheDocument();
   expect(
-    page.getByRole("button", { name: /Link dit product/ }).elements().length,
+    page.getByRole("button", { name: /Link this product/ }).elements().length,
   ).toBe(2);
-  // het systeem doet hier geen suggesties — dat staat er letterlijk bij
+  // het systeem doet hier no suggestions — dat staat er letterlijk bij
   await expect
-    .element(page.getByText(/bewust\s+geen suggesties/))
+    .element(page.getByText(/deliberately makes\s+no suggestions/))
     .toBeInTheDocument();
 
   // Afgerond item draagt het audit-spoor mét de nieuwe uitkomst-taal.
   await expect
-    .element(page.getByText(/geaccepteerd → groen/))
+    .element(page.getByText(/accepted → green/))
     .toBeInTheDocument();
   await expect
     .element(page.getByText(/eduard@brinklicht\.nl/))
@@ -320,6 +320,6 @@ test("review-queue lege staat", async () => {
     </Screen>,
   );
   await expect
-    .element(page.getByText(/Niets te reviewen/))
+    .element(page.getByText(/Nothing to review/))
     .toBeInTheDocument();
 });

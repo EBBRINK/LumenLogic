@@ -83,7 +83,7 @@ type Row = Awaited<ReturnType<typeof getSpecLines>>[number];
 async function lineByCode(code: string): Promise<Row> {
   const rows = await getSpecLines(db, dossierId);
   const row = rows.find((r) => r.fixtureCode === code);
-  if (!row) throw new Error(`regel ${code} niet gevonden`);
+  if (!row) throw new Error(`line ${code} not found`);
   return row;
 }
 
@@ -215,7 +215,7 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
   const parsed = parseSpecLinesFromPages(pages, brandNames);
   expect(parsed.hadText).toBe(true);
   expect(parsed.lines).toHaveLength(20); // het volledige boek, niets weggelaten
-  expect(parsed.markdown.startsWith("## Pagina 1")).toBe(true);
+  expect(parsed.markdown.startsWith("## Page 1")).toBe(true);
 
   const { run, created } = await recordPdfImport(db, {
     dossierId,
@@ -229,7 +229,7 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
   expect(run.source).toBe("pdf");
   expect(run.counts).toEqual({ total: 20, checked: 20 });
   expect(run.rawMarkdown).toBe(parsed.markdown);
-  expect(run.rawMarkdown).toContain("## Pagina");
+  expect(run.rawMarkdown).toContain("## Page");
   expect(run.rawMarkdown).toContain("Armaturenboek");
   expect(created).toHaveLength(20);
 
@@ -376,7 +376,7 @@ test("vangnet (mock): 4 restregels gecheckt, 4 suggesties, statussen onaangetast
 // ── Stap 5 — review afronden ─────────────────────────────────────────────────
 test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig linken", async () => {
   // 5a. Een gele accepteren (voorstel-kandidaat, rank 1) → regel wordt GROEN
-  // mét merkteken "handmatig gekozen" (herontwerp stap 7); afwijking blijft staan.
+  // mét merkteken "manually chosen" (herontwerp stap 7); afwijking blijft staan.
   const lw102 = await lineByCode("Lw102");
   await decideReview(db, {
     specLineId: lw102.id,
@@ -386,7 +386,7 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   const lw102Na = await lineByCode("Lw102");
   expect(lw102Na.status).toBe("groen");
   expect([nestWhiteId, nestBlackId]).toContain(lw102Na.matchedProductId);
-  expect(lw102Na.chosenBy).toBe(ACTOR); // merkteken "handmatig gekozen"
+  expect(lw102Na.chosenBy).toBe(ACTOR); // merkteken "manually chosen"
   expect((lw102Na.deviations ?? []).some((d) => d.verdict === "geel")).toBe(true);
 
   // 5b. Een variant kiezen (er zíjn echte kleurvarianten: NEST wit/zwart) →
@@ -416,7 +416,7 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   expect(lp601Na.matchedProductId).toBe(sassoId);
   expect(lp601Na.chosenBy).toBe(ACTOR);
 
-  // 5d. De rest blijft bewust staan: Lr701 rood (p.m. terug naar klant),
+  // 5d. De rest blijft bewust staan: Lr701 rood (p.m. back to customer),
   // blauw/paars onveranderd. De review-wachtrij is leeg.
   expect((await lineByCode("Lr701")).status).toBe("rood");
   const queue = await getReviewQueue(db, dossierId);
@@ -473,19 +473,19 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   expect(text).toContain("660,00"); // groen
   expect(text).toContain("490,00"); // geel
   expect(text).toContain("1.150,00"); // samen
-  expect(text).toContain("Samen (groen + geel)");
+  expect(text).toContain("Combined (green + yellow)");
 
   // p.m.-posten: getoond, nooit opgeteld
-  expect(text).toContain("blauw 2 · rood 1 · paars 2");
-  expect(text).toContain("merk Zumtobel inladen (ons)");
-  expect(text).toContain("merk Trilux inladen (ons)");
-  expect(text).toContain("terug naar klant");
-  expect(text).toContain("buiten assortiment");
+  expect(text).toContain("blue 2 · red 1 · purple 2");
+  expect(text).toContain("load brand Zumtobel (us)");
+  expect(text).toContain("load brand Trilux (us)");
+  expect(text).toContain("back to customer");
+  expect(text).toContain("outside assortment");
 
   // afwijkingsnotitie (C-07) + beide merktekens
-  expect(text).toContain("gevraagd 40, geleverd 32"); // Ld202: watt-afwijking
-  expect(text).toContain("automatisch geaccepteerde bijna-match"); // B3
-  expect(text).toContain("handmatig gekozen"); // review-keuze / handmatige link
+  expect(text).toContain("requested 40, delivered 32"); // Ld202: watt-afwijking
+  expect(text).toContain("automatically accepted near-match"); // B3
+  expect(text).toContain("manually chosen"); // review-keuze / handmatige link
 }, 120_000);
 
 // ── Stap 7 — statusflow ──────────────────────────────────────────────────────
@@ -532,7 +532,7 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
   expect(count("manual_link")).toBe(1); // rood handmatig gelinkt
   expect(count("quote_generated")).toBe(1); // offertegeneratie
   // NB: `estimate_pdf_generated` wordt in de downloadroute gelogd
-  // (app/projecten/[id]/offerte/pdf/route.ts) — buiten deze repo-laag-test.
+  // (app/projects/[id]/quote/pdf/route.ts) — buiten deze repo-laag-test.
   expect(count("quote_frozen")).toBe(1);
   expect(count("status_changed")).toBe(2); // gestuurd + gegund
 

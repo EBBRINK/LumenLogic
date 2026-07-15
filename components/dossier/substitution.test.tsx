@@ -14,13 +14,13 @@ const viewports = {
 } as const;
 
 const fields: SubstitutionDocField[] = [
-  { field: "Kleurtemperatuur", reference: "3000K", alternative: "3000K", source: "merk-opgave" },
-  { field: "CRI", reference: "90", alternative: "90", source: "merk-opgave" },
-  { field: "IP-waarde", reference: "IP20", alternative: "IP20", source: "merk-opgave" },
-  { field: "Garantie", reference: "36 mnd", alternative: "120 mnd", source: "merk-opgave" },
-  { field: "Repareerbaarheid", reference: "C", alternative: "A", source: "merk-opgave" },
-  { field: "Levensduur (EPD)", reference: "35000 u", alternative: "100000 u", source: "merk-opgave" },
-  { field: "Herkomst", reference: null, alternative: "België", source: "merk-opgave" },
+  { field: "Color temperature", reference: "3000K", alternative: "3000K", source: "brand-provided" },
+  { field: "CRI", reference: "90", alternative: "90", source: "brand-provided" },
+  { field: "IP value", reference: "IP20", alternative: "IP20", source: "brand-provided" },
+  { field: "Warranty", reference: "36 mo", alternative: "120 mo", source: "brand-provided" },
+  { field: "Repairability", reference: "C", alternative: "A", source: "brand-provided" },
+  { field: "Lifetime (EPD)", reference: "35000 u", alternative: "100000 u", source: "brand-provided" },
+  { field: "Origin", reference: null, alternative: "België", source: "brand-provided" },
 ];
 
 const doc = (
@@ -30,7 +30,7 @@ const doc = (
       reference={{ name: "SASSO 100 CEIL", brandName: "XAL", articleCode: "L360-SASSO100" }}
       alternative={{ name: "ESPRIT CEIL", brandName: "Kreon", articleCode: "KR-ESP" }}
       fields={fields}
-      savingNote="Besparing € 50,00 per stuk (referentie € 310,00 → alternatief € 260,00). Prijs is informatief en weegt nooit mee in de rangschikking (F-08)."
+      savingNote="Saving € 50,00 per stuk (referentie € 310,00 → alternatief € 260,00). Prijs is informatief en weegt nooit mee in de rangschikking (F-08)."
       createdAt="2026-07-07"
     />
   </div>
@@ -45,7 +45,7 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(doc);
       await expect.element(document.body).toBeInTheDocument();
-      await page.screenshot({ path: `./substitutie.${theme}.${device}.test.png` });
+      await page.screenshot({ path: `./substitution.${theme}.${device}.test.png` });
     });
   }
 }
@@ -55,17 +55,17 @@ test("SubstitutionDoc: toont beide armaturen, de duurzaamheidswinst en de bronvo
   await expect.element(page.getByText("SASSO 100 CEIL")).toBeInTheDocument();
   await expect.element(page.getByText("ESPRIT CEIL")).toBeInTheDocument();
   // Garantie veld-voor-veld: de winst van het alternatief staat er.
-  await expect.element(page.getByText("120 mnd")).toBeInTheDocument();
+  await expect.element(page.getByText("120 mo")).toBeInTheDocument();
   // Kostentekst (F-08) als losse tekst, niet als sortering.
-  await expect.element(page.getByText(/Besparing/)).toBeInTheDocument();
+  await expect.element(page.getByText(/Saving/)).toBeInTheDocument();
   // Bronvoetnoot: alle cijfers zijn merk-opgave.
-  await expect.element(page.getByText(/merk-opgave/)).toBeInTheDocument();
+  await expect.element(page.getByText(/brand-provided/)).toBeInTheDocument();
 });
 
 test("SubstitutionDoc: ontbrekende data blijft eerlijk zichtbaar, niet weggelaten", async () => {
   await renderServer(doc);
   // Herkomst-referentie is null → het veld blijft staan met een "geen data"-oordeel.
-  await expect.element(page.getByText("Herkomst")).toBeInTheDocument();
+  await expect.element(page.getByText("Origin", { exact: true })).toBeInTheDocument();
   // exact: alleen de tabelcel "geen data" (de voetnoot bevat de frase ook).
-  await expect.element(page.getByText("geen data", { exact: true })).toBeInTheDocument();
+  await expect.element(page.getByText("no data", { exact: true })).toBeInTheDocument();
 });

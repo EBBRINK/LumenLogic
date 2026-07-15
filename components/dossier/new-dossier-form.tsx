@@ -18,19 +18,19 @@ export function NewDossierForm({
     <form action={action} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <label htmlFor="name" className="text-sm font-medium">
-          Projectnaam
+          Project name
         </label>
-        <Input id="name" name="name" required placeholder="Bijv. Ziekenhuis X" />
+        <Input id="name" name="name" required placeholder="E.g. Hospital X" />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="customer" className="text-sm font-medium">
-          Klant
+          Customer
         </label>
-        <Input id="customer" name="customer" placeholder="Opdrachtgever" />
+        <Input id="customer" name="customer" placeholder="Client" />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="xisPhase" className="text-sm font-medium">
-          XIS-fase
+          XIS phase
         </label>
         <select
           id="xisPhase"
@@ -49,7 +49,7 @@ export function NewDossierForm({
       {organizations.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <label htmlFor="orgId" className="text-sm font-medium">
-            Organisatie
+            Organization
           </label>
           <select
             id="orgId"
@@ -57,7 +57,7 @@ export function NewDossierForm({
             defaultValue=""
             className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
           >
-            <option value="">Intern (Brink)</option>
+            <option value="">Internal (Brink)</option>
             {organizations.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -67,7 +67,7 @@ export function NewDossierForm({
         </div>
       )}
       <Button type="submit" className="self-start">
-        Project aanmaken
+        Create project
       </Button>
     </form>
   );

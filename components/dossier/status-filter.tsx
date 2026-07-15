@@ -9,7 +9,7 @@ import type { ProjectStatus } from "./types";
 export type ProjectStatusFilter = "alle" | ProjectStatus;
 
 const FILTERS: { value: ProjectStatusFilter; label: string }[] = [
-  { value: "alle", label: "Alle" },
+  { value: "alle", label: "All" },
   ...PROJECT_STATUS_ORDER.map((s) => ({
     value: s as ProjectStatusFilter,
     label: PROJECT_STATUS_META[s].label,
@@ -18,13 +18,13 @@ const FILTERS: { value: ProjectStatusFilter; label: string }[] = [
 
 export function StatusFilter({
   active = "alle",
-  basePath = "/projecten",
+  basePath = "/projects",
 }: {
   active?: ProjectStatusFilter;
   basePath?: string;
 }) {
   return (
-    <nav className="flex flex-wrap gap-1 border-b" aria-label="Filter op status">
+    <nav className="flex flex-wrap gap-1 border-b" aria-label="Filter by status">
       {FILTERS.map((f) => {
         const isActive = f.value === active;
         const href =

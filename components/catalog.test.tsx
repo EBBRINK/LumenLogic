@@ -19,7 +19,7 @@ const viewports = {
 const brands = ["Glamox", "Wever & Ducré", "XAL"];
 
 const values: CatalogValues = {
-  merk: "XAL",
+  brand: "XAL",
   q: "SASSO 100",
   kelvin: "2700",
   cri: "90",
@@ -71,7 +71,7 @@ const onvolledig: CatalogResult[] = [
     lumenOutput: null,
     grossPrice: "180.00",
     matchKind: "fuzzy",
-    missing: ["kleurtemp.", "CRI"],
+    missing: ["color temp.", "CRI"],
   },
 ];
 
@@ -101,34 +101,34 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(searchedUi);
       await expect.element(document.body).toBeInTheDocument();
       // merk-select + beide lijsten + een geprijsd product zichtbaar
-      await expect.element(page.getByTestId("merk-select")).toBeInTheDocument();
-      await expect.element(page.getByText("Voldoet aantoonbaar")).toBeInTheDocument();
+      await expect.element(page.getByTestId("brand-select")).toBeInTheDocument();
+      await expect.element(page.getByText("Provably compliant")).toBeInTheDocument();
       await expect
-        .element(page.getByText("Mogelijk — data onvolledig"))
+        .element(page.getByText("Possible — data incomplete"))
         .toBeInTheDocument();
       await expect
         .element(page.getByText("SASSO 100 SQ SP CEIL 17,9W cob LED 2700K 220-240V"))
         .toBeInTheDocument();
       await expect.element(page.getByText("€ 310,00")).toBeInTheDocument();
-      await page.screenshot({ path: `./catalogus.${theme}.${device}.test.png` });
+      await page.screenshot({ path: `./catalog.${theme}.${device}.test.png` });
     });
   }
 }
 
-test("merk-select toont alle merken als opties", async () => {
+test("brand-select toont alle merken als opties", async () => {
   await renderServer(searchedUi);
   for (const b of brands) {
     await expect.element(page.getByRole("option", { name: b })).toBeInTheDocument();
   }
   await expect
-    .element(page.getByRole("option", { name: "Alle merken" }))
+    .element(page.getByRole("option", { name: "All brands" }))
     .toBeInTheDocument();
 });
 
 test("onvolledig-item benoemt de ontbrekende data (nooit stil weggelaten)", async () => {
   await renderServer(searchedUi);
   await expect
-    .element(page.getByText("geen data voor: kleurtemp., CRI"))
+    .element(page.getByText("no data for: color temp., CRI"))
     .toBeInTheDocument();
 });
 
@@ -139,7 +139,7 @@ test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
     </div>,
   );
   await expect
-    .element(page.getByText("Kies een merk of typ vrije tekst en zoek in de catalogus."))
+    .element(page.getByText("Choose a brand or type free text and search the catalog."))
     .toBeInTheDocument();
-  expect(page.getByText("Voldoet aantoonbaar").query()).toBeNull();
+  expect(page.getByText("Provably compliant").query()).toBeNull();
 });

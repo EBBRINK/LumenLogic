@@ -3,26 +3,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Analytics } from "@/lib/repo/analytics";
 
 const ACTION_LABEL: Record<string, string> = {
-  search: "Zoekopdracht",
+  search: "Search",
   match: "Match",
-  no_match: "Geen match",
-  quote_generated: "Offerte",
-  suggestions: "Suggesties (gegund)",
-  pdf_import: "PDF-import",
-  dossier_created: "Project aangemaakt",
-  phase_changed: "Fasewissel",
+  no_match: "No match",
+  quote_generated: "Quote",
+  suggestions: "Suggestions (awarded)",
+  pdf_import: "PDF import",
+  dossier_created: "Project created",
+  phase_changed: "Phase change",
   // Nieuwe event-acties uit de vijfstatussen-/matcherlaag — nette labels.
-  matched_status: "Status gezet",
-  product_considered: "Product overwogen",
-  spec_line_matched: "Regel gematcht",
-  spec_line_no_match: "Regel zonder match",
-  review_decided: "Review besloten",
-  brand_load_requested: "Merk-inlaad aangevraagd",
-  quantity_linked: "Aantal gekoppeld",
-  day_price_set: "Dagprijs gezet",
-  xis_exported: "Naar XIS geëxporteerd",
-  enrichment_published: "Verrijking gepubliceerd",
-  evaluation_measured: "Hit-rate gemeten",
+  matched_status: "Status set",
+  product_considered: "Product considered",
+  spec_line_matched: "Line matched",
+  spec_line_no_match: "Line without match",
+  review_decided: "Review decided",
+  brand_load_requested: "Brand load requested",
+  quantity_linked: "Quantity linked",
+  day_price_set: "Spot price set",
+  xis_exported: "Exported to XIS",
+  enrichment_published: "Enrichment published",
+  evaluation_measured: "Hit-rate measured",
 };
 
 export function AnalyticsView({ data }: { data: Analytics }) {
@@ -31,10 +31,10 @@ export function AnalyticsView({ data }: { data: Analytics }) {
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Het platform is in de basis een observatiemachine. Deze laag —
-          gevoed door het event-log vanaf dag één — is het fundament onder het
-          Fase-2-verdienmodel: geanonimiseerde merk-inzichten (welke producten
-          worden gezocht, gematcht en overwogen).
+          The platform is at heart an observation machine. This layer — fed by the
+          event log from day one — is the foundation of the Phase 2 revenue model:
+          anonymized brand insights (which products are searched, matched and
+          considered).
         </p>
       </header>
 
@@ -42,7 +42,7 @@ export function AnalyticsView({ data }: { data: Analytics }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
-              Gelogde events
+              Logged events
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -54,7 +54,7 @@ export function AnalyticsView({ data }: { data: Analytics }) {
         <Card className="sm:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
-              Naar type
+              By type
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -71,11 +71,11 @@ export function AnalyticsView({ data }: { data: Analytics }) {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Meest gezocht</CardTitle>
+            <CardTitle>Most searched</CardTitle>
           </CardHeader>
           <CardContent>
             {data.topSearches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nog geen zoekopdrachten.</p>
+              <p className="text-sm text-muted-foreground">No searches yet.</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {data.topSearches.map((s) => (
@@ -93,11 +93,11 @@ export function AnalyticsView({ data }: { data: Analytics }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Meest gematchte producten</CardTitle>
+            <CardTitle>Most matched products</CardTitle>
           </CardHeader>
           <CardContent>
             {data.topMatched.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nog geen matches.</p>
+              <p className="text-sm text-muted-foreground">No matches yet.</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {data.topMatched.map((m) => (
@@ -122,7 +122,7 @@ export function AnalyticsView({ data }: { data: Analytics }) {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Recente activiteit</CardTitle>
+          <CardTitle>Recent activity</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="flex flex-col gap-1.5 text-sm">

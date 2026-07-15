@@ -30,10 +30,10 @@ export type SubstitutionDocProps = {
 // Welke velden als duurzaamheid gelden (daar geldt "hoger = beter"); de rest is technisch,
 // waar een verschil neutraal "afwijkend" is (gelijkwaardigheid, geen beter/slechter).
 const SUSTAINABILITY = new Set([
-  "Garantie",
-  "Repareerbaarheid",
-  "Levensduur (EPD)",
-  "Herkomst",
+  "Warranty",
+  "Repairability",
+  "Lifetime (EPD)",
+  "Origin",
 ]);
 
 type Tone = "good" | "bad" | "muted";
@@ -49,19 +49,19 @@ function verdict(
   ref: string | null,
   alt: string | null,
 ): { label: string; tone: Tone } {
-  if (ref == null || alt == null) return { label: "geen data", tone: "muted" };
+  if (ref == null || alt == null) return { label: "no data", tone: "muted" };
   const rn = leadingNumber(ref);
   const an = leadingNumber(alt);
   if (rn != null && an != null) {
-    if (an === rn) return { label: "gelijk", tone: "muted" };
+    if (an === rn) return { label: "equal", tone: "muted" };
     if (kind === "sustainability")
       return an > rn
-        ? { label: "beter", tone: "good" }
-        : { label: "minder", tone: "bad" };
-    return { label: "afwijkend", tone: "muted" };
+        ? { label: "better", tone: "good" }
+        : { label: "worse", tone: "bad" };
+    return { label: "different", tone: "muted" };
   }
-  if (ref === alt) return { label: "gelijk", tone: "muted" };
-  return { label: "afwijkend", tone: "muted" };
+  if (ref === alt) return { label: "equal", tone: "muted" };
+  return { label: "different", tone: "muted" };
 }
 
 function toneClass(tone: Tone): string {
@@ -140,32 +140,32 @@ export function SubstitutionDoc({
   return (
     <article className="mx-auto max-w-3xl">
       <header className="mb-6 border-b pb-4">
-        <p className="text-sm text-muted-foreground">Substitutievoorstel</p>
+        <p className="text-sm text-muted-foreground">Substitution proposal</p>
         <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Objectieve vergelijking van het voorgeschreven armatuur met een
-          gelijkwaardig alternatief — veld voor veld, met de duurzaamheidswinst.
-          Onderbouwing voor de eindklant; geld weegt niet mee in de keuze.
+          Objective comparison of the specified luminaire with an equivalent
+          alternative — field by field, with the sustainability gain. Justification
+          for the end customer; money does not count in the choice.
         </p>
         {createdAt ? (
           <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-            Opgesteld op {createdAt}
+            Drawn up on {createdAt}
           </p>
         ) : null}
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Party label="Origineel (voorgeschreven)" party={reference} />
-        <Party label="Voorgesteld alternatief" party={alternative} accent />
+        <Party label="Original (specified)" party={reference} />
+        <Party label="Proposed alternative" party={alternative} accent />
       </div>
 
       <table className="mt-6 w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="py-1 pr-3 font-medium">Veld</th>
-            <th className="py-1 pr-3 font-medium">Origineel</th>
-            <th className="py-1 pr-3 font-medium">Alternatief</th>
-            <th className="py-1 font-medium">Oordeel</th>
+            <th className="py-1 pr-3 font-medium">Field</th>
+            <th className="py-1 pr-3 font-medium">Original</th>
+            <th className="py-1 pr-3 font-medium">Alternative</th>
+            <th className="py-1 font-medium">Verdict</th>
           </tr>
         </thead>
         <tbody>
@@ -174,7 +174,7 @@ export function SubstitutionDoc({
               colSpan={4}
               className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
             >
-              Technisch
+              Technical
             </td>
           </tr>
           {technical.length ? (
@@ -182,7 +182,7 @@ export function SubstitutionDoc({
           ) : (
             <tr>
               <td colSpan={4} className="py-1.5 text-muted-foreground">
-                Geen technische velden.
+                No technical fields.
               </td>
             </tr>
           )}
@@ -191,7 +191,7 @@ export function SubstitutionDoc({
               colSpan={4}
               className="pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
             >
-              Duurzaamheid
+              Sustainability
             </td>
           </tr>
           {sustainability.length ? (
@@ -199,7 +199,7 @@ export function SubstitutionDoc({
           ) : (
             <tr>
               <td colSpan={4} className="py-1.5 text-muted-foreground">
-                Geen duurzaamheidsvelden.
+                No sustainability fields.
               </td>
             </tr>
           )}
@@ -209,17 +209,17 @@ export function SubstitutionDoc({
       {savingNote ? (
         <div className="mt-6 rounded-lg border border-dashed p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Kostenindicatie
+            Cost indication
           </p>
           <p className="mt-1 text-sm">{savingNote}</p>
         </div>
       ) : null}
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Bron van alle technische en duurzaamheidscijfers: opgave van de fabrikant
-        (merk-opgave), niet onafhankelijk geverifieerd. Ontbrekende data staat als
-        “geen data” — nooit stilzwijgend weggelaten. Prijs is informatief en weegt
-        niet mee in de rangschikking.
+        Source of all technical and sustainability figures: manufacturer's data
+        (brand-provided), not independently verified. Missing data is shown as
+        “no data” — never silently omitted. Price is informational and does not
+        count in the ranking.
       </p>
     </article>
   );

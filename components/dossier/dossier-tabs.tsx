@@ -19,23 +19,23 @@ export function DossierTabs({
   reviewTotal: number;
 }) {
   const pathname = usePathname();
-  const base = `/projecten/${dossierId}`;
+  const base = `/projects/${dossierId}`;
   const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
-    { href: base, label: "Regels", match: (p) => p === base || p.startsWith(`${base}/regel`) || p.startsWith(`${base}/import`) },
+    { href: base, label: "Lines", match: (p) => p === base || p.startsWith(`${base}/line`) || p.startsWith(`${base}/import`) },
     { href: `${base}/review`, label: "Review", match: (p) => p.startsWith(`${base}/review`) },
-    { href: `${base}/offerte`, label: "Estimate", match: (p) => p.startsWith(`${base}/offerte`) },
+    { href: `${base}/quote`, label: "Estimate", match: (p) => p.startsWith(`${base}/quote`) },
   ];
   if (phase === "awarded") {
     tabs.push({
-      href: `${base}/werkvoorbereiding`,
-      label: "Werkvoorbereiding",
-      match: (p) => p.startsWith(`${base}/werkvoorbereiding`),
+      href: `${base}/work-prep`,
+      label: "Work preparation",
+      match: (p) => p.startsWith(`${base}/work-prep`),
     });
   }
   tabs.push({
-    href: `${base}/armaturenboek`,
-    label: "Armaturenboek",
-    match: (p) => p.startsWith(`${base}/armaturenboek`),
+    href: `${base}/luminaire-schedule`,
+    label: "Luminaire schedule",
+    match: (p) => p.startsWith(`${base}/luminaire-schedule`),
   });
 
   return (

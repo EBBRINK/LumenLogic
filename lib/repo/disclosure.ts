@@ -1,5 +1,5 @@
 // Disclosure & merkrelaties (J-01…J-05, flow §4.11). Dé gedeelde beslissing die
-// /producten/[id], /catalogus en /merk allemaal moeten delen: wat mag een kijker zien?
+// /products/[id], /catalog en /brand allemaal moeten delen: wat mag een kijker zien?
 //
 // Tiers (op het merk, brands.disclosure_tier):
 //   tier1 — alles + adviesprijs (intern/installateur in projectdossier).
@@ -141,7 +141,7 @@ export async function getProductForDisclosure(
   return { spec, disclosure, price, overrides };
 }
 
-// J-03: prijsaanvraag = een lead. Gelogd voor opvolging.
+// J-03: pricerequest = een lead. Gelogd voor opvolging.
 export async function createLead(
   db: AppDb,
   input: {

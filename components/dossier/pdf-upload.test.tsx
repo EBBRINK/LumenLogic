@@ -1,10 +1,14 @@
 // White-box RSC-screenshottests voor stap 5: de projectpagina met de PDF-upload als
 // éérste blok boven de regeltabel, en de importrun-pagina met het inklapbare
 // markdown-controlespoor + downloadknop. Licht/donker × mobiel/desktop.
-import { page } from "vitest/browser";
-import { afterEach, expect, test } from "vitest";
+import { page, userEvent } from "vitest/browser";
+import { afterEach, expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
+import {
+  KaartMetErrorAction,
+  KaartMetTrageErrorAction,
+} from "./pdf-upload-test-stubs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSpecLineForm } from "./add-spec-line-form";
 import { ImportMarkdown } from "./import-markdown";
@@ -56,7 +60,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 }
 
 // De projectpagina in het klein: PDF-upload éérst, dan de regels, dan de overige
-// invoerwegen — dezelfde volgorde als app/projecten/[id]/page.tsx.
+// invoerwegen — dezelfde volgorde als app/projects/[id]/page.tsx.
 function ProjectRegelsScreen() {
   return (
     <Screen>
@@ -98,7 +102,7 @@ function ImportRunScreen() {
       </p>
       <ImportMarkdown
         markdown={markdown}
-        downloadHref="/projecten/d1/import/r1/markdown"
+        downloadHref="/projects/d1/import/r1/markdown"
         defaultOpen
       />
     </Screen>
@@ -118,7 +122,7 @@ const screens = {
   },
   "importrun-markdown": {
     ui: <ImportRunScreen />,
-    ready: "Brontekst (markdown)",
+    ready: "Source text (markdown)",
   },
 } as const;
 
@@ -140,7 +144,7 @@ for (const [name, { ui, ready }] of Object.entries(screens)) {
 test("PDF-upload staat boven de regeltabel", async () => {
   const { container } = await renderServer(<ProjectRegelsScreen />);
   await expect
-    .element(page.getByText("Armaturenboek uploaden (PDF)"))
+    .element(page.getByText("Upload luminaire schedule (PDF)"))
     .toBeInTheDocument();
   const upload = container.querySelector('input[type="file"][name="pdf"]');
   const tabel = container.querySelector("table");
@@ -150,17 +154,125 @@ test("PDF-upload staat boven de regeltabel", async () => {
   expect(upload!.compareDocumentPosition(tabel!) & 4).toBe(4);
   // korte uitleg staat erbij
   await expect
-    .element(page.getByText(/regels worden automatisch gematcht/i))
+    .element(page.getByText(/lines are matched automatically/i))
     .toBeInTheDocument();
+});
+
+// ── Interactietests (413-fix nafix 1): de client-side upload-flow zelf ──────────────
+// Echte browser-extractie (unpdf) + echte server-action-aanroepen via de RSC-testbrug;
+// alleen de action-uitkomst is een test-stub (error/slow) — niets aan de kaart gemockt.
+
+// Hydration-wachtlus (zelfde soort race als brand-message.test.tsx): vóór hydratatie
+// zou de klik een native GET-submit doen die de testpagina wegnavigeert. We wachten
+// tot React zijn props aan het formulier heeft gehangen en interacteren pas daarna.
+async function uploadEnVerstuur(file: File | string) {
+  await vi.waitFor(
+    () => {
+      const form = document.querySelector("form");
+      if (
+        !form ||
+        !Object.keys(form).some((k) => k.startsWith("__reactProps"))
+      ) {
+        throw new Error("formulier nog niet gehydrateerd");
+      }
+    },
+    { timeout: 10_000, interval: 100 },
+  );
+  await userEvent.upload(
+    page.getByLabelText("Choose luminaire schedule PDF"),
+    file,
+  );
+  await page.getByRole("button", { name: "Import PDF" }).click();
+}
+
+// Het fixture-boek als pad (relatief aan de projectroot): met de playwright-provider is
+// een File-object uit fetch() niet betrouwbaar over de CDP-brug te uploaden, een pad wel.
+const FIXTURE_BOEK = "./docs/examples/test-armaturenboek.pdf";
+
+test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar", async () => {
+  await renderServer(
+    <Screen>
+      <PdfUploadCard dossierId="d1" importAction={noopAction} />
+    </Screen>,
+  );
+  const kapot = new File([new Uint8Array([1, 2, 3, 4])], "kapot.pdf", {
+    type: "application/pdf",
+  });
+  await uploadEnVerstuur(kapot);
+  // NB: page.getByRole("alert") is hier ambigu (Next' route-announcer is ook een alert)
+  await expect
+    .element(page.getByText(/could not be read/i))
+    .toBeInTheDocument();
+  // de flow stopte vóór de action: de action-fout ("Testfout") verscheen dus niet
+  expect(document.body.textContent).not.toContain("Testfout");
+  // knop weer vrij voor een nieuwe poging
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("action antwoordt {error} → zichtbaar als alert", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetErrorAction />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText("Testfout: import geweigerd."))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTrageErrorAction />
+    </Screen>,
+  );
+  // De busy-fase is kort (extractie + 800 ms trage action) — sneller dan de retry-
+  // lus van expect.element betrouwbaar pollt. Daarom samplen we de DOM zelf elke
+  // 25 ms rond de klik en toetsen we achteraf de waargenomen toestanden.
+  const samples: { busy: string; disabled: boolean }[] = [];
+  const sampler = setInterval(() => {
+    const status = document.querySelector('[role="status"]');
+    const input = document.querySelector(
+      'input[name="pdf"]',
+    ) as HTMLInputElement | null;
+    samples.push({
+      busy: status?.textContent ?? "",
+      disabled: input?.disabled ?? false,
+    });
+  }, 25);
+  try {
+    await uploadEnVerstuur(FIXTURE_BOEK);
+    // wachten tot de flow klaar is: fout van de action zichtbaar, kaart weer vrij
+    await expect
+      .element(page.getByText("Testfout: trage import geweigerd."))
+      .toBeInTheDocument();
+  } finally {
+    clearInterval(sampler);
+  }
+  // tijdens de busy-fase: voortgangstekst mét paginateller én disabled input/knop
+  const busySamples = samples.filter((s) => s.busy.length > 0);
+  expect(busySamples.length).toBeGreaterThan(0);
+  expect(busySamples.some((s) => /pages, importing/.test(s.busy))).toBe(true);
+  expect(busySamples.every((s) => s.disabled)).toBe(true);
+  // en na afloop weer vrij voor een nieuwe poging
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
 });
 
 // Het controlespoor: inklapbaar blok met de brontekst + downloadknop naar de md-route.
 test("importrun toont brontekst (markdown) met downloadknop", async () => {
   const { container } = await renderServer(<ImportRunScreen />);
   await expect
-    .element(page.getByText("Brontekst (markdown)"))
+    .element(page.getByText("Source text (markdown)"))
     .toBeInTheDocument();
   await expect.element(page.getByText("## Pagina 1")).toBeInTheDocument();
   const link = container.querySelector('a[download]');
-  expect(link?.getAttribute("href")).toBe("/projecten/d1/import/r1/markdown");
+  expect(link?.getAttribute("href")).toBe("/projects/d1/import/r1/markdown");
 });

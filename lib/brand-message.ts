@@ -25,8 +25,8 @@ const MAX_BUCKETS_IN_TEKST = 3;
 function datumNl(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const maanden = [
-    "januari", "februari", "maart", "april", "mei", "juni",
-    "juli", "augustus", "september", "oktober", "november", "december",
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
   ];
   return `${d} ${maanden[(m ?? 1) - 1]} ${y}`;
 }
@@ -47,33 +47,33 @@ export function buildBrandMessage(input: BrandMessageInput): string {
 
   regels.push(
     input.contactName
-      ? `Beste ${input.contactName},`
-      : "Geachte heer/mevrouw,",
+      ? `Dear ${input.contactName},`
+      : "Dear Sir or Madam,",
   );
   regels.push("");
   regels.push(
-    `Bij Brink Licht werken we aan een zo compleet mogelijk productdatabestand, zodat we ${input.brandName} optimaal kunnen meenemen in onze lichtadviezen en offertes.`,
+    `At Brink Licht we are building the most complete product database possible, so we can include ${input.brandName} optimally in our lighting advice and quotes.`,
   );
 
   // Prijslijst-status in gewone taal.
   if (input.priceListIndicator === "ontbreekt") {
     regels.push("");
     regels.push(
-      "We hebben op dit moment nog geen prijslijst van u. Zou u ons uw actuele prijslijst kunnen toesturen?",
+      "We currently don't have a price list from you. Could you send us your current price list?",
     );
   } else if (input.priceListIndicator === "verlopen") {
     regels.push("");
     regels.push(
       input.priceListValidUntil
-        ? `Uw prijslijst is verlopen (geldig tot ${datumNl(input.priceListValidUntil)}). Zou u ons een actuele prijslijst kunnen toesturen?`
-        : "Uw prijslijst is verlopen. Zou u ons een actuele prijslijst kunnen toesturen?",
+        ? `Your price list has expired (valid until ${datumNl(input.priceListValidUntil)}). Could you send us a current price list?`
+        : "Your price list has expired. Could you send us a current price list?",
     );
   } else if (input.priceListIndicator === "verloopt_binnenkort") {
     regels.push("");
     regels.push(
       input.priceListValidUntil
-        ? `Uw prijslijst verloopt binnenkort (op ${datumNl(input.priceListValidUntil)}). Zou u ons tijdig een nieuwe prijslijst kunnen toesturen?`
-        : "Uw prijslijst verloopt binnenkort. Zou u ons tijdig een nieuwe prijslijst kunnen toesturen?",
+        ? `Your price list expires soon (on ${datumNl(input.priceListValidUntil)}). Could you send us a new price list in good time?`
+        : "Your price list expires soon. Could you send us a new price list in good time?",
     );
   }
 
@@ -88,29 +88,29 @@ export function buildBrandMessage(input: BrandMessageInput): string {
   if (input.productCount > 0 && laagste.length > 0) {
     regels.push("");
     regels.push(
-      `Van uw ${input.productCount} ${input.productCount === 1 ? "product" : "producten"} in ons bestand missen we vooral gegevens op de volgende punten:`,
+      `Of your ${input.productCount} ${input.productCount === 1 ? "product" : "products"} in our database, we are mainly missing data on the following points:`,
     );
     for (const { bucket, ratio } of laagste) {
       const missend = Math.round((1 - ratio) * 100);
       regels.push(
-        `- ${bucket.labelNl}: bij ongeveer ${missend}% van de producten onvolledig.`,
+        `- ${bucket.labelEn}: incomplete for about ${missend}% of the products.`,
       );
     }
   } else if (input.productCount > 0) {
     regels.push("");
     regels.push(
-      "De productdata die wij van u hebben is — voor zover wij dat kunnen meten — compleet. Dank daarvoor!",
+      "The product data we have from you is — as far as we can measure — complete. Thank you for that!",
     );
   }
 
   regels.push("");
   regels.push(
-    "In de bijlage vindt u ons Excel-template (brinklicht-product-data-template.xlsx). Zou u dit per product willen invullen? Velden die voor uw producten niet van toepassing zijn, mag u gewoon leeglaten.",
+    "Attached you'll find our Excel template (brinklicht-product-data-template.xlsx). Could you fill it in per product? Fields that don't apply to your products can simply be left empty.",
   );
   regels.push("");
-  regels.push("Alvast hartelijk dank voor uw moeite.");
+  regels.push("Thank you in advance for your effort.");
   regels.push("");
-  regels.push("Met vriendelijke groet,");
+  regels.push("Kind regards,");
   regels.push("Brink Licht");
 
   return regels.join("\n");

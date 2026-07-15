@@ -32,7 +32,7 @@ export function BrandLoadQueue({
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Geen merken op de wachtrij — er staan geen blauwe regels open.
+        No brands in the queue — no blue lines are open.
       </p>
     );
   }
@@ -40,10 +40,10 @@ export function BrandLoadQueue({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Merk</TableHead>
-          <TableHead className="text-right">Gevraagd</TableHead>
+          <TableHead>Brand</TableHead>
+          <TableHead className="text-right">Requested</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead className="text-right">Actie</TableHead>
+          <TableHead className="text-right">Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -63,7 +63,7 @@ export function BrandLoadQueue({
                       wachtend ? STATUS.blauw.dot : "bg-emerald-500",
                     )}
                   />
-                  {wachtend ? "Wachtend" : "Ingeladen"}
+                  {wachtend ? "Waiting" : "Loaded"}
                 </span>
               </TableCell>
               <TableCell className="text-right">
@@ -71,12 +71,12 @@ export function BrandLoadQueue({
                   <form action={markLoadedAction}>
                     <input type="hidden" name="queueId" value={r.id} />
                     <Button type="submit" size="sm" variant="outline">
-                      Markeer als ingeladen
+                      Mark as loaded
                     </Button>
                   </form>
                 ) : (
                   <span className="text-xs text-muted-foreground">
-                    afgehandeld
+                    handled
                   </span>
                 )}
               </TableCell>

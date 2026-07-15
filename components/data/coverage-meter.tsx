@@ -13,7 +13,7 @@ export function CoverageMeter({
   total,
   covered,
   ratio,
-  label = "Tier-2-dekking",
+  label = "Tier-2 coverage",
 }: CoverageMeterProps) {
   const pct = Math.round(ratio * 100);
   return (
@@ -38,7 +38,7 @@ export function CoverageMeter({
         />
       </div>
       <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-        {covered} van {total} producten met minstens één technisch veld gevuld.
+        {covered} of {total} products with at least one technical field filled.
       </p>
     </div>
   );

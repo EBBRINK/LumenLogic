@@ -18,9 +18,9 @@ export type MembershipRow = {
 
 const ROLE_LABEL: Record<string, string> = {
   calculator: "Calculator",
-  werkvoorbereider: "Werkvoorbereider",
-  projectleider: "Projectleider",
-  org_admin: "Org-admin",
+  werkvoorbereider: "Work preparer",
+  projectleider: "Project lead",
+  org_admin: "Org admin",
 };
 
 // GEBRUIKERS OVER ORGS (§3.16, L-03/04): de admin ziet leden over org-grenzen. Rollen zijn
@@ -34,24 +34,24 @@ export function MembershipsBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gebruikers over organisaties</CardTitle>
+        <CardTitle>Users across organizations</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Leden en hun rollen per organisatie. Een rol bepaalt de default-view,
-          nooit wat de engine toont.
+          Members and their roles per organization. A role sets the default view,
+          never what the engine shows.
         </p>
       </CardHeader>
       <CardContent>
         {memberships.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nog geen leden in enige organisatie.
+            No members in any organization yet.
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Organisatie</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Rollen</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Roles</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -65,7 +65,7 @@ export function MembershipsBlock({
                     <div className="flex flex-wrap gap-1.5">
                       {m.roles.length === 0 ? (
                         <span className="text-sm text-muted-foreground">
-                          geen rol
+                          no role
                         </span>
                       ) : (
                         m.roles.map((r) => (

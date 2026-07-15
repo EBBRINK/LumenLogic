@@ -2,7 +2,7 @@
 // deterministisch). Licht/donker × mobiel/desktop — dit is het "zicht" op de UI.
 //
 // NB: het regel-detailscherm (MatchCandidates, twee kandidatenlijsten + afronding) wordt
-// getest in regel-detail.test.tsx; de estimate/offerte in estimate.test.tsx. De
+// getest in regel-detail.test.tsx; de estimate/quote in estimate.test.tsx. De
 // fase-poort van ijzeren regel 4 (tender toont géén alternatieven-suggesties) leeft op
 // repo-niveau en wordt getest in lib/repo/rules.test.ts. Hier houden we de twee schermen
 // die nergens anders in beeld komen: de dossierlijst en de spec-regeltabel.
@@ -77,7 +77,7 @@ const autoDoorLines: SpecLineRow[] = [
     matchedArticleCode: "L450-VELA600", matchedPrice: "412.00",
     chosenBy: "system:auto",
     deviations: [
-      { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+      { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "requested 12, delivered 14" },
     ],
   },
 ];
@@ -146,7 +146,7 @@ test("DossierList: toont de kleuren-telling wanneer counts zijn meegestuurd", as
   await expect.element(page.getByText("9", { exact: true })).toBeInTheDocument();
 });
 
-// B3: het label "automatisch geaccepteerde bijna-match" staat alléén op de regel met
+// B3: het label "automatically accepted near-match" staat alléén op de regel met
 // chosenBy='system:auto' — de gewone gele review-regel ernaast blijft label-loos.
 test("SpecLineTable: auto-door-label alleen op de system:auto-regel", async () => {
   await renderServer(
@@ -155,10 +155,10 @@ test("SpecLineTable: auto-door-label alleen op de system:auto-regel", async () =
     </Screen>,
   );
   await expect
-    .element(page.getByText("automatisch geaccepteerde bijna-match"))
+    .element(page.getByText("automatically accepted near-match"))
     .toBeInTheDocument();
   // de afwijkingsnotitie van de auto-regel staat er ook (label vervangt de notitie niet)
-  await expect.element(page.getByText("gevraagd 12, geleverd 14")).toBeInTheDocument();
+  await expect.element(page.getByText("requested 12, delivered 14")).toBeInTheDocument();
 });
 
 test("SpecLineTable: regel zonder system:auto-keuze draagt het label NIET", async () => {
@@ -167,7 +167,7 @@ test("SpecLineTable: regel zonder system:auto-keuze draagt het label NIET", asyn
       <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
     </Screen>,
   );
-  expect(page.getByText("automatisch geaccepteerde bijna-match").query()).toBeNull();
+  expect(page.getByText("automatically accepted near-match").query()).toBeNull();
 });
 
 // Niets stilzwijgend weglaten: ook de rode regel zonder match staat er, met status.
@@ -179,7 +179,7 @@ test("SpecLineTable: rode regel zonder match blijft zichtbaar met status", async
   );
   await expect.element(page.getByText("Ls001", { exact: true })).toBeInTheDocument();
   // Ontbrekend aantal = eerlijke "p/st"-markering, nooit stil weggelaten.
-  await expect.element(page.getByText("p/st", { exact: true })).toBeInTheDocument();
+  await expect.element(page.getByText("ea.", { exact: true })).toBeInTheDocument();
 });
 
 // Stap 7 (herontwerp 2026-07-14): een door een méns gekozen match (review-keuze,
@@ -200,8 +200,8 @@ test("SpecLineTable: merkteken 'handmatig gekozen' alleen bij een niet-system ch
       <SpecLineTable dossierId="d1" lines={manualLines} deleteAction={noopAction} />
     </Screen>,
   );
-  const labels = page.getByText("handmatig gekozen");
+  const labels = page.getByText("manually chosen");
   await expect.element(labels).toBeInTheDocument();
   expect(labels.elements().length).toBe(1); // alléén de menskeuze-regel
-  expect(page.getByText("automatisch geaccepteerde bijna-match").query()).toBeNull();
+  expect(page.getByText("automatically accepted near-match").query()).toBeNull();
 });

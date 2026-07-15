@@ -77,19 +77,19 @@ export function QuoteView({
           </div>
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-          <Field label="Offertenummer" value={computed.quoteNumberDisplay} />
-          <Field label="Datum" value={header.quoteDate ?? "—"} />
-          <Field label="Klant" value={header.customer ?? "—"} />
+          <Field label="Quote number" value={computed.quoteNumberDisplay} />
+          <Field label="Date" value={header.quoteDate ?? "—"} />
+          <Field label="Customer" value={header.customer ?? "—"} />
           <Field label="Project" value={header.projectRef ?? "—"} />
-          <Field label="Opsteller" value={header.author ?? "—"} />
-          <Field label="Geldig tot" value={header.validUntil ?? "—"} />
+          <Field label="Author" value={header.author ?? "—"} />
+          <Field label="Valid until" value={header.validUntil ?? "—"} />
         </dl>
       </header>
 
       {lines.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nog geen spec-regels. Voeg regels toe op het tabblad Regels; ze verschijnen
-          hier automatisch met hun status.
+          No spec lines yet. Add lines on the Lines tab; they appear here
+          automatically with their status.
         </p>
       ) : (
         <Table>
@@ -99,9 +99,9 @@ export function QuoteView({
               <TableHead>Code</TableHead>
               <TableHead>Product</TableHead>
               <TableHead>SKU</TableHead>
-              <TableHead className="text-right">Aantal</TableHead>
-              <TableHead className="text-right">Stukprijs</TableHead>
-              <TableHead className="text-right">Regeltotaal</TableHead>
+              <TableHead className="text-right">Quantity</TableHead>
+              <TableHead className="text-right">Unit price</TableHead>
+              <TableHead className="text-right">Line total</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -117,20 +117,20 @@ export function QuoteView({
         <div className="mt-6 flex justify-end">
           <div className="w-full max-w-xs text-sm">
             <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Groen</span>
+              <span className="text-muted-foreground">Green</span>
               <span className="tabular-nums">{formatEur(totals.groen)}</span>
             </div>
             <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Geel</span>
+              <span className="text-muted-foreground">Yellow</span>
               <span className="tabular-nums">{formatEur(totals.geel)}</span>
             </div>
             <div className="mt-1 flex justify-between border-t pt-1.5 font-semibold">
-              <span>Samen (groen + geel)</span>
+              <span>Combined (green + yellow)</span>
               <span className="tabular-nums">{formatEur(totals.samen)}</span>
             </div>
             {pm.total > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Getoond, niet opgeteld (blauw {pm.blauw} · rood {pm.rood} · paars{" "}
+                Shown, not totaled (blue {pm.blauw} · red {pm.rood} · purple{" "}
                 {pm.paars}) — <span className="font-medium">p.m.</span>
               </p>
             )}
@@ -140,17 +140,17 @@ export function QuoteView({
 
       {(blauwLines.length > 0 || roodLines.length > 0) && (
         <section className="mt-8 border-t pt-4">
-          <h3 className="mb-2 text-sm font-medium">Open punten &amp; acties</h3>
+          <h3 className="mb-2 text-sm font-medium">Open items &amp; actions</h3>
           <ul className="space-y-1.5 text-sm">
             {blauwLines.map((l) => (
               <li key={l.id} className="flex items-start gap-2">
                 <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.blauw.dot)} aria-hidden />
                 <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — merk{" "}
+                  <span className="font-medium">{l.fixtureCode}</span> — load brand{" "}
                   <span className="font-medium">
-                    {(l.brandText ?? "").trim() || "onbekend"}
+                    {(l.brandText ?? "").trim() || "unknown"}
                   </span>{" "}
-                  inladen <span className="text-muted-foreground">(ons)</span>
+                  <span className="text-muted-foreground">(our action)</span>
                 </span>
               </li>
             ))}
@@ -158,8 +158,8 @@ export function QuoteView({
               <li key={l.id} className="flex items-start gap-2">
                 <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.rood.dot)} aria-hidden />
                 <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — terug naar
-                  klant <span className="text-muted-foreground">(merk bekend, dit product niet)</span>
+                  <span className="font-medium">{l.fixtureCode}</span> — back to
+                  customer <span className="text-muted-foreground">(brand known, this product not)</span>
                 </span>
               </li>
             ))}
@@ -168,7 +168,7 @@ export function QuoteView({
           {brandFreq.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground">
-                Merken inladen (ons)
+                Load brands (our action)
               </p>
               <ul className="mt-1 space-y-0.5 text-sm">
                 {brandFreq.map(([brand, n]) => (
@@ -183,9 +183,9 @@ export function QuoteView({
       )}
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Brutoprijzen excl. btw uit geldige prijslijsten. Alleen groen en geel tellen mee;
-        blauw, rood en paars staan als p.m. — getoond, niet opgeteld. Aanvraagvolgorde
-        is aangehouden.
+        Gross prices excl. VAT from valid price lists. Only green and yellow count;
+        blue, red and purple are shown as p.m. — displayed, not totaled. Request
+        order is preserved.
       </p>
     </div>
   );
@@ -229,7 +229,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
   if (!counting) {
     totalCell = <span className="text-muted-foreground">p.m.</span>;
   } else if (line.quantity == null) {
-    totalCell = <span className="text-muted-foreground">p/st</span>;
+    totalCell = <span className="text-muted-foreground">ea.</span>;
   } else if (lineTotal == null) {
     totalCell = <span className="text-muted-foreground">—</span>;
   } else {
@@ -275,7 +275,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           >
             {notable.length > 0 && (
               <>
-                afwijking:{" "}
+                deviation:{" "}
                 {notable.map((d, i) => (
                   <span key={d.field}>
                     {i > 0 && " · "}
@@ -297,13 +297,13 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
             {line.autoAccepted && (
               <span className="italic">
                 {notable.length > 0 && " — "}
-                automatisch geaccepteerde bijna-match
+                automatically accepted near-match
               </span>
             )}
             {line.manuallyChosen && (
               <span className="italic">
                 {notable.length > 0 && " — "}
-                handmatig gekozen
+                manually chosen
               </span>
             )}
           </TableCell>

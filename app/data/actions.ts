@@ -21,7 +21,7 @@ export async function startRunAction(formData: FormData) {
   const brandId = String(formData.get("brandId") ?? "").trim();
   if (!brandId) return;
   const run = await startEnrichmentRun(db, brandId, await getActor());
-  redirect(`/data/verrijking/${run.id}`);
+  redirect(`/data/enrichment/${run.id}`);
 }
 
 export async function setVerdictAction(formData: FormData) {
@@ -31,7 +31,7 @@ export async function setVerdictAction(formData: FormData) {
   const verdict = formData.get("verdict") === "fout" ? "fout" : "goed";
   if (!itemId) return;
   await setSampleVerdict(db, itemId, verdict);
-  if (runId) revalidatePath(`/data/verrijking/${runId}`);
+  if (runId) revalidatePath(`/data/enrichment/${runId}`);
 }
 
 export async function publishRunAction(formData: FormData) {
@@ -39,9 +39,9 @@ export async function publishRunAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "").trim();
   if (!runId) return;
   await publishRun(db, runId, await getActor());
-  revalidatePath("/data/verrijking");
+  revalidatePath("/data/enrichment");
   revalidatePath("/data");
-  redirect("/data/verrijking");
+  redirect("/data/enrichment");
 }
 
 export async function rejectRunAction(formData: FormData) {
@@ -49,8 +49,8 @@ export async function rejectRunAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "").trim();
   if (!runId) return;
   await rejectRun(db, runId, await getActor());
-  revalidatePath("/data/verrijking");
-  redirect("/data/verrijking");
+  revalidatePath("/data/enrichment");
+  redirect("/data/enrichment");
 }
 
 export async function markLoadedAction(formData: FormData) {
@@ -58,7 +58,7 @@ export async function markLoadedAction(formData: FormData) {
   const queueId = String(formData.get("queueId") ?? "").trim();
   if (!queueId) return;
   await markBrandLoaded(db, queueId, await getActor());
-  revalidatePath("/data/inladen");
+  revalidatePath("/data/loading");
   revalidatePath("/data");
 }
 
@@ -68,5 +68,5 @@ export async function measureAction(formData: FormData) {
     String(formData.get("label") ?? "").trim() ||
     `meting ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
   await measureHitRate(db, label);
-  revalidatePath("/data/evaluatie");
+  revalidatePath("/data/evaluation");
 }

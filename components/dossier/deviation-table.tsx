@@ -20,10 +20,10 @@ const VERDICT: Record<
   Deviation["verdict"],
   { dot: string; tint: string; label: string }
 > = {
-  groen: { dot: STATUS.groen.dot, tint: STATUS.groen.tint, label: "binnen marge" },
-  geel: { dot: STATUS.geel.dot, tint: STATUS.geel.tint, label: "gele marge" },
-  rood: { dot: STATUS.rood.dot, tint: STATUS.rood.tint, label: "buiten marge" },
-  onbekend: { dot: STATUS.open.dot, tint: STATUS.open.tint, label: "geen data" },
+  groen: { dot: STATUS.groen.dot, tint: STATUS.groen.tint, label: "within margin" },
+  geel: { dot: STATUS.geel.dot, tint: STATUS.geel.tint, label: "yellow margin" },
+  rood: { dot: STATUS.rood.dot, tint: STATUS.rood.tint, label: "outside margin" },
+  onbekend: { dot: STATUS.open.dot, tint: STATUS.open.tint, label: "no data" },
 };
 
 function showValue(v: string | number | null | undefined) {
@@ -39,8 +39,8 @@ export function DeviationTable({
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen afwijkingen vastgelegd. Zodra een match gekozen is, komt hier elk
-        gevraagd veld terug met zijn oordeel — ook de velden die kloppen.
+        No deviations recorded yet. Once a match is chosen, every requested field
+        appears here with its verdict — including the fields that match.
       </p>
     );
   }
@@ -48,10 +48,10 @@ export function DeviationTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Veld</TableHead>
-          <TableHead>Gevraagd</TableHead>
-          <TableHead>Geleverd</TableHead>
-          <TableHead>Oordeel</TableHead>
+          <TableHead>Field</TableHead>
+          <TableHead>Requested</TableHead>
+          <TableHead>Delivered</TableHead>
+          <TableHead>Verdict</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -66,7 +66,7 @@ export function DeviationTable({
               </TableCell>
               <TableCell className="tabular-nums">
                 {missing ? (
-                  <span className="text-muted-foreground">geen data</span>
+                  <span className="text-muted-foreground">no data</span>
                 ) : (
                   showValue(d.delivered)
                 )}

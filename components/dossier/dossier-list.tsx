@@ -8,7 +8,7 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
   if (dossiers.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen projecten. Maak er hiernaast één aan.
+        No projects yet. Create one on the right.
       </p>
     );
   }
@@ -16,7 +16,7 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
     <ul className="flex flex-col gap-2">
       {dossiers.map((d) => (
         <li key={d.id}>
-          <a href={`/projecten/${d.id}`} className="block">
+          <a href={`/projects/${d.id}`} className="block">
             <Card className="py-3 transition-colors hover:bg-muted/50">
               <CardContent className="flex items-center justify-between gap-3 px-4">
                 <div className="min-w-0">

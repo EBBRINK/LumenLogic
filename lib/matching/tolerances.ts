@@ -169,10 +169,10 @@ const FIELD_LABELS: Record<string, string> = {
   watt: "watt",
   lumen: "lumen",
   beamAngle: "beam angle",
-  sizeCm: "afmeting",
-  shape: "vorm",
-  color: "kleur",
-  dimmable: "dimbaarheid",
+  sizeCm: "size",
+  shape: "shape",
+  color: "color",
+  dimmable: "dimmability",
 };
 
 // Élk gevuld gevraagd veld krijgt een oordeel + benoemde afwijking (C-07:
@@ -190,9 +190,9 @@ export function judgeCandidate(
   ) => {
     const label = FIELD_LABELS[field] ?? field;
     let note: string | undefined;
-    if (verdict === "onbekend") note = `geen data voor ${label}`;
+    if (verdict === "onbekend") note = `no data for ${label}`;
     else if (String(requested) !== String(delivered))
-      note = `gevraagd ${requested}, geleverd ${delivered}`;
+      note = `requested ${requested}, delivered ${delivered}`;
     else note = "exact";
     out.push({ field, requested, delivered, verdict, note });
   };
@@ -216,7 +216,7 @@ export function judgeCandidate(
       requested: req.color,
       delivered: got.color,
       verdict,
-      note: got.color == null ? "geen data voor kleur" : differs ? `variant: gevraagd ${req.color}, beschikbaar ${got.color}` : "exact",
+      note: got.color == null ? "no data for color" : differs ? `variant: requested ${req.color}, available ${got.color}` : "exact",
     });
   }
   if (req.dimmable)

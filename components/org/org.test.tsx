@@ -1,7 +1,7 @@
 // White-box RSC-render tests van het organisatie-/ledenbeheer met fixture-data
 // (licht/donker × mobiel/desktop), plus gerichte asserts op wat ertoe doet: leden met hun
 // rol-badges (petten), de rol-uitleg met de juiste default-landing, en de harde regel dat
-// de rol de VIEW kiest en nooit wat de engine toont.
+// de rol de VIEW kiest en never what the engine shows.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -88,7 +88,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .element(
           page.getByText(
-            "Matcht spec-regels en bouwt de calculatie en offerte.",
+            "Matches spec lines and builds the calculation and quote.",
           ),
         )
         .toBeInTheDocument();
@@ -124,7 +124,7 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
   await expect.element(page.getByText("sanne@devries.nl")).toBeInTheDocument();
   // lege org toont een eerlijke melding, geen verborgen leeg vlak
   await expect
-    .element(page.getByText("Nog geen leden. Voeg er hieronder één toe."))
+    .element(page.getByText("No members yet. Add one below."))
     .toBeInTheDocument();
 
   // rol-badges op de leden (secondary-variant onderscheidt ze van de legenda-badges
@@ -133,8 +133,8 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
     document.querySelectorAll('[data-slot="badge"][data-variant="secondary"]'),
   ).map((b) => b.textContent);
   expect(badges).toContain("Calculator");
-  expect(badges).toContain("Beheerder");
-  expect(badges).toContain("Werkvoorbereider");
+  expect(badges).toContain("Admin");
+  expect(badges).toContain("Work preparer");
   // Piet (calculator + org_admin) + Sanne (werkvoorbereider) = 3 rol-badges
   expect(badges).toHaveLength(3);
 });
@@ -148,22 +148,22 @@ test("rol-uitleg en default-landing kloppen; de rol kiest de VIEW, niet de engin
   // uitleg per pet
   await expect
     .element(
-      page.getByText("Matcht spec-regels en bouwt de calculatie en offerte."),
+      page.getByText("Matches spec lines and builds the calculation and quote."),
     )
     .toBeInTheDocument();
   // de harde regel staat er expliciet
-  expect(document.body.textContent).toContain("nooit wat de engine toont");
+  expect(document.body.textContent).toContain("never what the engine shows");
 
   // default-landing hangt aan de juiste rol (mapping via defaultLandingForRoles)
   const items = Array.from(document.querySelectorAll("li"));
   const calc = items.find((li) => li.textContent?.includes("Calculator"));
-  expect(calc?.textContent).toContain("Regels");
-  const wvb = items.find((li) => li.textContent?.includes("Werkvoorbereider"));
-  expect(wvb?.textContent).toContain("Werkvoorbereiding");
-  const pl = items.find((li) => li.textContent?.includes("Projectleider"));
-  expect(pl?.textContent).toContain("Armaturenboek");
-  const admin = items.find((li) => li.textContent?.includes("Beheerder"));
-  expect(admin?.textContent).toContain("Instellingen");
+  expect(calc?.textContent).toContain("Lines");
+  const wvb = items.find((li) => li.textContent?.includes("Work preparer"));
+  expect(wvb?.textContent).toContain("Work preparation");
+  const pl = items.find((li) => li.textContent?.includes("Project lead"));
+  expect(pl?.textContent).toContain("Luminaire schedule");
+  const admin = items.find((li) => li.textContent?.includes("Admin"));
+  expect(admin?.textContent).toContain("Settings");
 });
 
 test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
@@ -177,7 +177,7 @@ test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
       />
     </Screen>,
   );
-  await expect.element(page.getByText("Lid toevoegen")).toBeInTheDocument();
+  await expect.element(page.getByText("Add member")).toBeInTheDocument();
   const boxes = Array.from(
     document.querySelectorAll<HTMLInputElement>(
       'input[type="checkbox"][name="roles"]',

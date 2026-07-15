@@ -31,10 +31,10 @@ export default async function DataPage() {
   ).length;
 
   const badge: Record<string, number> = {
-    "/data/verrijking": openRuns,
-    "/data/inladen": waiting,
-    "/data/prijslijsten": expired,
-    "/data/merkrelaties": dataOntvangen,
+    "/data/enrichment": openRuns,
+    "/data/loading": waiting,
+    "/data/price-lists": expired,
+    "/data/brand-relations": dataOntvangen,
   };
 
   return (
@@ -42,8 +42,8 @@ export default async function DataPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Data</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          De werkbank achter de matcher: catalogusdata verrijken, merken inladen
-          en de kwaliteit meten.
+          The workbench behind the matcher: enrich catalog data, load brands and
+          measure quality.
         </p>
       </header>
 

@@ -155,7 +155,7 @@ async function proposalCandidate(db: AppDb, specLineId: string) {
   return top ?? null;
 }
 
-// Eén review-beslissing. Reden verplicht bij afwijzen/overrulen (D-05); optioneel bij
+// Eén review-beslissing. Reason required when rejecting/overrulen (D-05); optioneel bij
 // accepteren. Zet de regelstatus mee waar de beslissing dat vereist.
 //
 // Herontwerp 2026-07-14 (bewust besluit, stap 7): élke bevestigende productkeuze in de
@@ -180,7 +180,7 @@ export async function decideReview(
   },
 ): Promise<void> {
   if (input.decision === "afgewezen" && !input.reason?.trim()) {
-    throw new Error("Reden verplicht bij afwijzen");
+    throw new Error("Reason required when rejecting");
   }
 
   const set: Record<string, unknown> = {
@@ -209,7 +209,7 @@ export async function decideReview(
       // (er is op dit punt nog niets gemuteerd).
       const { getVisibleProduct } = await import("./products");
       const product = await getVisibleProduct(db, input.productId);
-      if (!product) throw new Error("product niet zichtbaar of onbekend");
+      if (!product) throw new Error("product not visible or unknown");
     }
     chosenProductId =
       input.productId ??
@@ -258,7 +258,7 @@ export async function linkManualProduct(
   // Regel 3: alleen een nú zichtbaar product is linkbaar.
   const { getVisibleProduct } = await import("./products");
   const product = await getVisibleProduct(db, input.productId);
-  if (!product) throw new Error("product niet zichtbaar of onbekend");
+  if (!product) throw new Error("product not visible or unknown");
 
   await markChosenCandidate(db, {
     specLineId: input.specLineId,

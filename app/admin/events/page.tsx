@@ -20,9 +20,9 @@ export default async function AdminEventsPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Activiteit</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
         <p className="text-sm text-muted-foreground">
-          Het event-log: elke handeling vastgelegd.
+          The event log: every action recorded.
         </p>
       </header>
       <EventsBlock events={rows} />

@@ -2,8 +2,8 @@
 // De disclosures komen uit de échte resolveDisclosure — geen handgemaakte matrix, zodat de
 // test aan de gedeelde beslisboom vastzit. Assert precies:
 //   • tier1            → adviesprijs zichtbaar, geen aanvraagknop.
-//   • tier2 (gated)    → "Prijs via Brink aanvragen", specs zichtbaar, GEEN prijs.
-//   • tier3 (awaiting) → "Data in afwachting van merk", geen specs, geen prijs.
+//   • tier2 (gated)    → "Request price via Brink", specs zichtbaar, GEEN prijs.
+//   • tier3 (awaiting) → "Data awaiting brand", geen specs, geen prijs.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -70,11 +70,11 @@ test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
   );
   // Prijs zichtbaar (€ 310,00 — assert op het getal i.v.m. de currency-spatie).
   await expect.element(page.getByText("310,00")).toBeInTheDocument();
-  // Geen prijsaanvraag in tier1.
+  // Geen pricerequest in tier1.
   expect(document.body.textContent ?? "").not.toContain("Prijs via Brink");
 });
 
-test("tier2 gated: 'Prijs via Brink aanvragen', specs wél, prijs niet", async () => {
+test("tier2 gated: 'Request price via Brink', specs wél, prijs niet", async () => {
   const disclosure = resolveDisclosure("tier2", externZonderProject);
   await renderServer(
     <Screen>
@@ -88,14 +88,14 @@ test("tier2 gated: 'Prijs via Brink aanvragen', specs wél, prijs niet", async (
     </Screen>,
   );
   // De gated-knop staat er.
-  await expect.element(page.getByText("Prijs via Brink aanvragen")).toBeInTheDocument();
+  await expect.element(page.getByText("Request price via Brink")).toBeInTheDocument();
   // Specs zichtbaar in tier2 (bv. de kleurtemperatuur-waarde).
   await expect.element(page.getByText("2700 K")).toBeInTheDocument();
   // Maar geen prijs: geen euro-teken op de kaart.
   expect(document.body.textContent ?? "").not.toContain("€");
 });
 
-test("tier3: 'Data in afwachting van merk', geen specs, geen prijs", async () => {
+test("tier3: 'Data awaiting brand', geen specs, geen prijs", async () => {
   const disclosure = resolveDisclosure("tier3", intern);
   await renderServer(
     <Screen>
@@ -108,7 +108,7 @@ test("tier3: 'Data in afwachting van merk', geen specs, geen prijs", async () =>
       />
     </Screen>,
   );
-  await expect.element(page.getByText("Data in afwachting van merk")).toBeInTheDocument();
+  await expect.element(page.getByText("Data awaiting brand")).toBeInTheDocument();
   const body = document.body.textContent ?? "";
   // Naam blijft altijd zichtbaar, maar geen specs en geen prijs.
   expect(body).toContain("SASSO 100");

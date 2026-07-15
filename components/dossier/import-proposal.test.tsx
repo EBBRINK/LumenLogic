@@ -1,5 +1,5 @@
 // White-box RSC-render van het import-voorstelscherm met fixtures. Twee bronnen: een OCR-
-// import (waarschuwing "controleer elke regel", regels standaard uitgevinkt) en een CSV-plak
+// import (waarschuwing "check every line", regels standaard uitgevinkt) en een CSV-plak
 // (rustige banner, regels standaard aangevinkt). Licht/donker × mobiel/desktop.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
@@ -98,7 +98,7 @@ test("OCR-import: waarschuwt om elke regel te controleren", async () => {
     </Screen>,
   );
   await expect
-    .element(page.getByText(/controleer elke regel/i))
+    .element(page.getByText(/check every line/i))
     .toBeInTheDocument();
   // elke herkende rij staat op het scherm (niets wordt stilzwijgend weggelaten)
   await expect.element(page.getByText("Lp301")).toBeInTheDocument();
@@ -116,7 +116,7 @@ test("OCR-rijen staan standaard UIT (checkbox niet aangevinkt)", async () => {
   );
   // 0 aangevinkt → de bevestig-knop noemt 0 regels (wacht ook op de RSC-stream)
   await expect
-    .element(page.getByRole("button", { name: /0 aangevinkte regels toevoegen/i }))
+    .element(page.getByRole("button", { name: /Add 0 checked lines/i }))
     .toBeInTheDocument();
   const boxes = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
   expect(boxes.length).toBe(ocrRows.length);
@@ -133,9 +133,9 @@ test("CSV-plak: rustige banner (geen OCR-waarschuwing), rijen standaard AAN", as
     </Screen>,
   );
   await expect
-    .element(page.getByRole("button", { name: /2 aangevinkte regels toevoegen/i }))
+    .element(page.getByRole("button", { name: /Add 2 checked lines/i }))
     .toBeInTheDocument();
-  expect(page.getByText(/controleer elke regel/i).query()).toBeNull();
+  expect(page.getByText(/check every line/i).query()).toBeNull();
   const boxes = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
   expect(boxes.length).toBe(csvRows.length);
   for (const box of boxes) expect(box.checked).toBe(true);
@@ -151,6 +151,6 @@ test("de annuleer-knop is aanwezig — niets opgeslagen tot bevestigen", async (
     </Screen>,
   );
   await expect
-    .element(page.getByRole("button", { name: /annuleer import/i }))
+    .element(page.getByRole("button", { name: /Cancel import/i }))
     .toBeInTheDocument();
 });

@@ -127,10 +127,10 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(adminScreen);
       await expect.element(document.body).toBeInTheDocument();
       await expect
-        .element(page.getByText("Merken & zichtbaarheid"))
+        .element(page.getByText("Brands & visibility"))
         .toBeInTheDocument();
       await expect
-        .element(page.getByText("Uploads in afwachting"))
+        .element(page.getByText("Pending uploads"))
         .toBeInTheDocument();
       await page.screenshot({ path: `./admin.${theme}.${device}.test.png` });
     });
@@ -164,9 +164,9 @@ test("uploads: afwijzen vereist een reden (required input)", async () => {
     </Screen>,
   );
   // Wacht tot de render is doorgekomen voordat we ruw de DOM bevragen.
-  await expect.element(page.getByText("Uploads in afwachting")).toBeInTheDocument();
+  await expect.element(page.getByText("Pending uploads")).toBeInTheDocument();
   const noteInput = document.querySelector<HTMLInputElement>(
-    'input[aria-label="Reden voor afwijzen upload u1"]',
+    'input[aria-label="Reason for rejecting upload u1"]',
   );
   expect(noteInput).not.toBeNull();
   expect(noteInput?.required).toBe(true);
@@ -185,7 +185,7 @@ test("uploads: PDL-import biedt merken en gaat via staging", async () => {
     </Screen>,
   );
   await expect
-    .element(page.getByText("Geen uploads in afwachting."))
+    .element(page.getByText("No pending uploads."))
     .toBeInTheDocument();
   const brandSelect = document.querySelector<HTMLSelectElement>("#pdl-brand");
   expect(brandSelect).not.toBeNull();
@@ -199,8 +199,8 @@ test("gebruikers: meerdere rollen per persoon staan als aparte badges", async ()
     </Screen>,
   );
   await expect.element(page.getByText("Bouw Noord")).toBeInTheDocument();
-  await expect.element(page.getByText("Org-admin")).toBeInTheDocument();
-  await expect.element(page.getByText("Projectleider")).toBeInTheDocument();
+  await expect.element(page.getByText("Org admin")).toBeInTheDocument();
+  await expect.element(page.getByText("Project lead")).toBeInTheDocument();
 });
 
 test("events: recente handelingen zijn zichtbaar met actor", async () => {

@@ -6,7 +6,7 @@ import type { BucketBlok } from "./mini-scorecard";
 // Blokje kleurt op de must-ratio; buckets zonder must-velden vallen terug op
 // wanna en daarna nice. Grijs (null) = geen meetbare velden of geen producten.
 export function bucketBlok(
-  bucket: Pick<CatalogBucket, "key" | "labelNl">,
+  bucket: Pick<CatalogBucket, "key" | "labelEn">,
   score: BucketScore,
   hasProducts: boolean,
 ): BucketBlok {
@@ -20,7 +20,7 @@ export function bucketBlok(
           : score.nice.ratio;
   return {
     key: bucket.key,
-    labelNl: bucket.labelNl,
+    labelNl: bucket.labelEn,
     ratio,
     mustComplete: score.must.total === 0 || score.must.ratio >= 1,
   };

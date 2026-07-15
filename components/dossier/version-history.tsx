@@ -52,12 +52,12 @@ export type VersionDiffView = {
 
 // Veld-key → NL-label voor de diff. productId/productName vallen samen onder "product".
 const FIELD_LABEL: Record<string, string> = {
-  location: "locatie",
-  brand: "merk",
+  location: "location",
+  brand: "brand",
   productId: "product",
   productName: "product",
-  articleCode: "artikelnr.",
-  kelvin: "kleurtemp.",
+  articleCode: "art. no.",
+  kelvin: "color temp.",
   cri: "CRI",
   ip: "IP",
   status: "status",
@@ -108,11 +108,11 @@ function SnapshotForm({
       <input
         type="text"
         name="note"
-        placeholder="Notitie (optioneel) — bv. na revisie klant"
+        placeholder="Note (optional) — e.g. after customer revision"
         className="h-8 w-64 max-w-full rounded-lg border border-input bg-background px-2.5 text-sm"
       />
       <Button type="submit" size="sm">
-        Nieuwe versie vastleggen
+        Save new version
       </Button>
     </form>
   );
@@ -126,18 +126,18 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
   return (
     <section className="rounded-xl ring-1 ring-foreground/10 p-4">
       <h3 className="text-sm font-medium">
-        Wijzigingen v{diff.fromVersion} → v{diff.toVersion}
+        Changes v{diff.fromVersion} → v{diff.toVersion}
       </h3>
       {nothing ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          Geen verschillen — de twee versies zijn identiek.
+          No differences — the two versions are identical.
         </p>
       ) : (
         <div className="mt-3 flex flex-col gap-3 text-sm">
           {diff.changed.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Gewijzigd ({diff.changed.length})
+                Changed ({diff.changed.length})
               </p>
               <ul className="mt-1 flex flex-col gap-1">
                 {diff.changed.map((c) => (
@@ -158,7 +158,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
           {diff.added.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Toegevoegd ({diff.added.length})
+                Added ({diff.added.length})
               </p>
               <ul className="mt-1 flex flex-col gap-1">
                 {diff.added.map((r) => (
@@ -175,7 +175,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
           {diff.removed.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Verwijderd ({diff.removed.length})
+                Removed ({diff.removed.length})
               </p>
               <ul className="mt-1 flex flex-col gap-1">
                 {diff.removed.map((r) => (
@@ -204,17 +204,17 @@ function LatestSnapshot({
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">
-        Nieuwste versie (v{latest.version}) — {latest.lines.length}{" "}
-        {latest.lines.length === 1 ? "regel" : "regels"}
+        Latest version (v{latest.version}) — {latest.lines.length}{" "}
+        {latest.lines.length === 1 ? "line" : "lines"}
       </h3>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Code</TableHead>
-            <TableHead>Locatie</TableHead>
-            <TableHead>Merk</TableHead>
+            <TableHead>Location</TableHead>
+            <TableHead>Brand</TableHead>
             <TableHead>Product</TableHead>
-            <TableHead>Artikelnr.</TableHead>
+            <TableHead>Art. no.</TableHead>
             <TableHead>Datasheets</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
@@ -236,7 +236,7 @@ function LatestSnapshot({
                     r.productName
                   ) : (
                     <span className="text-muted-foreground">
-                      geen product gekozen
+                      no product chosen
                     </span>
                   )}
                 </TableCell>
@@ -279,10 +279,10 @@ export function VersionHistory({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-medium">Versiehistorie</h2>
+          <h2 className="text-lg font-medium">Version history</h2>
           <p className="text-sm text-muted-foreground">
-            Leg het armaturenboek als versie vast bij elke overdracht of revisie —
-            zo is elke wijziging terug te vinden en te vergelijken.
+            Save the luminaire schedule as a version at every handover or revision —
+            so every change can be found and compared.
           </p>
         </div>
         <SnapshotForm dossierId={dossierId} snapshotAction={snapshotAction} />
@@ -290,10 +290,10 @@ export function VersionHistory({
 
       {versions.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center">
-          <p className="font-medium">Nog geen versies vastgelegd.</p>
+          <p className="font-medium">No versions saved yet.</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            Leg de eerste versie vast zodra het armaturenboek klaar is voor de
-            bouwplaats. De regels — product, specs én locatie — worden bevroren.
+            Save the first version once the luminaire schedule is ready for the
+            construction site. The lines — product, specs and location — are frozen.
           </p>
         </div>
       ) : (
@@ -303,7 +303,7 @@ export function VersionHistory({
 
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-muted-foreground">
-              Alle versies ({versions.length})
+              All versions ({versions.length})
             </h3>
             <ul className="flex flex-col divide-y rounded-xl ring-1 ring-foreground/10">
               {versions.map((v) => (
@@ -316,16 +316,16 @@ export function VersionHistory({
                     {v.createdAt}
                   </span>
                   <span className="text-sm text-muted-foreground tabular-nums">
-                    {v.lineCount} {v.lineCount === 1 ? "regel" : "regels"}
+                    {v.lineCount} {v.lineCount === 1 ? "line" : "lines"}
                   </span>
                   {v.note && <span className="text-sm">{v.note}</span>}
                   <span className="ml-auto flex items-center gap-3">
                     <span className="text-xs text-muted-foreground">
-                      door {v.actor ?? "onbekend"}
+                      by {v.actor ?? "unknown"}
                     </span>
                     {v.compareHref && (
                       <Button asChild size="sm" variant="outline">
-                        <a href={v.compareHref}>Vergelijk met vorige</a>
+                        <a href={v.compareHref}>Compare with previous</a>
                       </Button>
                     )}
                   </span>

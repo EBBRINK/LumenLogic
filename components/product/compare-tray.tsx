@@ -128,7 +128,7 @@ export function AddToCompareButton({
       aria-pressed={inList}
       onClick={() => (inList ? removeFromCompare(item.id) : addToCompare(item))}
     >
-      {inList ? "In vergelijking" : full ? "Vergelijking vol (4)" : "Vergelijk toevoegen"}
+      {inList ? "In comparison" : full ? "Comparison full (4)" : "Add to compare"}
     </Button>
   );
 }
@@ -152,13 +152,13 @@ export function CompareTray() {
       <div className="mx-auto w-full max-w-6xl px-6 py-3">
         <div className="mb-2 flex items-center justify-between gap-4">
           <h2 className="text-sm font-medium">
-            Vergelijken{" "}
+            Compare{" "}
             <span className="text-muted-foreground tabular-nums">
               ({items.length}/{COMPARE_MAX})
             </span>
           </h2>
           <Button type="button" variant="ghost" size="sm" onClick={() => clearCompare()}>
-            Leegmaken
+            Clear
           </Button>
         </div>
         <div className="overflow-x-auto">
@@ -166,7 +166,7 @@ export function CompareTray() {
             <thead>
               <tr className="border-b">
                 <th className="w-40 py-2 pr-4 text-left align-bottom font-medium text-muted-foreground">
-                  Kenmerk
+                  Feature
                 </th>
                 {items.map((it) => (
                   <th key={it.id} className="min-w-40 py-2 pr-4 text-left align-bottom">
@@ -181,7 +181,7 @@ export function CompareTray() {
                       </div>
                       <button
                         type="button"
-                        aria-label={`${it.name} uit vergelijking halen`}
+                        aria-label={`Remove ${it.name} from comparison`}
                         onClick={() => removeFromCompare(it.id)}
                         className="shrink-0 rounded px-1 text-muted-foreground hover:text-foreground"
                       >

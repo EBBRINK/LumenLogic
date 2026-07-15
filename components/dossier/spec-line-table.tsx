@@ -17,7 +17,7 @@ import type { SpecLineRow } from "./types";
 //   🟢/🔴/🟣 → Open (regel-detail) · 🟡/review → Review · 🔵 → Inladen (wachtrij).
 function actionFor(status: SpecLineRow["status"]): { label: string; kind: "open" | "review" | "inladen" } {
   if (status === "geel") return { label: "Review", kind: "review" };
-  if (status === "blauw") return { label: "Inladen", kind: "inladen" };
+  if (status === "blauw") return { label: "Load", kind: "inladen" };
   return { label: "Open", kind: "open" };
 }
 
@@ -33,7 +33,7 @@ export function SpecLineTable({
   if (lines.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen spec-regels. Voeg ze hieronder toe of plak een CSV-blok.
+        No spec lines yet. Add them below or paste a CSV block.
       </p>
     );
   }
@@ -43,11 +43,11 @@ export function SpecLineTable({
         <TableRow>
           <TableHead>Code</TableHead>
           <TableHead>Zone</TableHead>
-          <TableHead>Aantal</TableHead>
-          <TableHead>Gevraagd</TableHead>
+          <TableHead>Quantity</TableHead>
+          <TableHead>Requested</TableHead>
           <TableHead>Match</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead className="text-right">Actie</TableHead>
+          <TableHead className="text-right">Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -70,7 +70,7 @@ export function SpecLineTable({
                   {l.zone ?? "—"}
                 </TableCell>
                 <TableCell className="tabular-nums">
-                  {l.quantity ?? <span className="text-muted-foreground">p/st</span>}
+                  {l.quantity ?? <span className="text-muted-foreground">ea.</span>}
                 </TableCell>
                 <TableCell className="max-w-56 whitespace-normal">
                   <span className="text-muted-foreground">{l.brandText}</span>{" "}
@@ -94,7 +94,7 @@ export function SpecLineTable({
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="outline">
-                      <a href={`/projecten/${dossierId}/regel/${l.id}`}>
+                      <a href={`/projects/${dossierId}/line/${l.id}`}>
                         <IconSearch /> {act.label}
                       </a>
                     </Button>
@@ -106,7 +106,7 @@ export function SpecLineTable({
                           type="submit"
                           size="icon-sm"
                           variant="ghost"
-                          aria-label="Regel verwijderen"
+                          aria-label="Remove line"
                         >
                           <IconTrash />
                         </Button>
@@ -121,7 +121,7 @@ export function SpecLineTable({
                   <TableCell colSpan={6} className="pt-0 text-xs text-muted-foreground">
                     {notable.length > 0 && (
                       <>
-                        afwijking:{" "}
+                        deviation:{" "}
                         {notable.map((d, i) => (
                           <span key={d.field}>
                             {i > 0 && " · "}
@@ -143,13 +143,13 @@ export function SpecLineTable({
                     {autoAccepted && (
                       <span className="italic">
                         {notable.length > 0 && " — "}
-                        automatisch geaccepteerde bijna-match
+                        automatically accepted near-match
                       </span>
                     )}
                     {manuallyChosen && (
                       <span className="italic">
                         {notable.length > 0 && " — "}
-                        handmatig gekozen
+                        manually chosen
                       </span>
                     )}
                   </TableCell>

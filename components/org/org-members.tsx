@@ -28,17 +28,17 @@ export const ROLE_ORDER: MembershipRole[] = [
 
 export const ROLE_LABEL: Record<MembershipRole, string> = {
   calculator: "Calculator",
-  werkvoorbereider: "Werkvoorbereider",
-  projectleider: "Projectleider",
-  org_admin: "Beheerder",
+  werkvoorbereider: "Work preparer",
+  projectleider: "Project lead",
+  org_admin: "Admin",
 };
 
 const ROLE_DESCRIPTION: Record<MembershipRole, string> = {
-  calculator: "Matcht spec-regels en bouwt de calculatie en offerte.",
+  calculator: "Matches spec lines and builds the calculation and quote.",
   werkvoorbereider:
-    "Bereidt het werk voor: armaturenboek, locaties en datasheets.",
-  projectleider: "Houdt overzicht op projectniveau en levert het project op.",
-  org_admin: "Beheert leden, rollen en de organisatie-instellingen.",
+    "Prepares the work: luminaire schedule, locations and datasheets.",
+  projectleider: "Keeps oversight at project level and delivers the project.",
+  org_admin: "Manages members, roles and the organization settings.",
 };
 
 // De default-landing per rol krijgt een leesbaar label. De mapping rol → landing
@@ -48,11 +48,11 @@ const LANDING_LABEL: Record<
   ReturnType<typeof defaultLandingForRoles>,
   string
 > = {
-  regels: "Regels",
-  werkvoorbereiding: "Werkvoorbereiding",
-  armaturenboek: "Armaturenboek",
-  instellingen: "Instellingen",
-  dossiers: "Projecten",
+  regels: "Lines",
+  werkvoorbereiding: "Work preparation",
+  armaturenboek: "Luminaire schedule",
+  instellingen: "Settings",
+  dossiers: "Projects",
 };
 
 export function landingForRole(role: MembershipRole): string {
@@ -66,11 +66,11 @@ export function RoleLegend() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Rollen (petten)</CardTitle>
+        <CardTitle>Roles</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Eén persoon kan meerdere petten dragen. Een rol bepaalt alleen waar
-          iemand standaard landt — nooit wat de engine toont. Wat zichtbaar is,
-          hangt af van de fase van het project, niet van de rol.
+          One person can hold multiple roles. A role only determines where someone
+          lands by default — never what the engine shows. What is visible depends on
+          the phase of the project, not the role.
         </p>
       </CardHeader>
       <CardContent>
@@ -87,7 +87,7 @@ export function RoleLegend() {
                 </p>
               </div>
               <p className="shrink-0 text-xs text-muted-foreground">
-                Landt op{" "}
+                Lands on{" "}
                 <span className="font-medium text-foreground">
                   {landingForRole(role)}
                 </span>
@@ -117,10 +117,10 @@ export function OrgMembers({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h3 className="text-sm font-medium">Leden</h3>
+        <h3 className="text-sm font-medium">Members</h3>
         {members.length === 0 ? (
           <p className="mt-1 text-sm text-muted-foreground">
-            Nog geen leden. Voeg er hieronder één toe.
+            No members yet. Add one below.
           </p>
         ) : (
           <ul className="mt-2 flex flex-col divide-y divide-foreground/10">
@@ -136,7 +136,7 @@ export function OrgMembers({
                       // Niets stilzwijgend weglaten: een lid zonder rol is een eerlijke
                       // grijze markering, geen leeg vlak.
                       <span className="text-xs text-muted-foreground">
-                        geen rol
+                        no role
                       </span>
                     ) : (
                       ROLE_ORDER.filter((r) => m.roles.includes(r)).map((r) => (
@@ -154,8 +154,8 @@ export function OrgMembers({
                     type="submit"
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={`${m.email} verwijderen`}
-                    title="Lid verwijderen"
+                    aria-label={`Remove ${m.email}`}
+                    title="Remove member"
                   >
                     <IconTrash />
                   </Button>
@@ -175,13 +175,13 @@ export function OrgMembers({
           type="email"
           name="email"
           required
-          placeholder="naam@bedrijf.nl"
-          aria-label="E-mailadres van het nieuwe lid"
+          placeholder="name@company.nl"
+          aria-label="Email address of the new member"
           className="sm:max-w-xs"
         />
         <fieldset className="flex flex-col gap-2">
           <legend className="text-xs font-medium text-muted-foreground">
-            Rollen (petten) — bepalen waar dit lid standaard landt
+            Roles — determine where this member lands by default
           </legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {ROLE_ORDER.map((role) => (
@@ -204,7 +204,7 @@ export function OrgMembers({
           </div>
         </fieldset>
         <Button type="submit" className="self-start">
-          Lid toevoegen
+          Add member
         </Button>
       </form>
     </div>

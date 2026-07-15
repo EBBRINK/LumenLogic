@@ -49,9 +49,9 @@ const basis: BrandMessageInput = {
 };
 
 test("aanhef: contactpersoon indien bekend, anders neutraal", () => {
-  expect(buildBrandMessage(basis)).toMatch(/^Beste Anna Vogel,/);
+  expect(buildBrandMessage(basis)).toMatch(/^Dear Anna Vogel,/);
   expect(buildBrandMessage({ ...basis, contactName: null })).toMatch(
-    /^Geachte heer\/mevrouw,/,
+    /^Dear Sir or Madam,/,
   );
 });
 
@@ -61,8 +61,8 @@ test("geen prijslijst → vraag om prijslijst; geldige lijst → geen prijslijst
     priceListIndicator: "ontbreekt",
     priceListValidUntil: null,
   });
-  expect(zonder).toContain("nog geen prijslijst");
-  expect(buildBrandMessage(basis)).not.toContain("prijslijst");
+  expect(zonder).toContain("don't have a price list");
+  expect(buildBrandMessage(basis)).not.toContain("price list");
 });
 
 test("verlopen lijst → verlopen + NL-datum; verloopt binnenkort → tijdig-nieuwe-vraag", () => {
@@ -71,22 +71,22 @@ test("verlopen lijst → verlopen + NL-datum; verloopt binnenkort → tijdig-nie
     priceListIndicator: "verlopen",
     priceListValidUntil: "2026-03-01",
   });
-  expect(verlopen).toContain("verlopen");
-  expect(verlopen).toContain("1 maart 2026");
+  expect(verlopen).toContain("expired");
+  expect(verlopen).toContain("1 March 2026");
   const binnenkort = buildBrandMessage({
     ...basis,
     priceListIndicator: "verloopt_binnenkort",
     priceListValidUntil: "2026-08-01",
   });
-  expect(binnenkort).toContain("verloopt binnenkort");
-  expect(binnenkort).toContain("1 augustus 2026");
+  expect(binnenkort).toContain("expires soon");
+  expect(binnenkort).toContain("1 August 2026");
 });
 
 test("laagste-dekking-buckets in gewone taal, met productaantal en percentage", () => {
   const tekst = buildBrandMessage(basis);
-  expect(tekst).toContain("Van uw 30 producten");
+  expect(tekst).toContain("Of your 30 products");
   // Fotometrie heeft de laagste dekking (alleen kelvin 3/30) en wordt benoemd.
-  expect(tekst).toMatch(/- Fotometrie: bij ongeveer \d+% van de producten onvolledig\./);
+  expect(tekst).toMatch(/- Photometrics: incomplete for about \d+% of the products\./);
   // Maximaal drie buckets in de lijst.
   expect(tekst.split("\n").filter((r) => r.startsWith("- ")).length)
     .toBeLessThanOrEqual(3);
@@ -97,8 +97,8 @@ test("alles compleet → compliment i.p.v. missende-data-lijst", () => {
     ...basis,
     buckets: maakBuckets(allesGevuld(30), 30),
   });
-  expect(tekst).toContain("compleet");
-  expect(tekst).not.toContain("missen we");
+  expect(tekst).toContain("complete");
+  expect(tekst).not.toContain("missing data");
   expect(tekst).not.toMatch(/^- /m);
 });
 
@@ -106,7 +106,7 @@ test("verwijzing naar het template en afsluiting zijn er altijd", () => {
   for (const input of [basis, { ...basis, productCount: 0, buckets: maakBuckets({}, 0) }]) {
     const tekst = buildBrandMessage(input);
     expect(tekst).toContain("brinklicht-product-data-template.xlsx");
-    expect(tekst).toContain("Met vriendelijke groet,");
+    expect(tekst).toContain("Kind regards,");
   }
 });
 
@@ -126,9 +126,9 @@ test("NEGATIEF: geen enkel 🔒-veld (key of label) in welke stand dan ook", () 
     const tekst = buildBrandMessage(stand).toLowerCase();
     for (const f of internal) {
       expect(tekst).not.toContain(f.key.toLowerCase());
-      expect(tekst).not.toContain(f.labelNl.toLowerCase());
+      expect(tekst).not.toContain(f.labelEn.toLowerCase());
     }
-    for (const woord of ["inkoopprijs", "korting", "voorraad"]) {
+    for (const woord of ["purchase price", "discount", "stock"]) {
       expect(tekst).not.toContain(woord);
     }
   }

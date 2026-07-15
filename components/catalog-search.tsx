@@ -20,14 +20,14 @@ export type CatalogResult = Candidate & { missing?: string[] };
 
 // De ingevulde zoekvelden, plat zoals ze uit de query-string komen (form method=get).
 export type CatalogValues = {
-  merk: string;
+  brand: string;
   q: string;
   kelvin: string;
   cri: string;
   ip: string;
 };
 
-const EMPTY_VALUES: CatalogValues = { merk: "", q: "", kelvin: "", cri: "", ip: "" };
+const EMPTY_VALUES: CatalogValues = { brand: "", q: "", kelvin: "", cri: "", ip: "" };
 
 // Native select, gestyled in dezelfde taal als <Input> (geen shadcn-select in de repo).
 const selectClass =
@@ -63,7 +63,7 @@ function ResultCard({ item }: { item: CatalogResult }) {
   return (
     <li>
       <a
-        href={`/producten/${item.id}`}
+        href={`/products/${item.id}`}
         className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40"
       >
         <div className="min-w-0">
@@ -72,7 +72,7 @@ function ResultCard({ item }: { item: CatalogResult }) {
           <p className="text-xs text-muted-foreground">{specs.join(" · ")}</p>
           {item.missing && item.missing.length > 0 && (
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              geen data voor: {item.missing.join(", ")}
+              no data for: {item.missing.join(", ")}
             </p>
           )}
         </div>
@@ -103,7 +103,7 @@ function ResultList({
       </div>
       {note && <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>}
       {items.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">Geen.</p>
+        <p className="mt-2 text-sm text-muted-foreground">None.</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-2">
           {items.map((c) => (
@@ -133,17 +133,17 @@ export function CatalogSearch({
   const total = aantoonbaar.length + onvolledig.length;
   return (
     <div className="flex flex-col gap-6">
-      <form method="get" action="/catalogus" className="flex flex-col gap-3">
+      <form method="get" action="/catalog" className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Merk" hint="Het merk hebben we altijd — begin daar.">
+          <Field label="Brand" hint="We always have the brand — start there.">
             <select
-              name="merk"
-              defaultValue={values.merk}
-              aria-label="Merk"
-              data-testid="merk-select"
+              name="brand"
+              defaultValue={values.brand}
+              aria-label="Brand"
+              data-testid="brand-select"
               className={selectClass}
             >
-              <option value="">Alle merken</option>
+              <option value="">All brands</option>
               {brands.map((b) => (
                 <option key={b} value={b}>
                   {b}
@@ -151,22 +151,22 @@ export function CatalogSearch({
               ))}
             </select>
           </Field>
-          <Field label="Vrije tekst">
+          <Field label="Free text">
             <Input
               name="q"
               defaultValue={values.q}
-              placeholder="bv. SASSO 100 of artikelnr. L360048"
+              placeholder="e.g. SASSO 100 or article no. L360048"
             />
           </Field>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Kleurtemp. (K)">
+          <Field label="Color temp. (K)">
             <Input
               type="number"
               name="kelvin"
               defaultValue={values.kelvin}
-              placeholder="bv. 3000"
+              placeholder="e.g. 3000"
               inputMode="numeric"
             />
           </Field>
@@ -175,40 +175,40 @@ export function CatalogSearch({
               type="number"
               name="cri"
               defaultValue={values.cri}
-              placeholder="bv. 90"
+              placeholder="e.g. 90"
               inputMode="numeric"
             />
           </Field>
           <Field label="IP (min.)">
-            <Input name="ip" defaultValue={values.ip} placeholder="bv. IP44" />
+            <Input name="ip" defaultValue={values.ip} placeholder="e.g. IP44" />
           </Field>
         </div>
 
         <div>
           <Button type="submit">
-            <IconSearch /> Zoeken
+            <IconSearch /> Search
           </Button>
         </div>
       </form>
 
       {!searched ? (
         <p className="text-sm text-muted-foreground">
-          Kies een merk of typ vrije tekst en zoek in de catalogus.
+          Choose a brand or type free text and search the catalog.
         </p>
       ) : total === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-center">
-          <p className="font-medium">Geen producten gevonden</p>
+          <p className="font-medium">No products found</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Geen zichtbaar product komt overeen met deze zoekopdracht. Dat is een
-            eerlijke status, geen fout.
+            No visible product matches this search. That's an honest status, not an
+            error.
           </p>
         </div>
       ) : (
         <div className="flex flex-col gap-8">
-          <ResultList title="Voldoet aantoonbaar" items={aantoonbaar} />
+          <ResultList title="Provably compliant" items={aantoonbaar} />
           <ResultList
-            title="Mogelijk — data onvolledig"
-            note="Geen data is geen afkeuring: deze producten missen (nog) data om de match hard te maken. Ze worden nooit stil weggelaten."
+            title="Possible — data incomplete"
+            note="No data is not a rejection: these products are (still) missing data to prove the match. They are never silently omitted."
             items={onvolledig}
           />
         </div>
@@ -216,8 +216,8 @@ export function CatalogSearch({
 
       {searched && filtersActive && total > 0 && (
         <p className="text-xs text-muted-foreground">
-          Producten die aantoonbaar niet aan een ingevuld specfilter voldoen, staan
-          niet in deze lijsten.
+          Products that demonstrably fail a filled-in spec filter are not in these
+          lists.
         </p>
       )}
     </div>

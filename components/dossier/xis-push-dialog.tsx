@@ -69,24 +69,24 @@ export function XisPushDialog({
     <Dialog>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
-          → Naar XIS
+          → To XIS
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Naar XIS exporteren</DialogTitle>
+          <DialogTitle>Export to XIS</DialogTitle>
           <DialogDescription>
-            Sandbox. Niets wordt weggelaten — rood, paars en blauw gaan mee als
-            tekstregel (zichtbaar, zonder artikel), zodat de aanvraag compleet blijft.
+            Sandbox. Nothing is omitted — red, purple and blue go along as text lines
+            (visible, without an article), so the request stays complete.
           </DialogDescription>
         </DialogHeader>
 
         <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-          <Row label="Artikelregels" value={preflight.productLines} />
-          <Row label="Nieuwe producten (nog aanmaken in XIS)" value={preflight.newProducts} />
-          <Row label="Tekstregels (blauw/rood/paars/open)" value={preflight.textLines} muted />
+          <Row label="Article lines" value={preflight.productLines} />
+          <Row label="New products (still to create in XIS)" value={preflight.newProducts} />
+          <Row label="Text lines (blue/red/purple/open)" value={preflight.textLines} muted />
           <div className="mt-1 flex items-center justify-between border-t pt-2 font-semibold">
-            <span>Totaal regels</span>
+            <span>Total lines</span>
             <span className="tabular-nums">{preflight.total}</span>
           </div>
         </div>
@@ -94,7 +94,7 @@ export function XisPushDialog({
         {existing ? (
           <DialogFooter>
             <p className="w-full text-sm text-muted-foreground">
-              Al verstuurd — {existing.createdAt}{" "}
+              Already sent — {existing.createdAt}{" "}
               <span className="text-xs">
                 ({existing.environment}, {existing.status})
               </span>
@@ -104,14 +104,14 @@ export function XisPushDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost" size="sm">
-                Annuleren
+                Cancel
               </Button>
             </DialogClose>
             <form action={action}>
               <input type="hidden" name="dossierId" value={dossierId} />
               <input type="hidden" name="environment" value="sandbox" />
               <Button type="submit" size="sm">
-                Verstuur naar XIS
+                Send to XIS
               </Button>
             </form>
           </DialogFooter>

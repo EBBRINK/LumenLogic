@@ -23,37 +23,37 @@ export default async function AdminOverviewPage() {
 
   const sections = [
     {
-      href: "/admin/merken",
-      title: "Merken & zichtbaarheid",
-      count: `${brands.length} merken`,
-      desc: "Disclosure-tier en per-veld-uitzonderingen.",
+      href: "/admin/brands",
+      title: "Brands & visibility",
+      count: `${brands.length} brands`,
+      desc: "Disclosure tier and per-field exceptions.",
     },
     {
       href: "/admin/imports",
       title: "Imports",
-      count: `${uploads.length} in afwachting`,
-      desc: "Merk-uploads goedkeuren en de PDL-import.",
+      count: `${uploads.length} pending`,
+      desc: "Approve brand uploads and the PDL import.",
     },
     {
-      href: "/admin/gebruikers",
-      title: "Gebruikers",
-      count: `${memberships.length} leden`,
-      desc: "Rollen over alle organisaties.",
+      href: "/admin/users",
+      title: "Users",
+      count: `${memberships.length} members`,
+      desc: "Roles across all organizations.",
     },
     {
       href: "/admin/events",
-      title: "Activiteit",
-      count: `${events.length} recente events`,
-      desc: "Het event-log, alleen-lezen.",
+      title: "Activity",
+      count: `${events.length} recent events`,
+      desc: "The event log, read-only.",
     },
   ];
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Beheer</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
         <p className="text-sm text-muted-foreground">
-          Brink-beheer: merken, uploads, gebruikers en activiteit.
+          Brink admin: brands, uploads, users and activity.
         </p>
       </header>
 

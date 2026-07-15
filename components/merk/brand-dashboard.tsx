@@ -30,22 +30,22 @@ export function BrandDashboard({
       : null;
 
   const tiles = [
-    { label: "Overwogen", value: data.considered },
-    { label: "Gekozen", value: data.chosen },
-    { label: "Keuzeratio", value: rate == null ? "—" : `${rate}%` },
+    { label: "Considered", value: data.considered },
+    { label: "Chosen", value: data.chosen },
+    { label: "Choice rate", value: rate == null ? "—" : `${rate}%` },
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Geaggregeerde tellingen voor{" "}
-          <span className="font-medium text-foreground">{brandName}</span>. Individuele
-          projecten of gebruikers zijn hierin niet zichtbaar.
+          Aggregated counts for{" "}
+          <span className="font-medium text-foreground">{brandName}</span>. Individual
+          projects or users are not visible here.
         </p>
         <form action={refreshAction}>
           <Button type="submit" variant="secondary" size="sm">
-            Cijfers verversen
+            Refresh figures
           </Button>
         </form>
       </div>
@@ -68,7 +68,7 @@ export function BrandDashboard({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Cijfers zijn een momentopname en worden periodiek ververst.
+        Figures are a snapshot and are refreshed periodically.
       </p>
     </div>
   );

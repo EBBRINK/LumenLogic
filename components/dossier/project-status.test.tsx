@@ -41,7 +41,7 @@ const dossiers: DossierSummary[] = [
   { id: "d6", name: "Vervallen project", customer: null, phase: "tender", status: "archief" },
 ];
 
-// Nagebouwde projectkop (zelfde opbouw als app/projecten/[id]/layout.tsx) — zo staat
+// Nagebouwde projectkop (zelfde opbouw als app/projects/[id]/layout.tsx) — zo staat
 // de header mét status-dropdown, XIS-fase-select en afgeleide fase-badge op de foto.
 function Projectkop({
   status,
@@ -134,11 +134,11 @@ test("projectlijst: statusbadge per project, in de vaste badge-taal", async () =
   );
   for (const label of [
     "Concept",
-    "Estimate gestuurd",
-    "Offerte",
-    "Gegund", // let op: staat er 2× — als statusbadge én als fase-badge (awarded)
-    "Niet gegund",
-    "Archief",
+    "Estimate sent",
+    "Quote",
+    "Won", // let op: staat er 2× — als statusbadge én als fase-badge (awarded)
+    "Lost",
+    "Archived",
   ]) {
     await expect
       .element(page.getByText(label, { exact: true }).first())
@@ -147,7 +147,7 @@ test("projectlijst: statusbadge per project, in de vaste badge-taal", async () =
 });
 
 // Filter: zeven opties (Alle + zes statussen), de actieve draagt aria-current;
-// default "Alle" zonder query (toont alles behálve archief — dat is de repo-kant).
+// default "All" zonder query (toont alles behálve archief — dat is de repo-kant).
 test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
   await renderServer(
     <Screen>
@@ -155,27 +155,27 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
     </Screen>,
   );
   for (const label of [
-    "Alle",
+    "All",
     "Concept",
-    "Estimate gestuurd",
-    "Offerte",
-    "Gegund",
-    "Niet gegund",
-    "Archief",
+    "Estimate sent",
+    "Quote",
+    "Won",
+    "Lost",
+    "Archived",
   ]) {
     await expect
       .element(page.getByRole("link", { name: label, exact: true }))
       .toBeInTheDocument();
   }
   await expect
-    .element(page.getByRole("link", { name: "Archief" }))
+    .element(page.getByRole("link", { name: "Archived" }))
     .toHaveAttribute("aria-current", "page");
   await expect
-    .element(page.getByRole("link", { name: "Alle" }))
+    .element(page.getByRole("link", { name: "All" }))
     .not.toHaveAttribute("aria-current");
   await expect
-    .element(page.getByRole("link", { name: "Niet gegund" }))
-    .toHaveAttribute("href", "/projecten?filter=niet_gegund");
+    .element(page.getByRole("link", { name: "Lost" }))
+    .toHaveAttribute("href", "/projects?filter=niet_gegund");
 });
 
 // Kop: status-dropdown met de zes statussen + XIS-fase-select met de tien NL-labels.
@@ -187,7 +187,7 @@ test("projectkop: status-dropdown en XIS-fase-select met alle opties", async () 
   );
   const status = page.getByLabelText("Status");
   await expect.element(status).toBeInTheDocument();
-  const xis = page.getByLabelText("XIS-fase");
+  const xis = page.getByLabelText("XIS phase");
   await expect.element(xis).toBeInTheDocument();
   // De tien XIS-fasen als nette NL-labels.
   for (const label of [
@@ -195,24 +195,24 @@ test("projectkop: status-dropdown en XIS-fase-select met alle opties", async () 
     "Deal making", "Deliver", "Aftersales", "Win", "Lost",
   ]) {
     await expect
-      .element(page.getByRole("option", { name: label }))
+      .element(page.getByRole("option", { name: label }).first())
       .toBeInTheDocument();
   }
 });
 
 // Archiveren vraagt eerst een VERPLICHTE reden (gedrag uit de oude lifecycle-test):
 // archief kiezen opent de dialoog, de submit staat uit tot er een reden is ingevuld.
-test("status archief kiezen vraagt een verplichte reden voordat het door kan", async () => {
+test("status archief kiezen vraagt een requirede reden voordat het door kan", async () => {
   await renderServer(
     <Screen>
       <Projectkop status="concept" xisPhase="start" phase="tender" />
     </Screen>,
   );
-  await page.getByLabelText("Status").selectOptions("Archief");
-  await expect.element(page.getByText(/Reden \(verplicht\)/)).toBeInTheDocument();
-  const submit = page.getByRole("button", { name: "Ja, archiveer" });
+  await page.getByLabelText("Status").selectOptions("Archived");
+  await expect.element(page.getByText(/Reason \(required\)/)).toBeInTheDocument();
+  const submit = page.getByRole("button", { name: "Yes, archive" });
   await expect.element(submit).toBeDisabled();
-  await page.getByLabelText(/Reden \(verplicht\)/).fill("verloren tender");
+  await page.getByLabelText(/Reason \(required\)/).fill("verloren tender");
   await expect.element(submit).toBeEnabled();
 });
 
@@ -230,8 +230,8 @@ test("projectkop archief: toont de reden en zet de XIS-fase-select op slot", asy
     </Screen>,
   );
   await expect
-    .element(page.getByText(/Gearchiveerd: verloren tender/))
+    .element(page.getByText(/Archived: verloren tender/))
     .toBeInTheDocument();
-  await expect.element(page.getByLabelText("XIS-fase")).toBeDisabled();
+  await expect.element(page.getByLabelText("XIS phase")).toBeDisabled();
   await expect.element(page.getByLabelText("Status")).toBeEnabled();
 });

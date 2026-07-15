@@ -25,9 +25,9 @@ export function MiniScorecard({ blokken }: { blokken: BucketBlok[] | null }) {
     return (
       <span
         className="text-xs text-muted-foreground"
-        title="Geen producten in de catalogus — compleetheid n.v.t."
+        title="No products in the catalog — completeness n/a"
       >
-        n.v.t.
+        n/a
       </span>
     );
   }
@@ -38,8 +38,8 @@ export function MiniScorecard({ blokken }: { blokken: BucketBlok[] | null }) {
           key={b.key}
           title={
             b.ratio === null
-              ? `${b.labelNl}: nog niet meetbaar`
-              : `${b.labelNl}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? " (alle must-velden compleet)" : ""}`
+              ? `${b.labelNl}: not measurable yet`
+              : `${b.labelNl}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? " (all must fields complete)" : ""}`
           }
           className={cn(
             "inline-block size-3 rounded-[3px]",

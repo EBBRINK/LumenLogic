@@ -16,12 +16,12 @@ export function WerkvoorbereiderView({
     <div>
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">Werkvoorbereiding</p>
+          <p className="text-sm text-muted-foreground">Work preparation</p>
           <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Value-engineering ná gunning: gelijkwaardige alternatieven, gerangschikt
-            op objectieve merk-cijfers en duurzaamheid. Geld weegt nooit mee — de
-            engine is scheidsrechter, geen rechter.
+            Value engineering after award: equivalent alternatives, ranked on
+            objective brand figures and sustainability. Money never counts — the
+            engine is referee, not judge.
           </p>
         </div>
         <PhaseBadge phase="awarded" />
@@ -29,7 +29,7 @@ export function WerkvoorbereiderView({
 
       {lines.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nog geen gematchte regels om te optimaliseren.
+          No matched lines to optimize yet.
         </p>
       ) : (
         <div className="flex flex-col gap-8">
@@ -45,7 +45,7 @@ export function WerkvoorbereiderView({
               </div>
               {line.alternatives.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Geen gelijkwaardige alternatieven in de catalogus.
+                  No equivalent alternatives in the catalog.
                 </p>
               ) : (
                 <div className="flex flex-col gap-3">

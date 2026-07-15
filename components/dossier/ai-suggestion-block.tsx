@@ -47,8 +47,8 @@ export function AiSuggestionBlock({
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 p-3 dark:border-sky-800 dark:bg-sky-950/30">
       <p className="text-xs font-medium text-sky-800 dark:text-sky-300">
-        AI-suggestie — automatisch gevonden in de eigen catalogus. Geen oordeel;
-        kiezen blijft menswerk.
+        AI suggestion — found automatically in our own catalog. No verdict;
+        choosing stays human work.
       </p>
       <ul className="flex flex-col gap-2">
         {shown.map((s) => (
@@ -71,7 +71,7 @@ export function AiSuggestionBlock({
                   <input type="hidden" name="suggestionId" value={s.id} />
                   <input type="hidden" name="productId" value={s.productId} />
                   <Button type="submit" size="sm">
-                    <IconCheck /> Gebruik als handmatige keuze
+                    <IconCheck /> Use as manual choice
                   </Button>
                 </form>
                 <form action={dismissAction}>
@@ -79,7 +79,7 @@ export function AiSuggestionBlock({
                   <input type="hidden" name="specLineId" value={specLineId} />
                   <input type="hidden" name="suggestionId" value={s.id} />
                   <Button type="submit" size="sm" variant="outline">
-                    Verwerp
+                    Dismiss
                   </Button>
                 </form>
               </div>

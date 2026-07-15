@@ -33,8 +33,8 @@ function formatDate(iso: string): string {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  pricelist: "Prijslijst",
-  data: "Productdata",
+  pricelist: "Price list",
+  data: "Product data",
 };
 
 // MERK-UPLOADS (§3.16, H-11): één publicatiepad. Alles wat een merk (of de PDL-import)
@@ -57,26 +57,26 @@ export function UploadReviewBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Uploads in afwachting</CardTitle>
+        <CardTitle>Pending uploads</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Prijslijsten en productdata staan in staging tot goedkeuring. Afwijzen
-          vraagt altijd een reden.
+          Price lists and product data stay in staging until approval. Rejecting
+          always requires a reason.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {uploads.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Geen uploads in afwachting.
+            No pending uploads.
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Merk</TableHead>
-                <TableHead>Soort</TableHead>
-                <TableHead>Ingediend door</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead className="text-right">Actie</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Submitted by</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -101,7 +101,7 @@ export function UploadReviewBlock({
                       <form action={approveAction}>
                         <input type="hidden" name="uploadId" value={u.id} />
                         <Button type="submit" size="sm">
-                          Goedkeuren
+                          Approve
                         </Button>
                       </form>
                       <form
@@ -113,12 +113,12 @@ export function UploadReviewBlock({
                           type="text"
                           name="note"
                           required
-                          placeholder="Reden"
-                          aria-label={`Reden voor afwijzen upload ${u.id}`}
+                          placeholder="Reason"
+                          aria-label={`Reason for rejecting upload ${u.id}`}
                           className="h-8 w-32"
                         />
                         <Button type="submit" size="sm" variant="outline">
-                          Afwijzen
+                          Reject
                         </Button>
                       </form>
                     </div>
@@ -135,7 +135,7 @@ export function UploadReviewBlock({
         >
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pdl-brand" className="text-sm font-medium">
-              PDL / ConnectingTheDots-import
+              PDL / ConnectingTheDots import
             </label>
             <select
               id="pdl-brand"
@@ -143,7 +143,7 @@ export function UploadReviewBlock({
               required
               className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:max-w-xs dark:bg-input/30"
             >
-              <option value="">Kies merk…</option>
+              <option value="">Choose brand…</option>
               {pdlBrands.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -152,12 +152,12 @@ export function UploadReviewBlock({
             </select>
           </div>
           <Button type="submit" variant="outline" className="self-start">
-            Importeer als staging
+            Import as staging
           </Button>
         </form>
         <p className="text-xs text-muted-foreground">
-          Een import landt als staging-upload en gaat pas na goedkeuring de
-          catalogus in — nooit stilzwijgend.
+          An import lands as a staging upload and only enters the catalog after
+          approval — never silently.
         </p>
       </CardContent>
     </Card>

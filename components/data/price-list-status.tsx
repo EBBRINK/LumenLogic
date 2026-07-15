@@ -30,9 +30,9 @@ const BUCKET_TINT: Record<PriceListRow["bucket"], string> = {
 };
 
 function bucketLabel(r: PriceListRow): string {
-  if (r.bucket === "verlopen") return `Verlopen (${Math.abs(r.daysLeft)} d geleden)`;
-  if (r.bucket === "ok") return `${r.daysLeft} d geldig`;
-  return `Verloopt over ${r.daysLeft} d`;
+  if (r.bucket === "verlopen") return `Expired (${Math.abs(r.daysLeft)} d ago)`;
+  if (r.bucket === "ok") return `${r.daysLeft} d valid`;
+  return `Expires in ${r.daysLeft} d`;
 }
 
 function fmtDate(iso: string): string {
@@ -44,7 +44,7 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen prijslijsten in de catalogus.
+        No price lists in the catalog yet.
       </p>
     );
   }
@@ -57,20 +57,20 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
       <p className="text-sm text-muted-foreground">
         {gaps > 0 && (
           <span className="text-foreground">
-            {gaps} verlopen (dekkingsgat)
+            {gaps} expired (coverage gap)
           </span>
         )}
         {gaps > 0 && soon > 0 && " · "}
-        {soon > 0 && <span>{soon} verlopen binnenkort</span>}
-        {gaps === 0 && soon === 0 && "Alle prijslijsten ruim geldig."}
+        {soon > 0 && <span>{soon} expiring soon</span>}
+        {gaps === 0 && soon === 0 && "All price lists valid with room to spare."}
       </p>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Merk</TableHead>
-            <TableHead>Prijslijst</TableHead>
-            <TableHead className="text-right">Producten</TableHead>
-            <TableHead>Geldig tot</TableHead>
+            <TableHead>Brand</TableHead>
+            <TableHead>Price list</TableHead>
+            <TableHead className="text-right">Products</TableHead>
+            <TableHead>Valid until</TableHead>
             <TableHead className="text-right">Status</TableHead>
           </TableRow>
         </TableHeader>

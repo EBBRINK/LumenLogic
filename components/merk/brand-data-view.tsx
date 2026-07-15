@@ -39,20 +39,20 @@ export function BrandDataView({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        De producten van <span className="font-medium text-foreground">{brandName}</span> die
-        in de catalogus zijn opgenomen, met hun technische specificaties. Geen prijzen — dit
-        is de technische spiegel.
+        The products of <span className="font-medium text-foreground">{brandName}</span> recorded
+        in the catalog, with their technical specifications. No prices — this is the
+        technical mirror.
       </p>
       {products.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Nog geen producten van dit merk opgenomen.
+          No products of this brand recorded yet.
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Naam</TableHead>
-              <TableHead>Artikelcode</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Article code</TableHead>
               <TableHead className="text-right">Kelvin</TableHead>
               <TableHead className="text-right">CRI</TableHead>
               <TableHead>IP</TableHead>

@@ -38,9 +38,9 @@ function NewOrgForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nieuwe organisatie</CardTitle>
+        <CardTitle>New organization</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Een klant-organisatie met eigen leden, rollen en branding.
+          A customer organization with its own members, roles and branding.
         </p>
       </CardHeader>
       <CardContent>
@@ -50,13 +50,13 @@ function NewOrgForm({
         >
           <div className="flex flex-col gap-1.5">
             <label htmlFor="org-name" className="text-sm font-medium">
-              Naam
+              Name
             </label>
             <Input
               id="org-name"
               name="name"
               required
-              placeholder="Installatiebedrijf De Vries"
+              placeholder="De Vries Installations"
               className="sm:w-64"
             />
           </div>
@@ -71,13 +71,13 @@ function NewOrgForm({
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             >
               <option value="trial">Trial</option>
-              <option value="abonnement">Abonnement</option>
+              <option value="abonnement">Subscription</option>
               <option value="per-dossier">Per project</option>
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="org-seats" className="text-sm font-medium">
-              Zetels
+              Seats
             </label>
             <Input
               id="org-seats"
@@ -85,12 +85,12 @@ function NewOrgForm({
               type="number"
               min="1"
               step="1"
-              placeholder="onbeperkt"
+              placeholder="unlimited"
               className="sm:w-28"
             />
           </div>
           <Button type="submit" className="self-start sm:self-auto">
-            Aanmaken
+            Create
           </Button>
         </form>
       </CardContent>
@@ -122,7 +122,7 @@ function BrandingForm({
             htmlFor={`logo-${org.id}`}
             className="text-xs text-muted-foreground"
           >
-            Logo-URL
+            Logo URL
           </label>
           <Input
             id={`logo-${org.id}`}
@@ -138,7 +138,7 @@ function BrandingForm({
             htmlFor={`accent-${org.id}`}
             className="text-xs text-muted-foreground"
           >
-            Accentkleur
+            Accent color
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -146,16 +146,16 @@ function BrandingForm({
               name="accentColor"
               type="color"
               defaultValue={hasAccent ? branding.accentColor : "#6b7280"}
-              aria-label="Accentkleur"
+              aria-label="Accent color"
               className="h-8 w-12 cursor-pointer rounded-lg border border-input bg-transparent"
             />
             <span className="text-xs tabular-nums text-muted-foreground">
-              {hasAccent ? branding.accentColor : "nog niet ingesteld"}
+              {hasAccent ? branding.accentColor : "not set yet"}
             </span>
           </div>
         </div>
         <Button type="submit" variant="secondary" className="self-start">
-          Branding opslaan
+          Save branding
         </Button>
       </div>
     </form>
@@ -183,7 +183,7 @@ export function OrgList({
 
       {orgs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nog geen organisaties. Maak er hierboven één aan.
+          No organizations yet. Create one above.
         </p>
       ) : (
         orgs.map(({ org, members }) => (
@@ -194,8 +194,8 @@ export function OrgList({
                 <span className="text-xs text-muted-foreground">
                   Plan: {org.plan}
                   {org.seatLimit != null
-                    ? ` · ${members.length}/${org.seatLimit} zetels`
-                    : ` · ${members.length} leden`}
+                    ? ` · ${members.length}/${org.seatLimit} seats`
+                    : ` · ${members.length} members`}
                 </span>
               </div>
             </CardHeader>

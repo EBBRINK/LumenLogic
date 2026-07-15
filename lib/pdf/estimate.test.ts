@@ -107,7 +107,7 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
   expect(text).toContain("3.720,00"); // groen 12×310
   expect(text).toContain("1.808,00"); // geel 8×226
   expect(text).toContain("5.528,00"); // samen
-  expect(text).toContain("Samen (groen + geel)");
+  expect(text).toContain("Combined (green + yellow)");
 
   // paars (2×500) mag NERGENS als 1.000,00 opduiken en samen blijft 5.528,00
   expect(text).not.toContain("1.000,00");
@@ -115,13 +115,13 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
 
   // p.m.-sectie: blauw = merk inladen (ons), rood = terug naar klant, paars gemeld
   expect(text).toContain("p.m.");
-  expect(text).toContain("merk Kreon inladen (ons)");
-  expect(text).toContain("terug naar klant");
-  expect(text).toContain("buiten assortiment");
+  expect(text).toContain("load brand Kreon (us)");
+  expect(text).toContain("back to customer");
+  expect(text).toContain("outside assortment");
 
   // afwijkingsnotitie (C-07) als subregel, mét het auto-door-label (B3) erachter
   expect(text).toContain("3000K i.p.v. 2700K");
-  expect(text).toContain("automatisch geaccepteerde bijna-match");
+  expect(text).toContain("automatically accepted near-match");
 
   // zones als groepskoppen
   expect(text).toContain("ZONE A-08");
@@ -190,11 +190,11 @@ test("meerpaginasteun: veel regels → meerdere pagina's, kolomkoppen herhaald",
   // kolomkoppen herhaald op de vervolgpagina (meerpaginasteun)
   const { text } = await extractText(pdf, { mergePages: false });
   const pages = Array.isArray(text) ? text : [text];
-  expect(pages[1]).toContain("Omschrijving");
-  expect(pages[1]).toContain("Regeltotaal");
+  expect(pages[1]).toContain("Description");
+  expect(pages[1]).toContain("Line total");
 
   // paginanummers aanwezig
-  expect(pages[0]).toContain(`Pagina 1 van ${pages.length}`);
+  expect(pages[0]).toContain(`Page 1 of ${pages.length}`);
 
   // eindtotaal: 80 × 1 × 50 = 4.000,00
   expect(pages.join("\n")).toContain("4.000,00");

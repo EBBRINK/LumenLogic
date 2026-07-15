@@ -23,14 +23,14 @@ export type PdfImportResult = {
 // Cap op de markdown (±2 MB tekst): een controlespoor moet volledig genoeg zijn om te
 // herleiden wat er in de PDF stond, maar mag de database-rij niet onbegrensd opblazen.
 export const MARKDOWN_CAP = 2 * 1024 * 1024;
-const TRUNCATION_NOTE = "> afgekapt op 2 MB";
-export const NO_TEXT_LAYER_NOTE = "> geen tekstlaag aangetroffen";
+const TRUNCATION_NOTE = "> truncated at 2 MB";
+export const NO_TEXT_LAYER_NOTE = "> no text layer found";
 
 // Tekstlaag per pagina → markdown-controlespoor. Regeleindes blijven zoals unpdf ze
 // levert (hasEOL); boven de cap kappen we af met een eerlijke notitie onderaan.
 export function pagesToMarkdown(pages: string[]): string {
   const md = pages
-    .map((page, i) => `## Pagina ${i + 1}\n\n${page}`)
+    .map((page, i) => `## Page ${i + 1}\n\n${page}`)
     .join("\n\n");
   if (md.length <= MARKDOWN_CAP) return md;
   return `${md.slice(0, MARKDOWN_CAP)}\n\n${TRUNCATION_NOTE}`;

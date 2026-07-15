@@ -36,7 +36,7 @@ export default async function AdminImportsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Imports</h1>
         <p className="text-sm text-muted-foreground">
-          Merk-uploads in staging goedkeuren of afwijzen, en de PDL-import.
+          Approve or reject brand uploads in staging, and the PDL import.
         </p>
       </header>
       <UploadReviewBlock
