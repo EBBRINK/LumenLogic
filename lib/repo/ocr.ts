@@ -26,14 +26,17 @@ import {
   ocrPageImages,
   specLineCandidates,
   specLines,
+  visibleProducts,
   type ImportRow,
 } from "@/db/schema";
 import { isOcrPageSuccess, ocrPage, type OcrClient, type OcrRegel } from "@/lib/ai/ocr";
 import { parseProductName } from "@/lib/enrichment/parser";
+import { SELECTION as PRODUCT_SELECTION, toDelivered } from "@/lib/matching/engine";
+import { hasRed, hasUnknown, judgeCandidate } from "@/lib/matching/tolerances";
 import { MARKDOWN_CAP, splitBrandType } from "@/lib/pdf/armaturenboek";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
-import { runMatcher } from "@/lib/repo/matching";
+import { runMatcher, specRequestFromLine } from "@/lib/repo/matching";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 
@@ -262,22 +265,45 @@ async function upgradeOcrLine(
     .where(eq(specLines.id, existing.id));
 
   // c) Hermatchen op de nieuwe, rijkere specs.
-  const outcome = await runMatcher(db, existing.id, actor);
+  await runMatcher(db, existing.id, actor);
 
-  // d) Spookmatch-fix: de oude koppeling blijft geldig als de NIEUWE evaluatie hem
-  // nog steeds erkent — óf als de auto-geel-kandidaat (unambiguousYellow, de enige
-  // die runMatcher zelf expliciet zet), óf als een aantoonbare/groene kandidaat in
-  // outcome.provable (bv. een mens-gekozen match via chooseCandidate, fromList
-  // "aantoonbaar" — die zit niet in unambiguousYellow, maar staat wél nog gewoon in
-  // provable als hij nog klopt). Alleen als hij in GEEN van beide voorkomt, is het
-  // een échte spookmatch — dan pas loskoppelen. (Reviewer-fix: de eerdere versie
-  // vergeleek uitsluitend tegen unambiguousYellow, waardoor elke groene match —
-  // ook een nog steeds kloppende — onterecht werd losgekoppeld, want
-  // unambiguousYellow is alleen gezet bij status 'geel'.)
-  const stillValid =
-    oldMatchedProductId != null &&
-    (outcome.provable.some((c) => c.productId === oldMatchedProductId) ||
-      outcome.unambiguousYellow?.productId === oldMatchedProductId);
+  // d) Spookmatch-fix: het oude product RECHTSTREEKS tegen de nieuwe gevraagde
+  // specs toetsen — niet via outcome.provable/unambiguousYellow van runMatcher.
+  // Die zijn afgeleid van de top-N (default limit=8, evaluateSpecLine) kandidaten
+  // die fetchCandidates teruggeeft; in de 211k-catalogus kan een merk/producttekst
+  // makkelijk meer dan 8 matchende kandidaten opleveren, en de rijkere OCR-tekst
+  // kan de ranking (matchCount/score) net genoeg verschuiven dat een nog steeds
+  // geldige, mens-gekozen match buiten die top-8 valt — dan zou hij ten onrechte
+  // als "spookmatch" worden gewist terwijl hij bij directe toetsing nog gewoon
+  // groen zou zijn. (2e reviewronde: de vorige versie, die wél al de provable-lijst
+  // meenam i.p.v. alleen unambiguousYellow, had precies deze top-8-blinde-vlek.)
+  // Een gerichte query op precies dát ene product, los van enige lijst/limiet, is
+  // de robuuste vorm.
+  let stillValid = false;
+  if (oldMatchedProductId) {
+    // De NIEUWE (net bijgewerkte) gevraagde specs — dezelfde omzetting als
+    // runMatcher zelf gebruikt (specRequestFromLine), dus geen tweede waarheid
+    // over hoe een specLines-rij naar RequestedSpecs wordt vertaald.
+    const [currentLine] = await db
+      .select()
+      .from(specLines)
+      .where(eq(specLines.id, existing.id))
+      .limit(1);
+    const req = specRequestFromLine(currentLine);
+    // Regel 3 (verlopen prijslijst = onzichtbaar): dezelfde visibleProducts-view
+    // als de rest van de matcher — nooit een ruwe products-tabel-query. Niet meer
+    // zichtbaar (bv. prijslijst verlopen sinds de eerdere keuze) → ook niet
+    // stillValid, dus alsnog loskoppelen.
+    const [productRow] = await db
+      .select(PRODUCT_SELECTION)
+      .from(visibleProducts)
+      .where(eq(visibleProducts.id, oldMatchedProductId))
+      .limit(1);
+    if (productRow) {
+      const deviations = judgeCandidate(req.specs, toDelivered(productRow));
+      stillValid = !hasRed(deviations) && !hasUnknown(deviations);
+    }
+  }
   if (oldMatchedProductId && !stillValid) {
     await db
       .update(specLines)

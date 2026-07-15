@@ -124,10 +124,24 @@ spookmatch-fix + audit-bewaring, in transactie), 3) geïsoleerde acceptatietest
 - Item C: commit `c7a458d` (parseProductName over ruweTekst+type).
 - Item A (rijkste-wint-dedup): commit `9c4c440` (`specRichness`/`getOwnOcrLine`/
   `upgradeOcrLine` in `lib/repo/ocr.ts`, `ProcessOcrPageResult.upgraded`).
-- Spookmatch-vergelijking aangescherpt (onafhankelijke review keurde `9c4c440` af:
-  de vergelijking tegen uitsluitend `outcome.unambiguousYellow` liet elke nog
-  kloppende groene match — bereikbaar via `chooseCandidateAction` — onterecht
-  losgekoppeld raken) — gefixt in de commit direct erna op deze branch, samen met
-  deze notitie en de HANDOVER.md-sectie. `db.transaction()` bleek geen optie
-  (`drizzle-orm/neon-http` ondersteunt geen interactieve transacties); zie
-  HANDOVER.md voor de volledige toelichting van het geaccepteerde race-risico.
+- Spookmatch-vergelijking tweemaal aangescherpt na onafhankelijke review:
+  1. `9c4c440` vergeleek uitsluitend tegen `outcome.unambiguousYellow` — liet
+     elke nog kloppende groene match (bereikbaar via `chooseCandidateAction`)
+     onterecht loskoppelen. Gefixt in de eropvolgende commit door ook
+     `outcome.provable` mee te nemen.
+  2. Die `provable`-vergelijking bleek zélf nog een gat te hebben: `provable`/
+     `unambiguousYellow` zijn afgeleid van de top-N (default `limit=8`,
+     `evaluateSpecLine`) kandidaten van `fetchCandidates` — bij >8 matchende
+     kandidaten in de 211k-catalogus kan een nog geldige match daar toevallig
+     buiten vallen (top-8-blinde-vlek) en zou dan alsnog onterecht gewist
+     worden. **Definitieve fix** (deze commit): het oude product rechtstreeks
+     tegen de nieuwe gevraagde specs toetsen via `judgeCandidate`/`toDelivered`
+     op één `visibleProducts`-rij (regel 3: verlopen prijslijst = onzichtbaar),
+     los van elke kandidatenlijst/limiet. `toDelivered`/`SELECTION`
+     (`lib/matching/engine.ts`) en `specRequestFromLine`
+     (`lib/repo/matching.ts`) zijn daarvoor geëxporteerd (geen gedragswijziging,
+     alleen zichtbaar gemaakt). Getest met een catalogus van 9 decoy-producten
+     die de mens-gekozen match gegarandeerd buiten de standaard-top-8 drukken.
+  `db.transaction()` bleek geen optie (`drizzle-orm/neon-http` ondersteunt geen
+  interactieve transacties); zie HANDOVER.md voor de volledige toelichting van
+  het geaccepteerde race-risico.

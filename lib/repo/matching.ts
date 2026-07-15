@@ -17,7 +17,11 @@ import {
   type SpecRequest,
 } from "@/lib/matching/engine";
 
-function specRequestFromLine(l: typeof specLines.$inferSelect): SpecRequest {
+// Geëxporteerd (ocr.ts, upgradeOcrLine): dezelfde omzetting van een specLines-rij
+// naar SpecRequest die runMatcher hieronder gebruikt — zodat de gerichte
+// stillValid-toets op het oude product exact dezelfde "nieuwe gevraagde specs"
+// gebruikt als de hermatch zelf, zonder de numeric-conversies te dupliceren.
+export function specRequestFromLine(l: typeof specLines.$inferSelect): SpecRequest {
   return {
     brandText: l.brandText,
     productText: l.productText,

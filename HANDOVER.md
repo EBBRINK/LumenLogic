@@ -468,15 +468,34 @@ zodra een latere pagina een rijkere lezing oplevert (meer ingevulde specvelden) 
 zo wint de detailpagina alsnog van een eerder gelezen inhoudsopgave-rij van dezelfde
 code, in plaats van dat de eerste (armste) lezing blijvend wint.
 
-- **Spookmatch-fix** (`upgradeOcrLine` in `lib/repo/ocr.ts`): ná het herdraaien van
-  de matcher blijft een bestaande `matchedProductId` alleen staan als de NIEUWE
-  evaluatie hem nog steeds erkent — als `outcome.unambiguousYellow` (de auto-geel-tak)
-  óf als lid van `outcome.provable` (een nog steeds aantoonbare/groene kandidaat,
-  bv. een mens-gekozen match via `chooseCandidate`/`decideReview`). Alleen als hij in
-  geen van beide voorkomt, wordt de koppeling losgemaakt. Een eerdere versie
-  vergeleek uitsluitend tegen `unambiguousYellow` (alleen gezet bij status 'geel'),
-  waardoor élke nog kloppende groene match bij een upgrade onterecht werd
-  losgekoppeld — gevonden door onafhankelijke review, gefixt vóór push.
+- **Spookmatch-fix** (`upgradeOcrLine` in `lib/repo/ocr.ts`) — twee reviewrondes:
+  1. Eerste versie vergeleek uitsluitend tegen `outcome.unambiguousYellow` (alleen
+     gezet bij status 'geel'), waardoor élke nog kloppende groene match bij een
+     upgrade onterecht werd losgekoppeld.
+  2. Tweede versie verbeterde dat naar "staat de oude `matchedProductId` in
+     `outcome.provable` óf gelijk aan `outcome.unambiguousYellow`?" — maar
+     `outcome.provable`/`unambiguousYellow` zijn beide afgeleid van de top-N
+     (default `limit=8`, `evaluateSpecLine` in `lib/matching/engine.ts`)
+     kandidaten die `fetchCandidates` teruggeeft. Bij een merk/producttekst met
+     meer dan 8 matchende kandidaten in de 211k-catalogus kan een nog steeds
+     geldige, mens-gekozen match buiten die top-8 vallen (de rijkere OCR-tekst
+     kan de ranking op matchCount/score verschuiven) en zou dan alsnog onterecht
+     als "spookmatch" gewist worden — de top-8-blinde-vlek.
+
+  **Huidige, definitieve aanpak**: het oude product wordt RECHTSTREEKS tegen de
+  nieuwe gevraagde specs getoetst, los van elke kandidatenlijst/limiet.
+  `judgeCandidate`/`hasRed`/`hasUnknown` (`lib/matching/tolerances.ts`) en
+  `toDelivered`/`SELECTION` (nu geëxporteerd uit `lib/matching/engine.ts`, geen
+  gedragswijziging — alleen zichtbaar gemaakt) worden gebruikt om het ÉNE oude
+  product te bevragen via `visibleProducts` (regel 3: verlopen prijslijst =
+  onzichtbaar, dus nooit een ruwe `products`-tabel-query) en de resulterende
+  `DeliveredSpecs` te toetsen tegen de nieuwe `RequestedSpecs`
+  (`specRequestFromLine`, nu geëxporteerd uit `lib/repo/matching.ts`, dezelfde
+  omzetting die `runMatcher` zelf gebruikt). `stillValid` = het product bestaat
+  nog (zichtbaar) ÉN heeft geen rode/onbekende afwijkingen op de nieuwe specs —
+  volledig onafhankelijk van of het toevallig in een top-N van een generieke
+  kandidatenzoektocht zou vallen. Getest met een catalogus van 9 decoy-producten
+  die de mens-gekozen match gegarandeerd buiten de standaard-limiet (8) drukken.
 - **Audit-bewaring**: de oude `matchedProductId` + bijbehorende
   `chosenBy`/`chosenReason` worden vóór het herdraaien uitgelezen en als
   `previousChoice` meegestuurd in het `ocr_line_upgraded`-event, zodat een

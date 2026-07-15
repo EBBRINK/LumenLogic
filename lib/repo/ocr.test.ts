@@ -926,6 +926,120 @@ test("mens-gekozen match die na de upgrade nog steeds klopt: matchedProductId bl
   expect(upgradedEvents.length).toBe(1);
 });
 
+// ── Top-8-blinde-vlek (2e reviewronde): evaluateSpecLine's fetchCandidates heeft
+// een default limit van 8 (lib/matching/engine.ts). Bij >8 matchende kandidaten
+// voor hetzelfde merk/producttoken kan een nog steeds geldige, mens-gekozen match
+// buiten die top-8 vallen — dan mag hij NIET als spookmatch gewist worden. De
+// stillValid-toets moet het oude product dus rechtstreeks toetsen, los van de
+// (gelimiteerde) kandidatenlijst van runMatcher.
+test(">8 kandidaten voor hetzelfde merk/token: een mens-gekozen match buiten de top-8 blijft staan", async () => {
+  const db = await createTestDb();
+  const dossier = await createDossier(db, { name: ">8 kandidaten" });
+
+  // 9 decoys matchen BEIDE producttext-tokens ("SASSO" én "100") → matchCount=2,
+  // en vullen daarmee gegarandeerd de volledige top-8 van fetchCandidates
+  // (desc(matchCount) staat voorop in de ORDER BY), ongeacht hun eigen specs.
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 Decoy 1",
+  });
+  for (let i = 2; i <= 9; i++) {
+    await addProductToBrand(db, {
+      brandId,
+      priceListId,
+      name: `SASSO 100 Decoy ${i}`,
+    });
+  }
+
+  // P matcht maar één token ("SASSO", niet "100") → matchCount=1, dus altijd ná
+  // de 9 decoys gerangschikt: gegarandeerd buiten de top-8 (limit=8), ongeacht
+  // score/prefix-tiebreaks. Specs kloppen wél exact met de rijkere pagina-2-lezing.
+  const { productId: productP } = await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "SASSO Special Edition",
+    kelvin: 3000,
+    cri: 90,
+    maxWattage: 17.9,
+  });
+
+  const { run } = await startOcrRun(db, {
+    dossierId: dossier.id,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  // Pagina 1: arme ToC-lezing.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  const [beforeChoice] = await runLines(db, run.id);
+
+  // Mens kiest expliciet P — een product dat (net als bij een handmatige link)
+  // niet per se in de standaard-kandidatenlijst hoeft te staan.
+  await decideReview(db, {
+    specLineId: beforeChoice.id,
+    decision: "accepteer",
+    productId: productP,
+    reason: "handmatig bevestigd tijdens review",
+    actor: "iemand@brink.nl",
+  });
+  const [afterChoice] = await runLines(db, run.id);
+  expect(afterChoice.matchedProductId).toBe(productP);
+
+  // Pagina 2: detailpagina met specs die exact bij P passen. P blijft buiten
+  // fetchCandidates' top-8 (de 9 decoys matchen allebei de tokens, P maar één),
+  // dus outcome.provable/unambiguousYellow van déze hermatch bevatten P niet —
+  // de directe toets op P zélf moet hem tóch als geldig herkennen.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  const [afterUpgrade] = await runLines(db, run.id);
+  // P is nog steeds geldig (directe toets), ondanks dat hij buiten de top-8 van
+  // de gelimiteerde kandidatenzoektocht valt → GEEN spookmatch-clear.
+  expect(afterUpgrade.matchedProductId).toBe(productP);
+
+  const upgradedEvents = await eventsByAction(db, "ocr_line_upgraded");
+  expect(upgradedEvents.length).toBe(1);
+});
+
 // ── KRITIEK: een mens had de arme lezing al goedgekeurd (matchedProductId + chosenBy)
 // vóórdat de rijkere detailpagina langskwam. Twee reviewer-gaten uit het besluit-
 // document (spookmatch + audit-bewaring) moeten hier allebei standhouden.
