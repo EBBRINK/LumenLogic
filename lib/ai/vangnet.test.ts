@@ -130,6 +130,42 @@ test("selectie: rood/open/geel-in-review; nooit groen; blauw alleen bij awarded"
   );
 });
 
+// ── B8: OCR-gating ───────────────────────────────────────────────────────────
+// Een regel met een ÓPEN OCR-review (reviewKind 'ocr', reviewedAt null) mag het
+// vangnet nooit bereiken: het gelezen merk kan verhallucineerd zijn en zou de
+// merkvergrendelde zoektool sturen vóór een mens de bron zag. Ná afronding van de
+// OCR-review doet de regel gewoon weer mee.
+test("B8: open OCR-review → regel uitgesloten; afgeronde OCR-review → doet weer mee", async () => {
+  const db = await createTestDb();
+  const dossier = await seedDossier(db, "tender");
+  const ocrOpen = await addLine(db, dossier.id, {
+    fixtureCode: "Lo1",
+    status: "rood",
+    reviewKind: "ocr",
+    sortOrder: 1,
+  });
+  const roodGewoon = await addLine(db, dossier.id, {
+    fixtureCode: "Lo2",
+    status: "rood",
+    sortOrder: 2,
+  });
+
+  const m1 = mockClient([finalJson([])]);
+  const r1 = await runVangnet(db, dossier.id, { client: m1.client, actor: ACTOR });
+  expect(r1.checked).toEqual([roodGewoon.id]); // de open OCR-review blokkeert Lo1
+  expect(m1.calls.length).toBe(1);
+
+  // OCR-review afgerond (mens zag de bron) → de regel doet weer mee. roodGewoon
+  // kreeg geen suggestie en komt daardoor óók opnieuw langs — twee responses.
+  await db
+    .update(specLines)
+    .set({ reviewedAt: new Date() })
+    .where(eq(specLines.id, ocrOpen.id));
+  const m2 = mockClient([finalJson([]), finalJson([])]);
+  const r2 = await runVangnet(db, dossier.id, { client: m2.client, actor: ACTOR });
+  expect(new Set(r2.checked)).toEqual(new Set([ocrOpen.id, roodGewoon.id]));
+});
+
 test("al-niet-verworpen suggestie → regel overgeslagen; na verwerpen weer meegenomen", async () => {
   const db = await createTestDb();
   const { productId } = await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });

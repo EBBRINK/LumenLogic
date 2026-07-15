@@ -133,6 +133,21 @@ const pending: ReviewItem[] = [
   },
 ];
 
+// OCR-controle (bouwstap 7/8): een regel uit een beeld-PDF mét herkomst — de kaart
+// toont het paginanummer en linkt naar het opgeslagen paginabeeld (de échte bron, B6).
+const ocrItem: ReviewItem = {
+  id: "s5",
+  fixtureCode: "Ld105",
+  brandText: "XAL",
+  productText: "UNICO Q4 2700K",
+  status: "groen",
+  reviewKind: "ocr",
+  deviations: null,
+  reqColor: null,
+  sourcePage: 14,
+  importRunId: "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+};
+
 const done: ReviewItem[] = [
   {
     id: "s9",
@@ -216,6 +231,17 @@ const shots = {
         pending={pending.slice(2)} // variantkaart (echte kleuren) + variant-fallback
         done={[]}
         rood={rood} // rood-kaart met zoekveld + resultaten + link-knop
+        decideAction={noopAction}
+        linkAction={noopAction}
+      />
+    </Screen>
+  ),
+  "review-ocr": (
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItem]} // OcrCard mét paginanummer + "View page image"-link
+        done={[]}
         decideAction={noopAction}
         linkAction={noopAction}
       />
@@ -310,6 +336,38 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
     .toBeInTheDocument();
   await expect
     .element(page.getByText(/eduard@brinklicht\.nl/))
+    .toBeInTheDocument();
+});
+
+// OcrCard (bouwstap 7/8): paginanummer + link naar het opgeslagen paginabeeld in een
+// nieuw tabblad — de href draagt exact /projects/<id>/ocr-image/<runId>/<page>.
+test("ocr-kaart toont paginanummer en linkt naar het paginabeeld", async () => {
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItem]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/OCR import can misread characters/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText(/Read from page/)).toBeInTheDocument();
+
+  const link = page.getByRole("link", { name: /View page image/ });
+  await expect.element(link).toBeInTheDocument();
+  const el = link.element() as HTMLAnchorElement;
+  expect(el.getAttribute("href")).toBe(
+    `/projects/d1/ocr-image/${ocrItem.importRunId}/14`,
+  );
+  expect(el.getAttribute("target")).toBe("_blank"); // boek náást de review
+
+  // De bevestig-actie blijft de bestaande 'gecontroleerd'-knop.
+  await expect
+    .element(page.getByRole("button", { name: /Checked/ }))
     .toBeInTheDocument();
 });
 

@@ -9,12 +9,16 @@ export function LlmBudgetBlock({
   budgetEur,
   spentEur,
   vangnetEur,
+  ocrEur,
   saveAction,
 }: {
   budgetEur: number | null;
   spentEur: number;
   // Uitsplitsing: het deel van de teller dat het AI-vangnet (B4/stap 8) verbruikte.
   vangnetEur?: number;
+  // Uitsplitsing: het deel dat OCR van beeld-PDF's verbruikte (plan-ocr B4; het
+  // €1-per-boek-plafond leeft daarnaast, per importrun).
+  ocrEur?: number;
   saveAction: (formData: FormData) => void | Promise<void>;
 }) {
   const hasBudget = budgetEur != null && budgetEur > 0;
@@ -79,6 +83,12 @@ export function LlmBudgetBlock({
             <p className="mt-2 text-xs text-muted-foreground">
               Of which AI fallback:{" "}
               <span className="tabular-nums">{formatEur(vangnetEur)}</span>
+            </p>
+          )}
+          {ocrEur != null && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Of which OCR (image PDFs):{" "}
+              <span className="tabular-nums">{formatEur(ocrEur)}</span>
             </p>
           )}
         </div>

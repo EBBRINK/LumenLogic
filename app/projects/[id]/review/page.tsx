@@ -56,6 +56,9 @@ function toReviewItem(r: QueueRow): ReviewItem {
     reviewedAt: fmtDate(r.reviewedAt),
     reviewedBy: r.reviewedBy,
     reviewDecision: r.reviewDecision,
+    // OCR-herkomst voor de "View page image"-link op de OcrCard (bouwstap 7/8).
+    sourcePage: r.sourcePage,
+    importRunId: r.importRunId,
   };
 }
 

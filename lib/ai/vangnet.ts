@@ -40,9 +40,18 @@ import {
 import type { AppDb } from "@/lib/repo/db";
 import { logEvent } from "@/lib/repo/events";
 import { getLlmSpend, getSetting } from "@/lib/repo/settings";
+import {
+  CALL_TIMEOUT_MS,
+  envApiKey,
+  EUR_PER_MTOK_IN,
+  EUR_PER_MTOK_OUT,
+  MAX_RETRIES,
+  SMALL_MODEL,
+} from "@/lib/ai/shared";
 
 // Klein en goedkoop model — het vangnet is een catalogus-zoeker, geen redeneerklus.
-export const VANGNET_MODEL = "claude-haiku-4-5-20251001";
+// Constante gedeeld met de OCR-laag (lib/ai/shared.ts).
+export const VANGNET_MODEL = SMALL_MODEL;
 export const VANGNET_ACTOR = "ai:vangnet";
 // Tokenhuishouding: bescheiden output-plafond per call en een hard plafond op het
 // aantal beurten per regel — een regel kost zo hooguit enkele duizenden tokens.
@@ -51,16 +60,10 @@ const MAX_TURNS_PER_LINE = 6;
 const MAX_SUGGESTIONS_PER_LINE = 3;
 const SEARCH_LIMIT = 8;
 // Tijdgrenzen: de run wordt awaited in de import-/edit-respons, dus hangen mag niet.
-// Per API-call 30 s (SDK-default is ~10 min) met hooguit één retry; per run een harde
+// Per API-call CALL_TIMEOUT_MS (shared.ts) met hooguit één retry; per run een harde
 // grens — overschreden tussen regels → run stopt netjes met een skip-event, de rest
 // van de regels komt bij de volgende import/hermatch vanzelf weer aan de beurt.
-const CALL_TIMEOUT_MS = 30_000;
 export const VANGNET_MAX_MS = 120_000;
-// Kosten per miljoen tokens voor claude-haiku-4-5 ($1 in / $5 uit); we rekenen bewust
-// conservatief 1 USD ≈ 1 EUR zodat de budgetteller (llm_usage.cost_eur, L-06) nooit
-// te laag telt.
-const EUR_PER_MTOK_IN = 1.0;
-const EUR_PER_MTOK_OUT = 5.0;
 
 // ── Injecteerbare client ─────────────────────────────────────────────────────
 // Minimale doorsnede van de Anthropic Messages-API zodat tests een mock injecteren en
@@ -111,7 +114,7 @@ export function createAnthropicVangnetClient(apiKey: string): VangnetClient {
         sdkClient = new Anthropic({
           apiKey,
           timeout: CALL_TIMEOUT_MS,
-          maxRetries: 1,
+          maxRetries: MAX_RETRIES,
         });
       }
       const res = await sdkClient.messages.create({
@@ -144,13 +147,6 @@ export function createAnthropicVangnetClient(apiKey: string): VangnetClient {
       };
     },
   };
-}
-
-function envApiKey(): string | undefined {
-  // In de browser-tests bestaat `process` niet — dan is er per definitie geen key.
-  if (typeof process === "undefined") return undefined;
-  const key = process.env?.ANTHROPIC_API_KEY;
-  return key && key.trim().length > 0 ? key : undefined;
 }
 
 // ── Tools (drie vaste, read-only) ────────────────────────────────────────────
@@ -495,6 +491,12 @@ async function overBudget(db: AppDb): Promise<{ over: boolean; budget: number | 
 // zonder besluit (dus daadwerkelijk in review); NOOIT groen; 'blauw' alléén als het
 // dossier 'awarded' is (regel 4 — een blauw-suggestie is per definitie een ander merk).
 // Regels met al-niet-verworpen AI-suggesties worden overgeslagen (geen dubbele kosten).
+//
+// B8 (OCR-gating, hard): een regel met een ÓPEN OCR-review (reviewKind 'ocr' en nog
+// geen reviewedAt) doet NOOIT mee — het gelezen merk kan verhallucineerd zijn, en het
+// vangnet zou daarmee de merkvergrendelde zoektool sturen vóór een mens de bron zag.
+// Ná afronding van de OCR-review (reviewedAt gezet) doet de regel gewoon weer mee;
+// decideReview triggert het vangnet dan opnieuw (lib/repo/review.ts).
 async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
   const statusConds = [
     inArray(specLines.status, ["rood", "open"]),
@@ -505,6 +507,13 @@ async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
     ),
     ...(phase === "awarded" ? [eq(specLines.status, "blauw")] : []),
   ];
+  // NOT (reviewKind = 'ocr' AND reviewedAt IS NULL), null-veilig uitgeschreven:
+  // een kale NOT(...) over een NULL-reviewKind zou de regel óók uitsluiten.
+  const geenOpenOcrReview = or(
+    isNull(specLines.reviewKind),
+    sql`${specLines.reviewKind} <> 'ocr'`,
+    isNotNull(specLines.reviewedAt),
+  );
   return db
     .select()
     .from(specLines)
@@ -512,6 +521,7 @@ async function selectLines(db: AppDb, dossierId: string, phase: Phase) {
       and(
         eq(specLines.dossierId, dossierId),
         or(...statusConds),
+        geenOpenOcrReview,
         notExists(
           db
             .select({ id: aiSuggestions.id })

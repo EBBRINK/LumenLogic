@@ -9,7 +9,9 @@ import type { SpecLineInput } from "@/lib/repo/dossiers";
 import { parseProductName } from "@/lib/enrichment/parser";
 
 // Armatuurcode zoals in de Deerns-boeken: Lp301, Ls004, Lw201, Lp001-a, Lt001…
-const CODE = /^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/;
+// Geëxporteerd (B3): de OCR-laag (lib/ai/ocr.ts) toetst gelezen codes aan exact
+// dezelfde regex, zodat parser en vision nooit uiteenlopen in wat een code is.
+export const CODE = /^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/;
 
 export type PdfImportResult = {
   lines: SpecLineInput[];
@@ -38,7 +40,9 @@ export function pagesToMarkdown(pages: string[]): string {
 
 // Splitst "XAL SASSO 100" → { brand, type } door de langst mogelijke bekende merknaam
 // vooraan te matchen. Zo blijven "Wever & Ducré", "LED Linear", "Landscape Forms Inc" heel.
-function splitBrandType(
+// Geëxporteerd (bouwstap 4): de OCR-repo-laag (lib/repo/ocr.ts) knipt met exact dezelfde
+// helper wanneer vision geen merk las — parser en OCR lopen zo nooit uiteen.
+export function splitBrandType(
   rest: string,
   brandNames: string[],
 ): { brand: string | null; type: string } {

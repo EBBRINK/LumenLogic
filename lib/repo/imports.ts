@@ -1,7 +1,11 @@
-// Import-voorstel-laag (functioneel ontwerp §3.5, B-06/B-07). Een import (PDF/OCR/LLM/CSV)
-// landt éérst als voorstel in `import_runs` — geparste regels zijn pas spec_lines ná
-// menselijke bevestiging. Zo blijft "niets stilzwijgend weglaten" waar: elke rij komt terug
-// op het voorstel-scherm, de mens vinkt aan wat klopt, en OCR/LLM staat standaard uit.
+// Import-laag (functioneel ontwerp §3.5, B-06/B-07). CSV/LLM-imports landen éérst als
+// voorstel in `import_runs` — geparste regels zijn pas spec_lines ná menselijke
+// bevestiging. PDF (deterministisch geparst) gaat direct het dossier in met de run als
+// controlespoor. OCR óók direct (bewust besluit Timo 2026-07-15, plan-ocr-beeld-pdf):
+// geen voorstel-scherm, maar élke OCR-regel krijgt een VERPLICHTE review (reviewKind
+// 'ocr', het Tinder-deck met paginabeeld) — zo blijft "niets stilzwijgend weglaten"
+// waar zonder dat de mens twee keer hetzelfde beoordeelt. De OCR-flow leeft in
+// lib/repo/ocr.ts.
 import { eq } from "drizzle-orm";
 import { importRuns, type ImportRow } from "@/db/schema";
 import { triggerVangnet } from "@/lib/ai/vangnet";

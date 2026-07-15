@@ -22,14 +22,16 @@ import {
 export default async function InstellingenPage() {
   await requireSession();
 
-  const [emails, budget, spent, vangnetSpent, xisEnv, xisKey] = await Promise.all([
-    listAllowedEmails(db),
-    getSetting<number>(db, "llm_budget_eur"),
-    getLlmSpend(db),
-    getLlmSpendForPurpose(db, "vangnet"), // uitsplitsing AI-vangnet (B4/stap 8)
-    getSetting<string>(db, "xis_environment"),
-    getSetting<string>(db, "xis_api_key"),
-  ]);
+  const [emails, budget, spent, vangnetSpent, ocrSpent, xisEnv, xisKey] =
+    await Promise.all([
+      listAllowedEmails(db),
+      getSetting<number>(db, "llm_budget_eur"),
+      getLlmSpend(db),
+      getLlmSpendForPurpose(db, "vangnet"), // uitsplitsing AI-vangnet (B4/stap 8)
+      getLlmSpendForPurpose(db, "ocr"), // uitsplitsing OCR beeld-PDF (plan-ocr B4)
+      getSetting<string>(db, "xis_environment"),
+      getSetting<string>(db, "xis_api_key"),
+    ]);
 
   const environment: XisEnvironment =
     xisEnv === "productie" ? "productie" : "sandbox";
@@ -57,6 +59,7 @@ export default async function InstellingenPage() {
           budgetEur={budget}
           spentEur={spent}
           vangnetEur={vangnetSpent}
+          ocrEur={ocrSpent}
           saveAction={saveBudgetAction}
         />
         <XisBlock

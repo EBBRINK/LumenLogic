@@ -13,7 +13,9 @@
 
 import {
   boolean,
+  customType,
   date,
+  index,
   integer,
   jsonb,
   numeric,
@@ -27,6 +29,37 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
+// ── bytea (B2) ───────────────────────────────────────────────────────────────
+// Drizzle heeft geen ingebouwd bytea; bewezen in db/bytea.test.ts (bouwstap 1).
+// Werkt op beide drivers: PGlite serialiseert de Uint8Array binair, neon-http
+// maakt er zelf een "\x<hex>"-string van (encodeBuffersAsBytea) en parset het
+// resultaat (oid 17) terug naar een Buffer. fromDriver normaliseert naar een
+// verse Uint8Array en vangt defensief een rauwe hex-string af.
+export function byteaFromDriver(value: Uint8Array | string): Uint8Array {
+  if (typeof value === "string") {
+    const hex = value.startsWith("\\x") ? value.slice(2) : value;
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+  }
+  return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+}
+
+export const bytea = customType<{
+  data: Uint8Array;
+  driverData: Uint8Array | string;
+}>({
+  dataType() {
+    return "bytea";
+  },
+  toDriver(value: Uint8Array): Uint8Array {
+    return value;
+  },
+  fromDriver: byteaFromDriver,
+});
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 export const disclosureTier = pgEnum("disclosure_tier", [
@@ -394,8 +427,42 @@ export const importRuns = pgTable("import_runs", {
   actor: text("actor"),
   // B2: PDF→markdown-controlespoor (cap ~2 MB) — inzichtelijk + downloadbaar per import.
   rawMarkdown: text("raw_markdown"),
+  // B5: OCR-voortgang, los van `status` (voorstel/bevestigd/geannuleerd — dat is de
+  // voorstel-flow, OCR is een fase dáárvoor). Bewust text en geen pg-enum, in de stijl
+  // van `status` hierboven: een enum-wijziging kost op Neon een aparte ALTER TYPE en
+  // deze waarden zijn puur intern. null = geen OCR (alle bestaande runs);
+  // 'bezig' | 'klaar' | 'gestopt'. Hervatten (B5) leunt op unique(run, page) hieronder.
+  ocrStatus: text("ocr_status"),
   ...timestamps,
 });
+
+// ── OCR-paginabeelden (B2/B4) ────────────────────────────────────────────────
+// De échte bron van een OCR-import: één rij per gerenderde pagina, bytes in bytea.
+// unique(import_run_id, page) is tegelijk het per-pagina-lock uit B4: éérst de
+// beeldrij inserten — conflict = pagina al bezig/gedaan → weigeren. Cascade met de
+// run (B6: beelden leven even lang als de run). Harde regel (B2): alléén
+// getOcrPageImage in de repo-laag selecteert de bytes-kolom.
+export const ocrPageImages = pgTable(
+  "ocr_page_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importRunId: uuid("import_run_id")
+      .notNull()
+      .references(() => importRuns.id, { onDelete: "cascade" }),
+    page: integer("page").notNull(), // 1-gebaseerd, zoals spec_lines.source_page
+    mime: text("mime").notNull(), // 'image/jpeg'
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ocr_page_images_run_page_uniq").on(t.importRunId, t.page),
+    index("ocr_page_images_run_idx").on(t.importRunId),
+  ],
+);
 
 export type ImportRow = {
   fixtureCode: string;
@@ -657,8 +724,13 @@ export const appSettings = pgTable("app_settings", {
 
 export const llmUsage = pgTable("llm_usage", {
   id: uuid("id").primaryKey().defaultRandom(),
-  purpose: text("purpose").notNull(), // 'import' | 'zoek-fallback' | 'verrijking'
+  purpose: text("purpose").notNull(), // 'import' | 'zoek-fallback' | 'verrijking' | 'ocr'
   costEur: numeric("cost_eur", { precision: 8, scale: 4 }).notNull(),
+  // B4: per-boek-som voor het €1-plafond. Nullable (bestaand gebruik heeft geen run);
+  // set null bij run-delete — de kosten zijn gemaakt en blijven in het maandbudget tellen.
+  importRunId: uuid("import_run_id").references(() => importRuns.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -845,6 +917,7 @@ export type ProjectStatus = (typeof projectStatus.enumValues)[number];
 export type XisPhase = (typeof xisPhase.enumValues)[number];
 export type QuoteLine = typeof quoteLines.$inferSelect;
 export type ImportRun = typeof importRuns.$inferSelect;
+export type OcrPageImage = typeof ocrPageImages.$inferSelect;
 export type Organization = typeof organizations.$inferSelect;
 export type Membership = typeof memberships.$inferSelect;
 export type MembershipRole =
