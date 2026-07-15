@@ -73,7 +73,7 @@ const rows: BrandRelationTableRow[] = [
     productCount: 0,
     priceListIndicator: "ontbreekt",
     sharedBrandCode: false,
-    scorecard: null, // 0 producten → n.v.t.
+    scorecard: null, // 0 producten → n/a
   },
 ];
 
@@ -102,7 +102,7 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(overzicht);
       // Wacht op echte content vóór de capture — een kale body-assert gaf blanco PNG's.
-      await expect.element(page.getByText("4 van 4 merken")).toBeInTheDocument();
+      await expect.element(page.getByText("4 of 4 brands")).toBeInTheDocument();
       await expect.element(page.getByText("Occhio")).toBeInTheDocument();
       await page.screenshot({
         path: `./data-merkrelaties.${theme}.${device}.test.png`,
@@ -113,32 +113,32 @@ for (const theme of ["light", "dark"] as const) {
 
 test("default-status 'Niet benaderd' zichtbaar; dubbele-code-badge en prijslijst-badges", async () => {
   await renderServer(overzicht);
-  const flosStatus = page.getByLabelText("Status van Flos");
+  const flosStatus = page.getByLabelText("Status of Flos");
   await expect.element(flosStatus).toHaveValue("niet_benaderd");
   // K8: beide L052-merken dragen de badge.
-  expect(page.getByText("dubbele code").all()).toHaveLength(2);
-  await expect.element(page.getByText("Verlopen")).toBeInTheDocument();
-  await expect.element(page.getByText("Ontbreekt")).toBeInTheDocument();
-  await expect.element(page.getByText("4 van 4 merken")).toBeInTheDocument();
+  expect(page.getByText("duplicate code").all()).toHaveLength(2);
+  await expect.element(page.getByText("Expired")).toBeInTheDocument();
+  await expect.element(page.getByText("Missing")).toBeInTheDocument();
+  await expect.element(page.getByText("4 of 4 brands")).toBeInTheDocument();
 });
 
 test("statusfilter en zoeken beperken de lijst", async () => {
   await renderServer(overzicht);
-  await page.getByLabelText("Filter op status").selectOptions("Data ontvangen");
-  await expect.element(page.getByText("1 van 4 merken")).toBeInTheDocument();
+  await page.getByLabelText("Filter by status").selectOptions("Data received");
+  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
   await expect.element(page.getByText("XAL")).toBeInTheDocument();
   expect(page.getByText("Flos").query()).toBeNull();
 
-  await page.getByLabelText("Filter op status").selectOptions("Alle statussen");
-  await page.getByLabelText("Zoek op merknaam").fill("occ");
-  await expect.element(page.getByText("1 van 4 merken")).toBeInTheDocument();
+  await page.getByLabelText("Filter by status").selectOptions("All statuses");
+  await page.getByLabelText("Search by brand name").fill("occ");
+  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
   await expect.element(page.getByText("Occhio")).toBeInTheDocument();
 });
 
 test("'geen reactie'-filter: alléén benaderd + laatste contact ouder dan de drempel", async () => {
   await renderServer(overzicht);
-  await page.getByText(/Geen reactie/).click();
-  await expect.element(page.getByText("1 van 4 merken")).toBeInTheDocument();
+  await page.getByText(/No response/).click();
+  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
   await expect.element(page.getByText("Occhio")).toBeInTheDocument();
   expect(page.getByText("Merk Kaal").query()).toBeNull(); // recent contact
 });
@@ -149,13 +149,13 @@ test("kaart op /data: 'Merkrelaties' met badge-aantal (data ontvangen)", async (
       <DataCards badge={{ "/data/brand-relations": 3 }} />
     </Screen>,
   );
-  await expect.element(page.getByText("Merkrelaties")).toBeInTheDocument();
+  await expect.element(page.getByText("Brand relations")).toBeInTheDocument();
   await expect.element(page.getByText("3", { exact: true })).toBeInTheDocument();
 });
 
-test("mini-scorecard: n.v.t. bij 0 producten en donkergroen bij 100% must", async () => {
+test("mini-scorecard: n/a bij 0 producten en donkergroen bij 100% must", async () => {
   await renderServer(overzicht);
-  await expect.element(page.getByText("n.v.t.")).toBeInTheDocument();
+  await expect.element(page.getByText("n/a")).toBeInTheDocument();
   // Kleurfunctie (pure): donkergroen alleen bij mustComplete + ratio 1.
   expect(blokKleur({ key: "x", labelNl: "x", ratio: 1, mustComplete: true }))
     .toBe("hsl(142 72% 26%)");
@@ -212,10 +212,10 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(detail);
       // Zelfde race als bij het overzicht: wacht op gerenderde content.
       await expect
-        .element(page.getByRole("button", { name: "Opslaan" }))
+        .element(page.getByRole("button", { name: "Save" }))
         .toBeInTheDocument();
       await expect
-        .element(page.getByText("9. Documentatie / links"))
+        .element(page.getByText("9. Documentation / links"))
         .toBeInTheDocument();
       await page.screenshot({
         path: `./data-merkrelatie-detail.${theme}.${device}.test.png`,
@@ -228,43 +228,43 @@ test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden 
   await renderServer(detail);
   // Legenda met de donkergroen-definitie (Timo-besluit 1).
   await expect
-    .element(page.getByText(/Donkergroen = alle must-velden 100%/))
+    .element(page.getByText(/Dark green = all must fields 100%/))
     .toBeInTheDocument();
   // Dekkingspercentages: kelvin 100%, cri 50%.
   await expect
-    .element(page.getByTitle(/Kleurtemperatuur \(K\): 100% van de producten/))
+    .element(page.getByTitle(/Color temperature \(K\): 100% of products/))
     .toBeInTheDocument();
   await expect
-    .element(page.getByTitle(/CRI: 50% van de producten/))
+    .element(page.getByTitle(/CRI: 50% of products/))
     .toBeInTheDocument();
   // Niet-meetbaar veld: EAN-code (kind none) grijs met uitleg.
   await expect
-    .element(page.getByTitle(/EAN-code: nog niet meetbaar/))
+    .element(page.getByTitle(/EAN code: not measurable yet/))
     .toBeInTheDocument();
   // Bucket 9 volledig niet meetbaar.
   await expect
-    .element(page.getByText("9. Documentatie / links"))
+    .element(page.getByText("9. Documentation / links"))
     .toBeInTheDocument();
   // Interne 🔒-velden dragen een slotje (aria-label "intern").
-  expect(page.getByLabelText("intern").all().length).toBeGreaterThanOrEqual(5);
+  expect(page.getByLabelText("internal").all().length).toBeGreaterThanOrEqual(5);
 });
 
 test("detail-formulier: relatievelden vooringevuld en opslaan-knop aanwezig", async () => {
   await renderServer(detail);
   await expect.element(page.getByLabelText("Status")).toHaveValue("benaderd");
-  await expect.element(page.getByLabelText("Contactpersoon")).toHaveValue("Anna");
+  await expect.element(page.getByLabelText("Contact", { exact: true })).toHaveValue("Anna");
   await expect
-    .element(page.getByLabelText("E-mail"))
+    .element(page.getByLabelText("Email"))
     .toHaveValue("anna@occhio.de");
   await expect
-    .element(page.getByLabelText("Laatste contact"))
+    .element(page.getByLabelText("Last contact"))
     .toHaveValue("2026-06-01");
   await expect
-    .element(page.getByRole("button", { name: "Opslaan" }))
+    .element(page.getByRole("button", { name: "Save" }))
     .toBeInTheDocument();
 });
 
-test("scorecard zonder producten toont n.v.t.-uitleg i.p.v. 0% rood", async () => {
+test("scorecard zonder producten toont n/a-uitleg i.p.v. 0% rood", async () => {
   await renderServer(
     <Screen>
       <BrandScorecard
@@ -276,6 +276,6 @@ test("scorecard zonder producten toont n.v.t.-uitleg i.p.v. 0% rood", async () =
     </Screen>,
   );
   await expect
-    .element(page.getByText(/compleetheid n\.v\.t\./))
+    .element(page.getByText(/completeness n\/a/))
     .toBeInTheDocument();
 });

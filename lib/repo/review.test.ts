@@ -173,7 +173,7 @@ test("decideReview weigert een verzonnen of onzichtbaar productId, regel ongewij
       productId: crypto.randomUUID(),
       actor: ACTOR,
     }),
-  ).rejects.toThrow(/niet zichtbaar/);
+  ).rejects.toThrow(/not visible/);
   // onzichtbaar product (zelfde merk, geen geldige prijs) bij 'variant'
   const schema = await import("@/db/schema");
   const invisible = crypto.randomUUID();
@@ -192,7 +192,7 @@ test("decideReview weigert een verzonnen of onzichtbaar productId, regel ongewij
       variantColor: "black",
       actor: ACTOR,
     }),
-  ).rejects.toThrow(/niet zichtbaar/);
+  ).rejects.toThrow(/not visible/);
 
   // de regel is in beide gevallen onaangeroerd gebleven
   const after = await getLine(s.db, s.lineId);
@@ -208,7 +208,7 @@ test("afwijzen blijft → rood, reden verplicht, geen match gezet", async () => 
   const s = await seedTwoCleanYellow();
   await expect(
     decideReview(s.db, { specLineId: s.lineId, decision: "afgewezen", actor: ACTOR }),
-  ).rejects.toThrow(/Reden verplicht/);
+  ).rejects.toThrow(/Reason required/);
 
   await decideReview(s.db, {
     specLineId: s.lineId,
@@ -340,5 +340,5 @@ test("linkManualProduct weigert een niet-zichtbaar product (regel 3)", async () 
 
   await expect(
     linkManualProduct(db, { specLineId: line.id, productId: invisible, actor: ACTOR }),
-  ).rejects.toThrow(/niet zichtbaar/);
+  ).rejects.toThrow(/not visible/);
 });

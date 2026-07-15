@@ -151,11 +151,11 @@ test("version-history toont snapshot-knop, versienummers, diff, locatie en datas
   );
   // Snapshot-knop.
   await expect
-    .element(page.getByRole("button", { name: /Nieuwe versie vastleggen/ }))
+    .element(page.getByRole("button", { name: /Save new version/ }))
     .toBeInTheDocument();
   // Diff-kop v1 → v2.
   await expect
-    .element(page.getByText(/Wijzigingen v1 → v2/))
+    .element(page.getByText(/Changes v1 → v2/))
     .toBeInTheDocument();
   // Gewijzigde, toegevoegde en verwijderde regels benoemd.
   await expect.element(page.getByText("Lp301").first()).toBeInTheDocument();
@@ -184,9 +184,9 @@ test("version-history lege staat nodigt uit tot een eerste versie", async () => 
     </Screen>,
   );
   await expect
-    .element(page.getByText(/Nog geen versies vastgelegd/))
+    .element(page.getByText(/No versions saved yet/))
     .toBeInTheDocument();
   await expect
-    .element(page.getByRole("button", { name: /Nieuwe versie vastleggen/ }))
+    .element(page.getByRole("button", { name: /Save new version/ }))
     .toBeInTheDocument();
 });

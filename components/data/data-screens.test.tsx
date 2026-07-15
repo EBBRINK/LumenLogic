@@ -167,7 +167,7 @@ test("dekkingsmeter toont het percentage en de telling", async () => {
   );
   await expect.element(page.getByText("65%")).toBeInTheDocument();
   await expect
-    .element(page.getByText(/78 van 120 producten/))
+    .element(page.getByText(/78 of 120 products/))
     .toBeInTheDocument();
 });
 
@@ -184,9 +184,9 @@ test("steekproef toont publiceren + fout-waarschuwing", async () => {
       />
     </Screen>,
   );
-  await expect.element(page.getByRole("button", { name: "Publiceren" })).toBeInTheDocument();
+  await expect.element(page.getByRole("button", { name: "Publish" })).toBeInTheDocument();
   await expect
-    .element(page.getByText(/1 item\(s\) als fout gemarkeerd/))
+    .element(page.getByText(/1 item\(s\) marked incorrect/))
     .toBeInTheDocument();
 });
 
@@ -203,7 +203,7 @@ test("gepubliceerde run toont geen goed/fout-knoppen meer", async () => {
       />
     </Screen>,
   );
-  expect(page.getByRole("button", { name: "Publiceren" }).query()).toBeNull();
+  expect(page.getByRole("button", { name: "Publish" }).query()).toBeNull();
 });
 
 test("evaluatie toont de laatste score en per-regel-diff", async () => {
@@ -214,5 +214,5 @@ test("evaluatie toont de laatste score en per-regel-diff", async () => {
   );
   // laatste run = "na tweak" met 100% (verschijnt in de scorekaart én de historie-tabel)
   await expect.element(page.getByText("100%").first()).toBeInTheDocument();
-  await expect.element(page.getByText("raak").first()).toBeInTheDocument();
+  await expect.element(page.getByText("hit").first()).toBeInTheDocument();
 });

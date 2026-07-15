@@ -71,7 +71,7 @@ const onvolledig: CatalogResult[] = [
     lumenOutput: null,
     grossPrice: "180.00",
     matchKind: "fuzzy",
-    missing: ["kleurtemp.", "CRI"],
+    missing: ["color temp.", "CRI"],
   },
 ];
 
@@ -102,9 +102,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect.element(document.body).toBeInTheDocument();
       // merk-select + beide lijsten + een geprijsd product zichtbaar
       await expect.element(page.getByTestId("brand-select")).toBeInTheDocument();
-      await expect.element(page.getByText("Voldoet aantoonbaar")).toBeInTheDocument();
+      await expect.element(page.getByText("Provably compliant")).toBeInTheDocument();
       await expect
-        .element(page.getByText("Mogelijk — data onvolledig"))
+        .element(page.getByText("Possible — data incomplete"))
         .toBeInTheDocument();
       await expect
         .element(page.getByText("SASSO 100 SQ SP CEIL 17,9W cob LED 2700K 220-240V"))
@@ -128,7 +128,7 @@ test("brand-select toont alle merken als opties", async () => {
 test("onvolledig-item benoemt de ontbrekende data (nooit stil weggelaten)", async () => {
   await renderServer(searchedUi);
   await expect
-    .element(page.getByText("geen data voor: kleurtemp., CRI"))
+    .element(page.getByText("no data for: color temp., CRI"))
     .toBeInTheDocument();
 });
 
@@ -141,5 +141,5 @@ test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
   await expect
     .element(page.getByText("Choose a brand or type free text and search the catalog."))
     .toBeInTheDocument();
-  expect(page.getByText("Voldoet aantoonbaar").query()).toBeNull();
+  expect(page.getByText("Provably compliant").query()).toBeNull();
 });

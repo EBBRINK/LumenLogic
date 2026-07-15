@@ -58,9 +58,9 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(settingsScreen);
       await expect.element(document.body).toBeInTheDocument();
       // De drie blokken staan er.
-      await expect.element(page.getByText("Gebruikers")).toBeInTheDocument();
-      await expect.element(page.getByText("LLM-budget")).toBeInTheDocument();
-      await expect.element(page.getByText("XIS-koppeling")).toBeInTheDocument();
+      await expect.element(page.getByText("Users")).toBeInTheDocument();
+      await expect.element(page.getByText("LLM budget")).toBeInTheDocument();
+      await expect.element(page.getByText("XIS connection")).toBeInTheDocument();
       await page.screenshot({
         path: `./settings.${theme}.${device}.test.png`,
       });
@@ -83,7 +83,7 @@ test("gebruikers: adressen zichtbaar, verwijderen kan bij meer dan één adres",
     .toBeInTheDocument();
   await expect.element(page.getByText("eduard@brink.nl")).toBeInTheDocument();
   const removeBtn = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="eduard@brink.nl verwijderen"]',
+    'button[aria-label="Remove eduard@brink.nl"]',
   );
   expect(removeBtn).not.toBeNull();
   expect(removeBtn?.disabled).toBe(false);
@@ -103,7 +103,7 @@ test("gebruikers: het laatste adres is NIET te verwijderen (fail-safe)", async (
     .element(page.getByText("hello@noplasticfloralfoam.com"))
     .toBeInTheDocument();
   const removeBtn = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="hello@noplasticfloralfoam.com verwijderen"]',
+    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
   );
   expect(removeBtn).not.toBeNull();
   expect(removeBtn?.disabled).toBe(true);
@@ -118,7 +118,7 @@ test("budget: verbruik en cap staan er; overschrijding toont een amber-notitie, 
   // teller toont zowel verbruik als cap
   await expect.element(page.getByText("€ 27,40")).toBeInTheDocument();
   await expect
-    .element(page.getByText("Maandcap overschreden — controleer het verbruik."))
+    .element(page.getByText("Monthly cap exceeded — check the spend."))
     .toBeInTheDocument();
 });
 
@@ -129,7 +129,7 @@ test("budget: zonder cap geen meter maar een neutrale melding", async () => {
     </Screen>,
   );
   await expect
-    .element(page.getByText("Geen maandcap ingesteld."))
+    .element(page.getByText("No monthly cap set."))
     .toBeInTheDocument();
   expect(page.getByRole("progressbar").query()).toBeNull();
 });
@@ -142,7 +142,7 @@ test("XIS: de echte sleutel wordt nooit gerenderd — alleen de aanwezigheid", a
     </Screen>,
   );
   // 'ingesteld' verschijnt, de geheime waarde staat nergens in de DOM.
-  await expect.element(page.getByText("ingesteld")).toBeInTheDocument();
+  await expect.element(page.getByText("set")).toBeInTheDocument();
   expect(document.body.textContent).not.toContain(secret);
   // Het invoerveld is leeg (toont nooit de opgeslagen waarde).
   const input = document.querySelector<HTMLInputElement>("#xis-key");

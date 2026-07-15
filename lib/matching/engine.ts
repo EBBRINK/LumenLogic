@@ -257,7 +257,7 @@ export async function evaluateSpecLine(
   if (req.nonLighting || looksNonLighting(req.productText)) {
     return {
       status: "paars",
-      reason: "buiten assortiment (geen verlichting)",
+      reason: "outside assortment (not lighting)",
       provable: [],
       incomplete: [],
       topDeviations: [],
@@ -298,7 +298,7 @@ export async function evaluateSpecLine(
   if (rows.length === 0) {
     return {
       status: "rood",
-      reason: "merk in catalogus, maar geen passend product gevonden",
+      reason: "brand in catalog, but no matching product found",
       provable: [],
       incomplete: [],
       topDeviations: [],

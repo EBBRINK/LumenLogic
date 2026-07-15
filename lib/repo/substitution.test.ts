@@ -45,7 +45,7 @@ async function seed() {
   return { db, ref, alt };
 }
 
-test("createSubstitution: veld-voor-veld met bron 'merk-opgave' + prijsverschil als tekst", async () => {
+test("createSubstitution: veld-voor-veld met bron 'brand-provided' + prijsverschil als tekst", async () => {
   const { db, ref, alt } = await seed();
   const dossier = await createDossier(db, { name: "Ziekenhuis Noord", xisPhase: "deal_making" });
 
@@ -58,35 +58,35 @@ test("createSubstitution: veld-voor-veld met bron 'merk-opgave' + prijsverschil 
 
   const fields = row.fields ?? [];
   expect(fields.length).toBeGreaterThan(0);
-  // Elk veld draagt een bron, en die bron is de merk-opgave (we citeren het merk zelf).
-  expect(fields.every((f) => f.source === "merk-opgave")).toBe(true);
+  // Elk veld draagt een bron, en die bron is de brand-provided (we citeren het merk zelf).
+  expect(fields.every((f) => f.source === "brand-provided")).toBe(true);
 
   // De veldvolgorde is vast (technisch → duurzaamheid), niet prijs-afhankelijk (regel 2).
-  expect(fields[0].field).toBe("Kleurtemperatuur");
+  expect(fields[0].field).toBe("Color temperature");
 
   const byLabel = Object.fromEntries(fields.map((f) => [f.field, f]));
   // Technische velden veld-voor-veld aanwezig.
-  expect(byLabel["Kleurtemperatuur"].reference).toBe("3000K");
-  expect(byLabel["Kleurtemperatuur"].alternative).toBe("3000K");
+  expect(byLabel["Color temperature"].reference).toBe("3000K");
+  expect(byLabel["Color temperature"].alternative).toBe("3000K");
   expect(byLabel["CRI"]).toBeTruthy();
-  expect(byLabel["IP-waarde"].reference).toBe("IP20");
+  expect(byLabel["IP value"].reference).toBe("IP20");
   // Duurzaamheidsvelden (garantie / repareerbaarheid / EPD) veld-voor-veld aanwezig.
-  expect(byLabel["Garantie"].reference).toBe("36 mnd");
-  expect(byLabel["Garantie"].alternative).toBe("120 mnd");
-  expect(byLabel["Repareerbaarheid"].reference).toBe("C");
-  expect(byLabel["Repareerbaarheid"].alternative).toBe("A");
+  expect(byLabel["Warranty"].reference).toBe("36 mo");
+  expect(byLabel["Warranty"].alternative).toBe("120 mo");
+  expect(byLabel["Repairability"].reference).toBe("C");
+  expect(byLabel["Repairability"].alternative).toBe("A");
   expect(byLabel["Levensduur (EPD)"].reference).toBe("35000 u");
   expect(byLabel["Levensduur (EPD)"].alternative).toBe("100000 u");
 
   // F-08: het prijsverschil (310 - 260 = 50) staat ALS TEKST in de saving_note.
   expect(row.savingNote).toBeTruthy();
-  expect(row.savingNote!).toContain("Besparing");
+  expect(row.savingNote!).toContain("Saving");
   expect(row.savingNote!).toContain("50,00");
   // en de note zegt expliciet dat prijs niet meeweegt in de rangschikking.
   expect(row.savingNote!.toLowerCase()).toContain("weegt");
 });
 
-test("createSubstitution: duurdere alternatief → 'Meerprijs' als tekst (nog steeds geen sortering)", async () => {
+test("createSubstitution: duurdere alternatief → 'Additional cost' als tekst (nog steeds geen sortering)", async () => {
   const { db, ref } = await seed();
   const dossier = await createDossier(db, { name: "Kantoor Zuid", xisPhase: "deal_making" });
   // Een duurder, gelijkwaardig alternatief.
@@ -102,7 +102,7 @@ test("createSubstitution: duurdere alternatief → 'Meerprijs' als tekst (nog st
     referenceProductId: ref,
     alternativeProductId: duur,
   });
-  expect(row.savingNote!).toContain("Meerprijs");
+  expect(row.savingNote!).toContain("Additional cost");
   expect(row.savingNote!).toContain("170,00"); // 480 - 310
 });
 

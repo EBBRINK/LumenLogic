@@ -130,7 +130,7 @@ test("inv4: gevraagd 12W geleverd 13W → groen mét benoemde watt-afwijking", a
   expect(wattDev?.verdict).toBe("groen"); // binnen ±10%
   expect(wattDev?.requested).toBe(12);
   expect(wattDev?.delivered).toBe(13);
-  expect(wattDev?.note).toContain("gevraagd 12"); // transparantieregel: het verschil staat er
+  expect(wattDev?.note).toContain("requested 12"); // transparantieregel: het verschil staat er
   expect(wattDev?.note).toContain("13");
 });
 
@@ -411,7 +411,7 @@ test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt m
         requested: "zwart",
         delivered: "wit",
         verdict: "geel",
-        note: "variant: gevraagd zwart, beschikbaar wit",
+        note: "variant: requested zwart, available wit",
       },
     ] as MatchDeviation[],
   };
@@ -425,7 +425,7 @@ test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt m
         requested: 12,
         delivered: 14,
         verdict: "geel",
-        note: "gevraagd 12, geleverd 14",
+        note: "requested 12, delivered 14",
       },
     ] as MatchDeviation[],
   };

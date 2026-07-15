@@ -169,11 +169,11 @@ test("archief vereist een reden; zet archivedReason/archivedAt en is read-only",
   const d = await createDossier(db, { name: "Verloren tender" });
 
   await expect(setStatus(db, d.id, "archief", "timo@brink")).rejects.toThrow(
-    /Reden verplicht/,
+    /Reason required/,
   );
   await expect(
     setStatus(db, d.id, "archief", "timo@brink", { reason: "   " }),
-  ).rejects.toThrow(/Reden verplicht/);
+  ).rejects.toThrow(/Reason required/);
   // geweigerd → niets veranderd
   expect((await getDossierRow(db, d.id)).status).toBe("concept");
 

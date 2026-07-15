@@ -108,7 +108,7 @@ test("BrandDataView: toont specs zonder prijs; ontbrekende data als vlag", async
   );
   await expect.element(page.getByText("SASSO 100 CEIL")).toBeInTheDocument();
   // Geen prijskolom.
-  await expect.element(page.getByText("Prijs")).not.toBeInTheDocument();
+  await expect.element(page.getByText("Price", { exact: true })).not.toBeInTheDocument();
   // Ontbrekende CRI bij het tweede product verschijnt als grijze vlag.
   await expect.element(page.getByText("—").first()).toBeInTheDocument();
 });
@@ -125,8 +125,8 @@ test("PricelistUpload: toont aangeleverde uploads met status", async () => {
       />
     </Screen>,
   );
-  await expect.element(page.getByText("In afwachting van controle")).toBeInTheDocument();
-  await expect.element(page.getByText("Goedgekeurd")).toBeInTheDocument();
+  await expect.element(page.getByText("Awaiting review")).toBeInTheDocument();
+  await expect.element(page.getByText("Approved")).toBeInTheDocument();
 });
 
 // K-05: het dashboard toont geaggregeerde tellingen (overwogen/gekozen), geen projecten.
@@ -140,7 +140,7 @@ test("BrandDashboard: toont geaggregeerde tellingen", async () => {
       />
     </Screen>,
   );
-  await expect.element(page.getByText("Overwogen")).toBeInTheDocument();
+  await expect.element(page.getByText("Considered")).toBeInTheDocument();
   await expect.element(page.getByText("12", { exact: true })).toBeInTheDocument();
-  await expect.element(page.getByText("Gekozen")).toBeInTheDocument();
+  await expect.element(page.getByText("Chosen")).toBeInTheDocument();
 });

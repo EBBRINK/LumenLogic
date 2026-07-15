@@ -74,25 +74,25 @@ for (const theme of ["light", "dark"] as const) {
 
 test("tekst staat readonly in de textarea; templateknop ernaast", async () => {
   await renderServer(blok());
-  const textarea = page.getByLabelText("Bericht aan het merk");
+  const textarea = page.getByLabelText("Message to the brand");
   await expect.element(textarea).toHaveValue(message);
   await expect.element(textarea).toHaveAttribute("readonly");
   await expect
-    .element(page.getByRole("link", { name: /Excel-template downloaden/ }))
+    .element(page.getByRole("link", { name: /Download Excel template/ }))
     .toHaveAttribute("href", "/data/brand-relations/template");
 });
 
 // Onder volle parallelle testlast hydrateert het client-eiland soms traag of pas na
 // een verse render — vandaar de klik-retry-lus én een test-retry met verse render.
 test(
-  "kopieerknop: klik toont 'Gekopieerd' (event-callback vuurt in dezelfde handler)",
+  "kopieerknop: klik toont 'Copied' (event-callback vuurt in dezelfde handler)",
   { retry: 2 },
   async () => {
     await renderServer(blok());
     await vi.waitFor(
       async () => {
-        await page.getByRole("button", { name: /kopiëren|Gekopieerd/ }).click();
-        expect(document.body.textContent).toContain("Gekopieerd");
+        await page.getByRole("button", { name: /Copy message|Copied/ }).click();
+        expect(document.body.textContent).toContain("Copied");
       },
       { timeout: 10_000, interval: 250 },
     );

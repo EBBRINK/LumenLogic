@@ -134,8 +134,8 @@ test("projectlijst: statusbadge per project, in de vaste badge-taal", async () =
   );
   for (const label of [
     "Concept",
-    "Estimate gestuurd",
-    "Offerte",
+    "Estimate sent",
+    "Quote",
     "Gegund", // let op: staat er 2× — als statusbadge én als fase-badge (awarded)
     "Niet gegund",
     "Archief",
@@ -157,8 +157,8 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
   for (const label of [
     "Alle",
     "Concept",
-    "Estimate gestuurd",
-    "Offerte",
+    "Estimate sent",
+    "Quote",
     "Gegund",
     "Niet gegund",
     "Archief",
@@ -171,7 +171,7 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
     .element(page.getByRole("link", { name: "Archief" }))
     .toHaveAttribute("aria-current", "page");
   await expect
-    .element(page.getByRole("link", { name: "Alle" }))
+    .element(page.getByRole("link", { name: "All" }))
     .not.toHaveAttribute("aria-current");
   await expect
     .element(page.getByRole("link", { name: "Niet gegund" }))
@@ -187,7 +187,7 @@ test("projectkop: status-dropdown en XIS-fase-select met alle opties", async () 
   );
   const status = page.getByLabelText("Status");
   await expect.element(status).toBeInTheDocument();
-  const xis = page.getByLabelText("XIS-fase");
+  const xis = page.getByLabelText("XIS phase");
   await expect.element(xis).toBeInTheDocument();
   // De tien XIS-fasen als nette NL-labels.
   for (const label of [
@@ -195,24 +195,24 @@ test("projectkop: status-dropdown en XIS-fase-select met alle opties", async () 
     "Deal making", "Deliver", "Aftersales", "Win", "Lost",
   ]) {
     await expect
-      .element(page.getByRole("option", { name: label }))
+      .element(page.getByRole("option", { name: label }).first())
       .toBeInTheDocument();
   }
 });
 
 // Archiveren vraagt eerst een VERPLICHTE reden (gedrag uit de oude lifecycle-test):
 // archief kiezen opent de dialoog, de submit staat uit tot er een reden is ingevuld.
-test("status archief kiezen vraagt een verplichte reden voordat het door kan", async () => {
+test("status archief kiezen vraagt een requirede reden voordat het door kan", async () => {
   await renderServer(
     <Screen>
       <Projectkop status="concept" xisPhase="start" phase="tender" />
     </Screen>,
   );
-  await page.getByLabelText("Status").selectOptions("Archief");
-  await expect.element(page.getByText(/Reden \(verplicht\)/)).toBeInTheDocument();
-  const submit = page.getByRole("button", { name: "Ja, archiveer" });
+  await page.getByLabelText("Status").selectOptions("Archived");
+  await expect.element(page.getByText(/Reason \(required\)/)).toBeInTheDocument();
+  const submit = page.getByRole("button", { name: "Yes, archive" });
   await expect.element(submit).toBeDisabled();
-  await page.getByLabelText(/Reden \(verplicht\)/).fill("verloren tender");
+  await page.getByLabelText(/Reason \(required\)/).fill("verloren tender");
   await expect.element(submit).toBeEnabled();
 });
 
@@ -230,8 +230,8 @@ test("projectkop archief: toont de reden en zet de XIS-fase-select op slot", asy
     </Screen>,
   );
   await expect
-    .element(page.getByText(/Gearchiveerd: verloren tender/))
+    .element(page.getByText(/Archived: verloren tender/))
     .toBeInTheDocument();
-  await expect.element(page.getByLabelText("XIS-fase")).toBeDisabled();
+  await expect.element(page.getByLabelText("XIS phase")).toBeDisabled();
   await expect.element(page.getByLabelText("Status")).toBeEnabled();
 });

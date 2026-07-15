@@ -171,7 +171,7 @@ test("totalen: groen + geel apart, samen = groen + geel", async () => {
   await expect.element(page.getByText(/3\.720,00/).first()).toBeInTheDocument();
   await expect.element(page.getByText(/1\.808,00/).first()).toBeInTheDocument();
   await expect.element(page.getByText(/5\.528,00/).first()).toBeInTheDocument();
-  await expect.element(page.getByText("Samen (groen + geel)")).toBeInTheDocument();
+  await expect.element(page.getByText("Combined (green + yellow)")).toBeInTheDocument();
 });
 
 test("blauw/rood/paars: p.m., NOOIT in het totaal opgeteld", async () => {
@@ -186,9 +186,9 @@ test("blauw/rood/paars: p.m., NOOIT in het totaal opgeteld", async () => {
   // …en het samen-totaal blijft 5.528,00, niet 6.528,00 (5528 + paars 1000).
   expect(page.getByText(/6\.528,00/).query()).toBeNull();
   // de niet-opgeteld-regel benoemt de aantallen expliciet.
-  await expect.element(page.getByText(/blauw 1/)).toBeInTheDocument();
-  await expect.element(page.getByText(/rood 1/)).toBeInTheDocument();
-  await expect.element(page.getByText(/paars 1/)).toBeInTheDocument();
+  await expect.element(page.getByText(/blue 1/)).toBeInTheDocument();
+  await expect.element(page.getByText(/red 1/)).toBeInTheDocument();
+  await expect.element(page.getByText(/purple 1/)).toBeInTheDocument();
 });
 
 test("regel zonder aantal → p/st i.p.v. regeltotaal", async () => {
@@ -197,7 +197,7 @@ test("regel zonder aantal → p/st i.p.v. regeltotaal", async () => {
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
     </Screen>,
   );
-  await expect.element(page.getByText("p/st")).toBeInTheDocument();
+  await expect.element(page.getByText("ea.")).toBeInTheDocument();
 });
 
 test("zones: gegroepeerd met zone-koppen, aanvraagvolgorde behouden", async () => {
@@ -216,8 +216,8 @@ test("open punten & acties: blauw = inladen (ons), rood = terug naar klant", asy
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
     </Screen>,
   );
-  await expect.element(page.getByText(/inladen/).first()).toBeInTheDocument();
-  await expect.element(page.getByText(/terug naar\s+klant/)).toBeInTheDocument();
+  await expect.element(page.getByText(/load brand/).first()).toBeInTheDocument();
+  await expect.element(page.getByText(/back to\s+customer/)).toBeInTheDocument();
   // merken-inladen-lijst met frequentie (blauw-merk Kreon 1×).
   await expect.element(page.getByText(/Kreon — 1×/)).toBeInTheDocument();
 });
@@ -253,7 +253,7 @@ test("zonder zones → één lijst, geen zone-koppen", async () => {
   expect(page.getByText(/^Zone\b/).query()).toBeNull();
 });
 
-// B3: automatisch geaccepteerde bijna-match → subtiel label bij de afwijkingsnotitie.
+// B3: automatically accepted near-match → subtiel label bij de afwijkingsnotitie.
 test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () => {
   const lines: EstimateLine[] = [
     {
@@ -262,7 +262,7 @@ test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () 
       unitPrice: "412.00", brandText: "XAL", productText: "VELA ROUND",
       autoAccepted: true,
       deviations: [
-        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "requested 12, delivered 14" },
       ],
     },
     {
@@ -280,11 +280,11 @@ test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () 
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={lines} />
     </Screen>,
   );
-  const labels = page.getByText("automatisch geaccepteerde bijna-match");
+  const labels = page.getByText("automatically accepted near-match");
   await expect.element(labels).toBeInTheDocument();
   expect(labels.elements().length).toBe(1); // alléén de auto-regel draagt het label
   // de afwijkingsnotitie blijft er gewoon naast staan
-  await expect.element(page.getByText(/gevraagd 12, geleverd 14/)).toBeInTheDocument();
+  await expect.element(page.getByText(/requested 12, delivered 14/)).toBeInTheDocument();
 });
 
 // Stap 7 (herontwerp 2026-07-14): een menskeuze uit de review (accepteer/N-keuze/
@@ -297,7 +297,7 @@ test("review-keuze: merkteken 'handmatig gekozen' op de estimate-regel", async (
       unitPrice: "412.00", brandText: "XAL", productText: "VELA ROUND",
       manuallyChosen: true,
       deviations: [
-        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "gevraagd 12, geleverd 14" },
+        { field: "watt", requested: 12, delivered: 14, verdict: "geel", note: "requested 12, delivered 14" },
       ],
     },
     {
@@ -312,9 +312,9 @@ test("review-keuze: merkteken 'handmatig gekozen' op de estimate-regel", async (
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={lines} />
     </Screen>,
   );
-  const labels = page.getByText("handmatig gekozen");
+  const labels = page.getByText("manually chosen");
   await expect.element(labels).toBeInTheDocument();
   expect(labels.elements().length).toBe(1);
   // de geaccepteerde afwijking blijft als notitie zichtbaar (C-07)
-  await expect.element(page.getByText(/gevraagd 12, geleverd 14/)).toBeInTheDocument();
+  await expect.element(page.getByText(/requested 12, delivered 14/)).toBeInTheDocument();
 });

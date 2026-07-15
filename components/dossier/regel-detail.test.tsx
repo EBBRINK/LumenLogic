@@ -145,10 +145,10 @@ for (const [name, ui] of Object.entries(screens)) {
 test("MatchCandidates: beide lijsten met hun kop verschijnen", async () => {
   await renderServer(candidatesScreen);
   await expect
-    .element(page.getByText("Voldoet aantoonbaar", { exact: true }))
+    .element(page.getByText("Provably compliant", { exact: true }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByText("Mogelijk — data onvolledig", { exact: true }))
+    .element(page.getByText("Possible — data incomplete", { exact: true }))
     .toBeInTheDocument();
 });
 
@@ -162,23 +162,23 @@ test("MatchCandidates: prijzen worden getoond (nooit gesorteerd)", async () => {
 
 test("MatchCandidates: onvolledige kandidaat toont 'geen data' per onbekend veld", async () => {
   await renderServer(candidatesScreen);
-  await expect.element(page.getByText("cri: geen data")).toBeInTheDocument();
-  await expect.element(page.getByText("ip: geen data")).toBeInTheDocument();
+  await expect.element(page.getByText("cri: no data")).toBeInTheDocument();
+  await expect.element(page.getByText("ip: no data")).toBeInTheDocument();
 });
 
 test("MatchCandidates: afrondings-knoppen (rood/blauw/paars) + dagprijs aanwezig", async () => {
   await renderServer(candidatesScreen);
   await expect
-    .element(page.getByRole("button", { name: "Zet op rood" }))
+    .element(page.getByRole("button", { name: "Set to Red" }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByRole("button", { name: "Zet op inlaadlijst" }))
+    .element(page.getByRole("button", { name: "Add to load list" }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByRole("button", { name: "Zet op paars" }))
+    .element(page.getByRole("button", { name: "Set to Purple" }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByText("Dagprijs op deze regel", { exact: true }))
+    .element(page.getByText("Spot price on this line", { exact: true }))
     .toBeInTheDocument();
 });
 
@@ -203,23 +203,23 @@ test("MatchCandidates: zonder kandidaten verschijnt de 'draai de matcher'-knop",
     </Screen>,
   );
   await expect
-    .element(page.getByRole("button", { name: "Draai de matcher" }))
+    .element(page.getByRole("button", { name: "Run the matcher" }))
     .toBeInTheDocument();
 });
 
 test("DeviationTable: kolommen + een afwijking (gevraagd 12, geleverd 13) zichtbaar", async () => {
   await renderServer(deviationScreen);
   await expect
-    .element(page.getByText("Gevraagd", { exact: true }))
+    .element(page.getByText("Requested", { exact: true }))
     .toBeInTheDocument();
   await expect
-    .element(page.getByText("Geleverd", { exact: true }))
+    .element(page.getByText("Delivered", { exact: true }))
     .toBeInTheDocument();
   // De afwijking straalhoek: gevraagd 12, geleverd 13.
   await expect.element(page.getByText("12", { exact: true })).toBeInTheDocument();
   await expect.element(page.getByText("13", { exact: true })).toBeInTheDocument();
   // Onbekend veld = eerlijke grijze vlag "geen data", nooit stil weggelaten.
-  await expect.element(page.getByText("geen data", { exact: true }).first()).toBeInTheDocument();
+  await expect.element(page.getByText("no data", { exact: true }).first()).toBeInTheDocument();
 });
 
 test("DeviationTable: leeg → eerlijke uitleg i.p.v. niets", async () => {
@@ -229,6 +229,6 @@ test("DeviationTable: leeg → eerlijke uitleg i.p.v. niets", async () => {
     </Screen>,
   );
   await expect
-    .element(page.getByText("Nog geen afwijkingen vastgelegd", { exact: false }))
+    .element(page.getByText("No deviations recorded yet", { exact: false }))
     .toBeInTheDocument();
 });

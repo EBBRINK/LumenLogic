@@ -1,4 +1,4 @@
-// White-box RSC-render/screenshottests van het AI-suggestie-blok (B4/stap 8) op de
+// White-box RSC-render/screenshottests van het AI suggestion-blok (B4/stap 8) op de
 // review-kaarten: een gele review-kaart en een rood-kaart mét vangnet-suggesties,
 // licht/donker × mobiel/desktop. Plus asserts op het label, de twee knoppen en de
 // render-guard (defense in depth, ijzeren regel 4): in tender-fase verschijnt een
@@ -102,7 +102,7 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(ui);
       // wachten op écht gerenderde inhoud — body alleen is te vroeg (async flush)
       await expect
-        .element(page.getByText(/AI-suggestie — automatisch gevonden/).first())
+        .element(page.getByText(/AI suggestion — found automatically/).first())
         .toBeInTheDocument();
       await page.screenshot({
         path: `./review-ai-suggestie.${theme}.${device}.test.png`,
@@ -111,14 +111,14 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("AI-suggestie-blok: label, product, rationale en beide knoppen", async () => {
+test("AI suggestion-blok: label, product, rationale en beide knoppen", async () => {
   await renderServer(ui);
   // eerst awaiten (render flusht async), daarna pas synchroon tellen
   await expect
-    .element(page.getByText(/AI-suggestie — automatisch gevonden/).first())
+    .element(page.getByText(/AI suggestion — found automatically/).first())
     .toBeInTheDocument();
-  // duidelijk gelabeld als AI-suggestie, op beide kaarttypes
-  expect(page.getByText(/AI-suggestie — automatisch gevonden/).elements().length).toBe(2);
+  // duidelijk gelabeld als AI suggestion, op beide kaarttypes
+  expect(page.getByText(/AI suggestion — found automatically/).elements().length).toBe(2);
   await expect
     .element(page.getByText("SASSO 100 SQ SP CEIL 2700K"))
     .toBeInTheDocument();
@@ -127,9 +127,9 @@ test("AI-suggestie-blok: label, product, rationale en beide knoppen", async () =
     .element(page.getByText(/Zelfde SASSO 100-familie/))
     .toBeInTheDocument();
   expect(
-    page.getByRole("button", { name: /Gebruik als handmatige keuze/ }).elements().length,
+    page.getByRole("button", { name: /Use as manual choice/ }).elements().length,
   ).toBe(2);
-  expect(page.getByRole("button", { name: /^Verwerp$/ }).elements().length).toBe(2);
+  expect(page.getByRole("button", { name: /^Dismiss$/ }).elements().length).toBe(2);
 });
 
 test("render-guard: in tender-fase geen suggestie van een ander merk; bij awarded wél", async () => {
@@ -161,10 +161,10 @@ test("render-guard: in tender-fase geen suggestie van een ander merk; bij awarde
   );
   // eerst wachten tot de kaart er staat — daarna pas de afwezigheid asserten
   await expect
-    .element(page.getByText(/Zelfde merk, afwijking binnen de gele marge/))
+    .element(page.getByText(/Same brand, deviation within the yellow margin/))
     .toBeInTheDocument();
   // defense in depth (regel 4): het blok verschijnt niet, ook al staat de suggestie er
-  expect(page.getByText(/AI-suggestie/).query()).toBeNull();
+  expect(page.getByText(/AI suggestion/).query()).toBeNull();
   expect(page.getByText(/alternatief van een ander merk/).query()).toBeNull();
 });
 
