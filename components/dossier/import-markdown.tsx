@@ -16,13 +16,13 @@ export function ImportMarkdown({
   return (
     <details className="mt-8 rounded-lg border" open={defaultOpen}>
       <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
-        Brontekst (markdown)
+        Source text (markdown)
       </summary>
       <div className="border-t px-4 py-3">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            De volledige tekstlaag van de PDF, per pagina — het controlespoor
-            van deze import.
+            The full text layer of the PDF, per page — the audit trail of this
+            import.
           </p>
           <Button asChild variant="secondary" size="sm">
             <a href={downloadHref} download>

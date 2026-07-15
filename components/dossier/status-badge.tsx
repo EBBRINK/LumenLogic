@@ -39,7 +39,7 @@ export function StatusTally({
   if (shown.length === 0) {
     return (
       <span className={cn("text-xs text-muted-foreground", className)}>
-        nog geen regels
+        no lines yet
       </span>
     );
   }

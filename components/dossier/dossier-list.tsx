@@ -8,7 +8,7 @@ export function DossierList({ dossiers }: { dossiers: DossierSummary[] }) {
   if (dossiers.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen projecten. Maak er hiernaast één aan.
+        No projects yet. Create one on the right.
       </p>
     );
   }

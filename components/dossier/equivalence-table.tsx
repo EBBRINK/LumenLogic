@@ -4,12 +4,12 @@ import type { AlternativeView, ComparedField } from "./types";
 
 function Verdict({ v }: { v: ComparedField["verdict"] }) {
   if (v === "better")
-    return <span className="font-medium text-emerald-600 dark:text-emerald-400">↑ beter</span>;
+    return <span className="font-medium text-emerald-600 dark:text-emerald-400">↑ better</span>;
   if (v === "worse")
-    return <span className="text-destructive">↓ minder</span>;
+    return <span className="text-destructive">↓ worse</span>;
   if (v === "equal")
-    return <span className="text-muted-foreground">= gelijk</span>;
-  return <span className="text-muted-foreground">— geen data</span>;
+    return <span className="text-muted-foreground">= equal</span>;
+  return <span className="text-muted-foreground">— no data</span>;
 }
 
 function Row({ f }: { f: ComparedField }) {
@@ -36,7 +36,7 @@ export function EquivalenceTable({ alt }: { alt: AlternativeView }) {
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{alt.brandName}</span>
             <Badge variant="secondary" className="text-[10px]">
-              gelijkwaardigheid {alt.equivalenceScore.toFixed(1)}
+              equivalence {alt.equivalenceScore.toFixed(1)}
             </Badge>
           </div>
           <p className="font-medium">{alt.name}</p>
@@ -47,24 +47,24 @@ export function EquivalenceTable({ alt }: { alt: AlternativeView }) {
         <div className="text-right">
           <p className="tabular-nums font-medium">{formatEur(alt.grossPrice)}</p>
           <p className="text-[10px] text-muted-foreground">
-            prijs — niet in de weging
+            price — not in the weighting
           </p>
         </div>
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="py-1 pr-3 font-medium">Veld</th>
-            <th className="py-1 pr-3 font-medium">Referentie</th>
-            <th className="py-1 pr-3 font-medium">Alternatief</th>
-            <th className="py-1 pr-3 font-medium">Oordeel</th>
-            <th className="py-1 font-medium">Bron</th>
+            <th className="py-1 pr-3 font-medium">Field</th>
+            <th className="py-1 pr-3 font-medium">Reference</th>
+            <th className="py-1 pr-3 font-medium">Alternative</th>
+            <th className="py-1 pr-3 font-medium">Verdict</th>
+            <th className="py-1 font-medium">Source</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td colSpan={5} className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Technisch
+              Technical
             </td>
           </tr>
           {alt.technical.map((f) => (
@@ -72,7 +72,7 @@ export function EquivalenceTable({ alt }: { alt: AlternativeView }) {
           ))}
           <tr>
             <td colSpan={5} className="pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Duurzaamheid
+              Sustainability
             </td>
           </tr>
           {alt.sustainability.map((f) => (

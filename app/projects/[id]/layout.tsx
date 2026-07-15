@@ -40,7 +40,7 @@ export default async function DossierLayout({
         href="/projects"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Projecten
+        <ArrowLeft className="size-3.5" /> Projects
       </Link>
 
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
@@ -74,8 +74,8 @@ export default async function DossierLayout({
 
       {readOnly && (
         <div className="mb-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Dit project is gearchiveerd en daarmee read-only. Zet de status terug
-          (bijvoorbeeld naar concept) om weer te kunnen wijzigen.
+          This project is archived and therefore read-only. Set the status back
+          (for example to Concept) to make it editable again.
         </div>
       )}
 

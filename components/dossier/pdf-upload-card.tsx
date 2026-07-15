@@ -13,6 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconUpload } from "./icons";
 
+// Client-side groottegrens: boven 100 MB laden we het bestand niet eens in het
+// geheugen (file.arrayBuffer() kan de tab dan laten vastlopen). Gewone grote
+// armaturenboeken (5–50 MB, veel foto's) blijven gewoon werken.
+const MAX_CLIENT_PDF_BYTES = 100 * 1024 * 1024;
+
 export type PdfPagesImportAction = (input: {
   dossierId: string;
   filename: string;
@@ -35,7 +40,13 @@ export function PdfUploadCard({
     setError(null);
     const file = new FormData(e.currentTarget).get("pdf");
     if (!(file instanceof File) || file.size === 0) return;
-    setBusy("PDF lezen…");
+    if (file.size > MAX_CLIENT_PDF_BYTES) {
+      setError(
+        `This file is very large (${Math.round(file.size / 1024 / 1024)} MB) — the browser may freeze while reading it. Reduce the PDF to under 100 MB and try again.`,
+      );
+      return;
+    }
+    setBusy("Reading PDF…");
     try {
       let pages: string[];
       try {
@@ -44,13 +55,13 @@ export function PdfUploadCard({
         pages = await extractPagesFromPdf(bytes);
       } catch {
         setError(
-          "Deze PDF kon niet gelezen worden (beschadigd of geen geldige PDF) — er is niets geïmporteerd.",
+          "This PDF could not be read (corrupted or not a valid PDF) — nothing was imported.",
         );
         return;
       }
       // Ook zonder tekstlaag sturen we de (lege) pagina's door: de server legt dan
       // een importrun + event vast en toont dezelfde eerlijke geen-tekstlaag-melding.
-      setBusy(`PDF gelezen — ${pages.length} pagina's, importeren…`);
+      setBusy(`PDF read — ${pages.length} pages, importing…`);
       const result = await importAction({
         dossierId,
         filename: file.name,
@@ -59,7 +70,7 @@ export function PdfUploadCard({
       if (result && "error" in result) setError(result.error);
       // bij succes redirect de action zelf; deze component verdwijnt dan.
     } catch {
-      setError("Importeren mislukt — probeer het opnieuw.");
+      setError("Import failed — please try again.");
     } finally {
       setBusy(null);
     }
@@ -69,14 +80,14 @@ export function PdfUploadCard({
     <Card className="mb-8">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <IconUpload aria-hidden /> Armaturenboek uploaden (PDF)
+          <IconUpload aria-hidden /> Upload luminaire schedule (PDF)
         </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-sm text-muted-foreground">
-          Upload het armaturenboek — regels worden automatisch gematcht. Alleen
-          PDF&apos;s met tekstlaag; de brontekst blijft als controlespoor bij de
-          import bewaard.
+          Upload the luminaire schedule — lines are matched automatically. Only
+          PDFs with a text layer; the source text is kept with the import as an
+          audit trail.
         </p>
         <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-3">
           <input
@@ -85,11 +96,11 @@ export function PdfUploadCard({
             accept="application/pdf"
             required
             disabled={busy != null}
-            aria-label="Armaturenboek-PDF kiezen"
+            aria-label="Choose luminaire schedule PDF"
             className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
           />
           <Button type="submit" disabled={busy != null}>
-            {busy ?? "Importeer PDF"}
+            {busy ?? "Import PDF"}
           </Button>
         </form>
         {busy && (

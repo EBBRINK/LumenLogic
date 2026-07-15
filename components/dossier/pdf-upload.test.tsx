@@ -1,10 +1,15 @@
 // White-box RSC-screenshottests voor stap 5: de projectpagina met de PDF-upload als
 // éérste blok boven de regeltabel, en de importrun-pagina met het inklapbare
 // markdown-controlespoor + downloadknop. Licht/donker × mobiel/desktop.
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
-import { noopAction } from "@/lib/test-actions";
+import boekUrl from "@/docs/examples/test-armaturenboek.pdf?url";
+import {
+  errorImportAction,
+  noopAction,
+  slowErrorImportAction,
+} from "@/lib/test-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSpecLineForm } from "./add-spec-line-form";
 import { ImportMarkdown } from "./import-markdown";
@@ -140,7 +145,7 @@ for (const [name, { ui, ready }] of Object.entries(screens)) {
 test("PDF-upload staat boven de regeltabel", async () => {
   const { container } = await renderServer(<ProjectRegelsScreen />);
   await expect
-    .element(page.getByText("Armaturenboek uploaden (PDF)"))
+    .element(page.getByText("Upload luminaire schedule (PDF)"))
     .toBeInTheDocument();
   const upload = container.querySelector('input[type="file"][name="pdf"]');
   const tabel = container.querySelector("table");
@@ -150,7 +155,7 @@ test("PDF-upload staat boven de regeltabel", async () => {
   expect(upload!.compareDocumentPosition(tabel!) & 4).toBe(4);
   // korte uitleg staat erbij
   await expect
-    .element(page.getByText(/regels worden automatisch gematcht/i))
+    .element(page.getByText(/lines are matched automatically/i))
     .toBeInTheDocument();
 });
 

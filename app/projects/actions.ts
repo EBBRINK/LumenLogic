@@ -191,7 +191,7 @@ export async function importArmaturenboekPagesAction(input: {
   });
   revalidatePath(`/projects/${dossierId}`);
   redirect(
-    `/projects/${dossierId}?pdf=${hadText ? String(lines.length) : "geen-tekstlaag"}&run=${run.id}`,
+    `/projects/${dossierId}?pdf=${hadText ? String(lines.length) : "no-text-layer"}&run=${run.id}`,
   );
 }
 

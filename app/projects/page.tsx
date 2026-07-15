@@ -59,10 +59,10 @@ export default async function DossiersPage({
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projecten</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">
-            Kies een project of maak een nieuw aan. Nieuw = concept; de
-            veiligheidsstand blijft default tender (veilig).
+            Choose a project or create a new one. New = Concept; the safety phase
+            stays Tender by default (safe).
           </p>
         </div>
         <Link
@@ -82,7 +82,7 @@ export default async function DossiersPage({
         <aside>
           <Card>
             <CardHeader>
-              <CardTitle>Nieuw project</CardTitle>
+              <CardTitle>New project</CardTitle>
             </CardHeader>
             <CardContent>
               <NewDossierForm

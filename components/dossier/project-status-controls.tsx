@@ -100,7 +100,7 @@ export function ProjectStatusControls({
           htmlFor={`xis-phase-${dossierId}`}
           className="text-sm text-muted-foreground"
         >
-          XIS-fase
+          XIS phase
         </label>
         <select
           id={`xis-phase-${dossierId}`}
@@ -122,19 +122,19 @@ export function ProjectStatusControls({
 
       {readOnly && (
         <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-          <IconLock className="size-3.5" /> Gearchiveerd:{" "}
-          {archivedReason?.trim() || "geen reden"}
+          <IconLock className="size-3.5" /> Archived:{" "}
+          {archivedReason?.trim() || "no reason"}
         </span>
       )}
 
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dit project archiveren?</DialogTitle>
+            <DialogTitle>Archive this project?</DialogTitle>
             <DialogDescription>
-              Een gearchiveerd project is read-only. De reden hoort erbij — een
-              verloren tender is data. Bijvoorbeeld &ldquo;verloren tender&rdquo; of
-              &ldquo;project vervallen&rdquo;.
+              An archived project is read-only. The reason is required — a lost
+              tender is data. For example &ldquo;lost tender&rdquo; or
+              &ldquo;project cancelled&rdquo;.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -148,14 +148,14 @@ export function ProjectStatusControls({
           >
             <div className="flex flex-col gap-1.5">
               <label htmlFor="archive-reason" className="text-sm font-medium">
-                Reden (verplicht)
+                Reason (required)
               </label>
               <Input
                 id="archive-reason"
                 name="reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="verloren tender"
+                placeholder="lost tender"
                 autoFocus
               />
             </div>
@@ -166,10 +166,10 @@ export function ProjectStatusControls({
                 size="sm"
                 onClick={() => setArchiveOpen(false)}
               >
-                Annuleer
+                Cancel
               </Button>
               <Button type="submit" size="sm" disabled={!reason.trim()}>
-                Ja, archiveer
+                Yes, archive
               </Button>
             </DialogFooter>
           </form>

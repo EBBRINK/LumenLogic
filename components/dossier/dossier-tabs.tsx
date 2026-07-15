@@ -21,20 +21,20 @@ export function DossierTabs({
   const pathname = usePathname();
   const base = `/projects/${dossierId}`;
   const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
-    { href: base, label: "Regels", match: (p) => p === base || p.startsWith(`${base}/regel`) || p.startsWith(`${base}/import`) },
+    { href: base, label: "Lines", match: (p) => p === base || p.startsWith(`${base}/line`) || p.startsWith(`${base}/import`) },
     { href: `${base}/review`, label: "Review", match: (p) => p.startsWith(`${base}/review`) },
     { href: `${base}/quote`, label: "Estimate", match: (p) => p.startsWith(`${base}/quote`) },
   ];
   if (phase === "awarded") {
     tabs.push({
       href: `${base}/work-prep`,
-      label: "Werkvoorbereiding",
+      label: "Work preparation",
       match: (p) => p.startsWith(`${base}/work-prep`),
     });
   }
   tabs.push({
     href: `${base}/luminaire-schedule`,
-    label: "Armaturenboek",
+    label: "Luminaire schedule",
     match: (p) => p.startsWith(`${base}/luminaire-schedule`),
   });
 

@@ -38,15 +38,15 @@ export default async function RegelsTab({
     <>
       {pdf && (
         <div className="mb-6 rounded-lg border bg-muted/40 p-3 text-sm">
-          {pdf === "geen-tekstlaag" ? (
+          {pdf === "no-text-layer" ? (
             <>
-              De PDF bevat geen tekstlaag (waarschijnlijk als beeld geëxporteerd) —
-              er viel niets te importeren. Gebruik een tekst-PDF of het CSV-blok.
+              This PDF has no text layer (probably exported as an image) — there
+              was nothing to import. Use a text PDF or the CSV block.
             </>
           ) : (
             <>
-              <span className="font-medium">{pdf}</span> spec-regels uit de PDF
-              geïmporteerd en gematcht.
+              <span className="font-medium">{pdf}</span> spec lines imported from
+              the PDF and matched.
             </>
           )}
           {run && (
@@ -56,7 +56,7 @@ export default async function RegelsTab({
                 href={`/projects/${dossier.id}/import/${run}`}
                 className="font-medium underline underline-offset-2 hover:text-foreground"
               >
-                Bekijk de importrun (brontekst)
+                View the import run (source text)
               </Link>
             </>
           )}
@@ -71,9 +71,9 @@ export default async function RegelsTab({
 
       <section className="mb-8">
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-lg font-medium">Regels ({lines.length})</h2>
+          <h2 className="text-lg font-medium">Lines ({lines.length})</h2>
           <p className="text-xs text-muted-foreground">
-            Volgorde = aanvraagvolgorde. Geen sorteerknoppen.
+            Order = request order. No sort buttons.
           </p>
         </div>
         <SpecLineTable
@@ -85,7 +85,7 @@ export default async function RegelsTab({
 
       <Card>
         <CardHeader>
-          <CardTitle>Regels toevoegen</CardTitle>
+          <CardTitle>Add lines</CardTitle>
         </CardHeader>
         <CardContent>
           <AddSpecLineForm
@@ -99,10 +99,10 @@ export default async function RegelsTab({
             className="mt-6 border-t pt-6"
           >
             <input type="hidden" name="dossierId" value={dossier.id} />
-            <p className="text-sm font-medium">Bestek / telstaat (aantallen)</p>
+            <p className="text-sm font-medium">Specification / count sheet (quantities)</p>
             <p className="mb-2 text-xs text-muted-foreground">
-              Plak &quot;code aantal&quot; per regel — de aantallen worden op de
-              armatuurcode gekoppeld. Onbekende codes worden overgeslagen.
+              Paste &quot;code quantity&quot; per line — quantities are linked on
+              the fixture code. Unknown codes are skipped.
             </p>
             <textarea
               name="bestek"
@@ -112,7 +112,7 @@ export default async function RegelsTab({
             />
             <div className="mt-2">
               <Button type="submit" variant="secondary" size="sm">
-                Koppel aantallen
+                Link quantities
               </Button>
             </div>
           </form>
