@@ -56,6 +56,33 @@ test("cri via CRI, Ra en met ≥/>=", () => {
   expect(parseProductName("COB CRI100").cri).toBe(100);
 });
 
+// OCR-armaturenboeken zetten vaak een dubbele punt tussen label en waarde
+// ("CRI: ≥90", "IP: 44") — de regex moet die ":" tussen label en ≥-teken tolereren.
+test("cri met OCR-labelstijl dubbele punt", () => {
+  expect(parseProductName("SASSO CRI: ≥ 90").cri).toBe(90);
+  expect(parseProductName("SASSO CRI:90").cri).toBe(90); // zonder spaties
+  expect(parseProductName("SASSO Ra: 95").cri).toBe(95);
+  // regressie: de oude vorm zonder dubbele punt blijft werken
+  expect(parseProductName("SASSO CRI ≥ 90").cri).toBe(90);
+});
+
+test("ip-waarde met OCR-labelstijl dubbele punt", () => {
+  expect(parseProductName("WALL IP: 44").ipValue).toBe("IP44");
+  expect(parseProductName("WALL IP:65").ipValue).toBe("IP65"); // zonder spaties
+  // regressie: de oude vorm zonder dubbele punt blijft werken
+  expect(parseProductName("BOLLARD IP 44").ipValue).toBe("IP44");
+});
+
+// Watt/kelvin/beam angle/lumen ankeren niet op het labelwoord zelf (bv. "Vermogen",
+// "Kleurtemperatuur") maar op getal+eenheid — een dubbele punt vóór het label speelt
+// daarom geen rol. Test dit expliciet zodat het gedrag toekomstbestendig is vastgelegd.
+test("watt/kelvin/beam angle/lumen blijven werken met een labelstijl dubbele punt ervoor", () => {
+  expect(parseProductName("Vermogen: 17,9 W").maxWattage).toBe(17.9);
+  expect(parseProductName("Kleurtemperatuur: 3000K").kelvin).toBe(3000);
+  expect(parseProductName("Bundelhoek: 36deg").beamAngle).toBe(36);
+  expect(parseProductName("Lichtstroom: 1200 lumen").lumenOutput).toBe(1200);
+});
+
 test("beam angle via deg, ° en 'graden'", () => {
   expect(parseProductName("SPOT 24deg").beamAngle).toBe(24);
   expect(parseProductName("SPOT 60°").beamAngle).toBe(60);

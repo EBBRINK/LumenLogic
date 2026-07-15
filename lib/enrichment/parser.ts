@@ -64,18 +64,24 @@ function parseKelvin(name: string): number | undefined {
   return k >= 2000 && k <= 8000 ? k : undefined;
 }
 
-// CRI/Ra (kleurweergave-index), optioneel met ≥/>=/>. "CRI90", "Ra90", "CRI≥90",
-// "CRI 90" → 90. Alleen 0–100 (index kan niet hoger).
+// CRI/Ra (kleurweergave-index), optioneel met een label-dubbele-punt en/of ≥/>=/>.
+// "CRI90", "Ra90", "CRI≥90", "CRI 90", "CRI: ≥ 90", "CRI:90" → 90. OCR-labels uit
+// armaturenboeken zetten vaak een ":" tussen het label en de waarde ("CRI: ≥90").
+// Alleen 0–100 (index kan niet hoger).
 function parseCri(name: string): number | undefined {
-  const raw = firstCapture(name, /\b(?:CRI|Ra)\s*(?:≥|>=|>)?\s*(\d{2,3})/i);
+  const raw = firstCapture(
+    name,
+    /\b(?:CRI|Ra)\s*:?\s*(?:≥|>=|>)?\s*(\d{2,3})/i,
+  );
   if (raw == null) return undefined;
   const cri = parseInt(raw, 10);
   return cri > 0 && cri <= 100 ? cri : undefined;
 }
 
-// IP-klasse: "IP20", "IP 44", "IP65" → genormaliseerd "IP44" (uppercase, geen spatie).
+// IP-klasse: "IP20", "IP 44", "IP65", "IP: 44", "IP:44" → genormaliseerd "IP44"
+// (uppercase, geen spatie). Zelfde OCR-dubbele-punt-scenario als bij CRI.
 function parseIpValue(name: string): string | undefined {
-  const raw = firstCapture(name, /\bIP\s*(\d{2})\b/i);
+  const raw = firstCapture(name, /\bIP\s*:?\s*(\d{2})\b/i);
   return raw == null ? undefined : `IP${raw}`;
 }
 
