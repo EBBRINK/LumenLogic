@@ -40,17 +40,16 @@ export default async function VerrijkingPage() {
         <ArrowLeft className="size-3.5" /> Data
       </Link>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Verrijking</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Enrichment</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          De parser leest specs uit de productnaam en stelt ze voor. Een
-          steekproef controleer je met de hand; pas na publiceren landen ze op de
-          producten. LLM-verrijking (voor namen zonder herkenbare specs) is een
-          latere stap.
+          The parser reads specs from the product name and proposes them. You check
+          a sample by hand; only after publishing do they land on the products. LLM
+          enrichment (for names without recognizable specs) is a later step.
         </p>
       </header>
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
-        <h2 className="mb-3 text-sm font-medium">Nieuwe run</h2>
+        <h2 className="mb-3 text-sm font-medium">New run</h2>
         <BrandPicker brands={brands} startAction={startRunAction} />
       </section>
 

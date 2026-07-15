@@ -55,12 +55,12 @@ export default async function MerkrelatiesPage() {
       </Link>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Merkrelaties</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Brand relations</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Per merk: relatiestatus, prijslijst-dekking en datacompleetheid.
-            Toestemming (disclosure) beheer je op{" "}
+            Per brand: relationship status, price-list coverage and data
+            completeness. Manage permission (disclosure) on{" "}
             <Link href="/admin/brands" className="underline">
-              Admin · Merken
+              Admin · Brands
             </Link>
             .
           </p>

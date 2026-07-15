@@ -6,28 +6,28 @@ export type DataCard = { href: string; title: string; desc: string };
 export const DATA_CARDS: DataCard[] = [
   {
     href: "/data/enrichment",
-    title: "Verrijking",
-    desc: "Parser over merknamen, steekproef controleren en publiceren.",
+    title: "Enrichment",
+    desc: "Parser over brand names, review the sample and publish.",
   },
   {
     href: "/data/loading",
-    title: "Inladen",
-    desc: "Blauw-wachtrij: gevraagde merken die nog niet in de catalogus staan.",
+    title: "Loading",
+    desc: "Blue queue: requested brands not yet in the catalog.",
   },
   {
     href: "/data/price-lists",
-    title: "Prijslijsten",
-    desc: "Verloopt-binnenkort en verlopen lijsten (dekkingsgaten).",
+    title: "Price lists",
+    desc: "Expiring-soon and expired lists (coverage gaps).",
   },
   {
     href: "/data/evaluation",
-    title: "Evaluatie",
-    desc: "Hit-rate van de matcher meten tegen de evaluatieset.",
+    title: "Evaluation",
+    desc: "Measure the matcher's hit-rate against the evaluation set.",
   },
   {
     href: "/data/brand-relations",
-    title: "Merkrelaties",
-    desc: "Relatiestatus en datacompleetheid per merk; data-inwinning.",
+    title: "Brand relations",
+    desc: "Relationship status and data completeness per brand; data collection.",
   },
 ];
 

@@ -45,19 +45,19 @@ export type BrandRelationTableRow = {
 };
 
 export const STATUS_LABEL: Record<RelationStatus, string> = {
-  niet_benaderd: "Niet benaderd",
-  benaderd: "Benaderd",
-  wacht_op_data: "Wacht op data",
-  data_ontvangen: "Data ontvangen",
-  verwerkt: "Verwerkt",
-  afgewezen: "Afgewezen",
+  niet_benaderd: "Not approached",
+  benaderd: "Approached",
+  wacht_op_data: "Awaiting data",
+  data_ontvangen: "Data received",
+  verwerkt: "Processed",
+  afgewezen: "Declined",
 };
 
 const INDICATOR_LABEL: Record<PriceIndicator, string> = {
-  aanwezig_geldig: "Geldig",
-  verloopt_binnenkort: "Verloopt binnenkort",
-  verlopen: "Verlopen",
-  ontbreekt: "Ontbreekt",
+  aanwezig_geldig: "Valid",
+  verloopt_binnenkort: "Expiring soon",
+  verlopen: "Expired",
+  ontbreekt: "Missing",
 };
 
 const INDICATOR_TINT: Record<PriceIndicator, string> = {
@@ -126,8 +126,8 @@ export function BrandRelationsTable({
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Zoek op merknaam…"
-          aria-label="Zoek op merknaam"
+          placeholder="Search by brand name…"
+          aria-label="Search by brand name"
           className="h-9 w-56 rounded-md border border-input bg-background px-3 text-sm"
         />
         <select
@@ -135,10 +135,10 @@ export function BrandRelationsTable({
           onChange={(e) =>
             setStatusFilter(e.target.value as "alle" | RelationStatus)
           }
-          aria-label="Filter op status"
+          aria-label="Filter by status"
           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
         >
-          <option value="alle">Alle statussen</option>
+          <option value="alle">All statuses</option>
           {(Object.keys(STATUS_LABEL) as RelationStatus[]).map((s) => (
             <option key={s} value={s}>
               {STATUS_LABEL[s]}
@@ -151,27 +151,27 @@ export function BrandRelationsTable({
             checked={geenReactie}
             onChange={(e) => setGeenReactie(e.target.checked)}
           />
-          Geen reactie (&gt; {GEEN_REACTIE_DAGEN} dagen)
+          No response (&gt; {GEEN_REACTIE_DAGEN} days)
         </label>
         <span className="ml-auto text-sm text-muted-foreground tabular-nums">
-          {filtered.length} van {rows.length} merken
+          {filtered.length} of {rows.length} brands
         </span>
       </div>
 
       {filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Geen merken die aan de filters voldoen.
+          No brands match the filters.
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Merk</TableHead>
+              <TableHead>Brand</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Laatste contact</TableHead>
-              <TableHead>Prijslijst</TableHead>
-              <TableHead className="text-right">Producten</TableHead>
-              <TableHead>Compleetheid</TableHead>
+              <TableHead>Last contact</TableHead>
+              <TableHead>Price list</TableHead>
+              <TableHead className="text-right">Products</TableHead>
+              <TableHead>Completeness</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -192,9 +192,9 @@ export function BrandRelationsTable({
                   {r.sharedBrandCode && (
                     <span
                       className="ml-2 inline-flex h-5 items-center rounded-full bg-orange-100 px-2 text-xs font-medium text-orange-800 dark:bg-orange-950 dark:text-orange-300"
-                      title="Meerdere merken delen deze code — niet dubbel benaderen"
+                      title="Multiple brands share this code — don't approach twice"
                     >
-                      dubbele code
+                      duplicate code
                     </span>
                   )}
                 </TableCell>
@@ -203,7 +203,7 @@ export function BrandRelationsTable({
                     value={r.status}
                     disabled={pending}
                     onChange={(e) => setStatus(r.brandId, e.target.value)}
-                    aria-label={`Status van ${r.brandName}`}
+                    aria-label={`Status of ${r.brandName}`}
                     className="h-8 rounded-md border border-input bg-background px-2 text-sm"
                   >
                     {(Object.keys(STATUS_LABEL) as RelationStatus[]).map(

@@ -64,9 +64,9 @@ export function EvaluationPanel({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm text-muted-foreground">Evaluatieset</p>
+          <p className="text-sm text-muted-foreground">Evaluation set</p>
           <p className="text-lg font-medium">
-            {lines.length} regel{lines.length === 1 ? "" : "s"}
+            {lines.length} line{lines.length === 1 ? "" : "s"}
           </p>
         </div>
         <form action={measureAction} className="flex items-end gap-2">
@@ -74,12 +74,12 @@ export function EvaluationPanel({
             <span className="text-muted-foreground">Label</span>
             <Input
               name="label"
-              placeholder="bv. na tolerantie-tweak"
+              placeholder="e.g. after tolerance tweak"
               className="h-8 w-56"
             />
           </label>
           <Button type="submit" size="sm" disabled={lines.length === 0}>
-            Meet hit-rate
+            Measure hit-rate
           </Button>
         </form>
       </div>
@@ -88,7 +88,7 @@ export function EvaluationPanel({
         <div className="rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
           <div className="flex items-baseline justify-between gap-4">
             <span className="text-sm text-muted-foreground">
-              Laatste meting · {latest.label}
+              Latest measurement · {latest.label}
             </span>
             <span className="text-2xl font-semibold tabular-nums tracking-tight">
               {pct(latest.hitRate)}
@@ -98,10 +98,10 @@ export function EvaluationPanel({
             <Table className="mt-4">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Regel</TableHead>
-                  <TableHead>Verwacht</TableHead>
-                  <TableHead>Kreeg</TableHead>
-                  <TableHead className="text-right">Resultaat</TableHead>
+                  <TableHead>Line</TableHead>
+                  <TableHead>Expected</TableHead>
+                  <TableHead>Got</TableHead>
+                  <TableHead className="text-right">Result</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -132,7 +132,7 @@ export function EvaluationPanel({
                               : "text-rose-600 dark:text-rose-400",
                           )}
                         >
-                          {r.hit ? "raak" : "mis"}
+                          {r.hit ? "hit" : "miss"}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -144,21 +144,21 @@ export function EvaluationPanel({
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Nog geen meting gedraaid. Klik &ldquo;Meet hit-rate&rdquo; om de
-          evaluatieset tegen de huidige catalogus te draaien.
+          No measurement run yet. Click &ldquo;Measure hit-rate&rdquo; to run the
+          evaluation set against the current catalog.
         </p>
       )}
 
       {runs.length > 1 && (
         <div>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-            Score over tijd
+            Score over time
           </h2>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Meting</TableHead>
-                <TableHead>Wanneer</TableHead>
+                <TableHead>Measurement</TableHead>
+                <TableHead>When</TableHead>
                 <TableHead className="text-right">Hit-rate</TableHead>
               </TableRow>
             </TableHeader>

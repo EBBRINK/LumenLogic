@@ -23,10 +23,10 @@ export default async function PrijslijstenPage() {
         <ArrowLeft className="size-3.5" /> Data
       </Link>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Prijslijsten</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Price lists</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Zicht op geldigheid. Verlopen lijsten zijn een dekkingsgat: hun
-          producten vallen uit de matcher tot er een nieuwe lijst is.
+          Validity at a glance. Expired lists are a coverage gap: their products
+          drop out of the matcher until there's a new list.
         </p>
       </header>
       <PriceListStatusTable rows={rows} />

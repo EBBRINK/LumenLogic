@@ -33,14 +33,14 @@ export function BrandPicker({
   if (brands.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen merken in de catalogus om te verrijken.
+        No brands in the catalog to enrich yet.
       </p>
     );
   }
   return (
     <form action={startAction} className="flex flex-wrap items-end gap-2">
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-muted-foreground">Merk</span>
+        <span className="text-muted-foreground">Brand</span>
         <select
           name="brandId"
           className="h-8 rounded-md border border-border bg-background px-2 text-sm"
@@ -49,13 +49,13 @@ export function BrandPicker({
           {brands.map((b) => (
             <option key={b.id} value={b.id} disabled={b.productCount === 0}>
               {b.name} — {b.productCount} prod.
-              {b.enriched > 0 ? ` (${b.enriched} verrijkt)` : ""}
+              {b.enriched > 0 ? ` (${b.enriched} enriched)` : ""}
             </option>
           ))}
         </select>
       </label>
       <Button type="submit" size="sm">
-        Parser draaien
+        Run parser
       </Button>
     </form>
   );
@@ -83,7 +83,7 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
   if (runs.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nog geen verrijkingsruns. Kies hierboven een merk en draai de parser.
+        No enrichment runs yet. Choose a brand above and run the parser.
       </p>
     );
   }
@@ -91,13 +91,13 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Merk</TableHead>
-          <TableHead>Datum</TableHead>
-          <TableHead className="text-right">Geparsed</TableHead>
-          <TableHead className="text-right">Steekproef</TableHead>
-          <TableHead className="text-right">Foutratio</TableHead>
+          <TableHead>Brand</TableHead>
+          <TableHead>Date</TableHead>
+          <TableHead className="text-right">Parsed</TableHead>
+          <TableHead className="text-right">Sample</TableHead>
+          <TableHead className="text-right">Error rate</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead className="text-right">Actie</TableHead>
+          <TableHead className="text-right">Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -127,7 +127,7 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
               </TableCell>
               <TableCell className="text-right">
                 <Button asChild size="sm" variant="outline">
-                  <a href={`/data/enrichment/${r.id}`}>Bekijk</a>
+                  <a href={`/data/enrichment/${r.id}`}>View</a>
                 </Button>
               </TableCell>
             </TableRow>
@@ -169,17 +169,17 @@ export function SampleReview({
     <div className="space-y-4">
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Deze run heeft geen steekproef-items — de parser vond niets in de
-          productnamen van dit merk.
+          This run has no sample items — the parser found nothing in this brand's
+          product names.
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Product</TableHead>
-              <TableHead>Veld</TableHead>
-              <TableHead>Waarde</TableHead>
-              <TableHead className="text-right">Oordeel</TableHead>
+              <TableHead>Field</TableHead>
+              <TableHead>Value</TableHead>
+              <TableHead className="text-right">Verdict</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -195,7 +195,11 @@ export function SampleReview({
                 <TableCell className="text-right">
                   {published ? (
                     <span className="text-xs text-muted-foreground">
-                      {it.sampleVerdict ?? "—"}
+                      {it.sampleVerdict === "goed"
+                        ? "correct"
+                        : it.sampleVerdict === "fout"
+                          ? "incorrect"
+                          : "—"}
                     </span>
                   ) : (
                     <div className="flex items-center justify-end gap-1">
@@ -211,7 +215,7 @@ export function SampleReview({
                           }
                           aria-pressed={it.sampleVerdict === "goed"}
                         >
-                          <IconCheck /> Goed
+                          <IconCheck /> Correct
                         </Button>
                       </form>
                       <form action={verdictAction}>
@@ -228,7 +232,7 @@ export function SampleReview({
                           }
                           aria-pressed={it.sampleVerdict === "fout"}
                         >
-                          Fout
+                          Incorrect
                         </Button>
                       </form>
                     </div>
@@ -244,20 +248,20 @@ export function SampleReview({
         <div className="flex items-center justify-between gap-3 border-t pt-4">
           <p className="text-xs text-muted-foreground">
             {foutCount > 0
-              ? `${foutCount} item(s) als fout gemarkeerd — die worden niet toegepast.`
-              : "Publiceren vult de lege matchvelden en hermatcht blauwe regels van dit merk."}
+              ? `${foutCount} item(s) marked incorrect — they won't be applied.`
+              : "Publishing fills the empty match fields and re-matches this brand's blue lines."}
           </p>
           <div className="flex items-center gap-2">
             <form action={rejectAction}>
               <input type="hidden" name="runId" value={runId} />
               <Button type="submit" size="sm" variant="ghost">
-                Verwerpen
+                Reject
               </Button>
             </form>
             <form action={publishAction}>
               <input type="hidden" name="runId" value={runId} />
               <Button type="submit" size="sm">
-                Publiceren
+                Publish
               </Button>
             </form>
           </div>

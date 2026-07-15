@@ -16,7 +16,7 @@ export function TemplateDownloadLink() {
       className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground ring-1 ring-foreground/10 hover:bg-secondary/80"
     >
       <FileSpreadsheet className="size-4" aria-hidden />
-      Excel-template downloaden
+      Download Excel template
     </a>
   );
 }

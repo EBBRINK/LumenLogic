@@ -48,11 +48,11 @@ export default async function EvaluatiePage() {
         <ArrowLeft className="size-3.5" /> Data
       </Link>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Evaluatie</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Evaluation</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Een vaste set échte spec-regels met een door mensen vastgestelde
-          verwachte status. Elke meting draait de matcher ertegen — zo zie je bij
-          elke tolerantie- of zoektweak of de kwaliteit vooruit of achteruit ging.
+          A fixed set of real spec lines with a human-set expected status. Each
+          measurement runs the matcher against it — so with every tolerance or
+          search tweak you see whether quality went up or down.
         </p>
       </header>
       <EvaluationPanel

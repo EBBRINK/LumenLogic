@@ -40,19 +40,17 @@ export function BrandScorecard({
   if (!hasProducts) {
     return (
       <p className="text-sm text-muted-foreground">
-        Geen producten in de catalogus — compleetheid n.v.t. tot dit merk is
-        ingeladen.
+        No products in the catalog — completeness n/a until this brand is loaded.
       </p>
     );
   }
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Dekking per veld over {productCount} product(en). Donkergroen = alle
-        must-velden 100% gevuld; daaronder kleurt de balk mee met de
-        dekkingsgraad. Grijs = nog niet meetbaar (veld bestaat nog niet in het
-        datamodel). Velden met een slotje zijn intern-commercieel en gaan nooit
-        naar het merk.
+        Coverage per field across {productCount} product(s). Dark green = all must
+        fields 100% filled; below that the bar tracks the coverage. Gray = not
+        measurable yet (field doesn't exist in the data model yet). Fields with a
+        lock are internal-commercial and never go to the brand.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {buckets.map(({ bucket, score }) => {
@@ -64,11 +62,11 @@ export function BrandScorecard({
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium">
-                  {bucket.order}. {bucket.labelNl}
+                  {bucket.order}. {bucket.labelEn}
                 </h3>
                 {score.measurableTotal === 0 && (
                   <span className="text-xs text-muted-foreground">
-                    nog niet meetbaar
+                    not measurable yet
                   </span>
                 )}
               </div>
@@ -87,8 +85,8 @@ export function BrandScorecard({
                       className="flex items-center gap-2 text-sm"
                       title={
                         ratio === null
-                          ? `${f.labelNl}: nog niet meetbaar — telt pas mee zodra de kolom in het datamodel bestaat`
-                          : `${f.labelNl}: ${Math.round(ratio * 100)}% van de producten gevuld`
+                          ? `${f.labelEn}: not measurable yet — only counts once the column exists in the data model`
+                          : `${f.labelEn}: ${Math.round(ratio * 100)}% of products filled`
                       }
                     >
                       <span
@@ -97,16 +95,16 @@ export function BrandScorecard({
                           ratio === null && "text-muted-foreground",
                         )}
                       >
-                        {f.labelNl}
+                        {f.labelEn}
                         {f.internalOnly && (
                           // lucide-react kan niet in RSC-getestte server-
                           // componenten (client context) — dus een kale badge.
                           <span
-                            aria-label="intern"
-                            title="Intern-commercieel — nooit in het merk-Excel"
+                            aria-label="internal"
+                            title="Internal-commercial — never in the brand Excel"
                             className="ml-1.5 inline-flex h-4 items-center rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground"
                           >
-                            intern
+                            internal
                           </span>
                         )}
                       </span>
@@ -115,7 +113,7 @@ export function BrandScorecard({
                       </span>
                       {ratio === null ? (
                         <span className="w-24 text-right text-xs text-muted-foreground">
-                          niet meetbaar
+                          not measurable
                         </span>
                       ) : (
                         <span className="flex w-24 items-center justify-end gap-1.5">

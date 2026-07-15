@@ -13,9 +13,9 @@ const RUN_TINT: Record<RunStatus, string> = {
 };
 
 const RUN_LABEL: Record<RunStatus, string> = {
-  steekproef: "Steekproef",
-  gepubliceerd: "Gepubliceerd",
-  afgewezen: "Afgewezen",
+  steekproef: "Sample",
+  gepubliceerd: "Published",
+  afgewezen: "Rejected",
 };
 
 export function RunStatusBadge({ status }: { status: RunStatus }) {

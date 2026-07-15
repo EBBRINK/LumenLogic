@@ -31,11 +31,11 @@ export default async function InladenPage() {
         <ArrowLeft className="size-3.5" /> Data
       </Link>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Inladen</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Loading</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Merken die als datagat (blauw) gevraagd zijn maar nog niet in de
-          catalogus staan. De frequentie telt hoe vaak ze over alle projecten
-          voorkomen — laadt de meest gevraagde eerst.
+          Brands requested as a data gap (blue) but not yet in the catalog. The
+          frequency counts how often they appear across all projects — load the
+          most requested first.
         </p>
       </header>
       <BrandLoadQueue rows={rows} markLoadedAction={markLoadedAction} />

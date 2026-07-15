@@ -39,7 +39,7 @@ export function BrandRelationForm({
         </select>
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        Laatste contact
+        Last contact
         <input
           type="date"
           name="lastContactAt"
@@ -48,32 +48,32 @@ export function BrandRelationForm({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        Contactpersoon
+        Contact
         <input
           type="text"
           name="contactName"
           defaultValue={values.contactName ?? ""}
-          placeholder="Naam bij het merk"
+          placeholder="Name at the brand"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        E-mail
+        Email
         <input
           type="email"
           name="contactEmail"
           defaultValue={values.contactEmail ?? ""}
-          placeholder="naam@merk.com"
+          placeholder="name@brand.com"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
       </label>
       <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-        Notities
+        Notes
         <textarea
           name="notes"
           defaultValue={values.notes ?? ""}
           rows={3}
-          placeholder="Afspraken, toezeggingen, bijzonderheden…"
+          placeholder="Agreements, commitments, notes…"
           className="rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
       </label>
@@ -82,7 +82,7 @@ export function BrandRelationForm({
           type="submit"
           className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          Opslaan
+          Save
         </button>
       </div>
     </form>

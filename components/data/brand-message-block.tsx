@@ -45,7 +45,7 @@ export function BrandMessageBlock({
         ref={textareaRef}
         readOnly
         value={message}
-        aria-label="Bericht aan het merk"
+        aria-label="Message to the brand"
         rows={Math.min(18, message.split("\n").length + 1)}
         className="w-full resize-y rounded-md border border-foreground/15 bg-background p-3 font-mono text-sm leading-relaxed text-foreground"
       />
@@ -60,10 +60,10 @@ export function BrandMessageBlock({
           ) : (
             <Copy className="size-4" aria-hidden />
           )}
-          {gekopieerd ? "Gekopieerd" : "Bericht kopiëren"}
+          {gekopieerd ? "Copied" : "Copy message"}
         </button>
         <span className="text-xs text-muted-foreground">
-          Plak het bericht in uw mail en voeg het Excel-template als bijlage toe.
+          Paste the message into your email and attach the Excel template.
         </span>
       </div>
     </div>

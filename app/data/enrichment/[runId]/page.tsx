@@ -46,7 +46,7 @@ export default async function VerrijkingRunPage({
         href="/data/enrichment"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Verrijking
+        <ArrowLeft className="size-3.5" /> Enrichment
       </Link>
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
@@ -54,10 +54,10 @@ export default async function VerrijkingRunPage({
             {run.brandName}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground tabular-nums">
-            {counts.geparsed ?? 0} geparste velden · {counts.steekproef ?? 0} in
-            de steekproef
+            {counts.geparsed ?? 0} parsed fields · {counts.steekproef ?? 0} in the
+            sample
             {run.status === "gepubliceerd" && counts.toegepast != null && (
-              <> · {counts.toegepast} toegepast</>
+              <> · {counts.toegepast} applied</>
             )}
           </p>
         </div>

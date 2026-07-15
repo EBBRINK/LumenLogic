@@ -70,7 +70,7 @@ export default async function MerkrelatieDetailPage({
         href="/data/brand-relations"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Merkrelaties
+        <ArrowLeft className="size-3.5" /> Brand relations
       </Link>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -83,9 +83,9 @@ export default async function MerkrelatieDetailPage({
             )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Relatie en datacompleetheid. Toestemming (disclosure) beheer je op{" "}
+            Relationship and data completeness. Manage permission (disclosure) on{" "}
             <Link href="/admin/brands" className="underline">
-              Admin · Merken
+              Admin · Brands
             </Link>
             .
           </p>
@@ -93,7 +93,7 @@ export default async function MerkrelatieDetailPage({
       </header>
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
-        <h2 className="mb-3 font-medium">Relatie</h2>
+        <h2 className="mb-3 font-medium">Relationship</h2>
         <BrandRelationForm
           values={{
             brandId: row.id,
@@ -109,7 +109,7 @@ export default async function MerkrelatieDetailPage({
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-medium">Bericht klaarzetten</h2>
+          <h2 className="font-medium">Prepare message</h2>
           <TemplateDownloadLink />
         </div>
         <BrandMessageBlock
@@ -120,7 +120,7 @@ export default async function MerkrelatieDetailPage({
       </section>
 
       <section>
-        <h2 className="mb-3 font-medium">Compleetheid</h2>
+        <h2 className="mb-3 font-medium">Completeness</h2>
         <BrandScorecard
           buckets={completeness.buckets}
           filledByField={completeness.filledByField}
