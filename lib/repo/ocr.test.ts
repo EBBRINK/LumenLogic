@@ -1035,9 +1035,70 @@ test(">8 kandidaten voor hetzelfde merk/token: een mens-gekozen match buiten de 
   // P is nog steeds geldig (directe toets), ondanks dat hij buiten de top-8 van
   // de gelimiteerde kandidatenzoektocht valt → GEEN spookmatch-clear.
   expect(afterUpgrade.matchedProductId).toBe(productP);
+  // CodeRabbit (PR #4, Major): matchedProductId behouden is niet genoeg — runMatcher
+  // kende de regel zonet zijn eigen (top-8-beperkte) status toe, die "rood"/"open"
+  // kan zijn terwijl P bij directe toetsing nog groen-waardig is. Zonder reconciliatie
+  // zou deze regel met een geldige match tóch buiten generateQuote/de estimate vallen.
+  expect(afterUpgrade.status).toBe("groen");
+  expect(afterUpgrade.deviations).not.toBeNull();
 
   const upgradedEvents = await eventsByAction(db, "ocr_line_upgraded");
   expect(upgradedEvents.length).toBe(1);
+});
+
+// ── CodeRabbit (PR #4, Major): de "checked terugzetten"-loop in processOcrPage
+// doorzocht alleen priorRows (vorige pagina's), niet de newRows die al binnen
+// DEZELFDE pagina zijn opgebouwd. Als vision per ongeluk twee keer dezelfde code
+// op één pagina aflevert (arme lezing gevolgd door een rijkere), bleven beide
+// rijen checked:true staan en liep counts.checked ten onrechte op.
+test("dezelfde code twee keer op één pagina (arm dan rijk): precies één regel telt als checked", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+
+  const p1 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p1).toMatchObject({ created: 1, duplicates: 0, upgraded: 1 });
+
+  const lines = await runLines(db, run.id);
+  expect(lines.length).toBe(1);
+
+  const updatedRun = await getImportRun(db, run.id);
+  const rows = (updatedRun?.rows ?? []) as ImportRow[];
+  expect(rows.filter((r) => r.fixtureCode === "Lp301")).toHaveLength(2);
+  expect(rows.filter((r) => r.checked).length).toBe(1);
+  expect(updatedRun?.counts?.checked).toBe(1);
 });
 
 // ── KRITIEK: een mens had de arme lezing al goedgekeurd (matchedProductId + chosenBy)

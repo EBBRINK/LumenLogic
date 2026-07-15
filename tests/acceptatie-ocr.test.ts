@@ -434,7 +434,17 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
   let sassoDb: TestDb;
   let sassoDossierId: string;
   let sassoRunId: string;
+  let lp301Na1: Awaited<ReturnType<typeof sassoLineByCode>>;
+  let lp301Na2: Awaited<ReturnType<typeof sassoLineByCode>>;
+  let p1Result: Awaited<ReturnType<typeof processOcrPage>>;
+  let p2Result: Awaited<ReturnType<typeof processOcrPage>>;
 
+  // CodeRabbit (PR #4, Minor): de volledige scenario-opbouw (run starten, beide
+  // pagina's verwerken, tussenresultaten vastleggen) staat hier in ÉÉN beforeAll —
+  // niet meer verspreid over een eerste test() waar een latere test op leunde.
+  // `bun vitest run -t "generateQuote/estimate"` (of elke andere filter/losse
+  // testrun) bouwt het dossier dus altijd zelf op, ongeacht welke test() erna
+  // daadwerkelijk draait.
   beforeAll(async () => {
     sassoDb = await createTestDb();
 
@@ -456,9 +466,7 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
       actor: ACTOR,
     });
     sassoDossierId = dossier.id;
-  }, 120_000);
 
-  test("inhoudsopgave-rij (arm) → detailpagina-rij (rijk) upgradet dezelfde regel naar rood", async () => {
     const { run } = await startOcrRun(sassoDb, {
       dossierId: sassoDossierId,
       filename: "ret-waalhaven-deerns.pdf",
@@ -466,12 +474,11 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
       actor: ACTOR,
     });
     sassoRunId = run.id;
-    expect((await sassoEventsByAction("ocr_started"))).toHaveLength(1);
 
     // Pagina 1 — inhoudsopgave-stijl: code, merk, type, GEEN cijfers/eenheden. Het
     // "8" is een paginaverwijzing uit de inhoudsopgave, geen spec (zie
     // probleemdocument, "Oorzaak").
-    const p1 = await processOcrPage(sassoDb, {
+    p1Result = await processOcrPage(sassoDb, {
       runId: sassoRunId,
       page: 1,
       imageBytes: IMAGE,
@@ -488,12 +495,7 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
       ]),
       actor: ACTOR,
     });
-    expect(p1).toMatchObject({ created: 1, duplicates: 0 });
-
-    const lp301Na1 = await sassoLineByCode("Lp301");
-    expect(lp301Na1.reqKelvin).toBeNull();
-    expect(lp301Na1.reqWatt).toBeNull();
-    expect(lp301Na1.reqCri).toBeNull();
+    lp301Na1 = await sassoLineByCode("Lp301");
 
     // Pagina 2 — detailpagina-stijl, ZELFDE code: volledige specs zoals echt in het
     // boek. LET OP: "CRI ≥ 90" zonder dubbele punt vóór het ≥-symbool — parseCri()
@@ -505,7 +507,7 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
     // echte boek de rest van de specs ook zonder leestekens tussen label en waarde
     // toont ("Vermogen: 17,9 W." heeft de ruimte wél na de dubbele punt, dat botst
     // niet met \s*).
-    const p2 = await processOcrPage(sassoDb, {
+    p2Result = await processOcrPage(sassoDb, {
       runId: sassoRunId,
       page: 2,
       imageBytes: IMAGE,
@@ -523,11 +525,22 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
       ]),
       actor: ACTOR,
     });
+    lp301Na2 = await sassoLineByCode("Lp301");
+
+    await finishOcrRun(sassoDb, { runId: sassoRunId, actor: ACTOR });
+  }, 120_000);
+
+  test("inhoudsopgave-rij (arm) → detailpagina-rij (rijk) upgradet dezelfde regel naar rood", async () => {
+    expect(await sassoEventsByAction("ocr_started")).toHaveLength(1);
+    expect(p1Result).toMatchObject({ created: 1, duplicates: 0 });
+    expect(lp301Na1.reqKelvin).toBeNull();
+    expect(lp301Na1.reqWatt).toBeNull();
+    expect(lp301Na1.reqCri).toBeNull();
+
     // Zelfde armatuurcode binnen dezelfde run → geen nieuwe regel (created:0), maar
     // een upgrade van de bestaande (item A: rijkste-wint-dedup, niet eerste-wint).
-    expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+    expect(p2Result).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
 
-    const lp301Na2 = await sassoLineByCode("Lp301");
     // DEZELFDE regel (zelfde id) — geen tweede rij voor dezelfde code.
     expect(lp301Na2.id).toBe(lp301Na1.id);
     expect(lp301Na2.reqKelvin).toBe(3000);
@@ -536,16 +549,14 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
     expect(lp301Na2.reqWatt).toBe("17.90");
 
     // DE KERNREPARATIE: vóór de fix zou dit GROEN zijn gebleven — zonder gevraagde
-    // kelvin had de tolerantietabel niets om op af te wijzen (judgeKelvin geeft
-    // "onbekend" bij delivered==null, niet "rood"). Nu de detailpagina de
-    // kelvin-eis (3000) heeft laten doorkomen, ziet de matcher de mismatch met wat
-    // Brink levert (XAL SASSO 100 2700K) en wijst terecht af: ROOD.
-    // Vóór de fix (zie probleemdocument, "Gevolg voor de matcher"): groen, want
-    // reqKelvin bleef null (de inhoudsopgave-lezing won altijd) → de tolerantietabel
-    // had geen kelvin om te toetsen.
+    // kelvin genereert de tolerantietabel voor dat veld helemaal geen deviation
+    // (judgeCandidate geeft kelvin pas door aan judgeKelvin als req.kelvin != null).
+    // Nu de detailpagina de kelvin-eis (3000) heeft laten doorkomen, ziet de matcher
+    // de mismatch met wat Brink levert (XAL SASSO 100 2700K) en wijst terecht af:
+    // ROOD. Vóór de fix (zie probleemdocument, "Gevolg voor de matcher"): geen
+    // zichtbare afwijking (mogelijk ten onrechte groen), want reqKelvin bleef null
+    // (de inhoudsopgave-lezing won altijd) → er was niets om op te toetsen.
     expect(lp301Na2.status).toBe("rood");
-
-    await finishOcrRun(sassoDb, { runId: sassoRunId, actor: ACTOR });
 
     // Event-keten compleet (ijzeren regel 5): start, 2× page_done, done, en de
     // upgrade zelf met bewaarde rijkdom-sprong (0 → ≥1).

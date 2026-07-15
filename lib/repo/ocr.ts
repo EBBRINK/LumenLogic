@@ -302,6 +302,21 @@ async function upgradeOcrLine(
     if (productRow) {
       const deviations = judgeCandidate(req.specs, toDelivered(productRow));
       stillValid = !hasRed(deviations) && !hasUnknown(deviations);
+      if (stillValid) {
+        // CodeRabbit (PR #4, Major): runMatcher hierboven kende de regel zonet nog
+        // zijn eigen (top-8-beperkte) status/deviations toe — die kan best "rood"
+        // of "open" zijn terwijl de directe toets hier net vaststelde dat het OUDE
+        // product nog steeds groen-waardig is (stillValid impliceert !hasRed &&
+        // !hasUnknown via judgeCandidate). Zonder deze reconciliatie zou de regel
+        // een geldige matchedProductId hebben mét een niet-groene status — en
+        // zo'n regel valt dan stilzwijgend buiten generateQuote/de estimate (die
+        // typisch alleen groene/gematchte regels meeneemt). status en deviations
+        // horen dus bij dezelfde (directe) toets als matchedProductId.
+        await db
+          .update(specLines)
+          .set({ status: "groen", deviations })
+          .where(eq(specLines.id, existing.id));
+      }
     }
   }
   if (oldMatchedProductId && !stillValid) {
@@ -500,9 +515,14 @@ export async function processOcrPage(
     });
     upgraded++;
     newRows.push({ ...baseRow, checked: true });
-    // f) De eerdere winnende entry van deze code (uit een vorige pagina) is niet
-    // langer de "checked" lezing — precies één rij per code mag checked:true zijn.
-    for (const r of priorRows) {
+    // f) De eerdere winnende entry van deze code is niet langer de "checked"
+    // lezing — precies één rij per code mag checked:true zijn. CodeRabbit (PR #4,
+    // Major): dat eerdere winnende exemplaar kan ook al in newRows staan (vision
+    // levert per ongeluk twee keer dezelfde code op ÉÉN pagina — de arme eerste
+    // keer werd hierboven al als upgrade verwerkt en zit als checked:true in
+    // newRows), niet alleen in priorRows (een vorige pagina). Beide arrays
+    // doorzoeken voorkomt dat twee rijen checked:true blijven staan.
+    for (const r of [...priorRows, ...newRows]) {
       if (r.fixtureCode === regel.armatuurcode && r.checked) {
         r.checked = false;
         break;

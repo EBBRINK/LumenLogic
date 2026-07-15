@@ -2,13 +2,18 @@
 
 ## Status: opgelost
 
-Branch `fix-ocr-toc-specs`, vier commits:
+Branch `fix-ocr-toc-specs`, commits:
 - `c7a458d` — item C: `parseProductName` draait over `ruweTekst`+`type`, niet alleen `type`.
+- `9c4c440` — item A: rijkste-wint-dedup (`specRichness`/`getOwnOcrLine`/`upgradeOcrLine`
+  in `lib/repo/ocr.ts`, `ProcessOcrPageResult.upgraded`).
 - `6dcad0c` — eerste spookmatch-fix-poging, in review AFGEKEURD (zie hieronder).
 - `2766ba6` — definitieve spookmatch-fix: het oude product rechtstreeks tegen de nieuwe
   gevraagde specs toetsen, los van elke kandidatenlijst/limiet.
 - `958f253` — acceptatietest die het echte SASSO/RET-Waalhaven-scenario reproduceert en
   de fix bewijst.
+- (deze documentatie-/bugfix-commit) — CodeRabbit-bevindingen op PR #4 verwerkt: status/
+  deviations reconciliatie bij `stillValid` en de `checked`-terugzet-loop over
+  `priorRows`+`newRows` (zie "Toegepast" hieronder), plus deze doc-precisering.
 
 Drie reviewrondes op de spookmatch-vergelijking, telkens afgekeurd op een concreet gat:
 1. **Ronde 1** (vóór `6dcad0c`): plan vergeleek het oude `matchedProductId` alleen tegen
@@ -135,9 +140,12 @@ blijft de bestaande lezing staan (geen onnodige churn).
 - Race tussen twee overlappende pagina-verwerkingen van dezelfde run/code: geen
   nieuwe unique-constraint/migratie hiervoor — zelfde geaccepteerd-risico-patroon
   als eerder in dit project (single-user, sequentiële client-loop maakt een echte
-  gelijktijdige aanroep voor dezelfde run praktisch onmogelijk). Wél de
-  lees-vergelijk-schrijf-stap in één `db.transaction()` wikkelen (correct sowieso,
-  geen migratie nodig). Expliciet als geaccepteerd risico in HANDOVER.md.
+  gelijktijdige aanroep voor dezelfde run praktisch onmogelijk). **Update ná
+  implementatie**: de lees-vergelijk-schrijf-stap in `db.transaction()` wikkelen
+  bleek gééN optie — `drizzle-orm/neon-http` (de productie-driver) ondersteunt
+  geen interactieve transacties (`session.js`: "No transactions support in
+  neon-http driver"); zie het "Toegepast"-kopje hieronder en HANDOVER.md voor de
+  volledige toelichting van dit geaccepteerde race-risico.
 - Testplan uitgebreid met: mens had de arme lezing al goedgekeurd → upgrade →
   `matchedProductId` wordt schoon, event bevat de oude keuze-informatie.
 
@@ -180,3 +188,20 @@ spookmatch-fix + audit-bewaring, in transactie), 3) geïsoleerde acceptatietest
   `db.transaction()` bleek geen optie (`drizzle-orm/neon-http` ondersteunt geen
   interactieve transacties); zie HANDOVER.md voor de volledige toelichting van
   het geaccepteerde race-risico.
+- **CodeRabbit-review op PR #4 (Major, allebei gefixt in één vervolgcommit)**:
+  1. **Status/deviations-reconciliatie**: `stillValid=true` liet alleen
+     `matchedProductId` intact — status en deviations op de regel kwamen nog van
+     `runMatcher`'s eigen top-8-beperkte berekening (mogelijk "rood"/"open"),
+     terwijl de directe toets net had vastgesteld dat het oude product nog
+     groen-waardig is. Gevolg: een regel met geldige `matchedProductId` maar een
+     niet-groene status viel stilzwijgend buiten `generateQuote`/de estimate.
+     **Fix**: bij `stillValid=true` ook `status: "groen"` en de `deviations` uit
+     de directe `judgeCandidate`-aanroep op de regel schrijven. Assertie
+     toegevoegd aan de bestaande ">8 kandidaten"-test in `lib/repo/ocr.test.ts`.
+  2. **checked-terugzet-loop miste newRows**: de zoeklus die de vorige winnende
+     entry van een code op `checked:false` zet, doorzocht alleen `priorRows`
+     (vorige pagina's), niet de `newRows` die al binnen dezelfde pagina waren
+     opgebouwd. Twee keer dezelfde code op één pagina (arme lezing gevolgd door
+     een rijkere) liet dan beide rijen `checked:true` staan. **Fix**: zoeklus
+     doorzoekt nu `[...priorRows, ...newRows]`. Nieuwe test in
+     `lib/repo/ocr.test.ts` bewijst precies één `checked:true`-rij na afloop.
