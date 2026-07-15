@@ -20,6 +20,7 @@ import {
   jsonb,
   numeric,
   pgEnum,
+  pgSchema,
   pgTable,
   pgView,
   smallint,
@@ -211,7 +212,7 @@ export const categories = pgTable("categories", {
 });
 
 // products: technische velden (matching) + duurzaamheidsvelden (grotendeels leeg, run 2+).
-export const products = pgTable("products", {
+const productColumns = {
   id: uuid("id").primaryKey(),
   articleCode: text("article_code"), // intern artikelnummer (XIS A1)
   name: text("name").notNull(),
@@ -248,8 +249,70 @@ export const products = pgTable("products", {
   countryOfOrigin: text("country_of_origin"),
   // H-09: herkomst per verrijkt veld — { kelvin: 'parsed-from-name', cri: 'llm', … }
   tier2Source: jsonb("tier2_source").$type<Record<string, string>>(),
+  // ── Veldcatalogus 0007 (plan-datamodel-productspecs B4): schema nú, gefaseerd vullen ──
+  // Bucket 1 — basis & identiteit
+  nameEn: text("name_en"),
+  descriptionEn: text("description_en"),
+  eanCode: text("ean_code"),
+  family: text("family"),
+  designer: text("designer"),
+  etimClass: text("etim_class"), // ETIM-haakje (B5) — geen ombouw naar ETIM-codes
+  // Bucket 2 — commercie-vlaggen (🔒 intern; komen in géén view)
+  stock: integer("stock"),
+  stockReserved: integer("stock_reserved"),
+  showOnWeb: text("show_on_web"), // XIS-enum: 'J' | 'N' | 'Uitlopend' | …
+  showPriceOnWeb: boolean("show_price_on_web"),
+  // Bucket 3 — zaagmaten (inbouw)
+  cuttingSizeHeightCm: numeric("cutting_size_height_cm", { precision: 8, scale: 2 }),
+  cuttingSizeWidthCm: numeric("cutting_size_width_cm", { precision: 8, scale: 2 }),
+  cuttingSizeLengthCm: numeric("cutting_size_length_cm", { precision: 8, scale: 2 }),
+  cuttingSizeDiameterCm: numeric("cutting_size_diameter_cm", { precision: 8, scale: 2 }),
+  // Bucket 4 — tweede kleur/materiaal
+  color2: text("color_2"),
+  material2: text("material_2"),
+  // Bucket 5 — lichtbron & fitting
+  lightSourceSystem: text("light_source_system"), // bv. Fortimo, Reo
+  lightSourceIncluded: boolean("light_source_included"),
+  lampFoot: text("lamp_foot"), // fitting
+  lampCategory: text("lamp_category"),
+  // Bucket 6 — fotometrie
+  sdcm: smallint("sdcm"),
+  efficacy: numeric("efficacy", { precision: 6, scale: 1 }), // lm/W
+  ugr: text("ugr"), // bv. '<19'
+  lifetimeRating: text("lifetime_rating"), // bv. 'L80B10 @ 50.000u'
+  systemLumen: integer("system_lumen"), // armatuur ná optiek
+  moduleLumen: integer("module_lumen"), // LED-module bron
+  lightDistribution: text("light_distribution"), // direct/indirect/…
+  // Bucket 7 — elektrisch / driver
+  dimProtocol: text("dim_protocol"), // DALI / DALI-2 / 1-10V / fase / Casambi
+  systemWattage: numeric("system_wattage", { precision: 8, scale: 2 }),
+  ledWattage: numeric("led_wattage", { precision: 8, scale: 2 }),
+  driveCurrent: text("drive_current"), // 350mA / 700mA / …
+  forwardVoltage: numeric("forward_voltage", { precision: 6, scale: 1 }),
+  nominalVoltage: text("nominal_voltage"), // 230V AC / 24V DC / 48V DC
+  driverType: text("driver_type"), // constante stroom / constante spanning
+  powerFactor: numeric("power_factor", { precision: 4, scale: 2 }),
+  standbyPower: numeric("standby_power", { precision: 6, scale: 2 }),
+  // Bucket 8 — bescherming & conformiteit
+  protectionClass: text("protection_class"), // I / II / III
+  ikRating: text("ik_rating"), // IK02…IK10
+  energyLabel: text("energy_label"),
+  emergency: boolean("emergency"), // noodverlichting
+  ambientTemp: text("ambient_temp"), // bv. '-20 tot +40 °C'
+  flammableMount: boolean("flammable_mount"), // F-markering
+  // Bucket 9 — documentatie / links
+  urlDatasheet: text("url_datasheet"),
+  urlSupplierPage: text("url_supplier_page"),
+  urlInstallManual: text("url_install_manual"),
+  urlPhotometry: text("url_photometry"), // IES/LDT
+  urlDeclaration: text("url_declaration"), // CE/DoC
   ...timestamps,
-});
+};
+// Natuurlijke sleutel (O1): merk + leveranciers-artikelcode identificeert een artikel —
+// een herimport werkt bij i.p.v. dupliceert. NULLs botsen niet (Postgres NULLS DISTINCT).
+export const products = pgTable("products", productColumns, (t) => [
+  uniqueIndex("products_brand_sac_uniq").on(t.brandId, t.supplierArticleCode),
+]);
 
 // ── Commercie (strikt gescheiden van matching) ───────────────────────────────
 // price_lists: per merk. valid_until is VERPLICHT — dit veld drijft ijzeren regel 3.
@@ -263,9 +326,17 @@ export const priceLists = pgTable(
     name: text("name").notNull(),
     validFrom: date("valid_from").notNull(),
     validUntil: date("valid_until").notNull(), // ⚠️ verplicht — geen prijslijst zonder einddatum
+    // 0007: vervangen lijsten blijven als metadata bestaan (quote_lines verwijst ernaar);
+    // hun prijsregels verhuizen naar archive.prices_archive.
+    replacedAt: timestamp("replaced_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("price_lists_brand_uniq").on(t.brandId)], // één actieve lijst per merk (run 1)
+  // één ACTIEVE lijst per merk — vervangen lijsten (replaced_at gezet) tellen niet mee
+  (t) => [
+    uniqueIndex("price_lists_brand_active_uniq")
+      .on(t.brandId)
+      .where(sql`${t.replacedAt} IS NULL`),
+  ],
 );
 
 // prices: product ↔ price_list, brutoprijs. Staffels zijn run 2+.
@@ -280,11 +351,35 @@ export const prices = pgTable(
       .notNull()
       .references(() => priceLists.id),
     grossPrice: numeric("gross_price", { precision: 12, scale: 2 }).notNull(),
+    // 0007 (🔒 intern-only): inkoop hoort bij de prijslijst-regel; komt in géén view.
+    purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }),
     currency: text("currency").notNull().default("EUR"),
     ...timestamps,
   },
   (t) => [uniqueIndex("prices_product_list_uniq").on(t.productId, t.priceListId)],
 );
+
+// ── Archief (0007, SCD type 4): koude opslag in apart schema, append-only ────
+// Bewust GEEN foreign keys: het archief mag nooit een wijziging in de hot
+// tabellen blokkeren. Rijen komen er alleen bij via archivePriceList (lib/repo).
+export const archiveSchema = pgSchema("archive");
+export const pricesArchive = archiveSchema.table("prices_archive", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  originalPriceId: uuid("original_price_id").notNull(),
+  productId: uuid("product_id").notNull(),
+  priceListId: uuid("price_list_id").notNull(),
+  priceListName: text("price_list_name"),
+  brandId: uuid("brand_id"),
+  grossPrice: numeric("gross_price", { precision: 12, scale: 2 }).notNull(),
+  purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }),
+  currency: text("currency").notNull().default("EUR"),
+  validFrom: date("valid_from"),
+  validUntil: date("valid_until"),
+  archivedAt: timestamp("archived_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  archivedBy: text("archived_by"),
+});
 
 // ── Dossier / calculatorflow ─────────────────────────────────────────────────
 export const projectDossiers = pgTable("project_dossiers", {
@@ -536,6 +631,10 @@ export const quoteLines = pgTable("quote_lines", {
   quantity: integer("quantity").notNull(),
   unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
   lineTotal: numeric("line_total", { precision: 14, scale: 2 }).notNull(),
+  // 0007 (laag 4): prijsherkomst — de offerte documenteert zelf uit welke prijslijst
+  // z'n prijs kwam, onafhankelijk van wat er later met prices/archive gebeurt.
+  priceListId: uuid("price_list_id").references(() => priceLists.id),
+  sourceListDate: date("source_list_date"),
   ...timestamps,
 });
 
