@@ -33,7 +33,12 @@ import {
   unlinkMatch,
 } from "@/lib/repo/matching";
 import { recordPdfImport, getImportRun } from "@/lib/repo/imports";
-import { finishOcrRun, processOcrPage, startOcrRun } from "@/lib/repo/ocr";
+import {
+  finishOcrRun,
+  isJpegImage,
+  processOcrPage,
+  startOcrRun,
+} from "@/lib/repo/ocr";
 import { envApiKey } from "@/lib/ai/shared";
 import { setDossierOrg } from "@/lib/repo/orgs";
 import { triggerVangnet } from "@/lib/ai/vangnet";
@@ -270,11 +275,19 @@ export async function ocrPageAction(formData: FormData): Promise<
   if (!dossierId || !runId || !page || page < 1 || !width || !height) {
     return { error: "Invalid OCR page request." };
   }
-  if (!(image instanceof File) || !image.type.startsWith("image/")) {
-    return { error: "No page image supplied." };
+  // Server-hardening: de client-loop stuurt altijd JPEG (canvas → toBlob
+  // 'image/jpeg'); alles anders is per definitie geen legitiem paginabeeld.
+  if (!(image instanceof File) || image.type !== "image/jpeg") {
+    return { error: "No JPEG page image supplied." };
   }
   if (image.size > OCR_IMAGE_CAP) {
     return { error: "Page image is larger than 2 MB." };
+  }
+  const imageBytes = new Uint8Array(await image.arrayBuffer());
+  // JPEG-magic-bytes (FF D8): het gedeclareerde type is client-input — de bytes
+  // zelf moeten het waarmaken vóór ze opgeslagen en naar de vision-API gaan.
+  if (!isJpegImage(imageBytes)) {
+    return { error: "Page image is not a valid JPEG." };
   }
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== dossierId || run.source !== "ocr") {
@@ -287,7 +300,7 @@ export async function ocrPageAction(formData: FormData): Promise<
   const result = await processOcrPage(db, {
     runId,
     page,
-    imageBytes: new Uint8Array(await image.arrayBuffer()),
+    imageBytes,
     mime: image.type,
     width,
     height,

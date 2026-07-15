@@ -2,8 +2,8 @@
 // het Tinder-deck (stap 6/7). Zelfde toegangsregels als de markdown-route hiernaast:
 // sessie verplicht én de run moet bij dit project horen (geen kruislekken tussen
 // dossiers). Dit is de enige plek die (via getOcrPageImage, de enige bytes-lezer in
-// de repo-laag) de beeldbytes serveert. Cache privé: het beeld is onveranderlijk
-// per (run, pagina), maar hoort nooit in een gedeelde cache.
+// de repo-laag) de beeldbytes serveert. Cache: no-store — een geauthenticeerd
+// bronbeeld hoort niet in de browsercache te blijven hangen na uitloggen.
 import { db } from "@/db/client";
 import { getImportRun } from "@/lib/repo/imports";
 import { getOcrPageImage } from "@/lib/repo/ocr";
@@ -33,7 +33,7 @@ export async function GET(
     headers: {
       "Content-Type": image.mime,
       "Content-Length": String(image.bytes.byteLength),
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": "no-store",
     },
   });
 }

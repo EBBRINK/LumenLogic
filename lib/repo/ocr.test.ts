@@ -26,6 +26,7 @@ import {
   getOcrPageImage,
   getOcrRunProgress,
   getOpenOcrRun,
+  isJpegImage,
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
@@ -542,8 +543,19 @@ test("voortgangs-queries selecteren de bytes-kolom nooit; getOcrPageImage wél (
   expect(await getOcrPageImage(db, crypto.randomUUID(), 1)).toBeNull();
 });
 
-// ── Fout op één pagina: doorgaan, beeldrij + reservering blijven ─────────────
-test("vision-fout → {failed}, geen regels, volgende pagina kan gewoon door", async () => {
+// ── Server-hardening: alleen échte JPEG-bytes (ocrPageAction weigert de rest) ─
+test("isJpegImage: FF D8 = JPEG; PNG/lege/afgeknipte bytes → geweigerd", () => {
+  expect(isJpegImage(IMAGE)).toBe(true); // de testfixture is een JPEG-header
+  // PNG-magic (89 50 4E 47) — gedeclareerd mime doet er niet toe, bytes wel.
+  expect(isJpegImage(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]))).toBe(
+    false,
+  );
+  expect(isJpegImage(new Uint8Array([]))).toBe(false);
+  expect(isJpegImage(new Uint8Array([0xff]))).toBe(false);
+});
+
+// ── Fout op één pagina: doorgaan; reservering blijft, beeldrij gaat weg ──────
+test("vision-fout → {failed}, beeldrij weg (hervatten leest de pagina alsnog)", async () => {
   const db = await createTestDb();
   const dossierId = await seedWorld(db);
   const { run } = await startOcrRun(db, {
@@ -566,6 +578,39 @@ test("vision-fout → {failed}, geen regels, volgende pagina kan gewoon door", a
   expect(failed).toEqual({ failed: "timeout na 30s" });
   expect((await runLines(db, run.id)).length).toBe(0);
   expect((await getImportRun(db, run.id))!.ocrStatus).toBe("bezig");
+
+  // Zelfde klasse als de no_key-fix: de beeldrij is weer weg — zonder lezing geen
+  // bewijs van verwerking. Bleef hij staan, dan telde getDonePages de pagina als
+  // gedaan en zou het hervatten hem voorgoed overslaan. De llm_usage-reservering
+  // blijft wél staan (conservatieve kostenpost).
+  const pages = await db
+    .select({ page: ocrPageImages.page })
+    .from(ocrPageImages)
+    .where(eq(ocrPageImages.importRunId, run.id));
+  expect(pages).toEqual([]);
+  expect((await db.select().from(llmUsage)).length).toBe(1); // de reservering
+
+  // Hervatten leest precies deze pagina alsnog (het lock is echt vrij).
+  const retried = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lw201",
+          merk: null,
+          type: null,
+          ruwe_tekst: "Lw201 Wever & Ducré SCAVA 1.0",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(retried).toMatchObject({ created: 1, duplicates: 0 });
 
   // De run loopt door: pagina 2 slaagt gewoon.
   const ok = await processOcrPage(db, {

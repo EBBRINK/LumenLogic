@@ -428,6 +428,21 @@ matcher) → verplichte review.
   llm_usage.import_run_id, ocr_status) — eerst mergen, dan migreren.
 - **Hervatten**: openstaande run → "Resume OCR (N of M pages done)" op de upload-kaart;
   idempotent dankzij de beeldrij-lock (dubbel gestuurde pagina kost nooit dubbel).
+- **Follow-ups uit de CodeRabbit-review op PR #2** (bewust uitgesteld — alle drie
+  niet-optredend zolang er één gebruiker is en de client-loop strikt sequentieel
+  stuurt; oppakken zodra er meerdere gebruikers komen):
+  - Resume-herkenning op filename+pageCount is zwak — een ánder boek met dezelfde
+    naam en paginatelling hervat de verkeerde run. Beter: content-fingerprint
+    (hash van de PDF-bytes) op de run.
+  - `startOcrRun` heeft een get-or-create-race: twee gelijktijdige starts voor
+    hetzelfde dossier+bestand kunnen elk een eigen run beginnen. Beter: unieke
+    index of advisory lock rond het get-or-create.
+  - Page-commits (run.rows/counts bijwerken in `processOcrPage`) zijn niet
+    geserialiseerd — twee parallelle tabs op dezelfde run kunnen elkaars
+    snapshot overschrijven (last-writer-wins). Beter: rij-lock of UPDATE met
+    jsonb-append i.p.v. read-modify-write.
+  Het €0,99+€0,02-plafondpunt uit dezelfde review is bestaand, gedocumenteerd
+  ontwerp (effectief plafond €1 + hooguit één paginaprijs) — geen actie.
 
 ## Onderdeel Merkrelaties & data-inwinning — afgerond 2026-07-14
 

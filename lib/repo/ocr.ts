@@ -105,6 +105,13 @@ export async function startOcrRun(
   return { run, resumed: false as const, donePages: [] as number[] };
 }
 
+// Server-hardening (CodeRabbit, PR #2): de client-loop stuurt altijd JPEG, maar het
+// gedeclareerde mime-type is client-input — de bytes zelf moeten het waarmaken vóór
+// ze opgeslagen en naar de vision-API gaan. JPEG begint altijd met FF D8 (SOI).
+export function isJpegImage(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8;
+}
+
 // Welke pagina's al een beeldrij hebben — bewust ZONDER de bytes-kolom (B2).
 async function getDonePages(db: AppDb, runId: string): Promise<number[]> {
   const rows = await db
@@ -200,7 +207,16 @@ export async function processOcrPage(
     });
     return { skipped: result.skipped, stopped };
   }
-  if (!isOcrPageSuccess(result)) return { failed: result.failed };
+  if (!isOcrPageSuccess(result)) {
+    // Vision-fout (event ocr_page_failed is al gelogd): net als bij no_key moet de
+    // zojuist geïnsertte beeldrij WEER WEG — de rij is lock én bewijs van verwerking,
+    // en zonder lezing is er geen bewijs. Bleef hij staan, dan telde getDonePages
+    // deze pagina als gedaan en zou het hervatten precies deze pagina voorgoed
+    // overslaan, zonder melding. De llm_usage-reservering blijft wél staan
+    // (conservatieve kostenpost — een timeout kan aan de API-kant tóch gekost hebben).
+    await db.delete(ocrPageImages).where(eq(ocrPageImages.id, inserted[0].id));
+    return { failed: result.failed };
+  }
 
   // (c) Regels verwerken. Dedupe op armatuurcode tegen álles wat deze run al las
   // (run.rows is de volledige leesgeschiedenis, incl. eerdere pagina's): een boek
