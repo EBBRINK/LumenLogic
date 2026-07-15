@@ -264,12 +264,21 @@ async function upgradeOcrLine(
   // c) Hermatchen op de nieuwe, rijkere specs.
   const outcome = await runMatcher(db, existing.id, actor);
 
-  // d) Spookmatch-fix: "nieuw berekende match" = de auto-geel-kandidaat van déze
-  // evaluatie (runMatcher zet alleen die expliciet op de regel). Is die er niet,
-  // of is het een andere kandidaat dan de oude, dan is de oude koppeling een
-  // spookmatch geworden — expliciet loskoppelen.
-  const newMatchedProductId = outcome.unambiguousYellow?.productId ?? null;
-  if (oldMatchedProductId && newMatchedProductId !== oldMatchedProductId) {
+  // d) Spookmatch-fix: de oude koppeling blijft geldig als de NIEUWE evaluatie hem
+  // nog steeds erkent — óf als de auto-geel-kandidaat (unambiguousYellow, de enige
+  // die runMatcher zelf expliciet zet), óf als een aantoonbare/groene kandidaat in
+  // outcome.provable (bv. een mens-gekozen match via chooseCandidate, fromList
+  // "aantoonbaar" — die zit niet in unambiguousYellow, maar staat wél nog gewoon in
+  // provable als hij nog klopt). Alleen als hij in GEEN van beide voorkomt, is het
+  // een échte spookmatch — dan pas loskoppelen. (Reviewer-fix: de eerdere versie
+  // vergeleek uitsluitend tegen unambiguousYellow, waardoor elke groene match —
+  // ook een nog steeds kloppende — onterecht werd losgekoppeld, want
+  // unambiguousYellow is alleen gezet bij status 'geel'.)
+  const stillValid =
+    oldMatchedProductId != null &&
+    (outcome.provable.some((c) => c.productId === oldMatchedProductId) ||
+      outcome.unambiguousYellow?.productId === oldMatchedProductId);
+  if (oldMatchedProductId && !stillValid) {
     await db
       .update(specLines)
       .set({ matchedProductId: null })

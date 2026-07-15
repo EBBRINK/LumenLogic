@@ -118,3 +118,16 @@ Volledig plandocument: zie sessielog 2026-07-15 (plan-agent-uitvoer). Bouwstappe
 1) alleen C (parseProductName op ruweTekst+type), 2) A (richness/upgrade-logica +
 spookmatch-fix + audit-bewaring, in transactie), 3) geïsoleerde acceptatietest
 (mens-had-al-gekozen-scenario + SASSO-scenario), 4) documentatie/HANDOVER.
+
+## Toegepast (branch `fix-ocr-toc-specs`)
+
+- Item C: commit `c7a458d` (parseProductName over ruweTekst+type).
+- Item A (rijkste-wint-dedup): commit `9c4c440` (`specRichness`/`getOwnOcrLine`/
+  `upgradeOcrLine` in `lib/repo/ocr.ts`, `ProcessOcrPageResult.upgraded`).
+- Spookmatch-vergelijking aangescherpt (onafhankelijke review keurde `9c4c440` af:
+  de vergelijking tegen uitsluitend `outcome.unambiguousYellow` liet elke nog
+  kloppende groene match — bereikbaar via `chooseCandidateAction` — onterecht
+  losgekoppeld raken) — gefixt in de commit direct erna op deze branch, samen met
+  deze notitie en de HANDOVER.md-sectie. `db.transaction()` bleek geen optie
+  (`drizzle-orm/neon-http` ondersteunt geen interactieve transacties); zie
+  HANDOVER.md voor de volledige toelichting van het geaccepteerde race-risico.

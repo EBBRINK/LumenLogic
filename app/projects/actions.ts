@@ -262,7 +262,7 @@ export async function ocrPageAction(formData: FormData): Promise<
   | { alreadyDone: true }
   | { stopped: "budget" | "no_key" }
   | { failed: string }
-  | { created: number; duplicates: number }
+  | { created: number; duplicates: number; upgraded: number }
 > {
   await requireSession();
   const actor = await getActor();
@@ -313,7 +313,11 @@ export async function ocrPageAction(formData: FormData): Promise<
   if ("failed" in result) return { failed: result.failed };
   // Regels verschijnen progressief op de projectpagina terwijl de loop draait.
   revalidatePath(`/projects/${dossierId}`);
-  return { created: result.created, duplicates: result.duplicates };
+  return {
+    created: result.created,
+    duplicates: result.duplicates,
+    upgraded: result.upgraded,
+  };
 }
 
 // Afronden: transcript + ocrStatus 'klaar' + ocr_done-event, daarna terug naar de

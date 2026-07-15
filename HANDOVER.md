@@ -460,6 +460,47 @@ matcher) → verplichte review.
   Het €0,99+€0,02-plafondpunt uit dezelfde review is bestaand, gedocumenteerd
   ontwerp (effectief plafond €1 + hooguit één paginaprijs) — geen actie.
 
+### Item A: rijkste-wint-dedup (ToC verdringt specs) — 2026-07-15
+
+Volledige probleemomschrijving en besluit: `docs/probleem-ocr-toc-verdringt-specs.md`.
+Samengevat: `processOcrPage` upgrade't een bestaande OCR-regel (zelfde run+fixtureCode)
+zodra een latere pagina een rijkere lezing oplevert (meer ingevulde specvelden) —
+zo wint de detailpagina alsnog van een eerder gelezen inhoudsopgave-rij van dezelfde
+code, in plaats van dat de eerste (armste) lezing blijvend wint.
+
+- **Spookmatch-fix** (`upgradeOcrLine` in `lib/repo/ocr.ts`): ná het herdraaien van
+  de matcher blijft een bestaande `matchedProductId` alleen staan als de NIEUWE
+  evaluatie hem nog steeds erkent — als `outcome.unambiguousYellow` (de auto-geel-tak)
+  óf als lid van `outcome.provable` (een nog steeds aantoonbare/groene kandidaat,
+  bv. een mens-gekozen match via `chooseCandidate`/`decideReview`). Alleen als hij in
+  geen van beide voorkomt, wordt de koppeling losgemaakt. Een eerdere versie
+  vergeleek uitsluitend tegen `unambiguousYellow` (alleen gezet bij status 'geel'),
+  waardoor élke nog kloppende groene match bij een upgrade onterecht werd
+  losgekoppeld — gevonden door onafhankelijke review, gefixt vóór push.
+- **Audit-bewaring**: de oude `matchedProductId` + bijbehorende
+  `chosenBy`/`chosenReason` worden vóór het herdraaien uitgelezen en als
+  `previousChoice` meegestuurd in het `ocr_line_upgraded`-event, zodat een
+  losgekoppelde spookmatch nooit stilzwijgend uit het logboek verdwijnt (regel 5).
+- **Geaccepteerd race-risico, geen migratie**: de upgrade-stappen (lezen → updaten →
+  hermatchen → vergelijken → event) lopen sequentieel, NIET binnen een
+  `db.transaction()`. De productie-client (`db/client.ts`) draait op
+  `drizzle-orm/neon-http`, en die driver ondersteunt géén interactieve transacties
+  (`session.js`: "No transactions support in neon-http driver"). Omdat `AppDb`
+  hetzelfde type is voor productie (neon-http) én tests (PGlite), zou een
+  `db.transaction()`-aanroep alle tests laten slagen maar in productie altijd
+  gooien. Twee overlappende page-verwerkingen van dezelfde run/code zouden dus in
+  theorie kunnen interfereren — zelfde geaccepteerde risicopatroon als de drie
+  CodeRabbit-follow-ups hierboven (single-user, sequentiële client-loop maakt een
+  echte gelijktijdige aanroep voor dezelfde run praktisch onmogelijk). Geen nieuwe
+  unique-constraint/migratie hiervoor.
+- **`upgraded`-teller nog niet in de UI**: `ProcessOcrPageResult` en
+  `ocrPageAction` (`app/projects/actions.ts`) geven `upgraded` nu door, maar de
+  client-loop/voortgangsweergave op de projectpagina toont hem nergens apart (net
+  zomin als `created`/`duplicates` los getoond worden — de voortgangsbalk telt
+  alleen totalen). Bekende beperking, geen blokkade: wie wil zien welke regels
+  zijn geüpgraded kan dat via het `ocr_line_upgraded`-event of de spec-regel zelf
+  (`sourcePage` sprong naar de laatste lezing) aflezen.
+
 ## Onderdeel Merkrelaties & data-inwinning — afgerond 2026-07-14
 
 Plan: `docs/plan-merkrelaties.md` (stappen 1–8). Overzicht `/data/merkrelaties`

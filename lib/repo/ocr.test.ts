@@ -833,6 +833,99 @@ test("gelijke rijkdom blijft liggen: geen upgrade, geen tweede event, geen remat
   expect(matched.length).toBe(1);
 });
 
+// ── Spookmatch-fix, negatief geval: een mens-gekozen match die na de upgrade nog
+// steeds klopt (staat nog gewoon in outcome.provable) mag NIET worden losgekoppeld.
+// Reviewer-fix: de eerdere versie vergeleek de oude matchedProductId uitsluitend
+// tegen outcome.unambiguousYellow (alleen gezet bij status 'geel'), waardoor élke
+// groene, nog kloppende match — bereikbaar via de bestaande chooseCandidateAction-
+// UI-flow — bij een upgrade onterecht werd losgekoppeld.
+test("mens-gekozen match die na de upgrade nog steeds klopt: matchedProductId blijft staan", async () => {
+  const db = await createTestDb();
+  // P matcht de rijkere pagina-2-lezing EXACT (kelvin/cri/watt) — hoort dus na de
+  // upgrade nog gewoon in outcome.provable te staan, niet alleen in unambiguousYellow.
+  const { productId: productP } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 SQ SP CEIL 3000K",
+    kelvin: 3000,
+    cri: 90,
+    maxWattage: 17.9,
+  });
+  const dossier = await createDossier(db, { name: "Nog steeds geldig na upgrade" });
+  const { run } = await startOcrRun(db, {
+    dossierId: dossier.id,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  // Pagina 1: arme ToC-lezing.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  const [beforeChoice] = await runLines(db, run.id);
+
+  // Mens bevestigt expliciet product P (chooseCandidate-achtige, groene, aantoonbare keuze).
+  await decideReview(db, {
+    specLineId: beforeChoice.id,
+    decision: "accepteer",
+    productId: productP,
+    reason: "handmatig bevestigd tijdens review",
+    actor: "iemand@brink.nl",
+  });
+  const [afterChoice] = await runLines(db, run.id);
+  expect(afterChoice.matchedProductId).toBe(productP);
+  expect(afterChoice.status).toBe("groen");
+
+  // Pagina 2: detailpagina — specs die exact bij P passen.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  const [afterUpgrade] = await runLines(db, run.id);
+  // P is nog steeds een geldige (groene) kandidaat → GEEN spookmatch, dus blijft staan.
+  expect(afterUpgrade.matchedProductId).toBe(productP);
+
+  // De upgrade zelf wordt wél gelogd (specs zijn gewijzigd), maar zonder dat de
+  // koppeling verdwijnt.
+  const upgradedEvents = await eventsByAction(db, "ocr_line_upgraded");
+  expect(upgradedEvents.length).toBe(1);
+});
+
 // ── KRITIEK: een mens had de arme lezing al goedgekeurd (matchedProductId + chosenBy)
 // vóórdat de rijkere detailpagina langskwam. Twee reviewer-gaten uit het besluit-
 // document (spookmatch + audit-bewaring) moeten hier allebei standhouden.
