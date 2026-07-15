@@ -9,7 +9,9 @@ import type { SpecLineInput } from "@/lib/repo/dossiers";
 import { parseProductName } from "@/lib/enrichment/parser";
 
 // Armatuurcode zoals in de Deerns-boeken: Lp301, Ls004, Lw201, Lp001-a, Lt001…
-const CODE = /^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/;
+// Geëxporteerd (B3): de OCR-laag (lib/ai/ocr.ts) toetst gelezen codes aan exact
+// dezelfde regex, zodat parser en vision nooit uiteenlopen in wat een code is.
+export const CODE = /^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/;
 
 export type PdfImportResult = {
   lines: SpecLineInput[];
