@@ -519,6 +519,14 @@ code, in plaats van dat de eerste (armste) lezing blijvend wint.
   alleen totalen). Bekende beperking, geen blokkade: wie wil zien welke regels
   zijn geüpgraded kan dat via het `ocr_line_upgraded`-event of de spec-regel zelf
   (`sourcePage` sprong naar de laatste lezing) aflezen.
+- **CRI-parser-workaround in de acceptatietest**: `tests/acceptatie-ocr.test.ts` gebruikt
+  bewust `"CRI ≥ 90"` (géén dubbele punt tussen "CRI" en "≥") in de gemockte OCR-tekst.
+  `parseCri` (`lib/enrichment/parser.ts`) matcht op `/\b(?:CRI|Ra)\s*(?:≥|>=|>)?\s*(\d{2,3})/i`
+  — dat verdraagt geen letterlijke `":"` tussen het label en het `≥`-symbool ("CRI: ≥ 90"
+  breekt de match, `\s*` overbrugt geen `:`). Een echte OCR-lezing die zo'n dubbele punt
+  toevoegt zou dus zelf weer als "geen CRI gelezen" landen. Losse taak-chip staat al klaar
+  hiervoor ("CRI-parser mist optionele dubbele punt na label") — niet in deze branch
+  opgelost, bewust een aparte, kleine parser-fix.
 
 ## Onderdeel Merkrelaties & data-inwinning — afgerond 2026-07-14
 

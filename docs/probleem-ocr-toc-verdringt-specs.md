@@ -1,5 +1,36 @@
 # Probleem: OCR pakt inhoudsopgave, verdringt echte specs (2026-07-15)
 
+## Status: opgelost
+
+Branch `fix-ocr-toc-specs`, vier commits:
+- `c7a458d` — item C: `parseProductName` draait over `ruweTekst`+`type`, niet alleen `type`.
+- `6dcad0c` — eerste spookmatch-fix-poging, in review AFGEKEURD (zie hieronder).
+- `2766ba6` — definitieve spookmatch-fix: het oude product rechtstreeks tegen de nieuwe
+  gevraagde specs toetsen, los van elke kandidatenlijst/limiet.
+- `958f253` — acceptatietest die het echte SASSO/RET-Waalhaven-scenario reproduceert en
+  de fix bewijst.
+
+Drie reviewrondes op de spookmatch-vergelijking, telkens afgekeurd op een concreet gat:
+1. **Ronde 1** (vóór `6dcad0c`): plan vergeleek het oude `matchedProductId` alleen tegen
+   `outcome.unambiguousYellow` (alleen gezet bij status 'geel') — zou elke nog kloppende
+   **groene** match bij een upgrade onterecht hebben losgekoppeld. Afgekeurd vóór het
+   werd gebouwd/aangescherpt.
+2. **Ronde 2** (`6dcad0c`): uitgebreid naar "staat de oude match in `outcome.provable`
+   óf gelijk aan `outcome.unambiguousYellow`?" — maar beide zijn afgeleid van de
+   top-N (default `limit=8`) kandidaten van `fetchCandidates`. Bij >8 matchende
+   kandidaten in de 211k-catalogus kon een nog geldige, mens-gekozen match buiten die
+   top-8 vallen en zou dan alsnog onterecht als "spookmatch" gewist worden
+   (top-8-blinde-vlek). Afgekeurd in review.
+3. **Ronde 3** (`2766ba6`, definitief): het oude product wordt rechtstreeks tegen de
+   nieuwe gevraagde specs getoetst via `judgeCandidate`/`toDelivered` op één
+   `visibleProducts`-rij, volledig onafhankelijk van elke kandidatenlijst/limiet.
+   Geaccepteerd; getest met 9 decoy-producten die de mens-gekozen match gegarandeerd
+   buiten de standaard top-8 drukken (`958f253`).
+
+Zie "Item A: rijkste-wint-dedup" in `HANDOVER.md` voor de volledige technische
+toelichting en het geaccepteerde race-risico (geen `db.transaction()` mogelijk op
+`neon-http`).
+
 ## Wat er gebeurde
 
 Timo uploadde het echte RET-Waalhaven-boek (Deerns, 31 pagina's, geen tekstlaag) op
@@ -39,12 +70,16 @@ zouden specs die wél in `ruweTekst` staan, genegeerd worden bij het vullen van
 
 ## Gevolg voor de matcher
 
-Zonder gevraagde specs heeft de tolerantietabel niets om op af te wijzen — velden
-worden "onbekend" in plaats van "rood". Voor SASSO 100-regels (die Brink alléén in
-2700K/CRI90 voert, terwijl het boek 3000K/4000K vraagt) leidde dit tot **groen**
-i.p.v. het terecht **rood** dat mijn handmatige analyse (met volledige specs)
-opleverde. Dat is geen kosmetisch verschil — het is de kern van wat de matcher moet
-doen.
+Zonder gevraagde specs genereert de tolerantietabel voor die velden helemaal geen
+deviation — niet "onbekend", maar afwezig. `judgeCandidate` (`lib/matching/
+tolerances.ts`) geeft het kelvin-veld pas door aan `judgeKelvin` als `req.kelvin !=
+null` (zelfde patroon voor cri/watt/lumen/etc.); bij `reqKelvin = null` wordt er dus
+geen kelvin-deviation aangemaakt, in geen enkele richting. Voor SASSO 100-regels (die
+Brink alléén in 2700K/CRI90 voert, terwijl het boek 3000K/4000K vraagt) leidde dit tot
+**geen zichtbare mismatch** — het eindresultaat (vóór de fix: geen afwijking te zien,
+dus mogelijk ten onrechte **groen**) klopt, alleen het mechanisme hierboven was eerder
+verkeerd benoemd als "onbekend"/"rood". Dat is geen kosmetisch verschil — het is de
+kern van wat de matcher moet doen.
 
 ## Dit boek is niet uniek
 
