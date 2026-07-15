@@ -121,7 +121,10 @@ export function pickUnambiguousYellow<C extends { deviations: MatchDeviation[] }
   return yellowOnChoiceField ? undefined : only;
 }
 
-const SELECTION = {
+// Geëxporteerd (ocr.ts, upgradeOcrLine): dezelfde veldenlijst voor de gerichte
+// product-lookup, zodat toDelivered() daar hetzelfde blijft werken als hier —
+// één plek voor de kolommenlijst, geen dubbele (kunnen-uit-elkaar-lopen) lijst.
+export const SELECTION = {
   id: visibleProducts.id,
   name: visibleProducts.name,
   brandName: visibleProducts.brandName,
@@ -143,7 +146,10 @@ const SELECTION = {
   currency: visibleProducts.currency,
 };
 
-function toDelivered(r: Record<string, unknown>): DeliveredSpecs {
+// Geëxporteerd (ocr.ts, upgradeOcrLine): een gericht product rechtstreeks tegen
+// specs toetsen, los van de kandidatenlijst/limiet van fetchCandidates hieronder
+// (die limiet maakt "zit hij in de top-N" geen betrouwbare stillValid-toets).
+export function toDelivered(r: Record<string, unknown>): DeliveredSpecs {
   const num = (v: unknown): number | null =>
     v == null ? null : Number(v);
   // grootste beschikbare maat als proxy voor "afmeting"

@@ -18,8 +18,16 @@
 //                  → reviewKind 'ocr'
 //
 // De tests zijn ÉÉN doorlopend verhaal en draaien in volgorde (vitest draait tests
-// binnen een bestand serieel); latere stappen bouwen op eerdere.
-import { beforeAll, expect, test } from "vitest";
+// binnen een bestand serieel); latere stappen bouwen op eerdere. Dit is een bewust,
+// bestaand patroon (predateert PR #4) — inclusief de test "generateQuote +
+// estimate-PDF: OCR-regels zichtbaar" verderop, die leunt op de review-beslissingen
+// uit de voorgaande stappen. Los draaien van die ene test (bv. via `-t`) faalt dus
+// nog steeds op een leeg dossier; dat is ongewijzigd gedrag, geen regressie van deze
+// PR. Alleen het SASSO/RET-Waalhaven describe-blok verderop (§"inhoudsopgave
+// verdringt specs niet meer") is losgetrokken in een eigen beforeAll, juist omdat
+// dat blok als geïsoleerd reproductiescenario is opgezet — niet als vervolg op dit
+// hoofdverhaal.
+import { beforeAll, describe, expect, test } from "vitest";
 import { asc, eq } from "drizzle-orm";
 import { extractText, getDocumentProxy } from "unpdf";
 import { events, llmUsage, specLineCandidates, specLines } from "@/db/schema";
@@ -424,3 +432,187 @@ test("generateQuote + estimate-PDF: OCR-regels zichtbaar (p/st, p.m. voor rood)"
   expect(text).toContain("p/st"); // ontbrekend aantal = stukprijs-modus
   expect(text).toContain("back to customer"); // rood = p.m., nooit opgeteld
 }, 120_000);
+
+// ── SASSO/RET-Waalhaven-acceptatietest (docs/probleem-ocr-toc-verdringt-specs.md) ──
+// Reproduceert het ECHTE probleem-scenario (niet de synthetische unit-tests van
+// bouwstap 2): een boek met een inhoudsopgave-rij vóór de detailpagina van dezelfde
+// armatuurcode. Eigen db/dossier/run — draait los van het verhaal hierboven en
+// stoort dat niet (los describe-blok, geen gedeelde module-state).
+describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => {
+  let sassoDb: TestDb;
+  let sassoDossierId: string;
+  let sassoRunId: string;
+  let lp301Na1: Awaited<ReturnType<typeof sassoLineByCode>>;
+  let lp301Na2: Awaited<ReturnType<typeof sassoLineByCode>>;
+  let p1Result: Awaited<ReturnType<typeof processOcrPage>>;
+  let p2Result: Awaited<ReturnType<typeof processOcrPage>>;
+
+  // CodeRabbit (PR #4, Minor): de volledige scenario-opbouw (run starten, beide
+  // pagina's verwerken, tussenresultaten vastleggen) staat hier in ÉÉN beforeAll —
+  // niet meer verspreid over een eerste test() waar een latere test op leunde.
+  // `bun vitest run -t "generateQuote/estimate"` (of elke andere filter/losse
+  // testrun) bouwt het dossier dus altijd zelf op, ongeacht welke test() erna
+  // daadwerkelijk draait.
+  beforeAll(async () => {
+    sassoDb = await createTestDb();
+
+    // Brink voert de XAL SASSO 100 ALLEEN in 2700K/CRI90/17,9W — exact zoals Timo
+    // zelf uit het echte boek las (zie probleemdocument). Geen 3000K/4000K-variant.
+    await seedBrandProduct(sassoDb, {
+      brand: "XAL",
+      name: "SASSO 100 SQ SP CEIL 2700K",
+      price: "300.00",
+      articleCode: "L360-SASSO100-2700",
+      kelvin: 2700,
+      cri: 90,
+      maxWattage: 17.9,
+    });
+
+    const dossier = await createDossier(sassoDb, {
+      name: "RET Waalhaven (Deerns-beeldboek, SASSO-reproductie)",
+      customer: "Deerns Nederland B.V.",
+      actor: ACTOR,
+    });
+    sassoDossierId = dossier.id;
+
+    const { run } = await startOcrRun(sassoDb, {
+      dossierId: sassoDossierId,
+      filename: "ret-waalhaven-deerns.pdf",
+      pageCount: 2,
+      actor: ACTOR,
+    });
+    sassoRunId = run.id;
+
+    // Pagina 1 — inhoudsopgave-stijl: code, merk, type, GEEN cijfers/eenheden. Het
+    // "8" is een paginaverwijzing uit de inhoudsopgave, geen spec (zie
+    // probleemdocument, "Oorzaak").
+    p1Result = await processOcrPage(sassoDb, {
+      runId: sassoRunId,
+      page: 1,
+      imageBytes: IMAGE,
+      mime: "image/jpeg",
+      width: 1568,
+      height: 1000,
+      client: ocrMock([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+      actor: ACTOR,
+    });
+    lp301Na1 = await sassoLineByCode("Lp301");
+
+    // Pagina 2 — detailpagina-stijl, ZELFDE code: volledige specs zoals echt in het
+    // boek. LET OP: "CRI ≥ 90" zonder dubbele punt vóór het ≥-symbool — parseCri()
+    // (lib/enrichment/parser.ts) matcht "CRI\s*(?:≥|>=|>)?\s*(\d+)"; een letterlijke
+    // dubbele punt tussen "CRI" en "≥" ("CRI: ≥ 90") breekt die match (geen \s* over
+    // een ":"), dus zou hier zelf weer als "geen CRI gelezen" landen. Dat is een
+    // BEKEND, NOG NIET GEFIXT parser-gat (los van dit ticket over TOC-verdringing) —
+    // deze test omzeilt het bewust met "CRI ≥ 90" (geen dubbele punt), zoals het
+    // echte boek de rest van de specs ook zonder leestekens tussen label en waarde
+    // toont ("Vermogen: 17,9 W." heeft de ruimte wél na de dubbele punt, dat botst
+    // niet met \s*).
+    p2Result = await processOcrPage(sassoDb, {
+      runId: sassoRunId,
+      page: 2,
+      imageBytes: IMAGE,
+      mime: "image/jpeg",
+      width: 1568,
+      height: 1000,
+      client: ocrMock([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 XAL SASSO 100 Vermogen: 17,9 W. Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+      actor: ACTOR,
+    });
+    lp301Na2 = await sassoLineByCode("Lp301");
+
+    await finishOcrRun(sassoDb, { runId: sassoRunId, actor: ACTOR });
+  }, 120_000);
+
+  test("inhoudsopgave-rij (arm) → detailpagina-rij (rijk) upgradet dezelfde regel naar rood", async () => {
+    expect(await sassoEventsByAction("ocr_started")).toHaveLength(1);
+    expect(p1Result).toMatchObject({ created: 1, duplicates: 0 });
+    expect(lp301Na1.reqKelvin).toBeNull();
+    expect(lp301Na1.reqWatt).toBeNull();
+    expect(lp301Na1.reqCri).toBeNull();
+
+    // Zelfde armatuurcode binnen dezelfde run → geen nieuwe regel (created:0), maar
+    // een upgrade van de bestaande (item A: rijkste-wint-dedup, niet eerste-wint).
+    expect(p2Result).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+    // DEZELFDE regel (zelfde id) — geen tweede rij voor dezelfde code.
+    expect(lp301Na2.id).toBe(lp301Na1.id);
+    expect(lp301Na2.reqKelvin).toBe(3000);
+    expect(lp301Na2.reqCri).toBe(90);
+    // numeric(8,2)-kolom: drizzle/pg geeft numerics als string terug, met 2 decimalen.
+    expect(lp301Na2.reqWatt).toBe("17.90");
+
+    // DE KERNREPARATIE: vóór de fix zou dit GROEN zijn gebleven — zonder gevraagde
+    // kelvin genereert de tolerantietabel voor dat veld helemaal geen deviation
+    // (judgeCandidate geeft kelvin pas door aan judgeKelvin als req.kelvin != null).
+    // Nu de detailpagina de kelvin-eis (3000) heeft laten doorkomen, ziet de matcher
+    // de mismatch met wat Brink levert (XAL SASSO 100 2700K) en wijst terecht af:
+    // ROOD. Vóór de fix (zie probleemdocument, "Gevolg voor de matcher"): geen
+    // zichtbare afwijking (mogelijk ten onrechte groen), want reqKelvin bleef null
+    // (de inhoudsopgave-lezing won altijd) → er was niets om op te toetsen.
+    expect(lp301Na2.status).toBe("rood");
+
+    // Event-keten compleet (ijzeren regel 5): start, 2× page_done, done, en de
+    // upgrade zelf met bewaarde rijkdom-sprong (0 → ≥1).
+    expect(await sassoEventsByAction("ocr_started")).toHaveLength(1);
+    expect(await sassoEventsByAction("ocr_page_done")).toHaveLength(2);
+    expect(await sassoEventsByAction("ocr_done")).toHaveLength(1);
+    const upgraded = await sassoEventsByAction("ocr_line_upgraded");
+    expect(upgraded).toHaveLength(1);
+    expect(upgraded[0].payload).toMatchObject({
+      fixtureCode: "Lp301",
+      oldRichness: 0,
+    });
+    expect(
+      (upgraded[0].payload as { newRichness: number }).newRichness,
+    ).toBeGreaterThanOrEqual(1);
+  }, 120_000);
+
+  test("generateQuote/estimate: de SASSO-regel staat p.m. rood, niet geprijsd groen", async () => {
+    await generateQuote(sassoDb, sassoDossierId, ACTOR);
+
+    // Rood + geen match → geen prijsregel in de offerte (E-02: alleen groen/geel
+    // met een geldige prijs tellen mee).
+    const quoteData = await getQuote(sassoDb, sassoDossierId);
+    expect(quoteData?.lines ?? []).toHaveLength(0);
+
+    const data = (await getEstimateData(sassoDb, sassoDossierId))!;
+    expect(data.lines).toHaveLength(1);
+    expect(data.lines[0].fixtureCode).toBe("Lp301");
+    expect(data.lines[0].status).toBe("rood");
+    // p.m. — dit is het bewijs dat de fix ook echt doorwerkt naar wat Timo ziet:
+    // de SASSO-regel staat als niet-geprijsde rood-regel, niet als geprijsde groen.
+    expect(data.computed.pm.rood).toBe(1);
+    expect(data.computed.totals.samen).toBe(0);
+  }, 60_000);
+
+  // ── Lokale helpers (eigen db, niet de module-scoped `db`/`dossierId` hierboven) ──
+  async function sassoEventsByAction(action: string) {
+    return sassoDb.select().from(events).where(eq(events.action, action));
+  }
+
+  async function sassoLineByCode(code: string) {
+    const rows = await sassoDb
+      .select()
+      .from(specLines)
+      .where(eq(specLines.dossierId, sassoDossierId))
+      .orderBy(asc(specLines.sortOrder));
+    const row = rows.find((r) => r.fixtureCode === code);
+    if (!row) throw new Error(`line ${code} not found`);
+    return row;
+  }
+});
