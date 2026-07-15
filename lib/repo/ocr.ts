@@ -32,7 +32,7 @@ import {
 import { isOcrPageSuccess, ocrPage, type OcrClient, type OcrRegel } from "@/lib/ai/ocr";
 import { parseProductName } from "@/lib/enrichment/parser";
 import { SELECTION as PRODUCT_SELECTION, toDelivered } from "@/lib/matching/engine";
-import { hasRed, hasUnknown, judgeCandidate } from "@/lib/matching/tolerances";
+import { hasRed, hasUnknown, judgeCandidate, worstVerdict } from "@/lib/matching/tolerances";
 import { MARKDOWN_CAP, splitBrandType } from "@/lib/pdf/armaturenboek";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
@@ -303,18 +303,30 @@ async function upgradeOcrLine(
       const deviations = judgeCandidate(req.specs, toDelivered(productRow));
       stillValid = !hasRed(deviations) && !hasUnknown(deviations);
       if (stillValid) {
-        // CodeRabbit (PR #4, Major): runMatcher hierboven kende de regel zonet nog
-        // zijn eigen (top-8-beperkte) status/deviations toe — die kan best "rood"
-        // of "open" zijn terwijl de directe toets hier net vaststelde dat het OUDE
-        // product nog steeds groen-waardig is (stillValid impliceert !hasRed &&
-        // !hasUnknown via judgeCandidate). Zonder deze reconciliatie zou de regel
-        // een geldige matchedProductId hebben mét een niet-groene status — en
-        // zo'n regel valt dan stilzwijgend buiten generateQuote/de estimate (die
-        // typisch alleen groene/gematchte regels meeneemt). status en deviations
-        // horen dus bij dezelfde (directe) toets als matchedProductId.
+        // CodeRabbit (PR #4, Major, ronde 1): runMatcher hierboven kende de regel
+        // zonet nog zijn eigen (top-8-beperkte) status/deviations toe — die kan
+        // best "rood"/"open" zijn terwijl de directe toets hier net vaststelde dat
+        // het OUDE product nog steeds bruikbaar is. Zonder deze reconciliatie zou
+        // de regel een geldige matchedProductId hebben mét een niet-kloppende
+        // status — en zo'n regel valt dan stilzwijgend buiten generateQuote/de
+        // estimate. status en deviations horen dus bij dezelfde (directe) toets
+        // als matchedProductId.
+        //
+        // CodeRabbit (PR #4, Major, ronde 2 — vierde reviewronde): stillValid
+        // (!hasRed && !hasUnknown) is NIET hetzelfde als "groen". Een product kan
+        // "geen rood, geen onbekend" zijn én toch een gele afwijking dragen (bv.
+        // watt 20% buiten de exacte marge maar binnen de gele tolerantiezone) —
+        // dat hoort geel te worden, niet hardcoded groen (empirisch bevestigd:
+        // requested watt=10/delivered=12 → hasRed=false, hasUnknown=false, maar
+        // worstVerdict="geel"). generateQuote (lib/repo/dossiers.ts) telt sowieso
+        // zowel groen als geel mee met geldige prijs, dus een correcte geel-status
+        // volstaat. worstVerdict (lib/matching/tolerances.ts) is dezelfde functie
+        // die engine.ts gebruikt om groen/geel te bepalen (regel 356-368) — geen
+        // eigen nieuwe logica hier.
+        const status = worstVerdict(deviations) === "groen" ? "groen" : "geel";
         await db
           .update(specLines)
-          .set({ status: "groen", deviations })
+          .set({ status, deviations })
           .where(eq(specLines.id, existing.id));
       }
     }

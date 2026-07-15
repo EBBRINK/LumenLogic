@@ -18,7 +18,15 @@
 //                  → reviewKind 'ocr'
 //
 // De tests zijn ÉÉN doorlopend verhaal en draaien in volgorde (vitest draait tests
-// binnen een bestand serieel); latere stappen bouwen op eerdere.
+// binnen een bestand serieel); latere stappen bouwen op eerdere. Dit is een bewust,
+// bestaand patroon (predateert PR #4) — inclusief de test "generateQuote +
+// estimate-PDF: OCR-regels zichtbaar" verderop, die leunt op de review-beslissingen
+// uit de voorgaande stappen. Los draaien van die ene test (bv. via `-t`) faalt dus
+// nog steeds op een leeg dossier; dat is ongewijzigd gedrag, geen regressie van deze
+// PR. Alleen het SASSO/RET-Waalhaven describe-blok verderop (§"inhoudsopgave
+// verdringt specs niet meer") is losgetrokken in een eigen beforeAll, juist omdat
+// dat blok als geïsoleerd reproductiescenario is opgezet — niet als vervolg op dit
+// hoofdverhaal.
 import { beforeAll, describe, expect, test } from "vitest";
 import { asc, eq } from "drizzle-orm";
 import { extractText, getDocumentProxy } from "unpdf";

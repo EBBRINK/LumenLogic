@@ -1046,6 +1046,97 @@ test(">8 kandidaten voor hetzelfde merk/token: een mens-gekozen match buiten de 
   expect(upgradedEvents.length).toBe(1);
 });
 
+// ── CodeRabbit (PR #4, Major, vierde reviewronde): stillValid (!hasRed &&
+// !hasUnknown) is NIET hetzelfde als "groen". Een product zonder rode/onbekende
+// afwijkingen kan best een gele afwijking dragen (bv. watt binnen de gele
+// tolerantiezone, niet de exacte marge) — de status hoort dan "geel" te worden,
+// niet hardcoded "groen". requested watt=10/delivered=12 → dev=20% →
+// judgeWatt/pctVerdict(0.10, 0.40) geeft "geel" (empirisch bevestigd door de
+// reviewer), terwijl hasRed/hasUnknown allebei false blijven.
+test("stillValid met een gele afwijking (watt binnen tolerantie, niet exact): status wordt geel, niet groen", async () => {
+  const db = await createTestDb();
+  // P levert exact de gevraagde kelvin (groen), maar 12W tegen een straks
+  // gevraagde 10W — 20% afwijking, binnen de gele zone (10–40%).
+  const { productId: productP } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 SQ SP CEIL 3000K",
+    kelvin: 3000,
+    maxWattage: 12,
+  });
+  const dossier = await createDossier(db, { name: "Stillvalid-maar-geel" });
+  const { run } = await startOcrRun(db, {
+    dossierId: dossier.id,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+
+  // Pagina 1: arme ToC-lezing.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  const [beforeChoice] = await runLines(db, run.id);
+
+  // Mens bevestigt expliciet product P.
+  await decideReview(db, {
+    specLineId: beforeChoice.id,
+    decision: "accepteer",
+    productId: productP,
+    reason: "handmatig bevestigd tijdens review",
+    actor: "iemand@brink.nl",
+  });
+
+  // Pagina 2: detailpagina — vraagt 10W (P levert 12W: geel, geen rood/onbekend).
+  // Geen CRI in de tekst, dus geen cri-deviation (req.cri blijft null).
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 10 W. " +
+            "Kleurtemperatuur: 3000 K.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  const [afterUpgrade] = await runLines(db, run.id);
+  // P blijft de match (geen rood/onbekend → geen spookmatch-clear) — maar de
+  // status moet de gele watt-afwijking weerspiegelen, niet hardcoded groen.
+  expect(afterUpgrade.matchedProductId).toBe(productP);
+  expect(afterUpgrade.status).toBe("geel");
+  expect(afterUpgrade.deviations).toContainEqual(
+    expect.objectContaining({ field: "watt", verdict: "geel" }),
+  );
+});
+
 // ── CodeRabbit (PR #4, Major): de "checked terugzetten"-loop in processOcrPage
 // doorzocht alleen priorRows (vorige pagina's), niet de newRows die al binnen
 // DEZELFDE pagina zijn opgebouwd. Als vision per ongeluk twee keer dezelfde code
