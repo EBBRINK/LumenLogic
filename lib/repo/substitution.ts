@@ -19,7 +19,7 @@ import { getSpecLines } from "./dossiers";
 import { logEvent } from "./events";
 
 // Alle objectieve cijfers komen van het merk zelf.
-const SOURCE = "merk-opgave";
+const SOURCE = "brand-provided";
 
 export type SubstitutionField = {
   field: string;
@@ -38,13 +38,13 @@ function fmt(v: string | number | null, unit = ""): string | null {
 // hier zelfs niet in de tabel, alleen als tekst in de saving_note (F-08).
 function buildFields(ref: Reference, alt: Reference): SubstitutionField[] {
   const rows: [string, string | null, string | null][] = [
-    ["Kleurtemperatuur", fmt(ref.kelvin, "K"), fmt(alt.kelvin, "K")],
+    ["Color temperature", fmt(ref.kelvin, "K"), fmt(alt.kelvin, "K")],
     ["CRI", fmt(ref.cri), fmt(alt.cri)],
-    ["IP-waarde", fmt(ref.ipValue), fmt(alt.ipValue)],
-    ["Garantie", fmt(ref.warrantyMonths, " mnd"), fmt(alt.warrantyMonths, " mnd")],
-    ["Repareerbaarheid", fmt(ref.repairability), fmt(alt.repairability)],
-    ["Levensduur (EPD)", fmt(ref.epdLifetimeHours, " u"), fmt(alt.epdLifetimeHours, " u")],
-    ["Herkomst", fmt(ref.countryOfOrigin), fmt(alt.countryOfOrigin)],
+    ["IP value", fmt(ref.ipValue), fmt(alt.ipValue)],
+    ["Warranty", fmt(ref.warrantyMonths, " mo"), fmt(alt.warrantyMonths, " mo")],
+    ["Repairability", fmt(ref.repairability), fmt(alt.repairability)],
+    ["Lifetime (EPD)", fmt(ref.epdLifetimeHours, " h"), fmt(alt.epdLifetimeHours, " h")],
+    ["Origin", fmt(ref.countryOfOrigin), fmt(alt.countryOfOrigin)],
   ];
   return rows.map(([field, reference, alternative]) => ({
     field,
@@ -59,16 +59,16 @@ function buildFields(ref: Reference, alt: Reference): SubstitutionField[] {
 function buildSavingNote(ref: Reference, alt: Reference): string {
   const r = ref.grossPrice == null ? null : Number(ref.grossPrice);
   const a = alt.grossPrice == null ? null : Number(alt.grossPrice);
-  const tail = "Prijs is informatief en weegt nooit mee in de rangschikking (F-08).";
+  const tail = "Price is informational and never counts in the ranking (F-08).";
   if (r == null || a == null || Number.isNaN(r) || Number.isNaN(a)) {
-    return `Prijsverschil niet te bepalen — een geldige prijs ontbreekt. ${tail}`;
+    return `Price difference cannot be determined — a valid price is missing. ${tail}`;
   }
   const diff = r - a;
   const abs = formatEur(Math.abs(diff));
-  const pair = `referentie ${formatEur(r)} → alternatief ${formatEur(a)}`;
-  if (diff > 0) return `Besparing ${abs} per stuk (${pair}). ${tail}`;
-  if (diff < 0) return `Meerprijs ${abs} per stuk (${pair}). ${tail}`;
-  return `Gelijke stukprijs (${pair}). ${tail}`;
+  const pair = `reference ${formatEur(r)} → alternative ${formatEur(a)}`;
+  if (diff > 0) return `Saving ${abs} per unit (${pair}). ${tail}`;
+  if (diff < 0) return `Additional cost ${abs} per unit (${pair}). ${tail}`;
+  return `Equal unit price (${pair}). ${tail}`;
 }
 
 // Legt een substitutievoorstel vast: het veld-voor-veld-document + de kostentekst. Idempotent

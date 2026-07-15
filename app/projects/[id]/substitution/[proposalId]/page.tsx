@@ -31,7 +31,7 @@ export default async function SubstitutiePage({
           href={`/projects/${id}/work-prep`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="size-3.5" /> Werkvoorbereiding
+          <ArrowLeft className="size-3.5" /> Work preparation
         </Link>
         <PrintButton />
       </div>

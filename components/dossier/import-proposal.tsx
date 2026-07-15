@@ -10,11 +10,11 @@ import type { ImportRow } from "@/db/schema";
 
 // Herkomst-etiket per bron (rustige tekst, geen jargon).
 const SOURCE_LABEL: Record<string, string> = {
-  pdf: "PDF (tekstlaag)",
-  ocr: "OCR (gescand)",
-  llm: "AI-extractie",
-  csv: "CSV-plak",
-  bestek: "Bestek",
+  pdf: "PDF (text layer)",
+  ocr: "OCR (scanned)",
+  llm: "AI extraction",
+  csv: "CSV paste",
+  bestek: "Specification",
 };
 
 // Onzekere bronnen: hier tellen we niet op vertrouwen, hier controleer je elke regel.
@@ -74,7 +74,7 @@ export function ImportProposal({
         }
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-medium text-foreground">Importvoorstel</span>
+          <span className="font-medium text-foreground">Import proposal</span>
           <span aria-hidden>·</span>
           <span>{SOURCE_LABEL[source] ?? source}</span>
           {filename && (
@@ -86,39 +86,39 @@ export function ImportProposal({
           {confidence && (
             <>
               <span aria-hidden>·</span>
-              <span>betrouwbaarheid: {confidence}</span>
+              <span>confidence: {confidence}</span>
             </>
           )}
         </div>
         {uncertain ? (
           <p className="mt-1 font-medium">
-            Automatisch herkend — controleer elke regel. Onzekere regels staan
-            standaard uit.
+            Automatically recognized — check every line. Uncertain lines are off by
+            default.
           </p>
         ) : (
           <p className="mt-1">
-            Niets is opgeslagen. Vink aan wat je wilt toevoegen en bevestig.
+            Nothing is saved. Check what you want to add and confirm.
           </p>
         )}
       </div>
 
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Geen regels herkend in deze bron.
+          No lines recognized in this source.
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                <span className="sr-only">Aanvinken</span>
+                <span className="sr-only">Check</span>
               </TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Zone</TableHead>
-              <TableHead>Aantal</TableHead>
-              <TableHead>Gevraagd</TableHead>
+              <TableHead>Quantity</TableHead>
+              <TableHead>Requested</TableHead>
               <TableHead>Specs</TableHead>
-              {hasPages && <TableHead className="text-right">Pagina</TableHead>}
+              {hasPages && <TableHead className="text-right">Page</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,7 +132,7 @@ export function ImportProposal({
                       type="checkbox"
                       name={`row-${i}`}
                       defaultChecked={row.checked}
-                      aria-label={`Regel ${row.fixtureCode} toevoegen`}
+                      aria-label={`Add line ${row.fixtureCode}`}
                       className="size-4 accent-foreground align-middle"
                     />
                   </TableCell>
@@ -142,7 +142,7 @@ export function ImportProposal({
                   </TableCell>
                   <TableCell className="tabular-nums">
                     {row.quantity ?? (
-                      <span className="text-muted-foreground">p/st</span>
+                      <span className="text-muted-foreground">ea.</span>
                     )}
                   </TableCell>
                   <TableCell className="max-w-64 whitespace-normal">
@@ -175,8 +175,8 @@ export function ImportProposal({
       {/* Voettekst: annuleren gooit alles weg, bevestigen maakt spec-regels. */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          {rows.length} regel{rows.length === 1 ? "" : "s"} herkend · standaard{" "}
-          {checkedCount} aangevinkt. Niets wordt opgeslagen tot je bevestigt.
+          {rows.length} line{rows.length === 1 ? "" : "s"} recognized ·{" "}
+          {checkedCount} checked by default. Nothing is saved until you confirm.
         </p>
         <div className="flex items-center gap-2">
           <Button
@@ -186,11 +186,11 @@ export function ImportProposal({
             formAction={cancelAction}
             formNoValidate
           >
-            Annuleer import
+            Cancel import
           </Button>
           <Button type="submit" size="sm" disabled={rows.length === 0}>
-            <IconCheck /> {checkedCount} aangevinkte regel
-            {checkedCount === 1 ? "" : "s"} toevoegen
+            <IconCheck /> Add {checkedCount} checked line
+            {checkedCount === 1 ? "" : "s"}
           </Button>
         </div>
       </div>

@@ -55,23 +55,23 @@ function KopblokBewerken({
   return (
     <details className="mb-6 rounded-lg border">
       <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
-        Kopblok bewerken
+        Edit header
       </summary>
       <form action={saveQuoteHeaderAction} className="border-t p-4">
         <input type="hidden" name="dossierId" value={dossierId} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {field("quoteNumber", "Offertenummer", q.quoteNumber)}
-          {field("quoteDate", "Datum", q.quoteDate, "date")}
-          {field("validUntil", "Geldig tot", q.validUntil, "date")}
-          {field("customer", "Klant", q.customer)}
-          {field("contactName", "Contactpersoon", q.contactName)}
-          {field("address", "Adres", q.address)}
+          {field("quoteNumber", "Quote number", q.quoteNumber)}
+          {field("quoteDate", "Date", q.quoteDate, "date")}
+          {field("validUntil", "Valid until", q.validUntil, "date")}
+          {field("customer", "Customer", q.customer)}
+          {field("contactName", "Contact", q.contactName)}
+          {field("address", "Address", q.address)}
           {field("projectRef", "Project", q.projectRef)}
-          {field("authorEmail", "Opsteller", q.authorEmail)}
+          {field("authorEmail", "Author", q.authorEmail)}
         </div>
         <div className="mt-3">
           <Button type="submit" size="sm">
-            Kopblok opslaan
+            Save header
           </Button>
         </div>
       </form>
@@ -119,7 +119,7 @@ export default async function EstimatePage({
       <form action={generateQuoteAction}>
         <input type="hidden" name="dossierId" value={dossier.id} />
         <Button type="submit" variant="secondary" size="sm">
-          {q ? "Ververs estimate" : "Genereer estimate"}
+          {q ? "Refresh estimate" : "Generate estimate"}
         </Button>
       </form>
       <PrintButton />

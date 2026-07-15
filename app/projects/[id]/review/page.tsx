@@ -69,7 +69,7 @@ async function candidatesFor(specLineId: string): Promise<ReviewCandidate[]> {
   );
   return raw.map((c, i) => ({
     productId: c.productId,
-    name: products[i]?.name ?? "(product niet meer zichtbaar)",
+    name: products[i]?.name ?? "(product no longer visible)",
     brandName: products[i]?.brandName ?? null,
     articleCode: products[i]?.articleCode ?? null,
     list: c.list === "onvolledig" ? ("onvolledig" as const) : ("aantoonbaar" as const),
@@ -82,11 +82,11 @@ export default async function ReviewTab({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ regel?: string; zoek?: string }>;
+  searchParams: Promise<{ line?: string; q?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
-  const { regel, zoek } = await searchParams;
+  const { line, q } = await searchParams;
   const { pending, done } = await getReviewQueue(db, id);
   // Fase voor de AI-suggestie-render-guard (regel 4) + de suggesties zelf (B4).
   const dossier = await getDossier(db, id);
@@ -112,10 +112,10 @@ export default async function ReviewTab({
   // Rood zonder match → handmatig linken. Zoekresultaten alleen voor de regel
   // waarvoor de mens zocht (query-string), via searchProducts (logt zelf het event).
   const redRows = await getRedLinkLines(db, id);
-  const query = (zoek ?? "").trim();
+  const query = (q ?? "").trim();
   const rood: RedLinkLine[] = await Promise.all(
     redRows.map(async (r) => {
-      if (!regel || r.id !== regel || !query)
+      if (!line || r.id !== line || !query)
         return { ...r, aiSuggestions: suggestionsByLine.get(r.id) ?? [] };
       const results = await searchProducts(db, {
         query,

@@ -32,7 +32,7 @@ export default async function ImportRunPage({
         href={`/projects/${dossier.id}`}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Regels
+        <ArrowLeft className="size-3.5" /> Lines
       </Link>
 
       {run.status === "voorstel" ? (
@@ -50,24 +50,24 @@ export default async function ImportRunPage({
         // PDF-imports zijn nooit een voorstel: deterministisch geparst, direct bevestigd.
         // Deze pagina is dan het controlespoor van de import (B2).
         <p className="text-sm text-muted-foreground">
-          PDF-import
+          PDF import
           {run.filename && (
             <>
               {" "}
-              van <span className="tabular-nums">{run.filename}</span>
+              of <span className="tabular-nums">{run.filename}</span>
             </>
           )}{" "}
-          — {run.counts?.total ?? (run.rows ?? []).length} regel
+          — {run.counts?.total ?? (run.rows ?? []).length} line
           {(run.counts?.total ?? (run.rows ?? []).length) === 1 ? "" : "s"}{" "}
-          {run.status === "bevestigd" ? "toegevoegd en gematcht" : "geannuleerd"}
-          . De regels staan bij het project; hieronder staat de brontekst als
-          controlespoor.
+          {run.status === "bevestigd" ? "added and matched" : "cancelled"}
+          . The lines are with the project; the source text below is the audit
+          trail.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Dit importvoorstel is al{" "}
-          {run.status === "bevestigd" ? "bevestigd" : "geannuleerd"}. Ga terug
-          naar de regels van dit project.
+          This import proposal is already{" "}
+          {run.status === "bevestigd" ? "confirmed" : "cancelled"}. Go back to this
+          project's lines.
         </p>
       )}
 

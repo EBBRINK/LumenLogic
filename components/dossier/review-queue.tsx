@@ -35,11 +35,11 @@ import type {
 const MAX_CHOICE_CANDIDATES = 4;
 
 const DECISION_LABEL: Record<string, string> = {
-  accepteer: "geaccepteerd → groen",
-  afgewezen: "afgewezen → rood",
-  variant: "variant gekozen → groen",
-  gecontroleerd: "gecontroleerd",
-  bevestigd: "bevestigd ondanks datagat",
+  accepteer: "accepted → green",
+  afgewezen: "rejected → red",
+  variant: "variant chosen → green",
+  gecontroleerd: "checked",
+  bevestigd: "confirmed despite data gap",
 };
 
 type Action = (formData: FormData) => void | Promise<void>;
@@ -67,7 +67,7 @@ function OtherMatch({ dossierId, itemId }: { dossierId: string; itemId: string }
   return (
     <Button asChild size="sm" variant="outline">
       <a href={`/projects/${dossierId}/line/${itemId}`}>
-        <IconSearch /> Andere match
+        <IconSearch /> Other match
       </a>
     </Button>
   );
@@ -79,8 +79,8 @@ function DeviationList({ deviations }: { deviations: Deviation[] }) {
     <ul className="flex flex-col gap-1 text-sm">
       {deviations.map((d) => (
         <li key={d.field} className="text-amber-700 dark:text-amber-400">
-          <span className="font-medium">{d.field}</span>: gevraagd {d.requested} →
-          geleverd {d.delivered ?? "—"}
+          <span className="font-medium">{d.field}</span>: requested {d.requested} →
+          delivered {d.delivered ?? "—"}
         </li>
       ))}
     </ul>
@@ -106,19 +106,19 @@ function RejectForm({
       <input type="hidden" name="specLineId" value={itemId} />
       <input type="hidden" name="decision" value="afgewezen" />
       <label htmlFor={`reason-${itemId}`} className="text-sm font-medium">
-        Reden (verplicht bij afwijzen)
+        Reason (required for rejection)
       </label>
       <textarea
         id={`reason-${itemId}`}
         name="reason"
         rows={2}
         required
-        placeholder="Waarom valt deze afwijking buiten wat de klant accepteert?"
+        placeholder="Why does this deviation fall outside what the customer accepts?"
         className="w-full rounded-lg border border-input bg-background p-2.5 text-sm"
       />
       <div>
         <Button type="submit" size="sm" variant="destructive">
-          Wijs af → rood
+          Reject → red
         </Button>
       </div>
     </form>
@@ -174,7 +174,7 @@ function CandidateChoice({
           <input type="hidden" name="decision" value={decision} />
           <input type="hidden" name="productId" value={candidate.productId} />
           <Button type="submit" size="sm">
-            <IconCheck /> Kies deze
+            <IconCheck /> Choose this
           </Button>
         </form>
       </div>
@@ -195,9 +195,9 @@ function GeelCard({
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Zelfde merk, afwijking binnen de gele marge. Accepteer als voorstel — de regel
-        wordt groen (handmatig gekozen) en de afwijking blijft als notitie staan — of
-        wijs af naar rood.
+        Same brand, deviation within the yellow margin. Accept as proposal — the line
+        turns green (manually chosen) and the deviation stays as a note — or reject to
+        red.
       </p>
       {gele.length > 0 && <DeviationList deviations={gele} />}
       <div className="flex flex-wrap items-center gap-2">
@@ -206,7 +206,7 @@ function GeelCard({
           <input type="hidden" name="specLineId" value={item.id} />
           <input type="hidden" name="decision" value="accepteer" />
           <Button type="submit" size="sm">
-            <IconCheck /> Accepteer als voorstel
+            <IconCheck /> Accept as proposal
           </Button>
         </form>
         <OtherMatch dossierId={dossierId} itemId={item.id} />
@@ -234,9 +234,9 @@ function KeuzeCard({
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        We vonden {candidates.length} passende kandidaten — welke moet het worden?
-        Kiezen maakt de regel groen (handmatig gekozen); de afwijkingen blijven als
-        notitie staan.
+        We found {candidates.length} matching candidates — which should it be?
+        Choosing turns the line green (manually chosen); the deviations stay as a
+        note.
       </p>
       <ul className="flex flex-col gap-2">
         {shown.map((c) => (
@@ -256,7 +256,7 @@ function KeuzeCard({
           <input type="hidden" name="specLineId" value={item.id} />
           <input type="hidden" name="decision" value="accepteer" />
           <Button type="submit" size="sm" variant="secondary">
-            <IconCheck /> Accepteer als voorstel
+            <IconCheck /> Accept as proposal
           </Button>
         </form>
         <OtherMatch dossierId={dossierId} itemId={item.id} />
@@ -286,14 +286,14 @@ function VariantCard({
     return (
       <>
         <p className="text-sm text-muted-foreground">
-          Kleurvariant kiezen — deze kleuren bestaan écht in de catalogus
+          Choose a color variant — these colors really exist in the catalog
           {req ? (
             <>
               {" "}
-              (gevraagd: <span className="font-medium">{req}</span>)
+              (requested: <span className="font-medium">{req}</span>)
             </>
           ) : null}
-          . Kiezen maakt de regel groen (handmatig gekozen).
+          . Choosing turns the line green (manually chosen).
         </p>
         <ul className="flex flex-wrap gap-2">
           {variants.map((v) => (
@@ -319,8 +319,8 @@ function VariantCard({
     return (
       <>
         <p className="text-sm text-muted-foreground">
-          Geen kleurvarianten van dit product in de catalogus gevonden — kies uit de
-          kandidaten van de regel (kiezen maakt de regel groen, handmatig gekozen).
+          No color variants of this product found in the catalog — choose from the
+          line's candidates (choosing turns the line green, manually chosen).
         </p>
         <ul className="flex flex-col gap-2">
           {candidates.slice(0, MAX_CHOICE_CANDIDATES).map((c) => (
@@ -342,8 +342,8 @@ function VariantCard({
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Geen kleurvarianten én geen kandidaten gevonden — open de regel voor een
-        andere match.
+        No color variants and no candidates found — open the line for another
+        match.
       </p>
       <OtherMatch dossierId={dossierId} itemId={item.id} />
     </>
@@ -362,8 +362,8 @@ function OnvolledigCard({
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Bevestig ondanks ontbrekende data. Ontbrekende data is geen fout — bevestig de
-        match of kies een andere.
+        Confirm despite missing data. Missing data is not an error — confirm the
+        match or choose another.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <form
@@ -375,11 +375,11 @@ function OnvolledigCard({
           <input type="hidden" name="decision" value="bevestigd" />
           <Input
             name="reason"
-            placeholder="Reden (optioneel)"
+            placeholder="Reason (optional)"
             className="h-7 w-56 text-sm"
           />
           <Button type="submit" size="sm">
-            <IconCheck /> Bevestig
+            <IconCheck /> Confirm
           </Button>
         </form>
         <OtherMatch dossierId={dossierId} itemId={item.id} />
@@ -400,8 +400,8 @@ function OcrCard({
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Controleer de ingelezen regel — de OCR-import kan tekens verkeerd lezen. Bevestig
-        als de regel klopt, of open ‘m voor een andere match.
+        Check the imported line — OCR import can misread characters. Confirm if the
+        line is correct, or open it for another match.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <form action={decideAction}>
@@ -409,7 +409,7 @@ function OcrCard({
           <input type="hidden" name="specLineId" value={item.id} />
           <input type="hidden" name="decision" value="gecontroleerd" />
           <Button type="submit" size="sm">
-            <IconCheck /> Gecontroleerd
+            <IconCheck /> Checked
           </Button>
         </form>
         <OtherMatch dossierId={dossierId} itemId={item.id} />
@@ -520,9 +520,9 @@ function RedLinkCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          Geen match gevonden{line.noMatchReason ? ` — ${line.noMatchReason}` : ""}.
-          Zoek zelf een vergelijkbaar product in de catalogus en link het; de regel
-          wordt groen met het merkteken &ldquo;handmatig gekozen&rdquo;.
+          No match found{line.noMatchReason ? ` — ${line.noMatchReason}` : ""}.
+          Search for a comparable product in the catalog yourself and link it; the
+          line turns green with the &ldquo;manually chosen&rdquo; mark.
         </p>
         {/* AI-vangnet (B4): suggesties zijn een startpunt — linken blijft de menskeuze. */}
         {aiUseAction && aiDismissAction && (line.aiSuggestions?.length ?? 0) > 0 && (
@@ -541,16 +541,16 @@ function RedLinkCard({
           action={`/projects/${dossierId}/review`}
           className="flex flex-wrap items-center gap-2"
         >
-          <input type="hidden" name="regel" value={line.id} />
+          <input type="hidden" name="line" value={line.id} />
           <Input
-            name="zoek"
+            name="q"
             defaultValue={line.searchQuery ?? ""}
-            placeholder="Zoek in de catalogus (naam of artikelcode)"
+            placeholder="Search the catalog (name or article code)"
             className="h-8 w-72 max-w-full text-sm"
-            aria-label={`Zoek vergelijkbaar product voor ${line.fixtureCode}`}
+            aria-label={`Search comparable product for ${line.fixtureCode}`}
           />
           <Button type="submit" size="sm" variant="secondary">
-            <IconSearch /> Zoek
+            <IconSearch /> Search
           </Button>
         </form>
         {results && results.length > 0 && (
@@ -582,7 +582,7 @@ function RedLinkCard({
                     <input type="hidden" name="specLineId" value={line.id} />
                     <input type="hidden" name="productId" value={r.id} />
                     <Button type="submit" size="sm">
-                      <IconCheck /> Link dit product
+                      <IconCheck /> Link this product
                     </Button>
                   </form>
                 </div>
@@ -592,8 +592,8 @@ function RedLinkCard({
         )}
         {results && results.length === 0 && line.searchQuery && (
           <p className="text-sm text-muted-foreground">
-            Geen zichtbare producten gevonden voor &ldquo;{line.searchQuery}&rdquo; —
-            probeer een ruimere zoekterm.
+            No visible products found for &ldquo;{line.searchQuery}&rdquo; — try a
+            broader search term.
           </p>
         )}
       </CardContent>
@@ -627,11 +627,11 @@ export function ReviewQueue({
   if (pending.length === 0 && done.length === 0 && rood.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">Niets te reviewen — alle regels zijn eenduidig.</p>
+        <p className="font-medium">Nothing to review — all lines are unambiguous.</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Regels komen hier alleen als er een menselijk oordeel nodig is: een gele
-          afwijking, een kleurvariant, een bevestiging bij ontbrekende data, een
-          OCR-controle of een niet-gevonden product dat handmatig gelinkt moet worden.
+          Lines only appear here when a human verdict is needed: a yellow deviation,
+          a color variant, a confirmation for missing data, an OCR check, or a
+          not-found product that must be linked manually.
         </p>
       </div>
     );
@@ -641,9 +641,9 @@ export function ReviewQueue({
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium">
-          Review — {pending.length + rood.length} wachtend, {done.length} afgerond
+          Review — {pending.length + rood.length} pending, {done.length} done
         </h2>
-        <p className="text-xs text-muted-foreground">Volgorde = aanvraagvolgorde.</p>
+        <p className="text-xs text-muted-foreground">Order = request order.</p>
       </div>
 
       {pending.length > 0 ? (
@@ -663,7 +663,7 @@ export function ReviewQueue({
       ) : (
         rood.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Geen wachtende items — alles is afgerond.
+            No pending items — everything is done.
           </p>
         )
       )}
@@ -672,11 +672,11 @@ export function ReviewQueue({
         <section className="flex flex-col gap-3">
           <div>
             <h3 className="text-sm font-medium">
-              Niet gevonden — handmatig linken ({rood.length})
+              Not found — link manually ({rood.length})
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Merk in de catalogus, dit product niet. Het systeem doet hier bewust
-              geen suggesties — zoeken en kiezen is aan jou.
+              Brand in the catalog, this product not. The system deliberately makes
+              no suggestions here — searching and choosing is up to you.
             </p>
           </div>
           {rood.map((line) => (
@@ -696,7 +696,7 @@ export function ReviewQueue({
       {done.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-muted-foreground">
-            Afgerond ({done.length})
+            Done ({done.length})
           </h3>
           <ul className="flex flex-col divide-y rounded-lg border">
             {done.map((item) => (
@@ -711,7 +711,7 @@ export function ReviewQueue({
                   {item.reviewDecision
                     ? `${DECISION_LABEL[item.reviewDecision] ?? item.reviewDecision} · `
                     : ""}
-                  door {item.reviewedBy ?? "onbekend"}
+                  by {item.reviewedBy ?? "unknown"}
                   {item.reviewedAt ? ` · ${item.reviewedAt}` : ""}
                 </span>
               </li>

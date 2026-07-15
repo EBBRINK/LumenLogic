@@ -26,11 +26,11 @@ export default async function WerkvoorbereidingPage({
   if (dossier.phase !== "awarded") {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">Deze tab is er alleen in gegund-stand</p>
+        <p className="font-medium">This tab only exists when awarded</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Alternatieven en value-engineering verschijnen pas als het project op
-          “gegund” staat. Default = veilig: in de tenderfase toont de tool niets
-          dat de spec-gelijkwaardigheid in gevaar brengt.
+          Alternatives and value engineering only appear once the project is set to
+          “Won”. Default = safe: during the tender phase the tool shows nothing that
+          could jeopardize spec equivalence.
         </p>
       </div>
     );
@@ -101,7 +101,7 @@ export default async function WerkvoorbereidingPage({
           href={`/projects/${id}/luminaire-schedule/versions`}
           className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
-          Armaturenboek-versies →
+          Luminaire schedule versions →
         </Link>
       </div>
 
@@ -110,12 +110,12 @@ export default async function WerkvoorbereidingPage({
       {subActionable.length > 0 && (
         <section className="border-t pt-6">
           <h2 className="text-lg font-semibold tracking-tight">
-            Substitutievoorstel genereren
+            Generate substitution proposal
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Leg een gelijkwaardig alternatief vast als printbaar voorstel voor de klant.
-            Het prijsverschil komt er alléén als tekst bij — geld weegt nooit mee in de
-            ordening.
+            Record an equivalent alternative as a printable proposal for the customer.
+            The price difference is added as text only — money never counts in the
+            ordering.
           </p>
           <div className="mt-4 flex flex-col gap-4">
             {subActionable.map((s) => (
@@ -127,7 +127,7 @@ export default async function WerkvoorbereidingPage({
                     href={`/products/${s.referenceProductId}`}
                     className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   >
-                    {s.referenceName || "referentie"}
+                    {s.referenceName || "reference"}
                   </Link>
                 </p>
                 <div className="mt-2 flex flex-col gap-2">
@@ -161,7 +161,7 @@ export default async function WerkvoorbereidingPage({
                           value={alt.id}
                         />
                         <Button type="submit" size="sm" variant="outline">
-                          Genereer substitutievoorstel
+                          Generate substitution proposal
                         </Button>
                       </form>
                     </div>

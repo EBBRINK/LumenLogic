@@ -28,13 +28,13 @@ export type ArmatuurRow = {
 function noProductText(status: MatchStatus): string {
   switch (status) {
     case "rood":
-      return "geen match in catalogus";
+      return "no match in catalog";
     case "blauw":
-      return "merk nog niet ingeladen";
+      return "brand not loaded yet";
     case "paars":
-      return "buiten assortiment";
+      return "outside assortment";
     default:
-      return "nog niet gematcht"; // open (en veilige fallback)
+      return "not matched yet"; // open (en veilige fallback)
   }
 }
 
@@ -54,7 +54,7 @@ export function ArmaturenboekView({
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6 border-b pb-4">
-        <p className="text-sm text-muted-foreground">Armaturenboek</p>
+        <p className="text-sm text-muted-foreground">Luminaire schedule</p>
         <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>
         {customer && <p className="text-sm text-muted-foreground">{customer}</p>}
       </header>
@@ -63,11 +63,11 @@ export function ArmaturenboekView({
         <TableHeader>
           <TableRow>
             <TableHead>Code</TableHead>
-            <TableHead className="text-right">Aantal</TableHead>
-            <TableHead>Merk</TableHead>
+            <TableHead className="text-right">Quantity</TableHead>
+            <TableHead>Brand</TableHead>
             <TableHead>Product</TableHead>
-            <TableHead>Artikelnr.</TableHead>
-            <TableHead>Kleurtemp.</TableHead>
+            <TableHead>Art. no.</TableHead>
+            <TableHead>Color temp.</TableHead>
             <TableHead>CRI</TableHead>
             <TableHead>IP</TableHead>
             <TableHead>Status</TableHead>
@@ -110,8 +110,8 @@ export function ArmaturenboekView({
       </Table>
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Overdrachtsdocument voor de bouwplaats. Specs zoals door het merk opgegeven;
-        onopgeloste regels staan er eerlijk in met hun status.
+        Handover document for the construction site. Specs as provided by the brand;
+        unresolved lines are listed honestly with their status.
       </p>
     </div>
   );

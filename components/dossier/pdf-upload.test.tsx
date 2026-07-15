@@ -4,7 +4,6 @@
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
-import boekUrl from "@/docs/examples/test-armaturenboek.pdf?url";
 import {
   errorImportAction,
   noopAction,
@@ -123,7 +122,7 @@ const screens = {
   },
   "importrun-markdown": {
     ui: <ImportRunScreen />,
-    ready: "Brontekst (markdown)",
+    ready: "Source text (markdown)",
   },
 } as const;
 
@@ -159,11 +158,84 @@ test("PDF-upload staat boven de regeltabel", async () => {
     .toBeInTheDocument();
 });
 
+// ── Interactietests (413-fix nafix 1): de client-side upload-flow zelf ──────────────
+// Echte browser-extractie (unpdf) + echte server-action-aanroepen via de RSC-testbrug;
+// alleen de action-uitkomst is een test-stub (error/slow) — niets aan de kaart gemockt.
+
+async function uploadEnVerstuur(file: File | string) {
+  await userEvent.upload(page.getByLabelText("Choose luminaire schedule PDF"), file);
+  await page.getByRole("button", { name: "Import PDF" }).click();
+}
+
+// Het fixture-boek als pad (relatief aan de projectroot): met de playwright-provider is
+// een File-object uit fetch() niet betrouwbaar over de CDP-brug te uploaden, een pad wel.
+const FIXTURE_BOEK = "./docs/examples/test-armaturenboek.pdf";
+
+test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar", async () => {
+  await renderServer(
+    <Screen>
+      <PdfUploadCard dossierId="d1" importAction={errorImportAction} />
+    </Screen>,
+  );
+  const kapot = new File([new Uint8Array([1, 2, 3, 4])], "kapot.pdf", {
+    type: "application/pdf",
+  });
+  await uploadEnVerstuur(kapot);
+  // NB: page.getByRole("alert") is hier ambigu (Next' route-announcer is ook een alert)
+  await expect
+    .element(page.getByText(/could not be read/i))
+    .toBeInTheDocument();
+  // de flow stopte vóór de action: de action-fout ("Testfout") verscheen dus niet
+  expect(document.body.textContent).not.toContain("Testfout");
+  // knop weer vrij voor een nieuwe poging
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("action antwoordt {error} → zichtbaar als alert", async () => {
+  await renderServer(
+    <Screen>
+      <PdfUploadCard dossierId="d1" importAction={errorImportAction} />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText("Testfout: import geweigerd."))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async () => {
+  await renderServer(
+    <Screen>
+      <PdfUploadCard dossierId="d1" importAction={slowErrorImportAction} />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  // de trage action (800 ms) houdt de busy-toestand deterministisch open
+  await expect
+    .element(page.getByText(/pages, importing/i))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByLabelText("Choose luminaire schedule PDF"))
+    .toBeDisabled();
+  // en na afloop: fout van de action zichtbaar, kaart weer vrij
+  await expect
+    .element(page.getByText("Testfout: trage import geweigerd."))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
 // Het controlespoor: inklapbaar blok met de brontekst + downloadknop naar de md-route.
 test("importrun toont brontekst (markdown) met downloadknop", async () => {
   const { container } = await renderServer(<ImportRunScreen />);
   await expect
-    .element(page.getByText("Brontekst (markdown)"))
+    .element(page.getByText("Source text (markdown)"))
     .toBeInTheDocument();
   await expect.element(page.getByText("## Pagina 1")).toBeInTheDocument();
   const link = container.querySelector('a[download]');
