@@ -158,11 +158,11 @@ test("rol-uitleg en default-landing kloppen; de rol kiest de VIEW, niet de engin
   const items = Array.from(document.querySelectorAll("li"));
   const calc = items.find((li) => li.textContent?.includes("Calculator"));
   expect(calc?.textContent).toContain("Lines");
-  const wvb = items.find((li) => li.textContent?.includes("Werkvoorbereider"));
+  const wvb = items.find((li) => li.textContent?.includes("Work preparer"));
   expect(wvb?.textContent).toContain("Work preparation");
-  const pl = items.find((li) => li.textContent?.includes("Projectleider"));
+  const pl = items.find((li) => li.textContent?.includes("Project lead"));
   expect(pl?.textContent).toContain("Luminaire schedule");
-  const admin = items.find((li) => li.textContent?.includes("Beheerder"));
+  const admin = items.find((li) => li.textContent?.includes("Admin"));
   expect(admin?.textContent).toContain("Settings");
 });
 

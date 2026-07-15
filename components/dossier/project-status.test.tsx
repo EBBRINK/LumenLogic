@@ -136,9 +136,9 @@ test("projectlijst: statusbadge per project, in de vaste badge-taal", async () =
     "Concept",
     "Estimate sent",
     "Quote",
-    "Gegund", // let op: staat er 2× — als statusbadge én als fase-badge (awarded)
-    "Niet gegund",
-    "Archief",
+    "Won", // let op: staat er 2× — als statusbadge én als fase-badge (awarded)
+    "Lost",
+    "Archived",
   ]) {
     await expect
       .element(page.getByText(label, { exact: true }).first())
@@ -147,7 +147,7 @@ test("projectlijst: statusbadge per project, in de vaste badge-taal", async () =
 });
 
 // Filter: zeven opties (Alle + zes statussen), de actieve draagt aria-current;
-// default "Alle" zonder query (toont alles behálve archief — dat is de repo-kant).
+// default "All" zonder query (toont alles behálve archief — dat is de repo-kant).
 test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
   await renderServer(
     <Screen>
@@ -155,26 +155,26 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
     </Screen>,
   );
   for (const label of [
-    "Alle",
+    "All",
     "Concept",
     "Estimate sent",
     "Quote",
-    "Gegund",
-    "Niet gegund",
-    "Archief",
+    "Won",
+    "Lost",
+    "Archived",
   ]) {
     await expect
       .element(page.getByRole("link", { name: label, exact: true }))
       .toBeInTheDocument();
   }
   await expect
-    .element(page.getByRole("link", { name: "Archief" }))
+    .element(page.getByRole("link", { name: "Archived" }))
     .toHaveAttribute("aria-current", "page");
   await expect
     .element(page.getByRole("link", { name: "All" }))
     .not.toHaveAttribute("aria-current");
   await expect
-    .element(page.getByRole("link", { name: "Niet gegund" }))
+    .element(page.getByRole("link", { name: "Lost" }))
     .toHaveAttribute("href", "/projects?filter=niet_gegund");
 });
 

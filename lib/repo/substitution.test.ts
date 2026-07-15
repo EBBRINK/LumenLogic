@@ -75,15 +75,15 @@ test("createSubstitution: veld-voor-veld met bron 'brand-provided' + prijsversch
   expect(byLabel["Warranty"].alternative).toBe("120 mo");
   expect(byLabel["Repairability"].reference).toBe("C");
   expect(byLabel["Repairability"].alternative).toBe("A");
-  expect(byLabel["Levensduur (EPD)"].reference).toBe("35000 u");
-  expect(byLabel["Levensduur (EPD)"].alternative).toBe("100000 u");
+  expect(byLabel["Lifetime (EPD)"].reference).toBe("35000 h");
+  expect(byLabel["Lifetime (EPD)"].alternative).toBe("100000 h");
 
   // F-08: het prijsverschil (310 - 260 = 50) staat ALS TEKST in de saving_note.
   expect(row.savingNote).toBeTruthy();
   expect(row.savingNote!).toContain("Saving");
   expect(row.savingNote!).toContain("50,00");
   // en de note zegt expliciet dat prijs niet meeweegt in de rangschikking.
-  expect(row.savingNote!.toLowerCase()).toContain("weegt");
+  expect(row.savingNote!.toLowerCase()).toContain("counts");
 });
 
 test("createSubstitution: duurdere alternatief → 'Additional cost' als tekst (nog steeds geen sortering)", async () => {

@@ -376,7 +376,7 @@ test("vangnet (mock): 4 restregels gecheckt, 4 suggesties, statussen onaangetast
 // ── Stap 5 — review afronden ─────────────────────────────────────────────────
 test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig linken", async () => {
   // 5a. Een gele accepteren (voorstel-kandidaat, rank 1) → regel wordt GROEN
-  // mét merkteken "handmatig gekozen" (herontwerp stap 7); afwijking blijft staan.
+  // mét merkteken "manually chosen" (herontwerp stap 7); afwijking blijft staan.
   const lw102 = await lineByCode("Lw102");
   await decideReview(db, {
     specLineId: lw102.id,
@@ -386,7 +386,7 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   const lw102Na = await lineByCode("Lw102");
   expect(lw102Na.status).toBe("groen");
   expect([nestWhiteId, nestBlackId]).toContain(lw102Na.matchedProductId);
-  expect(lw102Na.chosenBy).toBe(ACTOR); // merkteken "handmatig gekozen"
+  expect(lw102Na.chosenBy).toBe(ACTOR); // merkteken "manually chosen"
   expect((lw102Na.deviations ?? []).some((d) => d.verdict === "geel")).toBe(true);
 
   // 5b. Een variant kiezen (er zíjn echte kleurvarianten: NEST wit/zwart) →
@@ -476,16 +476,16 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   expect(text).toContain("Combined (green + yellow)");
 
   // p.m.-posten: getoond, nooit opgeteld
-  expect(text).toContain("blauw 2 · rood 1 · paars 2");
+  expect(text).toContain("blue 2 · red 1 · purple 2");
   expect(text).toContain("load brand Zumtobel (us)");
   expect(text).toContain("load brand Trilux (us)");
   expect(text).toContain("back to customer");
   expect(text).toContain("outside assortment");
 
   // afwijkingsnotitie (C-07) + beide merktekens
-  expect(text).toContain("gevraagd 40, geleverd 32"); // Ld202: watt-afwijking
-  expect(text).toContain("automatisch geaccepteerde bijna-match"); // B3
-  expect(text).toContain("handmatig gekozen"); // review-keuze / handmatige link
+  expect(text).toContain("requested 40, delivered 32"); // Ld202: watt-afwijking
+  expect(text).toContain("automatically accepted near-match"); // B3
+  expect(text).toContain("manually chosen"); // review-keuze / handmatige link
 }, 120_000);
 
 // ── Stap 7 — statusflow ──────────────────────────────────────────────────────

@@ -14,13 +14,13 @@ const viewports = {
 } as const;
 
 const fields: SubstitutionDocField[] = [
-  { field: "Kleurtemperatuur", reference: "3000K", alternative: "3000K", source: "merk-opgave" },
-  { field: "CRI", reference: "90", alternative: "90", source: "merk-opgave" },
-  { field: "IP-waarde", reference: "IP20", alternative: "IP20", source: "merk-opgave" },
-  { field: "Garantie", reference: "36 mnd", alternative: "120 mo", source: "merk-opgave" },
-  { field: "Repareerbaarheid", reference: "C", alternative: "A", source: "merk-opgave" },
-  { field: "Levensduur (EPD)", reference: "35000 u", alternative: "100000 u", source: "merk-opgave" },
-  { field: "Herkomst", reference: null, alternative: "België", source: "merk-opgave" },
+  { field: "Color temperature", reference: "3000K", alternative: "3000K", source: "brand-provided" },
+  { field: "CRI", reference: "90", alternative: "90", source: "brand-provided" },
+  { field: "IP value", reference: "IP20", alternative: "IP20", source: "brand-provided" },
+  { field: "Warranty", reference: "36 mo", alternative: "120 mo", source: "brand-provided" },
+  { field: "Repairability", reference: "C", alternative: "A", source: "brand-provided" },
+  { field: "Lifetime (EPD)", reference: "35000 u", alternative: "100000 u", source: "brand-provided" },
+  { field: "Origin", reference: null, alternative: "België", source: "brand-provided" },
 ];
 
 const doc = (
@@ -67,5 +67,5 @@ test("SubstitutionDoc: ontbrekende data blijft eerlijk zichtbaar, niet weggelate
   // Herkomst-referentie is null → het veld blijft staan met een "geen data"-oordeel.
   await expect.element(page.getByText("Origin", { exact: true })).toBeInTheDocument();
   // exact: alleen de tabelcel "geen data" (de voetnoot bevat de frase ook).
-  await expect.element(page.getByText("geen data", { exact: true })).toBeInTheDocument();
+  await expect.element(page.getByText("no data", { exact: true })).toBeInTheDocument();
 });
