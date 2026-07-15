@@ -27,10 +27,10 @@ export default async function AdminMerkenPage() {
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Merken &amp; zichtbaarheid
+          Brands &amp; visibility
         </h1>
         <p className="text-sm text-muted-foreground">
-          Disclosure-tier en per-veld-uitzonderingen per merk.
+          Disclosure tier and per-field exceptions per brand.
         </p>
       </header>
       <BrandsTierBlock

@@ -30,11 +30,11 @@ export default async function OrganisatiePage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Organisaties</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
         <p className="text-sm text-muted-foreground">
-          Organisaties, hun leden en de rollen (petten) waarmee die leden
-          binnenkomen. Een rol bepaalt de default-view, nooit wat de engine
-          toont — dat is de fase van het project.
+          Organizations, their members and the roles those members come in with. A
+          role sets the default view, never what the engine shows — that's the phase
+          of the project.
         </p>
       </header>
 

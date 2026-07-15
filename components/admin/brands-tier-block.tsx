@@ -14,8 +14,8 @@ import {
 // vaste set — de velden die commercieel/gevoelig zijn. Geen vrije-tekst-veldnaam: dat zou
 // stille typefouten uitnodigen.
 const TOGGLE_FIELDS = [
-  { field: "gross_price", label: "Prijs" },
-  { field: "max_wattage", label: "Vermogen" },
+  { field: "gross_price", label: "Price" },
+  { field: "max_wattage", label: "Power" },
   { field: "kelvin", label: "Kelvin" },
   { field: "cri", label: "CRI" },
 ] as const;
@@ -30,9 +30,9 @@ export type BrandTierRow = {
 };
 
 const TIER_LABEL: Record<BrandTierRow["disclosureTier"], string> = {
-  tier1: "Tier 1 · alles + prijs",
-  tier2: "Tier 2 · specs, prijs gated",
-  tier3: "Tier 3 · alleen naam",
+  tier1: "Tier 1 · everything + price",
+  tier2: "Tier 2 · specs, price gated",
+  tier3: "Tier 3 · name only",
 };
 
 // MERKEN & TIERS (§3.16, J-02/J-04): per merk de disclosure-tier en de per-veld-
@@ -51,23 +51,23 @@ export function BrandsTierBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Merken &amp; zichtbaarheid</CardTitle>
+        <CardTitle>Brands &amp; visibility</CardTitle>
         <p className="text-sm text-muted-foreground">
-          De disclosure-tier per merk stuurt wat een externe kijker ziet — nooit
-          de ranking. Per veld kun je de tier-basis overschrijven.
+          The disclosure tier per brand controls what an external viewer sees —
+          never the ranking. You can override the tier baseline per field.
         </p>
       </CardHeader>
       <CardContent>
         {brands.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nog geen merken.</p>
+          <p className="text-sm text-muted-foreground">No brands yet.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Merk</TableHead>
-                <TableHead className="text-right">Producten</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead className="text-right">Products</TableHead>
                 <TableHead>Tier</TableHead>
-                <TableHead>Veld-uitzonderingen</TableHead>
+                <TableHead>Field exceptions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -86,7 +86,7 @@ export function BrandsTierBlock({
                       <select
                         name="tier"
                         defaultValue={b.disclosureTier}
-                        aria-label={`Tier voor ${b.name}`}
+                        aria-label={`Tier for ${b.name}`}
                         className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
                       >
                         {(["tier1", "tier2", "tier3"] as const).map((t) => (
@@ -96,7 +96,7 @@ export function BrandsTierBlock({
                         ))}
                       </select>
                       <Button type="submit" size="sm" variant="outline">
-                        Zet
+                        Set
                       </Button>
                     </form>
                   </TableCell>
@@ -106,10 +106,10 @@ export function BrandsTierBlock({
                         const override = b.overrides[field];
                         const state =
                           override === undefined
-                            ? "basis"
+                            ? "base"
                             : override
-                              ? "zichtbaar"
-                              : "verborgen";
+                              ? "visible"
+                              : "hidden";
                         // De actie schakelt naar het tegenovergestelde van de
                         // huidige effectieve keuze; 'basis' → expliciet verbergen.
                         const nextVisible = override === true ? "false" : "true";
@@ -128,7 +128,7 @@ export function BrandsTierBlock({
                             />
                             <button
                               type="submit"
-                              title={`${label}: ${state} — klik om te wisselen`}
+                              title={`${label}: ${state} — click to toggle`}
                               className="inline-flex"
                             >
                               <Badge

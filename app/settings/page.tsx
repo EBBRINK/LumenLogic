@@ -39,9 +39,9 @@ export default async function InstellingenPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Instellingen</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Gebruikers, LLM-budget en de XIS-koppeling.
+          Users, LLM budget and the XIS connection.
         </p>
       </header>
 

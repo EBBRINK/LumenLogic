@@ -24,17 +24,17 @@ export function LlmBudgetBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>LLM-budget</CardTitle>
+        <CardTitle>LLM budget</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Maandcap voor import, AI-vangnet, zoek-fallback en verrijking. De teller
-          loopt per kalendermaand.
+          Monthly cap for import, AI fallback, search fallback and enrichment. The
+          counter runs per calendar month.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div>
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-muted-foreground">
-              Deze maand verbruikt
+              Spent this month
             </span>
             <span className="tabular-nums">
               <span className="font-semibold">{formatEur(spentEur)}</span>
@@ -66,18 +66,18 @@ export function LlmBudgetBlock({
               </div>
               {over && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  Maandcap overschreden — controleer het verbruik.
+                  Monthly cap exceeded — check the spend.
                 </p>
               )}
             </>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Geen maandcap ingesteld.
+              No monthly cap set.
             </p>
           )}
           {vangnetEur != null && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Waarvan AI-vangnet:{" "}
+              Of which AI fallback:{" "}
               <span className="tabular-nums">{formatEur(vangnetEur)}</span>
             </p>
           )}
@@ -88,7 +88,7 @@ export function LlmBudgetBlock({
           className="flex flex-col gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center"
         >
           <label htmlFor="llm-budget" className="text-sm font-medium">
-            Maandcap (€)
+            Monthly cap (€)
           </label>
           <Input
             id="llm-budget"
@@ -102,7 +102,7 @@ export function LlmBudgetBlock({
             className="sm:max-w-32"
           />
           <Button type="submit" variant="secondary" className="self-start">
-            Opslaan
+            Save
           </Button>
         </form>
       </CardContent>

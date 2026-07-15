@@ -21,9 +21,9 @@ export default async function AdminGebruikersPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Gebruikers</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <p className="text-sm text-muted-foreground">
-          Leden en rollen over alle organisaties.
+          Members and roles across all organizations.
         </p>
       </header>
       <MembershipsBlock memberships={rows} />

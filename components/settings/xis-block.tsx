@@ -20,17 +20,17 @@ export function XisBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>XIS-koppeling</CardTitle>
+        <CardTitle>XIS connection</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Omgeving en API-sleutel voor de export naar XIS. Sandbox is de veilige
-          standaard.
+          Environment and API key for the export to XIS. Sandbox is the safe
+          default.
         </p>
       </CardHeader>
       <CardContent>
         <form action={saveAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="xis-environment" className="text-sm font-medium">
-              Omgeving
+              Environment
             </label>
             <select
               id="xis-environment"
@@ -38,8 +38,8 @@ export function XisBlock({
               defaultValue={environment}
               className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:max-w-xs dark:bg-input/30"
             >
-              <option value="sandbox">Sandbox (veilig)</option>
-              <option value="productie">Productie</option>
+              <option value="sandbox">Sandbox (safe)</option>
+              <option value="productie">Production</option>
             </select>
           </div>
 
@@ -48,14 +48,14 @@ export function XisBlock({
               htmlFor="xis-key"
               className="flex items-center gap-1.5 text-sm font-medium"
             >
-              API-sleutel
+              API key
               {keyIsSet ? (
                 <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                  <IconLock className="size-3" /> ingesteld
+                  <IconLock className="size-3" /> set
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                  <IconUnlock className="size-3" /> nog niet ingesteld
+                  <IconUnlock className="size-3" /> not set yet
                 </span>
               )}
             </label>
@@ -66,19 +66,18 @@ export function XisBlock({
               autoComplete="off"
               placeholder={
                 keyIsSet
-                  ? "••••••••  (laat leeg om te behouden)"
-                  : "Plak de XIS API-sleutel"
+                  ? "••••••••  (leave empty to keep)"
+                  : "Paste the XIS API key"
               }
               className="sm:max-w-xs"
             />
             <p className="text-xs text-muted-foreground">
-              De opgeslagen sleutel wordt nooit getoond. Leeg laten behoudt de
-              huidige sleutel.
+              The stored key is never shown. Leave empty to keep the current key.
             </p>
           </div>
 
           <Button type="submit" variant="secondary" className="self-start">
-            Opslaan
+            Save
           </Button>
         </form>
       </CardContent>

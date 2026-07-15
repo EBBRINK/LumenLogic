@@ -35,22 +35,22 @@ export function EventsBlock({ events }: { events: EventRow[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recente activiteit</CardTitle>
+        <CardTitle>Recent activity</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Het event-log: elke handeling is vastgelegd. Alleen-lezen.
+          The event log: every action is recorded. Read-only.
         </p>
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nog geen activiteit.</p>
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Wanneer</TableHead>
-                <TableHead>Entiteit</TableHead>
-                <TableHead>Handeling</TableHead>
-                <TableHead>Door</TableHead>
+                <TableHead>When</TableHead>
+                <TableHead>Entity</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>By</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

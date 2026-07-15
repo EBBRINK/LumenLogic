@@ -26,16 +26,16 @@ export function AllowedEmailsBlock({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gebruikers</CardTitle>
+        <CardTitle>Users</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Interne adressen die kunnen inloggen. Een onbekend adres krijgt geen
-          magic link.
+          Internal addresses that can log in. An unknown address gets no magic
+          link.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {emails.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nog geen adressen. Voeg er hieronder één toe.
+            No addresses yet. Add one below.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-foreground/10">
@@ -48,7 +48,7 @@ export function AllowedEmailsBlock({
                   <p className="truncate font-medium">{e.email}</p>
                   {e.addedBy && (
                     <p className="truncate text-xs text-muted-foreground">
-                      toegevoegd door {e.addedBy}
+                      added by {e.addedBy}
                     </p>
                   )}
                 </div>
@@ -59,11 +59,11 @@ export function AllowedEmailsBlock({
                     size="icon-sm"
                     variant="ghost"
                     disabled={!canRemove}
-                    aria-label={`${e.email} verwijderen`}
+                    aria-label={`Remove ${e.email}`}
                     title={
                       canRemove
-                        ? "Adres verwijderen"
-                        : "Laatste adres — niet te verwijderen"
+                        ? "Remove address"
+                        : "Last address — cannot be removed"
                     }
                   >
                     <IconTrash />
@@ -82,11 +82,11 @@ export function AllowedEmailsBlock({
             type="email"
             name="email"
             required
-            placeholder="naam@brink.nl"
+            placeholder="name@brink.nl"
             className="sm:max-w-xs"
           />
           <Button type="submit" className="self-start">
-            Adres toevoegen
+            Add address
           </Button>
         </form>
       </CardContent>
