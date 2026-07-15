@@ -150,7 +150,7 @@ export function QuoteView({
                   <span className="font-medium">
                     {(l.brandText ?? "").trim() || "unknown"}
                   </span>{" "}
-                  <span className="text-muted-foreground">(us)</span>
+                  <span className="text-muted-foreground">(our action)</span>
                 </span>
               </li>
             ))}
@@ -168,7 +168,7 @@ export function QuoteView({
           {brandFreq.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground">
-                Load brands (us)
+                Load brands (our action)
               </p>
               <ul className="mt-1 space-y-0.5 text-sm">
                 {brandFreq.map(([brand, n]) => (
