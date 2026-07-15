@@ -27,7 +27,8 @@ waarden, Goed/Fout met sneltoetsen. Plafond €1/boek, alles gelogd.
   smoke). **Harde regel in de repo-laag:** alléén `getOcrPageImage` selecteert de
   bytes-kolom; run-/reviewqueries raken hem nooit (PGlite-test bewijst dit). Beelden
   geserveerd via `/projects/[id]/ocr-image/[runId]/[page]` met sessie- en
-  eigendomscheck, cache no-store.
+  eigendomscheck, cache no-store. (Eerder datamodel-plan beschreef dit als
+  `/api/ocr-image/[runId]/[page]` met sessie-check en private cache.)
 - **B3 — Vision-call** (`lib/ai/ocr.ts`, spiegel van vangnet.ts): injecteerbare client,
   Haiku, timeout 30 s, maxRetries 1; één call per pagina; geforceerde tool-use
   `lever_regels {regels: [{armatuurcode, merk, type, ruwe_tekst}]}`; prompt "verzin niets,

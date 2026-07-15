@@ -13,6 +13,7 @@ import viewSql from "./migrations/0003_view_sustainability.sql?raw";
 import vijfstatussenSql from "./migrations/0004_vijfstatussen.sql?raw";
 import h2h3Sql from "./migrations/0005_h2_h3.sql?raw";
 import projectstatusSql from "./migrations/0006_projectstatus_ai.sql?raw";
+import datamodelSql from "./migrations/0007_datamodel_productspecs.sql?raw";
 import merkrelatiesSql from "./migrations/0008_merkrelaties.sql?raw";
 import ocrSql from "./migrations/0009_ocr.sql?raw";
 
@@ -29,6 +30,7 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(vijfstatussenSql); // run 4: vijfstatussen + kandidaten/review/import
   await client.exec(h2h3Sql); // H2/H3: orgs/rollen, disclosure, lifecycle, merkportaal
   await client.exec(projectstatusSql); // B6: status/xis_phase + raw_markdown + ai_suggestions
+  await client.exec(datamodelSql); // 0007: veldcatalogus + archive + prijsherkomst
   await client.exec(merkrelatiesSql); // 0008: merkrelaties — brand_relations + statusenum
   await client.exec(ocrSql); // 0009: OCR — ocr_page_images + llm_usage.import_run_id + ocr_status
   return drizzle(client, { schema });

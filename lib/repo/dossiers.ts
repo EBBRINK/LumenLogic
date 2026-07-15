@@ -1,7 +1,9 @@
 // UI-naam: Project. DB/code-naam blijft 'dossier' (bewust, zie docs/plan-aanvraag-estimate.md B1).
 // Dossier-, spec-regel- en offerte-logica (calculatorflow, BUILD-PLAN §4.3).
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  priceLists,
+  prices,
   projectDossiers,
   quoteLines,
   quotes,
@@ -396,10 +398,44 @@ export async function generateQuote(
     .values({ dossierId, ...header })
     .returning();
   if (matched.length > 0) {
+    // 0007 (laag 4): prijsherkomst vastklikken — per gematcht product de ACTIEVE
+    // prijslijst opzoeken, zodat de offerte zelf documenteert waar de prijs vandaan
+    // kwam. Dagprijs-regels zonder catalogusprijs krijgen bewust géén herkomst.
+    const productIds = matched
+      .map((l) => l.matchedProductId)
+      .filter((id): id is string => id != null);
+    const provenance = new Map<
+      string,
+      { priceListId: string; sourceListDate: string }
+    >();
+    if (productIds.length > 0) {
+      const rows = await db
+        .select({
+          productId: prices.productId,
+          priceListId: priceLists.id,
+          validFrom: priceLists.validFrom,
+        })
+        .from(prices)
+        .innerJoin(priceLists, eq(prices.priceListId, priceLists.id))
+        .where(
+          and(
+            inArray(prices.productId, productIds),
+            isNull(priceLists.replacedAt),
+          ),
+        );
+      for (const r of rows)
+        provenance.set(r.productId, {
+          priceListId: r.priceListId,
+          sourceListDate: r.validFrom,
+        });
+    }
     await db.insert(quoteLines).values(
       matched.map((l) => {
         const unit = Number(l.manualPrice ?? l.matchedPrice);
         const qty = l.quantity ?? 0; // aantal ontbreekt → stukprijs-modus (A-07)
+        const src = l.matchedProductId
+          ? provenance.get(l.matchedProductId)
+          : undefined;
         return {
           quoteId: quote.id,
           specLineId: l.id,
@@ -409,6 +445,10 @@ export async function generateQuote(
           quantity: qty,
           unitPrice: unit.toFixed(2),
           lineTotal: (unit * qty).toFixed(2),
+          // alleen bij een catalogusprijs (niet bij pure dagprijs, I-04)
+          priceListId: l.manualPrice != null ? null : (src?.priceListId ?? null),
+          sourceListDate:
+            l.manualPrice != null ? null : (src?.sourceListDate ?? null),
         };
       }),
     );
