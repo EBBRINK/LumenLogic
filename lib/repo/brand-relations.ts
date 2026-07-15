@@ -159,7 +159,7 @@ function completenessSelection(): Record<string, SQL<unknown>> {
     if (field.measure.kind !== "column") continue;
     const column = field.measure.column;
     if (!/^[a-z0-9_]+$/.test(column)) {
-      throw new Error(`Ongeldige kolomnaam in field-catalog: ${column}`);
+      throw new Error(`Invalid column name in field-catalog: ${column}`);
     }
     selection[field.key] = sql`count(*) filter (where ${sql.raw(`"${column}"`)} is not null)`;
   }

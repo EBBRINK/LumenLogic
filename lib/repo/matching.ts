@@ -49,7 +49,7 @@ export async function runMatcher(
     .from(specLines)
     .where(eq(specLines.id, specLineId))
     .limit(1);
-  if (!line) throw new Error(`spec-regel ${specLineId} niet gevonden`);
+  if (!line) throw new Error(`spec line ${specLineId} not found`);
 
   const outcome = await evaluateSpecLine(db, specRequestFromLine(line));
 

@@ -82,7 +82,7 @@ async function getRow(db: AppDb, dossierId: string) {
     .from(projectDossiers)
     .where(eq(projectDossiers.id, dossierId))
     .limit(1);
-  if (!row) throw new Error("Project niet gevonden");
+  if (!row) throw new Error("Project not found");
   return row;
 }
 
@@ -99,7 +99,7 @@ export async function setStatus(
 ) {
   const current = await getRow(db, dossierId);
   if (status === "archief" && !opts?.reason?.trim()) {
-    throw new Error("Reden verplicht bij archiveren");
+    throw new Error("Reason required when archiving");
   }
 
   const phase = derivePhase(status, current.xisPhase);

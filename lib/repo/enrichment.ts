@@ -94,7 +94,7 @@ export async function startEnrichmentRun(
     .from(brands)
     .where(eq(brands.id, brandId))
     .limit(1);
-  if (!brand) throw new Error(`merk ${brandId} niet gevonden`);
+  if (!brand) throw new Error(`brand ${brandId} not found`);
 
   const prods = await db
     .select({ id: products.id, name: products.name })
@@ -221,7 +221,7 @@ export async function publishRun(
     .from(enrichmentRuns)
     .where(eq(enrichmentRuns.id, runId))
     .limit(1);
-  if (!run) throw new Error(`verrijkingsrun ${runId} niet gevonden`);
+  if (!run) throw new Error(`enrichment run ${runId} not found`);
   if (run.status !== "steekproef") {
     // idempotent: al gepubliceerd/afgewezen → niets opnieuw toepassen
     return { run, applied: 0, rematched: 0 };

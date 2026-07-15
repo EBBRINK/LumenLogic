@@ -197,7 +197,7 @@ export async function confirmImportRun(
   actor?: string,
 ) {
   const run = await getImportRun(db, runId);
-  if (!run) throw new Error(`import-run ${runId} niet gevonden`);
+  if (!run) throw new Error(`import run ${runId} not found`);
   if (run.status !== "voorstel") {
     return { created: [] as Awaited<ReturnType<typeof addSpecLines>> };
   }
@@ -241,7 +241,7 @@ export async function confirmImportRun(
 // Annuleren: run op 'geannuleerd', er ontstaat geen enkele spec-regel.
 export async function cancelImportRun(db: AppDb, runId: string, actor?: string) {
   const run = await getImportRun(db, runId);
-  if (!run) throw new Error(`import-run ${runId} niet gevonden`);
+  if (!run) throw new Error(`import run ${runId} not found`);
   await db
     .update(importRuns)
     .set({ status: "geannuleerd", updatedAt: new Date() })

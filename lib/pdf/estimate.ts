@@ -152,11 +152,11 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
   const drawTableHead = () => {
     const opts = { font: bold, size: 7.5, color: MUTED };
     text("Code", COL.code.x, opts);
-    text("Omschrijving", COL.name.x, opts);
-    textRight("Aantal", COL.qtyRight, opts);
+    text("Description", COL.name.x, opts);
+    textRight("Quantity", COL.qtyRight, opts);
     text("Status", COL.status.x, opts);
-    textRight("Stukprijs", COL.priceRight, opts);
-    textRight("Regeltotaal", COL.totalRight, opts);
+    textRight("Unit price", COL.priceRight, opts);
+    textRight("Line total", COL.totalRight, opts);
     y -= 5;
     hline(MARGIN, PAGE_W - MARGIN);
     y -= 12;
@@ -184,12 +184,12 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
   // Kopblok-velden in twee rijen van drie (zelfde velden als het scherm).
   const fields: [string, string][] = [
-    ["Offertenummer", computed.quoteNumberDisplay],
-    ["Datum", header.quoteDate ?? "—"],
-    ["Geldig tot", header.validUntil ?? "—"],
-    ["Klant", header.customer ?? "—"],
+    ["Quote number", computed.quoteNumberDisplay],
+    ["Date", header.quoteDate ?? "—"],
+    ["Valid until", header.validUntil ?? "—"],
+    ["Customer", header.customer ?? "—"],
     ["Project", header.projectRef ?? "—"],
-    ["Opsteller", header.author ?? "—"],
+    ["Author", header.author ?? "—"],
   ];
   const colW = CONTENT_W / 3;
   for (let row = 0; row < 2; row++) {
@@ -210,7 +210,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
   // ── Regels (aanvraagvolgorde is heilig; zones als groepskoppen) ─────────────
   if (data.lines.length === 0) {
-    text("Nog geen spec-regels in dit project.", MARGIN, { color: MUTED });
+    text("No spec lines in this project yet.", MARGIN, { color: MUTED });
     y -= 14;
   } else {
     inTable = true;
@@ -274,9 +274,9 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         if (hasSubLine) {
           const parts: string[] = [];
           if (notable.length > 0)
-            parts.push(`afwijking: ${notable.map((d) => d.note).join(" · ")}`);
-          if (line.autoAccepted) parts.push("automatisch geaccepteerde bijna-match");
-          if (line.manuallyChosen) parts.push("handmatig gekozen");
+            parts.push(`deviation: ${notable.map((d) => d.note).join(" · ")}`);
+          if (line.autoAccepted) parts.push("automatically accepted near-match");
+          if (line.manuallyChosen) parts.push("manually chosen");
           const note = parts.join(" — ");
           text(fit(note, CONTENT_W - (COL.name.x - MARGIN), regular, 7.5), COL.name.x, {
             size: 7.5,
@@ -290,7 +290,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
       // Zone-subtotaal (alleen als er in deze zone iets meetelt).
       if (hasZones && group.lines.some((nl) => countedLineTotal(nl.line) != null)) {
         need(14);
-        textRight(`Subtotaal zone ${group.zone ?? "—"}   ${eur(group.subtotal)}`, COL.totalRight, {
+        textRight(`Subtotal zone ${group.zone ?? "—"}   ${eur(group.subtotal)}`, COL.totalRight, {
           size: 7.5,
           color: MUTED,
         });
@@ -307,20 +307,20 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
     const labelX = COL.totalRight - 190;
     hline(labelX, PAGE_W - MARGIN);
     y -= 14;
-    text("Groen", labelX, { size: 9, color: MUTED });
+    text("Green", labelX, { size: 9, color: MUTED });
     textRight(eur(totals.groen), COL.totalRight, { size: 9 });
     y -= 13;
-    text("Geel", labelX, { size: 9, color: MUTED });
+    text("Yellow", labelX, { size: 9, color: MUTED });
     textRight(eur(totals.geel), COL.totalRight, { size: 9 });
     y -= 8;
     hline(labelX, PAGE_W - MARGIN);
     y -= 13;
-    text("Samen (groen + geel)", labelX, { font: bold, size: 9.5 });
+    text("Combined (green + yellow)", labelX, { font: bold, size: 9.5 });
     textRight(eur(totals.samen), COL.totalRight, { font: bold, size: 9.5 });
     y -= 13;
     if (pm.total > 0) {
       textRight(
-        `Getoond, niet opgeteld (blauw ${pm.blauw} · rood ${pm.rood} · paars ${pm.paars}) — p.m.`,
+        `Shown, not totaled (blue ${pm.blauw} · red ${pm.rood} · purple ${pm.paars}) — p.m.`,
         COL.totalRight,
         { size: 7.5, color: MUTED },
       );
@@ -333,7 +333,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
   if (blauwLines.length > 0 || roodLines.length > 0 || paarsLines.length > 0) {
     need(30);
     y -= 8;
-    text("Open punten & acties (p.m.)", MARGIN, { font: bold, size: 9.5 });
+    text("Open items & actions (p.m.)", MARGIN, { font: bold, size: 9.5 });
     y -= 14;
 
     const pmItem = (line: EstimateLine, label: string, color: RGB) => {
@@ -349,17 +349,17 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
     for (const l of blauwLines) {
       pmItem(
         l,
-        `merk ${(l.brandText ?? "").trim() || "onbekend"} inladen (ons)`,
+        `load brand ${(l.brandText ?? "").trim() || "unknown"} (us)`,
         STATUS_COLOR.blauw,
       );
     }
     for (const l of roodLines) {
-      pmItem(l, "terug naar klant (merk bekend, dit product niet)", STATUS_COLOR.rood);
+      pmItem(l, "back to customer (brand known, this product not)", STATUS_COLOR.rood);
     }
     for (const l of paarsLines) {
       pmItem(
         l,
-        `buiten assortiment${requestedText(l) ? ` — ${requestedText(l)}` : ""} (expliciet gemeld, p.m.)`,
+        `outside assortment${requestedText(l) ? ` — ${requestedText(l)}` : ""} (reported explicitly, p.m.)`,
         STATUS_COLOR.paars,
       );
     }
@@ -367,7 +367,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
     if (brandFreq.length > 0) {
       need(14 + brandFreq.length * 11);
       y -= 4;
-      text("Merken inladen (ons)", MARGIN, { size: 7.5, color: MUTED, font: bold });
+      text("Load brands (us)", MARGIN, { size: 7.5, color: MUTED, font: bold });
       y -= 11;
       for (const [brand, n] of brandFreq) {
         need(11);
@@ -379,8 +379,8 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
   // ── Voettekst (zelfde uitleg als op het scherm) ──────────────────────────────
   const disclaimer =
-    "Brutoprijzen excl. btw uit geldige prijslijsten. Alleen groen en geel tellen mee; " +
-    "blauw, rood en paars staan als p.m. — getoond, niet opgeteld. Aanvraagvolgorde is aangehouden.";
+    "Gross prices excl. VAT from valid price lists. Only green and yellow count; " +
+    "blue, red and purple are shown as p.m. — displayed, not totaled. Request order is preserved.";
   const discLines = wrap(disclaimer, CONTENT_W, regular, 7.5);
   need(10 + discLines.length * 10);
   y -= 8;
@@ -392,7 +392,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
   // ── Paginanummers (tweede ronde, als het totaal bekend is) ───────────────────
   const pages = doc.getPages();
   pages.forEach((p, i) => {
-    const label = clean(`Pagina ${i + 1} van ${pages.length}`);
+    const label = clean(`Page ${i + 1} of ${pages.length}`);
     p.drawText(label, {
       x: PAGE_W - MARGIN - regular.widthOfTextAtSize(label, 7),
       y: MARGIN - 18,

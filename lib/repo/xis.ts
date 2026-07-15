@@ -69,7 +69,7 @@ export async function buildXisPayload(
   dossierId: string,
 ): Promise<XisPayload> {
   const dossier = await getDossier(db, dossierId);
-  if (!dossier) throw new Error(`dossier ${dossierId} niet gevonden`);
+  if (!dossier) throw new Error(`dossier ${dossierId} not found`);
 
   // getSpecLines sorteert al op sort_order (dan createdAt) — die volgorde houden we exact aan.
   const specLines = await getSpecLines(db, dossierId);
