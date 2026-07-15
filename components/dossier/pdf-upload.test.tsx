@@ -2,13 +2,13 @@
 // éérste blok boven de regeltabel, en de importrun-pagina met het inklapbare
 // markdown-controlespoor + downloadknop. Licht/donker × mobiel/desktop.
 import { page, userEvent } from "vitest/browser";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { noopAction } from "@/lib/test-actions";
 import {
-  errorImportAction,
-  noopAction,
-  slowErrorImportAction,
-} from "@/lib/test-actions";
+  KaartMetErrorAction,
+  KaartMetTrageErrorAction,
+} from "./pdf-upload-test-stubs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSpecLineForm } from "./add-spec-line-form";
 import { ImportMarkdown } from "./import-markdown";
@@ -162,8 +162,26 @@ test("PDF-upload staat boven de regeltabel", async () => {
 // Echte browser-extractie (unpdf) + echte server-action-aanroepen via de RSC-testbrug;
 // alleen de action-uitkomst is een test-stub (error/slow) — niets aan de kaart gemockt.
 
+// Hydration-wachtlus (zelfde soort race als brand-message.test.tsx): vóór hydratatie
+// zou de klik een native GET-submit doen die de testpagina wegnavigeert. We wachten
+// tot React zijn props aan het formulier heeft gehangen en interacteren pas daarna.
 async function uploadEnVerstuur(file: File | string) {
-  await userEvent.upload(page.getByLabelText("Choose luminaire schedule PDF"), file);
+  await vi.waitFor(
+    () => {
+      const form = document.querySelector("form");
+      if (
+        !form ||
+        !Object.keys(form).some((k) => k.startsWith("__reactProps"))
+      ) {
+        throw new Error("formulier nog niet gehydrateerd");
+      }
+    },
+    { timeout: 10_000, interval: 100 },
+  );
+  await userEvent.upload(
+    page.getByLabelText("Choose luminaire schedule PDF"),
+    file,
+  );
   await page.getByRole("button", { name: "Import PDF" }).click();
 }
 
@@ -174,7 +192,7 @@ const FIXTURE_BOEK = "./docs/examples/test-armaturenboek.pdf";
 test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar", async () => {
   await renderServer(
     <Screen>
-      <PdfUploadCard dossierId="d1" importAction={errorImportAction} />
+      <PdfUploadCard dossierId="d1" importAction={noopAction} />
     </Screen>,
   );
   const kapot = new File([new Uint8Array([1, 2, 3, 4])], "kapot.pdf", {
@@ -196,7 +214,7 @@ test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar"
 test("action antwoordt {error} → zichtbaar als alert", async () => {
   await renderServer(
     <Screen>
-      <PdfUploadCard dossierId="d1" importAction={errorImportAction} />
+      <KaartMetErrorAction />
     </Screen>,
   );
   await uploadEnVerstuur(FIXTURE_BOEK);
@@ -211,21 +229,38 @@ test("action antwoordt {error} → zichtbaar als alert", async () => {
 test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async () => {
   await renderServer(
     <Screen>
-      <PdfUploadCard dossierId="d1" importAction={slowErrorImportAction} />
+      <KaartMetTrageErrorAction />
     </Screen>,
   );
-  await uploadEnVerstuur(FIXTURE_BOEK);
-  // de trage action (800 ms) houdt de busy-toestand deterministisch open
-  await expect
-    .element(page.getByText(/pages, importing/i))
-    .toBeInTheDocument();
-  await expect
-    .element(page.getByLabelText("Choose luminaire schedule PDF"))
-    .toBeDisabled();
-  // en na afloop: fout van de action zichtbaar, kaart weer vrij
-  await expect
-    .element(page.getByText("Testfout: trage import geweigerd."))
-    .toBeInTheDocument();
+  // De busy-fase is kort (extractie + 800 ms trage action) — sneller dan de retry-
+  // lus van expect.element betrouwbaar pollt. Daarom samplen we de DOM zelf elke
+  // 25 ms rond de klik en toetsen we achteraf de waargenomen toestanden.
+  const samples: { busy: string; disabled: boolean }[] = [];
+  const sampler = setInterval(() => {
+    const status = document.querySelector('[role="status"]');
+    const input = document.querySelector(
+      'input[name="pdf"]',
+    ) as HTMLInputElement | null;
+    samples.push({
+      busy: status?.textContent ?? "",
+      disabled: input?.disabled ?? false,
+    });
+  }, 25);
+  try {
+    await uploadEnVerstuur(FIXTURE_BOEK);
+    // wachten tot de flow klaar is: fout van de action zichtbaar, kaart weer vrij
+    await expect
+      .element(page.getByText("Testfout: trage import geweigerd."))
+      .toBeInTheDocument();
+  } finally {
+    clearInterval(sampler);
+  }
+  // tijdens de busy-fase: voortgangstekst mét paginateller én disabled input/knop
+  const busySamples = samples.filter((s) => s.busy.length > 0);
+  expect(busySamples.length).toBeGreaterThan(0);
+  expect(busySamples.some((s) => /pages, importing/.test(s.busy))).toBe(true);
+  expect(busySamples.every((s) => s.disabled)).toBe(true);
+  // en na afloop weer vrij voor een nieuwe poging
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
     .toBeEnabled();
