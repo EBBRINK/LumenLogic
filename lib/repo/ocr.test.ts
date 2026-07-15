@@ -296,6 +296,52 @@ test("regel die de matcher op geel zet houdt reviewKind 'geel' (niet 'ocr')", as
   expect(line.reviewKind).toBe("geel");
 });
 
+// ── Item C (docs/probleem-ocr-toc-verdringt-specs.md): specs staan vaak alleen
+// in het langere ruweTekst-veld, niet in het korte type-veld — regelToSpecLine
+// moet dus over ruweTekst + type parsen, niet alleen over type.
+test("specs uit ruweTekst komen door ook als het korte type-veld ze niet noemt", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+
+  const result = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          // Let op: "CRI ≥ 90" zonder dubbele punt — parseCri (lib/enrichment/
+          // parser.ts) matcht niet als er een ":" direct na "CRI" staat (\s*
+          // laat geen ":" toe); dat is bestaand parser-gedrag, buiten de scope
+          // van item C (alleen regelToSpecLine hier).
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(result).toMatchObject({ created: 1 });
+
+  const [line] = await runLines(db, run.id);
+  expect(line.reqWatt).toBe("17.90");
+  expect(line.reqKelvin).toBe(3000);
+  expect(line.reqCri).toBe(90);
+});
+
 // ── Hervatten (B5): idempotent per pagina en per run ─────────────────────────
 test("zelfde pagina 2× → alreadyDone, geen dubbele kosten; zelfde bestand → run hervat", async () => {
   const db = await createTestDb();

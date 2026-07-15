@@ -317,7 +317,13 @@ function regelToSpecLine(
     brand = split.brand;
     type = split.type || regel.type || null;
   }
-  const specs = type ? parseProductName(type) : {};
+  // Specs komen vaak alleen in de langere ruweTekst voor ("Vermogen: 17,9 W.
+  // Kleurtemperatuur: 3000 K. CRI: ≥ 90."), niet in het korte type-veld ("SASSO
+  // 100") — zie docs/probleem-ocr-toc-verdringt-specs.md, Besluit fase 2, item C.
+  // We parsen daarom over ruweTekst + type samen; komt type ook al in ruweTekst
+  // voor, dan matcht de parser gewoon twee keer op dezelfde eenheid — onschadelijk.
+  const parseInput = [regel.ruweTekst, type].filter(Boolean).join(" ");
+  const specs = parseInput ? parseProductName(parseInput) : {};
   return {
     fixtureCode: regel.armatuurcode,
     quantity: null,
