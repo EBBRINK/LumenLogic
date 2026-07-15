@@ -22,6 +22,22 @@ meerpaginasteun, ellipsis, zones + subtotalen, p.m.-sectie), route
 zone-subtotalen staan wél in de PDF, het scherm bleef ongewijzigd. Testkanttekening:
 pdf-lib hangt op tslib v1 — in `vitest.config.ts` een klein pre-resolve-plugin
 (tslib→es6-build alleen voor pdf-lib) + `optimizeDeps` exclude pdf-lib / include pako._
+_2026-07-15 (sprint 0.2 — repo synchroon): `main` liep 58 commits achter op productie
+(`origin/main` had al PR #1 i18n + PR #2 OCR). Het datamodel-0007-werk was de enige
+on-gemergede eenheid. Geïntegreerd via [PR #3](https://github.com/Timo-AInstein/lumenlogic/pull/3)
+(`f5046dd`): `origin/main` → revert van de ontkoppel-commit `aef5a59` (herstelt de
+`price-archive`-repolaag) → cherry-pick van de datamodel-WIP `6dc4cef` (schema-kolommen +
+migratie 0007 + docs). Migratie `0007_datamodel_productspecs` stond al toegepast op Neon
+(14 jul; `__migrations` heeft 0007 t/m 0009; alle kolommen/indexen/`archive.prices_archive`
+aanwezig; 0 duplicaten `(brand_id, supplier_article_code)`) — geen migratie gedraaid bij de
+merge. Bestandsnaam bewust NIET hernummerd (DB kent "0007" al als toegepast). Verificatie:
+`bunx tsc --noEmit` schoon; `bun vitest run` (met `.worktrees` uitgesloten) **509 groen,
+0 failures** (58 files); twee onafhankelijke agents (bouw + verify) + git-controle bevestigden
+dat OCR (0009) + merkrelaties (0008) byte-identiek behouden bleven en de `schema.ts`-unie
+compleet is. Lokale `main` weer synchroon met `origin/main`. Losse aandachtspunten voor de
+sprint 1-buffer: `vitest.config.ts` exclude dekt `**/.claude/**` maar niet de actieve worktree
+in `.worktrees/ocr` (test-vervuiling — CLI-flag `--exclude '**/.worktrees/**'` gebruikt als
+workaround); `.worktrees/` staat untracked en hoort in `.gitignore`._
 
 ## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 

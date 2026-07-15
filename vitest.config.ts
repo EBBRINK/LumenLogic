@@ -33,9 +33,10 @@ export default defineConfig({
   // pako (CJS-dep van pdf-lib) moet wél door de optimizer voor een default-export.
   optimizeDeps: { exclude: ["pdf-lib"], include: ["pako"] },
   test: {
-    // .claude/worktrees bevat kopieën van de repo (parallelle agents) — die
-    // testbestanden horen niet bij deze run en zijn bovendien in beweging.
-    exclude: [...configDefaults.exclude, "**/.claude/**"],
+    // .claude/worktrees én .worktrees/ bevatten kopieën van de repo (parallelle
+    // agents/branches) — die testbestanden horen niet bij deze run en zijn
+    // bovendien in beweging.
+    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.worktrees/**"],
     browser: {
       enabled: true,
       headless: true,

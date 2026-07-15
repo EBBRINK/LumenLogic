@@ -49,3 +49,6 @@ next-env.d.ts
 # vitest browser-mode artifacts
 .vitest-attachments/
 **/__screenshots__/
+
+# geneste git-worktrees (parallelle branches; niet in git, niet in de testrun)
+/.worktrees/
