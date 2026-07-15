@@ -28,16 +28,16 @@ export default async function MerkPage({
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Merkportaal</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Brand portal</h1>
         <p className="text-sm text-muted-foreground">
-          Lever data en prijslijsten aan en zie geaggregeerd hoe jouw producten presteren.
+          Submit data and price lists and see aggregated how your products perform.
         </p>
       </header>
       {brand ? (
         <BrandOverview brandName={brand.name} />
       ) : (
         <p className="text-sm text-muted-foreground">
-          Nog geen merk gekoppeld aan dit portaal.
+          No brand linked to this portal yet.
         </p>
       )}
     </main>

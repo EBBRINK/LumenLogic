@@ -12,21 +12,21 @@ export function BrandOverview({ brandName }: { brandName: string }) {
   const doors = [
     {
       href: "/brand/data",
-      title: "Data inzien",
+      title: "View data",
       description:
-        "Bekijk de producten en specificaties die van jouw merk zijn opgenomen.",
+        "View the products and specifications recorded for your brand.",
     },
     {
       href: "/brand/price-lists",
-      title: "Prijslijst aanleveren",
+      title: "Submit price list",
       description:
-        "Upload een nieuwe prijslijst. Elke aanlevering gaat eerst naar controle.",
+        "Upload a new price list. Every submission goes to review first.",
     },
     {
       href: "/brand/dashboard",
       title: "Dashboard",
       description:
-        "Geaggregeerd: hoe vaak jouw producten zijn overwogen en gekozen.",
+        "Aggregated: how often your products were considered and chosen.",
     },
   ];
   return (
@@ -44,8 +44,8 @@ export function BrandOverview({ brandName }: { brandName: string }) {
         ))}
       </div>
       <p className="text-sm text-muted-foreground">
-        Portaal voor <span className="font-medium text-foreground">{brandName}</span>.
-        Aangeleverde data en prijzen worden altijd eerst gecontroleerd voordat ze live gaan.
+        Portal for <span className="font-medium text-foreground">{brandName}</span>.
+        Submitted data and prices are always reviewed before they go live.
       </p>
     </div>
   );

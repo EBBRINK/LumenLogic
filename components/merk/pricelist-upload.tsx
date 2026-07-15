@@ -21,9 +21,9 @@ export type UploadRow = {
 };
 
 const statusLabel: Record<UploadRow["status"], string> = {
-  staging: "In afwachting van controle",
-  approved: "Goedgekeurd",
-  rejected: "Afgewezen",
+  staging: "Awaiting review",
+  approved: "Approved",
+  rejected: "Rejected",
 };
 
 function statusVariant(
@@ -49,10 +49,10 @@ export function PricelistUpload({
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Nieuwe prijslijst</CardTitle>
+          <CardTitle>New price list</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Lever een prijslijst voor {brandName} aan. Een einddatum (geldig tot) is
-            verplicht — zonder einddatum wordt de lijst niet aangenomen.
+            Submit a price list for {brandName}. An end date (valid until) is
+            required — without one the list is not accepted.
           </p>
         </CardHeader>
         <CardContent>
@@ -60,7 +60,7 @@ export function PricelistUpload({
             <input type="hidden" name="brandId" value={brandId} />
             <div className="flex flex-col gap-1.5">
               <label htmlFor="valid-until" className="text-sm font-medium">
-                Geldig tot
+                Valid until
               </label>
               <Input
                 id="valid-until"
@@ -70,32 +70,32 @@ export function PricelistUpload({
                 className="sm:max-w-xs"
               />
               <p className="text-xs text-muted-foreground">
-                Verplicht. Na deze datum vervalt de prijslijst automatisch.
+                Required. After this date the price list expires automatically.
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="pricelist-name" className="text-sm font-medium">
-                Omschrijving
+                Description
               </label>
               <Input
                 id="pricelist-name"
                 name="name"
-                placeholder="bv. Prijslijst 2027 Q1"
+                placeholder="e.g. Price list 2027 Q1"
                 className="sm:max-w-xs"
               />
             </div>
             <Button type="submit" className="self-start">
-              Aanleveren ter controle
+              Submit for review
             </Button>
           </form>
         </CardContent>
       </Card>
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold tracking-tight">Aangeleverd</h2>
+        <h2 className="text-sm font-semibold tracking-tight">Submitted</h2>
         {uploads.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nog niets aangeleverd.
+            Nothing submitted yet.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-foreground/10">
@@ -106,12 +106,12 @@ export function PricelistUpload({
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">
-                    {u.kind === "pricelist" ? "Prijslijst" : "Data"}
-                    {u.validUntil ? ` — geldig tot ${u.validUntil}` : ""}
+                    {u.kind === "pricelist" ? "Price list" : "Data"}
+                    {u.validUntil ? ` — valid until ${u.validUntil}` : ""}
                   </p>
                   {u.submittedBy && (
                     <p className="truncate text-xs text-muted-foreground">
-                      aangeleverd door {u.submittedBy}
+                      submitted by {u.submittedBy}
                     </p>
                   )}
                 </div>

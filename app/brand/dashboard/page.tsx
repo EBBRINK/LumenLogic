@@ -39,7 +39,7 @@ export default async function MerkDashboardPage({
         href="/brand"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Merkportaal
+        <ArrowLeft className="size-3.5" /> Brand portal
       </Link>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -52,7 +52,7 @@ export default async function MerkDashboardPage({
         />
       ) : (
         <p className="text-sm text-muted-foreground">
-          Nog geen merk gekoppeld aan dit portaal.
+          No brand linked to this portal yet.
         </p>
       )}
     </main>

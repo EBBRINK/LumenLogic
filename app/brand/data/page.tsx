@@ -33,10 +33,10 @@ export default async function MerkDataPage({
         href="/brand"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> Merkportaal
+        <ArrowLeft className="size-3.5" /> Brand portal
       </Link>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Data inzien</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">View data</h1>
       </header>
       {data ? (
         <BrandDataView
@@ -54,7 +54,7 @@ export default async function MerkDataPage({
         />
       ) : (
         <p className="text-sm text-muted-foreground">
-          Nog geen merk gekoppeld aan dit portaal.
+          No brand linked to this portal yet.
         </p>
       )}
     </main>
