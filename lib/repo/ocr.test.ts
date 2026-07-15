@@ -444,6 +444,48 @@ test("geen key en geen client → skipped no_key, run blijft 'bezig' (key terug 
   expect(result).toEqual({ skipped: "no_key", stopped: false });
   expect((await getImportRun(db, run.id))!.ocrStatus).toBe("bezig");
   expect((await eventsByAction(db, "ocr_skipped_no_key")).length).toBe(1);
+
+  // De beeldrij is weer weg: zonder lezing geen bewijs van verwerking — anders
+  // telde getDonePages deze pagina als gedaan en zou het hervatten hem voorgoed
+  // overslaan zonder melding.
+  const pages = await db
+    .select({ page: ocrPageImages.page })
+    .from(ocrPageImages)
+    .where(eq(ocrPageImages.importRunId, run.id));
+  expect(pages).toEqual([]);
+  const resumed = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+  expect(resumed.resumed).toBe(true);
+  expect(resumed.donePages).toEqual([]);
+
+  // Key terug → precies deze pagina wordt alsnog gelezen (lock is echt vrij).
+  const retried = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1000,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(retried).toMatchObject({ created: 1, duplicates: 0 });
+  expect((await runLines(db, run.id)).map((l) => l.fixtureCode)).toEqual([
+    "Lp301",
+  ]);
 });
 
 // ── B2: alléén getOcrPageImage raakt de bytes-kolom ──────────────────────────

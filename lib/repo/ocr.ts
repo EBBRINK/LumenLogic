@@ -171,9 +171,13 @@ export async function processOcrPage(
   });
 
   if ("skipped" in result) {
-    // De beeldrij blijft bewust staan: het beeld is het controlespoor en kost geen
-    // API-geld. Budget op = de run is klaar-met-stoppen ('gestopt', geen hervatten);
-    // zonder key blijft de run 'bezig' (key terug → hervatten kan gewoon).
+    // Budget op = de run is klaar-met-stoppen ('gestopt', terminaal — geen
+    // hervatten); de beeldrij blijft dan staan als controlespoor (kost geen
+    // API-geld). Zonder key blijft de run 'bezig' (key terug → hervatten kan
+    // gewoon) — dan moet de zojuist geïnsertte beeldrij WEER WEG: de rij is
+    // lock én bewijs van verwerking, en zonder lezing is er geen bewijs. Bleef
+    // hij staan, dan telde getDonePages deze pagina als gedaan en zou het
+    // hervatten precies deze pagina voorgoed overslaan, zonder melding.
     const stopped =
       result.skipped === "budget_run" || result.skipped === "budget_month";
     if (stopped) {
@@ -181,6 +185,10 @@ export async function processOcrPage(
         .update(importRuns)
         .set({ ocrStatus: "gestopt", updatedAt: new Date() })
         .where(eq(importRuns.id, opts.runId));
+    } else {
+      await db
+        .delete(ocrPageImages)
+        .where(eq(ocrPageImages.id, inserted[0].id));
     }
     await logEvent(db, {
       entity: "import_run",
