@@ -4,9 +4,19 @@
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
-import { noopAction } from "@/lib/test-actions";
+import { PDFDocument } from "pdf-lib";
+import {
+  noopAction,
+  noopOcrPageAction,
+  noopStartOcrAction,
+} from "@/lib/test-actions";
 import {
   KaartMetErrorAction,
+  KaartMetOcrBudgetStop,
+  KaartMetOcrHangend,
+  KaartMetOcrHappy,
+  KaartMetOcrResume,
+  KaartMetOcrStartError,
   KaartMetTrageErrorAction,
 } from "./pdf-upload-test-stubs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,7 +77,13 @@ function ProjectRegelsScreen() {
       <h1 className="mb-4 text-2xl font-semibold tracking-tight">
         Ziekenhuis Noord
       </h1>
-      <PdfUploadCard dossierId="d1" importAction={noopAction} />
+      <PdfUploadCard
+        dossierId="d1"
+        importAction={noopAction}
+        startOcrAction={noopStartOcrAction}
+        ocrPageAction={noopOcrPageAction}
+        finishOcrAction={noopAction}
+      />
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Regels (2)</h2>
         <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
@@ -109,6 +125,30 @@ function ImportRunScreen() {
   );
 }
 
+// B5-toestand: bij een paginabezoek staat er nog een OCR-run 'bezig' — de kaart
+// toont dan het hervat-blok met de voortgang (12 van 31) en de hervat-knop.
+function OcrResumeScreen() {
+  return (
+    <Screen>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight">
+        Ziekenhuis Noord
+      </h1>
+      <PdfUploadCard
+        dossierId="d1"
+        importAction={noopAction}
+        startOcrAction={noopStartOcrAction}
+        ocrPageAction={noopOcrPageAction}
+        finishOcrAction={noopAction}
+        pendingOcr={{
+          filename: "deerns-armaturenboek.pdf",
+          pagesDone: 12,
+          pagesTotal: 31,
+        }}
+      />
+    </Screen>
+  );
+}
+
 afterEach(() => {
   document.documentElement.classList.remove("dark");
 });
@@ -123,6 +163,10 @@ const screens = {
   "importrun-markdown": {
     ui: <ImportRunScreen />,
     ready: "Source text (markdown)",
+  },
+  "project-ocr-resume": {
+    ui: <OcrResumeScreen />,
+    ready: "Resume OCR (12 of 31 pages done)",
   },
 } as const;
 
@@ -189,10 +233,56 @@ async function uploadEnVerstuur(file: File | string) {
 // een File-object uit fetch() niet betrouwbaar over de CDP-brug te uploaden, een pad wel.
 const FIXTURE_BOEK = "./docs/examples/test-armaturenboek.pdf";
 
+// Beeld-PDF ter plekke genereren (zelfde aanpak als lib/pdf/render.test.ts): elke
+// pagina is één embedded JPEG — 0 tekens tekstlaag, precies het OCR-scenario. Klein
+// genoeg (enkele kB) om als File-object over de CDP-brug te uploaden.
+async function makeBeeldPdf(pageCount: number): Promise<File> {
+  const doc = await PDFDocument.create();
+  for (let p = 1; p <= pageCount; p++) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("geen 2d-context");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 400, 300);
+    ctx.fillStyle = "#000";
+    ctx.font = "24px sans-serif";
+    ctx.fillText(`Lp30${p} XAL SASSO ${p}00`, 40, 60);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const jpg = await doc.embedJpg(
+      Uint8Array.from(atob(dataUrl.split(",")[1]), (c) => c.charCodeAt(0)),
+    );
+    const pdfPage = doc.addPage([400, 300]);
+    pdfPage.drawImage(jpg, { x: 0, y: 0, width: 400, height: 300 });
+  }
+  const saved = await doc.save();
+  return new File([saved.slice().buffer as ArrayBuffer], "beeldboek.pdf", {
+    type: "application/pdf",
+  });
+}
+
+// DOM-sampler voor de korte busy-fases (zelfde les als de trage-import-test):
+// de voortgangsteksten wisselen sneller dan expect.element betrouwbaar pollt.
+function startStatusSampler() {
+  const samples: string[] = [];
+  const timer = setInterval(() => {
+    const status = document.querySelector('[role="status"]');
+    if (status?.textContent) samples.push(status.textContent);
+  }, 25);
+  return { samples, stop: () => clearInterval(timer) };
+}
+
 test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar", async () => {
   await renderServer(
     <Screen>
-      <PdfUploadCard dossierId="d1" importAction={noopAction} />
+      <PdfUploadCard
+        dossierId="d1"
+        importAction={noopAction}
+        startOcrAction={noopStartOcrAction}
+        ocrPageAction={noopOcrPageAction}
+        finishOcrAction={noopAction}
+      />
     </Screen>,
   );
   const kapot = new File([new Uint8Array([1, 2, 3, 4])], "kapot.pdf", {
@@ -211,7 +301,10 @@ test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar"
     .toBeEnabled();
 });
 
-test("action antwoordt {error} → zichtbaar als alert", async () => {
+// Tegelijk de regressietest voor het OCR-pad: dit fixture-boek HÉÉFT een tekstlaag,
+// dus de kaart moet het bestaande import-pad nemen en de OCR-actions nooit aanraken
+// (de stubs zouden dan een OCR-PAD-ONVERWACHT-marker tonen).
+test("action antwoordt {error} → zichtbaar als alert; tekst-PDF raakt het OCR-pad niet", async () => {
   await renderServer(
     <Screen>
       <KaartMetErrorAction />
@@ -221,6 +314,7 @@ test("action antwoordt {error} → zichtbaar als alert", async () => {
   await expect
     .element(page.getByText("Testfout: import geweigerd."))
     .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
     .toBeEnabled();
@@ -264,6 +358,124 @@ test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async (
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
     .toBeEnabled();
+});
+
+// ── OCR-interactietests (plan-ocr-beeld-pdf, bouwstap 5) ─────────────────────
+// Echte browser-extractie (0 tekens → OCR-pad) en échte rasterisatie (lib/pdf/render)
+// tegen een ter plekke gegenereerde beeld-PDF; alleen de drie OCR-actions zijn
+// client-side stubs (zelfde harness-beperking als hierboven).
+
+test("beeld-PDF (0 tekst) → OCR-pad: voortgang per pagina zichtbaar, daarna afgerond", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrHappy />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(2);
+  const { samples, stop } = startStatusSampler();
+  try {
+    await uploadEnVerstuur(boek);
+    await expect
+      .element(page.getByText("OCR finished — opening the results…"))
+      .toBeInTheDocument();
+  } finally {
+    stop();
+  }
+  // Beide pagina's kwamen sequentieel langs in de voortgangstekst.
+  expect(samples.some((s) => /Reading page 1\/2 with OCR/.test(s))).toBe(true);
+  expect(samples.some((s) => /Reading page 2\/2 with OCR/.test(s))).toBe(true);
+  // Niet het gewone import-pad, geen onverwachte OCR-fouten.
+  expect(document.body.textContent).not.toContain("GEWONE-IMPORT-ONVERWACHT");
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
+  // Kaart weer vrij voor een volgende upload.
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("budget-stop halverwege → loop breekt af met melding hoeveel pagina's bleven liggen", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrBudgetStop />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(3);
+  await uploadEnVerstuur(boek);
+  await expect
+    .element(page.getByText(/2 of 3 pages were not read/))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/€1 budget for this book is used up/))
+    .toBeInTheDocument();
+  // finish is bewust NIET aangeroepen (run staat serverside op 'gestopt').
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+test("hervatten (B5): donePages worden overgeslagen en de hervat-melding is zichtbaar", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrResume />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(3);
+  const { samples, stop } = startStatusSampler();
+  try {
+    await uploadEnVerstuur(boek);
+    await expect
+      .element(page.getByText("OCR finished — opening the results…"))
+      .toBeInTheDocument();
+  } finally {
+    stop();
+  }
+  // Alleen pagina 3 ging de deur uit (de stub geeft anders een HERVAT-FOUT-alert)…
+  expect(document.body.textContent).not.toContain("HERVAT-FOUT");
+  // …mét de eerlijke hervat-melding in de voortgang.
+  expect(
+    samples.some((s) =>
+      /Resuming OCR from page 3 — Reading page 3\/3 with OCR/.test(s),
+    ),
+  ).toBe(true);
+});
+
+test("startOcrImportAction antwoordt {error} (geen key) → nette melding, niets gerenderd", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrStartError />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(1);
+  await uploadEnVerstuur(boek);
+  await expect
+    .element(page.getByText(/OCR is unavailable: no AI key is configured/))
+    .toBeInTheDocument();
+  // De pagina-action is nooit aangeroepen (marker bleef uit) en de kaart is weer vrij.
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
+  await expect
+    .element(page.getByRole("button", { name: "Import PDF" }))
+    .toBeEnabled();
+});
+
+// Screenshot van de lopende OCR-voortgang (client-toestand; de RSC-toestand — het
+// hervat-blok — zit in de screens-lus hierboven in alle vier de varianten).
+test("OCR-voortgang: busy-toestand zichtbaar (screenshot)", async () => {
+  await page.viewport(1280, 800);
+  await renderServer(
+    <Screen>
+      <KaartMetOcrHangend />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(2);
+  await uploadEnVerstuur(boek);
+  // NB: de tekst staat óók op de disabled knop — het status-element is eenduidig.
+  await expect
+    .element(page.getByRole("status"))
+    .toHaveTextContent(/Reading page 1\/2 with OCR/);
+  await page.screenshot({
+    path: "./project-ocr-progress.light.desktop.test.png",
+  });
 });
 
 // Het controlespoor: inklapbaar blok met de brontekst + downloadknop naar de md-route.

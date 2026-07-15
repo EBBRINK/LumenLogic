@@ -18,7 +18,7 @@
 //     nooit de merkvergrendelde zoektool sturen vóór een mens de bron zag — de
 //     vangnet-trigger komt in stap 7 vanuit de review-decide-flow.
 //   • Regel 5: start/hervatten/skip/afronden krijgen elk hun event.
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   brands,
   importRuns,
@@ -380,6 +380,35 @@ export async function finishOcrRun(
     },
   });
   return (await getImportRun(db, run.id))!;
+}
+
+// Openstaande OCR-run van een dossier (B5, stap 5): de projectpagina geeft dit aan
+// de upload-kaart zodat die bij een paginabezoek een "Resume OCR (N of M pages
+// done)"-knop toont. Bewust bytes-vrij (B2): dit draait op élke projectpagina-load.
+export async function getOpenOcrRun(db: AppDb, dossierId: string) {
+  const [run] = await db
+    .select({
+      id: importRuns.id,
+      filename: importRuns.filename,
+    })
+    .from(importRuns)
+    .where(
+      and(
+        eq(importRuns.dossierId, dossierId),
+        eq(importRuns.source, "ocr"),
+        eq(importRuns.ocrStatus, "bezig"),
+      ),
+    )
+    .orderBy(desc(importRuns.createdAt))
+    .limit(1);
+  if (!run) return null;
+  const progress = await getOcrRunProgress(db, run.id);
+  return {
+    runId: run.id,
+    filename: run.filename ?? "armaturenboek.pdf",
+    pagesDone: progress?.pagesDone ?? 0,
+    pagesTotal: progress?.pagesTotal ?? null,
+  };
 }
 
 // ── Beeldtoegang (B2) ────────────────────────────────────────────────────────

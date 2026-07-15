@@ -25,6 +25,7 @@ import {
   finishOcrRun,
   getOcrPageImage,
   getOcrRunProgress,
+  getOpenOcrRun,
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
@@ -233,6 +234,9 @@ test("start → 3 pagina's → finish: regels, review-flags, transcript, events,
     expect((await eventsByAction(db, a)).length).toBe(0);
   }
 
+  // Afgerond = geen openstaande run meer (de hervat-knop verdwijnt).
+  expect(await getOpenOcrRun(db, dossierId)).toBeNull();
+
   // Idempotent afronden: tweede finish doet niets nieuws.
   await finishOcrRun(db, { runId: run.id, actor: ACTOR });
   expect((await eventsByAction(db, "ocr_done")).length).toBe(1);
@@ -342,6 +346,15 @@ test("zelfde pagina 2× → alreadyDone, geen dubbele kosten; zelfde bestand →
       .length,
   ).toBe(1);
   expect((await runLines(db, run.id)).length).toBe(1);
+
+  // B5/stap 5: de projectpagina ziet de openstaande run (voor de hervat-knop).
+  const open = await getOpenOcrRun(db, dossierId);
+  expect(open).toMatchObject({
+    runId: run.id,
+    filename: "boek.pdf",
+    pagesDone: 1,
+    pagesTotal: 5,
+  });
 
   // Zelfde dossier + bestand + 'bezig' → géén tweede run, maar hervatten.
   const resumedStart = await startOcrRun(db, {
@@ -461,8 +474,9 @@ test("voortgangs-queries selecteren de bytes-kolom nooit; getOcrPageImage wél (
     logger: { logQuery: (q: string) => void queries.push(q) },
   }) as TestDb;
 
-  // Voortgang + hervat-start: bytes-vrij (B2) — geen enkele query noemt de kolom.
+  // Voortgang + open-run + hervat-start: bytes-vrij (B2) — geen query noemt de kolom.
   await getOcrRunProgress(spyDb, run.id);
+  await getOpenOcrRun(spyDb, dossierId);
   await startOcrRun(spyDb, {
     dossierId,
     filename: "boek.pdf",

@@ -7,14 +7,18 @@ import { SpecLineTable } from "@/components/dossier/spec-line-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
+import { getOpenOcrRun } from "@/lib/repo/ocr";
 import type { SpecLineRow } from "@/components/dossier/types";
 import { requireSession } from "@/lib/session";
 import {
   addSpecCsvAction,
   addSpecLineAction,
   deleteLineAction,
+  finishOcrAction,
   importArmaturenboekPagesAction,
   linkBestekAction,
+  ocrPageAction,
+  startOcrImportAction,
 } from "../actions";
 
 // Tab REGELS — de header en tabs komen uit layout.tsx. Deze pagina toont de PDF-upload
@@ -25,14 +29,17 @@ export default async function RegelsTab({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pdf?: string; run?: string }>;
+  searchParams: Promise<{ pdf?: string; ocr?: string; run?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
-  const { pdf, run } = await searchParams;
+  const { pdf, ocr, run } = await searchParams;
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const lines = (await getSpecLines(db, id)) as unknown as SpecLineRow[];
+  // B5: een OCR-run die 'bezig' bleef (tab dichtgeklapt) → de upload-kaart toont
+  // een hervat-knop. Bytes-vrije query (B2) — dit draait op elke paginaweergave.
+  const pendingOcr = await getOpenOcrRun(db, id);
 
   return (
     <>
@@ -63,10 +70,32 @@ export default async function RegelsTab({
         </div>
       )}
 
+      {ocr && (
+        <div className="mb-6 rounded-lg border bg-muted/40 p-3 text-sm">
+          <span className="font-medium">{ocr}</span> spec lines read with OCR
+          and matched — every reading needs a review.
+          {run && (
+            <>
+              {" "}
+              <Link
+                href={`/projects/${dossier.id}/import/${run}`}
+                className="font-medium underline underline-offset-2 hover:text-foreground"
+              >
+                View the OCR run (transcript)
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Stap 5: PDF-upload als eerste blok — de hoofdingang van een project. */}
       <PdfUploadCard
         dossierId={dossier.id}
         importAction={importArmaturenboekPagesAction}
+        startOcrAction={startOcrImportAction}
+        ocrPageAction={ocrPageAction}
+        finishOcrAction={finishOcrAction}
+        pendingOcr={pendingOcr}
       />
 
       <section className="mb-8">
