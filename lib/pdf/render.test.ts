@@ -70,3 +70,53 @@ test("hergebruikt één canvas over pagina's met verschillende oriëntatie", asy
   expect([p2.width, p2.height]).toEqual([1176, OCR_MAX_SIDE_PX]);
   expect(p2.blob.size).toBeGreaterThan(1000);
 });
+
+// ── O4 (stap 5): per-tegel renderen via een offset-viewport ──────────────────
+// Een A3-beeldpagina met een uniek label per kwadrant: twee verschillende tegels
+// moeten verschillend beeld opleveren (het offset-viewport werkt echt) en exact
+// de geplande outPx-maat hebben.
+test("rendert tegels van een A3-pagina met exact de geplande maat en echt verschillend beeld", async () => {
+  const w = 1191;
+  const h = 842;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, w, h);
+  // linksboven zwart blok, rechtsonder wit — tegel 1 en tegel 12 verschillen dan zeker
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, 200, 200);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  const doc = await PDFDocument.create();
+  const jpg = await doc.embedJpg(
+    Uint8Array.from(atob(dataUrl.split(",")[1]), (c) => c.charCodeAt(0)),
+  );
+  const page = doc.addPage([w, h]);
+  page.drawImage(jpg, { x: 0, y: 0, width: w, height: h });
+  const bytes = await doc.save();
+
+  const { planPageTiles } = await import("./tiles");
+  const tiles = planPageTiles(w, h);
+  expect(tiles).toHaveLength(12); // A3 landscape = 4×3
+
+  const pdf = await openPdfDocument(bytes);
+  const pdfPage = await pdf.getPage(1);
+  try {
+    const { renderPdfTileToJpeg } = await import("./render");
+    const renderCanvas = document.createElement("canvas");
+    const t1 = await renderPdfTileToJpeg(pdfPage, tiles[0], { canvas: renderCanvas });
+    const t12 = await renderPdfTileToJpeg(pdfPage, tiles[11], { canvas: renderCanvas });
+
+    expect([t1.width, t1.height]).toEqual([tiles[0].outPx.width, tiles[0].outPx.height]);
+    expect([t12.width, t12.height]).toEqual([tiles[11].outPx.width, tiles[11].outPx.height]);
+    // JPEG-magic bytes + echt verschillende inhoud (tegel 1 draagt het zwarte blok).
+    const b1 = new Uint8Array(await t1.blob.arrayBuffer());
+    const b12 = new Uint8Array(await t12.blob.arrayBuffer());
+    expect([b1[0], b1[1]]).toEqual([0xff, 0xd8]);
+    expect([b12[0], b12[1]]).toEqual([0xff, 0xd8]);
+    expect(b1.length).not.toBe(b12.length); // zwart blok vs egaal wit comprimeert anders
+  } finally {
+    pdfPage.cleanup();
+  }
+});

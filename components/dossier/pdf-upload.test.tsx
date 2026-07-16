@@ -13,10 +13,13 @@ import {
 import {
   KaartMetErrorAction,
   KaartMetOcrBudgetStop,
+  KaartMetOcrBudgetStopMidPagina,
   KaartMetOcrHangend,
   KaartMetOcrHappy,
   KaartMetOcrResume,
+  KaartMetOcrResumeHalveTegels,
   KaartMetOcrStartError,
+  KaartMetOcrTegels,
   KaartMetTrageErrorAction,
 } from "./pdf-upload-test-stubs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -236,16 +239,24 @@ const FIXTURE_BOEK = "./docs/examples/test-armaturenboek.pdf";
 // Beeld-PDF ter plekke genereren (zelfde aanpak als lib/pdf/render.test.ts): elke
 // pagina is één embedded JPEG — 0 tekens tekstlaag, precies het OCR-scenario. Klein
 // genoeg (enkele kB) om als File-object over de CDP-brug te uploaden.
-async function makeBeeldPdf(pageCount: number): Promise<File> {
+// Default 400×300 pt: dat valt boven de tiling-dpi-drempel (1568/400×72 ≈ 282
+// dpi) en blijft dus één hele-pagina-beeld (tile 0) — de bestaande asserts op
+// "Reading page x/y with OCR…" zonder tegel-suffix blijven daarmee geldig.
+// A3 landscape (1191×842 pt) zakt onder de drempel en levert 12 tegels.
+async function makeBeeldPdf(
+  pageCount: number,
+  size: [number, number] = [400, 300],
+): Promise<File> {
+  const [w, h] = size;
   const doc = await PDFDocument.create();
   for (let p = 1; p <= pageCount; p++) {
     const canvas = document.createElement("canvas");
-    canvas.width = 400;
-    canvas.height = 300;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("geen 2d-context");
     ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, 400, 300);
+    ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "#000";
     ctx.font = "24px sans-serif";
     ctx.fillText(`Lp30${p} XAL SASSO ${p}00`, 40, 60);
@@ -253,8 +264,8 @@ async function makeBeeldPdf(pageCount: number): Promise<File> {
     const jpg = await doc.embedJpg(
       Uint8Array.from(atob(dataUrl.split(",")[1]), (c) => c.charCodeAt(0)),
     );
-    const pdfPage = doc.addPage([400, 300]);
-    pdfPage.drawImage(jpg, { x: 0, y: 0, width: 400, height: 300 });
+    const pdfPage = doc.addPage([w, h]);
+    pdfPage.drawImage(jpg, { x: 0, y: 0, width: w, height: h });
   }
   const saved = await doc.save();
   return new File([saved.slice().buffer as ArrayBuffer], "beeldboek.pdf", {
@@ -402,7 +413,7 @@ test("budget-stop halverwege → loop breekt af met melding hoeveel pagina's ble
   const boek = await makeBeeldPdf(3);
   await uploadEnVerstuur(boek);
   await expect
-    .element(page.getByText(/2 of 3 pages were not read/))
+    .element(page.getByText(/2 of 3 pages were not \(fully\) read/))
     .toBeInTheDocument();
   await expect
     .element(page.getByText(/€1 budget for this book is used up/))
@@ -456,6 +467,65 @@ test("startOcrImportAction antwoordt {error} (geen key) → nette melding, niets
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
     .toBeEnabled();
+});
+
+// ── O4 (stap 5): tegel-interactietests — A3-pagina's gaan in 12 tegels ───────
+
+test("A3-beeldpagina → 12 tegels sequentieel (rij-major), voortgang toont de tegel", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrTegels />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(1, [1191, 842]); // A3 landscape → 4×3 tegels
+  const { samples, stop } = startStatusSampler();
+  try {
+    await uploadEnVerstuur(boek);
+    await expect
+      .element(page.getByText("OCR finished — opening the results…"))
+      .toBeInTheDocument();
+  } finally {
+    stop();
+  }
+  // Alle 12 tegels, rij-major 1..12, elk precies één keer.
+  expect(window.__verzondenTegels).toEqual(
+    Array.from({ length: 12 }, (_, i) => `1:${i + 1}`),
+  );
+  // De voortgang benoemde de tegel ("(tile x/12)").
+  expect(samples.some((s) => /\(tile \d+\/12\)/.test(s))).toBe(true);
+});
+
+test("hervatten met half getegelde pagina: alleen ontbrekende tegels gaan de deur uit", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrResumeHalveTegels />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(2, [1191, 842]);
+  await uploadEnVerstuur(boek);
+  await expect
+    .element(page.getByText("OCR finished — opening the results…"))
+    .toBeInTheDocument();
+  // Geen al-gedane tegel opnieuw gestuurd…
+  expect(document.body.textContent).not.toContain("HERVAT-FOUT");
+  // …en precies de ontbrekende helft van pagina 2 (tegels 7–12) ging de deur uit.
+  expect(window.__verzondenTegels).toEqual(
+    Array.from({ length: 6 }, (_, i) => `2:${i + 7}`),
+  );
+});
+
+test("budget-stop midden in een pagina → '(fully)' in de melding, finish niet aangeroepen", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrBudgetStopMidPagina />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(1, [1191, 842]);
+  await uploadEnVerstuur(boek);
+  await expect
+    .element(page.getByText(/1 of 1 pages were not \(fully\) read/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
 });
 
 // Screenshot van de lopende OCR-voortgang (client-toestand; de RSC-toestand — het

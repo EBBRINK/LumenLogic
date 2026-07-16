@@ -44,7 +44,9 @@ import { logEvent } from "./events";
 // Eén lopende OCR-run per dossier+bestand: bestaat er al een run met ocrStatus
 // 'bezig' voor precies dit bestand, dan is dít een hervatting (tab dichtgeklapt op
 // pagina 14 → verder vanaf 15) en geven we die run terug in plaats van een tweede
-// te beginnen. donePages voedt de client-loop (stap 5): die pagina's slaat hij over.
+// te beginnen. doneTiles voedt de client-loop: die (pagina, tegel)-paren slaat
+// hij over. Sinds O4 (A3-tiling) per TEGEL — tile 0 = hele pagina, dus voor
+// bestaande hele-pagina-runs is dit exact het oude donePages-gedrag.
 export async function startOcrRun(
   db: AppDb,
   input: {
@@ -67,15 +69,21 @@ export async function startOcrRun(
     )
     .limit(1);
   if (existing) {
-    const donePages = await getDonePages(db, existing.id);
+    const doneTiles = await getDoneTiles(db, existing.id);
     await logEvent(db, {
       entity: "import_run",
       entityId: existing.id,
       action: "ocr_resumed",
       actor: input.actor,
-      payload: { filename: input.filename, pagesDone: donePages.length },
+      payload: {
+        filename: input.filename,
+        // tilesDone = aantal beeldrijen; pagesDone = distinct pagina's. Bij
+        // hele-pagina-runs (alles tile 0) zijn die twee gelijk.
+        tilesDone: doneTiles.length,
+        pagesDone: new Set(doneTiles.map((t) => t.page)).size,
+      },
     });
-    return { run: existing, resumed: true as const, donePages };
+    return { run: existing, resumed: true as const, doneTiles };
   }
 
   // Zoals recordPdfImport: geen voorstel-flow — de regels gaan direct het dossier in,
@@ -106,7 +114,11 @@ export async function startOcrRun(
       pageCount: input.pageCount,
     },
   });
-  return { run, resumed: false as const, donePages: [] as number[] };
+  return {
+    run,
+    resumed: false as const,
+    doneTiles: [] as { page: number; tile: number }[],
+  };
 }
 
 // Server-hardening (CodeRabbit, PR #2): de client-loop stuurt altijd JPEG, maar het
@@ -116,14 +128,18 @@ export function isJpegImage(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8;
 }
 
-// Welke pagina's al een beeldrij hebben — bewust ZONDER de bytes-kolom (B2).
-async function getDonePages(db: AppDb, runId: string): Promise<number[]> {
-  const rows = await db
-    .select({ page: ocrPageImages.page })
+// Welke (pagina, tegel)-paren al een beeldrij hebben — bewust ZONDER de
+// bytes-kolom (B2). Gesorteerd op pagina, dan tegel. Tile 0 = hele pagina
+// (invariant, zie db/schema.ts) — de oude getDonePages is hier de deelvorm van.
+async function getDoneTiles(
+  db: AppDb,
+  runId: string,
+): Promise<{ page: number; tile: number }[]> {
+  return db
+    .select({ page: ocrPageImages.page, tile: ocrPageImages.tile })
     .from(ocrPageImages)
     .where(eq(ocrPageImages.importRunId, runId))
-    .orderBy(asc(ocrPageImages.page));
-  return rows.map((r) => r.page);
+    .orderBy(asc(ocrPageImages.page), asc(ocrPageImages.tile));
 }
 
 export type ProcessOcrPageResult =
@@ -495,15 +511,23 @@ export async function verwerkGelezenRegels(
   return { created, duplicates, upgraded, rows, counts };
 }
 
-// ── Eén pagina verwerken ─────────────────────────────────────────────────────
+// ── Eén pagina (of tegel) verwerken ──────────────────────────────────────────
 // VOLGORDE-AFSPRAAK (B4): éérst de beeldrij, dán pas de vision-call. De unique
-// (run,page)-index is het lock dat het €1-plafond hard maakt: een pagina kan maar
-// één keer een reservering + call veroorzaken, hoe vaak de client hem ook stuurt.
+// (run,page,tile)-index is het lock dat het €1-plafond hard maakt: een tegel kan
+// maar één keer een reservering + call veroorzaken, hoe vaak de client hem ook
+// stuurt. Zonder tile (default 0 = hele pagina) is dit exact het oude
+// per-pagina-lock. ImportRow.page blijft de ECHTE pagina — de rijkste-wint-dedup
+// in verwerkGelezenRegels werkt op armatuurcode over run.rows heen en dedupt zo
+// vanzelf óók over tegels van dezelfde (of een andere) pagina.
 export async function processOcrPage(
   db: AppDb,
   opts: {
     runId: string;
     page: number;
+    // O4 (stap 5): tegelnummer binnen de pagina (0 = hele pagina, default);
+    // tileCount alleen voor de prompt-info ("section n of count").
+    tile?: number;
+    tileCount?: number;
     imageBytes: Uint8Array;
     mime: string;
     width: number;
@@ -514,6 +538,8 @@ export async function processOcrPage(
 ): Promise<ProcessOcrPageResult> {
   const run = await getImportRun(db, opts.runId);
   if (!run) throw new Error(`import run ${opts.runId} not found`);
+  const tile = opts.tile ?? 0;
+  const tileCount = opts.tileCount ?? 1;
 
   // (a) Beeldrij-lock. onConflictDoNothing + returning: leeg = de rij bestond al.
   const inserted = await db
@@ -521,6 +547,7 @@ export async function processOcrPage(
     .values({
       importRunId: opts.runId,
       page: opts.page,
+      tile,
       mime: opts.mime,
       width: opts.width,
       height: opts.height,
@@ -531,6 +558,8 @@ export async function processOcrPage(
   if (inserted.length === 0) return { alreadyDone: true };
 
   // (b) De vision-call (budgetcheck + reservering + call zitten in ocrPage).
+  // pageNumber blijft de echte pagina; de tegel-info stuurt alleen de extra
+  // promptzin (bij count > 1) en het tile-veld in de events.
   const result = await ocrPage(db, {
     importRunId: opts.runId,
     pageNumber: opts.page,
@@ -538,6 +567,7 @@ export async function processOcrPage(
     mime: opts.mime,
     client: opts.client,
     actor: opts.actor,
+    tile: { n: tile, count: tileCount },
   });
 
   if ("skipped" in result) {
@@ -672,7 +702,10 @@ export async function finishOcrRun(
   if (!run) throw new Error(`import run ${input.runId} not found`);
   if (run.ocrStatus === "klaar") return run;
 
-  const donePages = await getDonePages(db, run.id);
+  // Transcript blijft per PAGINA (de mens leest pagina's, geen tegels): distinct
+  // pagina's uit de gedane tegels; getDoneTiles sorteert al op pagina.
+  const doneTiles = await getDoneTiles(db, run.id);
+  const donePages = [...new Set(doneTiles.map((t) => t.page))];
   const rows = (run.rows ?? []) as ImportRow[];
   const byPage = new Map<number, ImportRow[]>();
   for (const row of rows) {
@@ -760,7 +793,14 @@ export async function getOpenOcrRun(db: AppDb, dossierId: string) {
 // selecteert (B2-harde eis). Voeg de kolom nergens anders aan een select toe:
 // run-, voortgangs- en reviewqueries blijven bytes-vrij, anders sleept elke
 // paginaweergave megabytes beeld door de verbinding.
-export async function getOcrPageImage(db: AppDb, runId: string, page: number) {
+// O4: tile gegeven → exact die tegel; zonder tile de LAAGSTE tegel van de
+// pagina — voor hele-pagina-runs (alles tile 0) dus byte-identiek aan vroeger.
+export async function getOcrPageImage(
+  db: AppDb,
+  runId: string,
+  page: number,
+  tile?: number,
+) {
   const [row] = await db
     .select({
       mime: ocrPageImages.mime,
@@ -770,21 +810,35 @@ export async function getOcrPageImage(db: AppDb, runId: string, page: number) {
     })
     .from(ocrPageImages)
     .where(
-      and(eq(ocrPageImages.importRunId, runId), eq(ocrPageImages.page, page)),
+      and(
+        eq(ocrPageImages.importRunId, runId),
+        eq(ocrPageImages.page, page),
+        ...(tile != null ? [eq(ocrPageImages.tile, tile)] : []),
+      ),
     )
+    .orderBy(asc(ocrPageImages.tile))
     .limit(1);
   return row ?? null;
 }
 
-// Voortgang van een run: pagina's gedaan/totaal + kosten tot nu toe — bewust
+// Voortgang van een run: pagina's/tegels gedaan + kosten tot nu toe — bewust
 // ZONDER de bytes-kolom (B2): dit draait bij elke poll van de client-loop.
+// O4: pagesDone telt DISTINCT pagina's (een half-getegelde pagina telt als
+// gedaan zodra er één tegel staat — voortgangsindicatie, geen lock); tilesDone
+// telt alle beeldrijen. Bij hele-pagina-runs zijn beide gelijk.
 export async function getOcrRunProgress(db: AppDb, runId: string) {
   const run = await getImportRun(db, runId);
   if (!run) return null;
   const [pages] = (await db
-    .select({ done: sql<number>`count(*)` })
+    .select({
+      done: sql<number>`count(distinct ${ocrPageImages.page})`,
+      tiles: sql<number>`count(*)`,
+    })
     .from(ocrPageImages)
-    .where(eq(ocrPageImages.importRunId, runId))) as { done: number }[];
+    .where(eq(ocrPageImages.importRunId, runId))) as {
+    done: number;
+    tiles: number;
+  }[];
   const [cost] = (await db
     .select({ total: sql<string>`coalesce(sum(${llmUsage.costEur}), 0)` })
     .from(llmUsage)
@@ -793,6 +847,7 @@ export async function getOcrRunProgress(db: AppDb, runId: string) {
   return {
     ocrStatus: run.ocrStatus,
     pagesDone: Number(pages?.done ?? 0),
+    tilesDone: Number(pages?.tiles ?? 0),
     pagesTotal: counts.pageCount ?? null,
     linesCreated: counts.checked ?? 0,
     costEur: Number(cost?.total ?? 0),

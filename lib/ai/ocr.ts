@@ -381,36 +381,53 @@ export async function leverRegelsMetRetry(opts: {
 // ── De vision-call zelf (puur: geen database) ────────────────────────────────
 // Dunne wrapper: bouwt het image-message (paginabeeld als base64-blok + korte
 // tekstinstructie) en delegeert naar leverRegelsMetRetry met de paginabudgetten.
-// Signatuur en gedrag ongewijzigd sinds bouwstap 3.
+// Sinds stap 5 (O4, A3-tiling) optioneel tegel-bewust: bij een echte tegel
+// (count > 1) krijgt het model één extra zin die zegt wélke uitsnede dit is en
+// dat rijen die op de beeldrand zijn afgesneden overgeslagen moeten worden (de
+// overlap van het tegelplan garandeert dat ze compleet in een buurtegel staan).
+// Zonder tile (of met count 1) is de call byte-identiek aan vóór de tiling.
 export async function readPageWithVision(opts: {
   client: OcrClient;
   imageBytes: Uint8Array;
   mime: string;
   pageNumber: number;
+  // O4: welke uitsnede dit beeld is (n = tegelnummer 1..count). Afwezig of
+  // count 1 = hele pagina. pageNumber blijft altijd de ECHTE pagina.
+  tile?: { n: number; count: number };
 }): Promise<{
   regels: OcrRegel[];
   usage: { inputTokens: number; outputTokens: number };
   attempts: OcrAttempt[];
   truncated: number;
 }> {
-  const messages: OcrMessageParams["messages"] = [
+  const content: OcrUserContent[] = [
     {
-      role: "user",
-      content: [
-        {
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: opts.mime,
-            data: toBase64(opts.imageBytes),
-          },
-        },
-        {
-          type: "text",
-          text: `Read the luminaire rows on page ${opts.pageNumber} of this luminaire schedule.`,
-        },
-      ],
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: opts.mime,
+        data: toBase64(opts.imageBytes),
+      },
     },
+    {
+      type: "text",
+      text: `Read the luminaire rows on page ${opts.pageNumber} of this luminaire schedule.`,
+    },
+  ];
+  if (opts.tile && opts.tile.count > 1) {
+    content.push({
+      type: "text",
+      text:
+        `This image is section ${opts.tile.n} of ${opts.tile.count} of page ` +
+        `${opts.pageNumber}; sections overlap. Skip rows that are cut off at ` +
+        "the image edges — they appear complete in another section. Only " +
+        "deliver rows whose fixture code is visible in THIS section: if the " +
+        "code column falls outside this section, deliver an empty list — " +
+        "never use a product name, article number or type string as the code.",
+    });
+  }
+  const messages: OcrMessageParams["messages"] = [
+    { role: "user", content },
   ];
   return leverRegelsMetRetry({
     client: opts.client,
@@ -504,6 +521,10 @@ export async function ocrPage(
     mime: string;
     client?: OcrClient;
     actor?: string;
+    // O4 (stap 5): tegel-info voor de prompt en de events. Afwezig of count 1 =
+    // hele pagina (gedrag byte-identiek); de event-payloads dragen additief het
+    // tegelnummer (default 0 = hele pagina).
+    tile?: { n: number; count: number };
   },
 ): Promise<OcrPageResult> {
   // Zonder key geen OCR: nette skip-vorm, nooit een fout. Het skip-event logt de
@@ -527,12 +548,17 @@ export async function ocrPage(
     })
     .returning();
 
+  // Het tegelnummer voor de event-payloads: 0 = hele pagina (ook als er geen
+  // tile-info meekwam — dat ís de hele pagina).
+  const tileNr = opts.tile?.n ?? 0;
+
   try {
     const { regels, usage, attempts, truncated } = await readPageWithVision({
       client,
       imageBytes: opts.imageBytes,
       mime: opts.mime,
       pageNumber: opts.pageNumber,
+      tile: opts.tile,
     });
     // usage is de SOM over alle pogingen, dus de kosten volgen daar vanzelf uit.
     const costEur =
@@ -557,6 +583,7 @@ export async function ocrPage(
         actor: opts.actor ?? OCR_ACTOR,
         payload: {
           page: opts.pageNumber,
+          tile: tileNr, // additief (O4): 0 = hele pagina
           attempt: i + 1,
           maxTokens: a.maxTokens,
           outputTokens: a.outputTokens,
@@ -574,6 +601,7 @@ export async function ocrPage(
       actor: opts.actor ?? OCR_ACTOR,
       payload: {
         page: opts.pageNumber,
+        tile: tileNr, // additief (O4): 0 = hele pagina
         regels: regels.length,
         codeInvalid: regels.filter((r) => !r.codeValid).length,
         tokens: { input: usage.inputTokens, output: usage.outputTokens },
@@ -598,7 +626,7 @@ export async function ocrPage(
       entityId: opts.importRunId,
       action: "ocr_page_failed",
       actor: opts.actor ?? OCR_ACTOR,
-      payload: { page: opts.pageNumber, melding },
+      payload: { page: opts.pageNumber, tile: tileNr, melding },
     });
     return { failed: melding };
   }

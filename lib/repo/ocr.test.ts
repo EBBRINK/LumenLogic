@@ -413,7 +413,8 @@ test("zelfde pagina 2× → alreadyDone, geen dubbele kosten; zelfde bestand →
   });
   expect(resumedStart.resumed).toBe(true);
   expect(resumedStart.run.id).toBe(run.id);
-  expect(resumedStart.donePages).toEqual([1]);
+  // O4: gedane TEGELS — een hele-pagina-run levert tile 0 per pagina.
+  expect(resumedStart.doneTiles).toEqual([{ page: 1, tile: 0 }]);
   expect((await eventsByAction(db, "ocr_resumed")).length).toBe(1);
   expect((await eventsByAction(db, "ocr_started")).length).toBe(1);
 
@@ -508,7 +509,7 @@ test("geen key en geen client → skipped no_key, run blijft 'bezig' (key terug 
     actor: ACTOR,
   });
   expect(resumed.resumed).toBe(true);
-  expect(resumed.donePages).toEqual([]);
+  expect(resumed.doneTiles).toEqual([]);
 
   // Key terug → precies deze pagina wordt alsnog gelezen (lock is echt vrij).
   const retried = await processOcrPage(db, {
@@ -1286,4 +1287,276 @@ test("mens had de arme lezing al goedgekeurd: upgrade maakt de spookmatch los, b
       chosenBy: "iemand@brink.nl",
     },
   });
+});
+
+// ── O4 (goal-import-ai-leesroute stap 5): A3-tiling — het lock, de dedup en de
+// voortgang werken per TEGEL. tile 0 = hele pagina (invariant); alle tests
+// hierboven draaien zonder tile-opt en pinnen dus het oude gedrag vast.
+test("zelfde (page, tile) 2× → alreadyDone zonder tweede reservering", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+
+  const first = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 1,
+    tileCount: 12,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(first).toMatchObject({ created: 1 });
+
+  // Zelfde tegel opnieuw: het (run, page, tile)-lock weigert VÓÓR de vision-call
+  // (de mock heeft geen respons meer en zou anders gooien) — geen tweede
+  // reservering, geen dubbele kosten.
+  const again = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 1,
+    tileCount: 12,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([]).client,
+    actor: ACTOR,
+  });
+  expect(again).toEqual({ alreadyDone: true });
+  expect(
+    (await db.select().from(llmUsage).where(eq(llmUsage.importRunId, run.id)))
+      .length,
+  ).toBe(1);
+});
+
+test("twee verschillende tegels van dezelfde pagina: beide verwerkt; beeldtoegang per tegel", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+  // Tweede JPEG met andere bytes (wel FF D8) om de tegel-selectie te bewijzen.
+  const IMAGE_T2 = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 5, 4, 3, 2]);
+
+  const t1 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 1,
+    tileCount: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100 3000K",
+          ruwe_tekst: "Lp301 XAL SASSO 100 3000K",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(t1).toMatchObject({ created: 1 });
+
+  // Tegel 2 van dezelfde pagina is GEEN alreadyDone: eigen lock, eigen call.
+  const t2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 2,
+    tileCount: 2,
+    imageBytes: IMAGE_T2,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lw201",
+          merk: null,
+          type: null,
+          ruwe_tekst: "Lw201 Wever & Ducré SCAVA 1.0",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(t2).toMatchObject({ created: 1 });
+
+  // Beide regels dragen de ECHTE pagina, niet het tegelnummer.
+  const lines = await runLines(db, run.id);
+  expect(lines.map((l) => l.sourcePage)).toEqual([1, 1]);
+
+  // Elke tegel z'n eigen kostenrij; de done-events dragen het tegelnummer.
+  expect(
+    (await db.select().from(llmUsage).where(eq(llmUsage.importRunId, run.id)))
+      .length,
+  ).toBe(2);
+  const done = await eventsByAction(db, "ocr_page_done");
+  expect(
+    done.map((d) => (d.payload as { tile: number }).tile).sort(),
+  ).toEqual([1, 2]);
+
+  // Beeldtoegang (B2 + O4): zonder tile de LAAGSTE tegel; mét tile exact die
+  // tegel; een niet-bestaande tegel → null (de route maakt daar een 404 van).
+  const lowest = await getOcrPageImage(db, run.id, 1);
+  expect(Array.from(lowest!.bytes)).toEqual(Array.from(IMAGE));
+  const exact = await getOcrPageImage(db, run.id, 1, 2);
+  expect(Array.from(exact!.bytes)).toEqual(Array.from(IMAGE_T2));
+  expect(await getOcrPageImage(db, run.id, 1, 3)).toBeNull();
+});
+
+test("dedup over twee tegels: arme lezing op tegel 1, rijke op tegel 2 → upgrade, één checked", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+
+  // Tegel 1: arme lezing (code + merk + type, geen specs — bv. de kop van de rij).
+  const p1 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 1,
+    tileCount: 12,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100 8",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p1).toMatchObject({ created: 1, duplicates: 0, upgraded: 0 });
+
+  // Tegel 2 (overlap of vervolg van dezelfde rij): rijke lezing mét specs.
+  // ImportRow.page is de echte pagina, dus de bestaande rijkste-wint-dedup ziet
+  // dit vanzelf als dezelfde code binnen dezelfde run — upgrade, geen duplicaat.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    tile: 2,
+    tileCount: 12,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1568,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst:
+            "Lp301 Armatuur details: XAL SASSO 100. Lichtbron: Vermogen: 17,9 W. " +
+            "Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ created: 0, duplicates: 0, upgraded: 1 });
+
+  // Eén regel, geüpgraded met de specs; sourcePage = de ECHTE pagina.
+  const lines = await runLines(db, run.id);
+  expect(lines).toHaveLength(1);
+  expect(lines[0].reqWatt).toBe("17.90");
+  expect(lines[0].reqKelvin).toBe(3000);
+  expect(lines[0].sourcePage).toBe(1);
+
+  // Precies één rij checked:true in het run-snapshot (de rijkste lezing).
+  const snapshot = await getImportRun(db, run.id);
+  const rows = (snapshot!.rows ?? []) as ImportRow[];
+  expect(rows.filter((r) => r.fixtureCode === "Lp301")).toHaveLength(2);
+  expect(rows.filter((r) => r.checked)).toHaveLength(1);
+  expect(snapshot!.counts?.checked).toBe(1);
+});
+
+test("voortgang per tegel: pagesDone = distinct pagina's, tilesDone = alle tegels; hervatten levert doneTiles", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 3,
+    actor: ACTOR,
+  });
+
+  const leeg = () => mockClient([toolResponse([])]).client;
+  // Pagina 1: twee tegels; pagina 2: één hele-pagina-beeld (tile 0, default).
+  for (const opts of [
+    { page: 1, tile: 1, tileCount: 12 },
+    { page: 1, tile: 2, tileCount: 12 },
+    { page: 2 },
+  ]) {
+    await processOcrPage(db, {
+      runId: run.id,
+      ...opts,
+      imageBytes: IMAGE,
+      mime: "image/jpeg",
+      width: 1568,
+      height: 1568,
+      client: leeg(),
+      actor: ACTOR,
+    });
+  }
+
+  const progress = await getOcrRunProgress(db, run.id);
+  expect(progress).toMatchObject({
+    pagesDone: 2, // distinct pagina's (1 en 2)
+    tilesDone: 3, // alle beeldrijen
+    pagesTotal: 3,
+  });
+
+  // Hervatten: doneTiles gesorteerd op pagina, dan tegel; het ocr_resumed-event
+  // draagt beide tellingen.
+  const resumed = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 3,
+    actor: ACTOR,
+  });
+  expect(resumed.resumed).toBe(true);
+  expect(resumed.doneTiles).toEqual([
+    { page: 1, tile: 1 },
+    { page: 1, tile: 2 },
+    { page: 2, tile: 0 },
+  ]);
+  const resumedEvents = await eventsByAction(db, "ocr_resumed");
+  expect(resumedEvents).toHaveLength(1);
+  expect(resumedEvents[0].payload).toMatchObject({ tilesDone: 3, pagesDone: 2 });
 });

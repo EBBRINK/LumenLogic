@@ -571,3 +571,42 @@ test("geen client en geen key → skipped no_key, niets geschreven", async () =>
   expect((await eventsByAction(db, "ocr_page_done")).length).toBe(0);
   expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
 });
+
+// ── O4 (goal-import-ai-leesroute stap 5): tegel-bewuste call ─────────────────
+// Alle tests hierboven draaien zonder tile-opt en pinnen het oude gedrag vast
+// (afwezig = hele pagina, call byte-identiek). Eén echte tegel erbij: de
+// user-content krijgt de sectie-zin en het done-event draagt het tegelnummer.
+test("tegel {n:3, count:12}: sectie-zin in de user-content, tile 3 in het done-event", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([toolResponse([])]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 5,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+    actor: ACTOR,
+    tile: { n: 3, count: 12 },
+  });
+  if (!isOcrPageSuccess(result)) throw new Error("verwachtte succes");
+
+  // De extra zin noemt de sectie én de ECHTE pagina, en instrueert afgesneden
+  // rijen over te slaan (de tegel-overlap garandeert dat ze elders compleet staan).
+  const userText = calls[0].messages[0].content
+    .filter(
+      (c): c is Extract<(typeof calls)[0]["messages"][0]["content"][0], { type: "text" }> =>
+        c.type === "text",
+    )
+    .map((c) => c.text)
+    .join("\n");
+  expect(userText).toContain("section 3 of 12 of page 5");
+  expect(userText).toContain("Skip rows that are cut off at the image edges");
+  // De basisinstructie met de echte pagina blijft ongewijzigd staan.
+  expect(userText).toContain("page 5 of this luminaire schedule");
+
+  const done = await eventsByAction(db, "ocr_page_done");
+  expect(done.length).toBe(1);
+  expect(done[0].payload).toMatchObject({ page: 5, tile: 3 });
+});

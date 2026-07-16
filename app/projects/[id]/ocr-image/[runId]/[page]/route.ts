@@ -10,7 +10,7 @@ import { getOcrPageImage } from "@/lib/repo/ocr";
 import { requireSession } from "@/lib/session";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string; runId: string; page: string }> },
 ) {
   await requireSession();
@@ -19,13 +19,25 @@ export async function GET(
   if (!/^[0-9a-f-]{36}$/i.test(runId) || !Number.isInteger(pageNum) || pageNum < 1) {
     return new Response("Niet gevonden", { status: 404 });
   }
+  // O4 (A3-tiling): optioneel ?tile=n — een specifieke tegel van de pagina.
+  // Zonder queryparam de laagste tegel (tile 0 = hele pagina bij bestaande
+  // runs, dus byte-identiek aan vroeger). Ongeldig (geen int ≥ 0) → zelfde
+  // 404-pad als elke andere kapotte parameter.
+  const tileRaw = new URL(req.url).searchParams.get("tile");
+  let tile: number | undefined;
+  if (tileRaw != null) {
+    if (!/^\d+$/.test(tileRaw)) {
+      return new Response("Niet gevonden", { status: 404 });
+    }
+    tile = Number.parseInt(tileRaw, 10);
+  }
   // Eigendomscheck (zoals de markdown-route): run onbekend of van een ander
   // dossier → zelfde 404, geen onderscheid naar buiten.
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== id) {
     return new Response("Niet gevonden", { status: 404 });
   }
-  const image = await getOcrPageImage(db, runId, pageNum);
+  const image = await getOcrPageImage(db, runId, pageNum, tile);
   if (!image) return new Response("Niet gevonden", { status: 404 });
   // Uint8Array → los ArrayBuffer-slice zodat Response een nette BodyInit krijgt.
   const body = image.bytes.slice().buffer as ArrayBuffer;

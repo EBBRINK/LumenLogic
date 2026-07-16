@@ -78,6 +78,20 @@
       "when": 1784090000000,
       "tag": "0010_brand_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0011_ocr_tiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784100001000,
+      "tag": "0012_alias_serax",
+      "breakpoints": true
     }
   ]
 }

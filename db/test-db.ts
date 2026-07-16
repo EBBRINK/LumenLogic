@@ -17,6 +17,8 @@ import datamodelSql from "./migrations/0007_datamodel_productspecs.sql?raw";
 import merkrelatiesSql from "./migrations/0008_merkrelaties.sql?raw";
 import ocrSql from "./migrations/0009_ocr.sql?raw";
 import brandAliasesSql from "./migrations/0010_brand_aliases.sql?raw";
+import ocrTilesSql from "./migrations/0011_ocr_tiles.sql?raw";
+import aliasSeraxSql from "./migrations/0012_alias_serax.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -37,6 +39,8 @@ export async function createTestDb(): Promise<TestDb> {
   // 0010: brand_aliases (O5) — de seed-INSERT…SELECT's matchen in een verse test-DB
   // niets en inserten dus niets; tests seeden hun eigen aliassen via seedBrandAlias.
   await client.exec(brandAliasesSql);
+  await client.exec(ocrTilesSql); // 0011: OCR A3-tiling — tile-kolom + unique(run, page, tile)
+  await client.exec(aliasSeraxSql); // 0012: alias serax → Valerie Objects (seedt niets op een lege test-DB)
   return drizzle(client, { schema });
 }
 

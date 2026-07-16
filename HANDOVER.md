@@ -249,6 +249,30 @@ Grondwaarheid: Ad verwacht nu "Signify" (wat het boek drukt; "Philips" kwam uit 
 OPDRACHT-samenvatting). Intra-lighting/MyCreations hebben 0 producten — aliassen leveren
 daar blauw-met-juiste-key, pas kandidaten na inladen ("geen datagat" uit het probleemdoc
 gold alleen voor XAL/Aromas/&Tradition/Muuto)._
+_2026-07-16 (AI-leesroute **stap 5 — O4: A3-tiling, geen verzonnen merken meer**): nieuw
+`lib/pdf/tiles.ts` (puur, nul imports — één tegelplan voor browser, meetscript én repo):
+pagina's die op 1568px lange zijde onder de **120 dpi-drempel** komen gaan in overlappende
+300dpi-tegels van 1568² (A3 = 4×3 = 12, overlap ~438/598 px); daarboven blijft het bewezen
+hele-pagina-pad **byte-identiek** (tile 0 ⟺ hele pagina, regressie-verankerd). Migraties
+**0011** (ocr_page_images + tile-kolom, unique (run,page,tile), backfill via DEFAULT 0) en
+**0012** (alias serax→Valerie Objects, gestaafd via D=13 ↔ offerte 13×) — beide toegepast
+op Neon, additief. Client-loop uploadt per tegel (FormData tile/tileCount, hervatten per
+(page,tile) via doneTiles, voortgang "(tile x/12)", ETA per tegel); tegels dragen een
+sectie-promptzin incl. "alleen regels waarvan de code in DÉZE sectie zichtbaar is — nooit
+een productnaam als code" (tegel-gescoopt, het A4-pad onaangeraakt). Rijkste-wint-dedup
+bleek tegels al vanzelf correct te behandelen (een tegel is voor de dedup "nóg een
+pagina"). **Acceptatie: Dordrecht 18/18 codes · verwacht merk 6/6-waar-bekend · 0
+verzonnen merken** (nulmeting: 8/18 verzinsels als "GAZOO"; nu leest het model letterlijk
+wat er staat: Signify, Philips, SERAX, QAZQA, Lightronics, Aromas del Campo, Ferm Living,
+ETK) — en D/F staan groen mét kandidaten via de aliassen. Kosten getegelde meting
+€0,10/run (24 calls). **Bekende bijvangst:** de 300dpi-tegels lezen óók de
+installatietabel van de scan (Miele/Zehnder/Inatherm) en productnaam-fragmenten als
+regels — na de promptaanscherping nog ~17–18 spookregels; het zijn letterlijke
+transcripties (geen hallucinatie) en elke regel draagt de verplichte B7-review, maar het
+is reviewbank-ruis; een nette oplossing (bv. tabel-scope-detectie) is werk voor later.
+De "Philips → fout"-tellingen in het meetscript zijn correcte lézingen — "Philips"
+bestaat alleen niet als merkrij (wel "Philips (lichtbronnen)" etc.); de kolom "verwacht
+merk x/6" is maatgevend._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

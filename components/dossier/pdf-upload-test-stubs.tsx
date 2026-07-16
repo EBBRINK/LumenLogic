@@ -70,7 +70,7 @@ export function KaartMetOcrHappy() {
       startOcrAction={async () => ({
         runId: "r1",
         resumed: false,
-        donePages: [],
+        doneTiles: [],
       })}
       ocrPageAction={async () => {
         await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
@@ -91,7 +91,7 @@ export function KaartMetOcrBudgetStop() {
       startOcrAction={async () => ({
         runId: "r1",
         resumed: false,
-        donePages: [],
+        doneTiles: [],
       })}
       ocrPageAction={async (form) => {
         await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
@@ -113,7 +113,12 @@ export function KaartMetOcrResume() {
       startOcrAction={async () => ({
         runId: "r1",
         resumed: true,
-        donePages: [1, 2],
+        // De testfixtures zijn kleine (≤400 pt) pagina's → één tegel (tile 0)
+        // per pagina; pagina 1 en 2 volledig gedaan = alleen pagina 3 rest.
+        doneTiles: [
+          { page: 1, tile: 0 },
+          { page: 2, tile: 0 },
+        ],
       })}
       ocrPageAction={async (form) => {
         const page = Number(form.get("page"));
@@ -146,6 +151,92 @@ export function KaartMetOcrStartError() {
   );
 }
 
+// ── O4 (stap 5): tegel-stubs — A3-pagina's gaan in 12 tegels de deur uit ─────
+
+// Tegel-flow: registreert elke (page,tile)-combinatie die de kaart verstuurt,
+// zodat de test de volledige reeks kan asserteren. Elke call slaagt.
+// NB: registratie via window — een module-export komt door de RSC-testbrug als
+// client-referentie (function) aan in de test, niet als de array zelf.
+declare global {
+  interface Window {
+    __verzondenTegels?: string[];
+  }
+}
+function registreerTegel(form: FormData) {
+  (window.__verzondenTegels ??= []).push(
+    `${form.get("page")}:${form.get("tile")}`,
+  );
+}
+export function KaartMetOcrTegels() {
+  if (typeof window !== "undefined") window.__verzondenTegels = [];
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({
+        runId: "r1",
+        resumed: false,
+        doneTiles: [],
+      })}
+      ocrPageAction={async (form) => {
+        registreerTegel(form);
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {}}
+    />
+  );
+}
+
+// Hervatten met een half getegelde pagina: pagina 1 volledig (12 tegels),
+// pagina 2 half (tegels 1–6). Alleen de ontbrekende tegels mogen de deur uit;
+// een al gedane tegel levert een HERVAT-FOUT-alert en laat de test falen.
+export function KaartMetOcrResumeHalveTegels() {
+  if (typeof window !== "undefined") window.__verzondenTegels = [];
+  const done: { page: number; tile: number }[] = [];
+  for (let t = 1; t <= 12; t++) done.push({ page: 1, tile: t });
+  for (let t = 1; t <= 6; t++) done.push({ page: 2, tile: t });
+  const doneSet = new Set(done.map((d) => `${d.page}:${d.tile}`));
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({ runId: "r1", resumed: true, doneTiles: done })}
+      ocrPageAction={async (form) => {
+        const key = `${form.get("page")}:${form.get("tile")}`;
+        if (doneSet.has(key)) {
+          return { error: `HERVAT-FOUT: tegel ${key} was al gedaan en werd tóch gestuurd.` };
+        }
+        registreerTegel(form);
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {}}
+    />
+  );
+}
+
+// Budget-stop midden in een pagina: tegel 1–3 slagen, tegel 4 meldt {stopped} —
+// de kaart moet beide lussen afbreken en "(fully)" in de melding zetten.
+export function KaartMetOcrBudgetStopMidPagina() {
+  let calls = 0;
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({
+        runId: "r1",
+        resumed: false,
+        doneTiles: [],
+      })}
+      ocrPageAction={async () => {
+        calls++;
+        if (calls >= 4) return { stopped: "budget" };
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
 // Voor de voortgangs-screenshots: de eerste pagina-call blijft hangen, dus de
 // kaart staat stabiel in "Reading page 1/N with OCR…" tot de screenshot er is.
 export function KaartMetOcrHangend() {
@@ -156,7 +247,7 @@ export function KaartMetOcrHangend() {
       startOcrAction={async () => ({
         runId: "r1",
         resumed: false,
-        donePages: [],
+        doneTiles: [],
       })}
       ocrPageAction={() => new Promise(() => {})}
       finishOcrAction={finishOcrOnverwacht}

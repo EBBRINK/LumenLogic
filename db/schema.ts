@@ -567,6 +567,12 @@ export const ocrPageImages = pgTable(
       .notNull()
       .references(() => importRuns.id, { onDelete: "cascade" }),
     page: integer("page").notNull(), // 1-gebaseerd, zoals spec_lines.source_page
+    // O4 (stap 5, A3-tiling): tegelnummer binnen de pagina. INVARIANT: tile 0 ⟺
+    // het beeld beslaat de hele pagina; 1..N = rij-major genummerde uitsnedes
+    // (lib/pdf/tiles.ts). Bestaande rijen zijn hele pagina's → backfill via
+    // DEFAULT 0 (migratie 0011). De unique-index hieronder is per TEGEL het
+    // B4-lock dat eerst per pagina was.
+    tile: integer("tile").notNull().default(0),
     mime: text("mime").notNull(), // 'image/jpeg'
     width: integer("width").notNull(),
     height: integer("height").notNull(),
@@ -576,7 +582,11 @@ export const ocrPageImages = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("ocr_page_images_run_page_uniq").on(t.importRunId, t.page),
+    uniqueIndex("ocr_page_images_run_page_tile_uniq").on(
+      t.importRunId,
+      t.page,
+      t.tile,
+    ),
     index("ocr_page_images_run_idx").on(t.importRunId),
   ],
 );

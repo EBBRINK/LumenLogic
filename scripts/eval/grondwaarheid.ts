@@ -213,7 +213,11 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       // De eerdere waarde "Philips" kwam uit de OPDRACHT-samenvatting, niet uit
       // het boek zelf.
       Ad: "Signify",
-      D: "Valerie Objects",
+      // Het boek drukt "SERAX" (probleem-doc O4 noemt dat letterlijk; de
+      // 300dpi-lezing bevestigt het). Jayden's offerte voert de regel onder
+      // "Valerie Objects" — een Serax-label; alias serax→Valerie Objects
+      // (migratie 0012) verbindt beide, gestaafd via D=13 ↔ offerte 13×.
+      D: "SERAX",
       F: "Aromas",
       H1: "Ferm Living",
       H2: "Ferm Living",

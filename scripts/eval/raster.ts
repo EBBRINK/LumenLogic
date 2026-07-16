@@ -10,6 +10,7 @@
 import { getDocumentProxy, createIsomorphicCanvasFactory } from "unpdf";
 import { createCanvas } from "@napi-rs/canvas";
 import { OCR_MAX_SIDE_PX, OCR_JPEG_QUALITY } from "@/lib/pdf/render";
+import type { PageTile } from "@/lib/pdf/tiles";
 
 export type RasterPdf = Awaited<ReturnType<typeof getDocumentProxy>>;
 
@@ -46,4 +47,33 @@ export async function renderPageToJpeg(
   } finally {
     page.cleanup();
   }
+}
+
+// O4 (stap 5): één tegel renderen via een offset-viewport — zelfde geometrie
+// (lib/pdf/tiles.ts) en zelfde aanpak als renderPdfTileToJpeg in de browser.
+// De aanroeper beheert getPage/cleanup (één getPage per pagina, cleanup ná de
+// laatste tegel), zodat het bronbeeld één keer per pagina gedecodeerd wordt.
+export async function renderTileToJpeg(
+  page: Awaited<ReturnType<RasterPdf["getPage"]>>,
+  tile: PageTile,
+  quality: number = OCR_JPEG_QUALITY,
+): Promise<{ jpegBytes: Uint8Array; width: number; height: number }> {
+  const viewport = page.getViewport({
+    scale: tile.renderScale,
+    offsetX: -tile.sourceRect.xPt * tile.renderScale,
+    offsetY: -tile.sourceRect.yPt * tile.renderScale,
+  });
+  const canvas = createCanvas(tile.outPx.width, tile.outPx.height);
+  const ctx = canvas.getContext("2d");
+  await page.render({
+    canvas: canvas as unknown as HTMLCanvasElement,
+    canvasContext: ctx as unknown as CanvasRenderingContext2D,
+    viewport,
+  }).promise;
+  const jpegBytes = await canvas.encode("jpeg", Math.round(quality * 100));
+  return {
+    jpegBytes: new Uint8Array(jpegBytes),
+    width: tile.outPx.width,
+    height: tile.outPx.height,
+  };
 }

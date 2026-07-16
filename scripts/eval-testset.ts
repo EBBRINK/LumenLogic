@@ -79,7 +79,8 @@ import {
   GRONDWAARHEID,
   type GrondwaarheidCase,
 } from "./eval/grondwaarheid";
-import { openPdf, renderPageToJpeg } from "./eval/raster";
+import { planPageTiles } from "@/lib/pdf/tiles";
+import { openPdf, renderTileToJpeg } from "./eval/raster";
 
 // ── flags ────────────────────────────────────────────────────────────────────
 
@@ -204,6 +205,8 @@ type RegelResultaat = {
 type OcrPaginaMeta = {
   pdf: string;
   pagina: number;
+  // O4 (stap 5): aantal tegels waarin deze pagina is gelezen (1 = hele pagina).
+  tegels: number;
   regels: number;
   codeInvalid: number;
   attempts: OcrAttempt[];
@@ -354,50 +357,78 @@ async function ocrCase(
         break buiten;
       }
 
-      const { jpegBytes } = await renderPageToJpeg(pdf, p);
-      const { regels, usage, attempts, truncated } = await readPageWithVision({
-        client,
-        imageBytes: jpegBytes,
-        mime: "image/jpeg",
-        pageNumber: p,
-      });
-      // Kosten exact zoals ocrPage ze rekent (usage = somtotalen over 1–2 pogingen).
-      const costEur =
-        (usage.inputTokens * EUR_PER_MTOK_IN +
-          usage.outputTokens * EUR_PER_MTOK_OUT) /
-        1_000_000;
-      runKosten.eur += costEur;
-      // Budgetplicht (zie contract in de kop): dev = prod-DB, elke echte call moet
-      // meetellen in het maandbudget. Dit is de ENIGE DB-write van dit script.
-      await db.insert(llmUsage).values({
-        purpose: "eval",
-        costEur: costEur.toFixed(4),
-        importRunId: null,
-      });
-
-      paginas.push({
+      // O4 (stap 5): het tegelplan — zelfde geometrie als de browser-route.
+      // Eén getPage per pagina; cleanup pas ná de laatste tegel.
+      const page = await pdf.getPage(p);
+      const paginaMeta: OcrPaginaMeta = {
         pdf: rel,
         pagina: p,
-        regels: regels.length,
-        codeInvalid: regels.filter((r) => !r.codeValid).length,
-        attempts,
-        truncated,
-        costEur,
-      });
-      process.stderr.write(
-        `[${c.key} ocr ${rel} p.${p}/${pdf.numPages}] regels=${regels.length} ` +
-          `attempts=${attempts.length} truncated=${truncated} kosten=€${costEur.toFixed(4)}\n`,
-      );
+        tegels: 0,
+        regels: 0,
+        codeInvalid: 0,
+        attempts: [],
+        truncated: 0,
+        costEur: 0,
+      };
+      try {
+        const base = page.getViewport({ scale: 1 });
+        const tiles = planPageTiles(base.width, base.height);
+        for (const tile of tiles) {
+          const { jpegBytes } = await renderTileToJpeg(page, tile);
+          const { regels, usage, attempts, truncated } =
+            await readPageWithVision({
+              client,
+              imageBytes: jpegBytes,
+              mime: "image/jpeg",
+              pageNumber: p,
+              // Alleen tegel-info doorgeven bij een écht getegelde pagina —
+              // tile 0 (hele pagina) blijft byte-identiek aan het oude gedrag.
+              ...(tiles.length > 1
+                ? { tile: { n: tile.tile, count: tiles.length } }
+                : {}),
+            });
+          // Kosten exact zoals ocrPage ze rekent (usage = som over 1–2 pogingen).
+          const costEur =
+            (usage.inputTokens * EUR_PER_MTOK_IN +
+              usage.outputTokens * EUR_PER_MTOK_OUT) /
+            1_000_000;
+          runKosten.eur += costEur;
+          // Budgetplicht (zie contract in de kop): dev = prod-DB, elke echte call
+          // moet meetellen in het maandbudget. Dit is de ENIGE DB-write van dit
+          // script.
+          await db.insert(llmUsage).values({
+            purpose: "eval",
+            costEur: costEur.toFixed(4),
+            importRunId: null,
+          });
 
-      for (const regel of regels) {
-        // "eval" als runId-placeholder: regelToSpecLine zet hem alleen in het
-        // importRunId-veld, en dit script schrijft de regel nooit naar de DB.
-        const line = regelToSpecLine(regel, p, "eval", brandNames);
-        const huidige = beste.get(regel.armatuurcode);
-        if (!huidige || specRichness(line) > specRichness(huidige.line)) {
-          beste.set(regel.armatuurcode, { line, codeValid: regel.codeValid });
+          paginaMeta.tegels++;
+          paginaMeta.regels += regels.length;
+          paginaMeta.codeInvalid += regels.filter((r) => !r.codeValid).length;
+          paginaMeta.attempts.push(...attempts);
+          paginaMeta.truncated += truncated;
+          paginaMeta.costEur += costEur;
+          process.stderr.write(
+            `[${c.key} ocr ${rel} p.${p}/${pdf.numPages}` +
+              (tiles.length > 1 ? ` tegel ${tile.tile}/${tiles.length}` : "") +
+              `] regels=${regels.length} attempts=${attempts.length} ` +
+              `truncated=${truncated} kosten=€${costEur.toFixed(4)}\n`,
+          );
+
+          for (const regel of regels) {
+            // "eval" als runId-placeholder: regelToSpecLine zet hem alleen in het
+            // importRunId-veld, en dit script schrijft de regel nooit naar de DB.
+            const line = regelToSpecLine(regel, p, "eval", brandNames);
+            const huidige = beste.get(regel.armatuurcode);
+            if (!huidige || specRichness(line) > specRichness(huidige.line)) {
+              beste.set(regel.armatuurcode, { line, codeValid: regel.codeValid });
+            }
+          }
         }
+      } finally {
+        page.cleanup();
       }
+      paginas.push(paginaMeta);
     }
   }
 
@@ -827,6 +858,16 @@ function printCase(r: CaseResultaat, rankLimit: number) {
         `truncated ${r.ocr.truncatedPaginas} pagina('s)`,
     );
     for (const pg of r.ocr.paginas) {
+      // Getegelde pagina's (O4): compact — tegels/kosten/truncated i.p.v. de
+      // volledige pogingen-reeks (12 tegels × 1–2 pogingen wordt onleesbaar).
+      if (pg.tegels > 1) {
+        out(
+          `           ${pg.pdf} p.${pg.pagina}: ${pg.tegels} tegels · ` +
+            `${pg.regels} regels vóór dedup (codeInvalid ${pg.codeInvalid}) · ` +
+            `truncated ${pg.truncated} · €${pg.costEur.toFixed(4)}`,
+        );
+        continue;
+      }
       const pogingen = pg.attempts
         .map(
           (a) =>

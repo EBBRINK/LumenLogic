@@ -296,7 +296,9 @@ export async function startOcrImportAction(input: {
   pageCount: number;
 }): Promise<
   | { error: string }
-  | { runId: string; resumed: boolean; donePages: number[] }
+  // O4 (A3-tiling, stap 5): gedane TEGELS i.p.v. pagina's — tile 0 = hele
+  // pagina, dus voor bestaande runs is dit één-op-één het oude donePages.
+  | { runId: string; resumed: boolean; doneTiles: { page: number; tile: number }[] }
 > {
   await requireSession();
   const actor = await getActor();
@@ -323,13 +325,13 @@ export async function startOcrImportAction(input: {
   if (!(await getDossier(db, dossierId))) {
     return { error: "Unknown project." };
   }
-  const { run, resumed, donePages } = await startOcrRun(db, {
+  const { run, resumed, doneTiles } = await startOcrRun(db, {
     dossierId,
     filename,
     pageCount,
     actor,
   });
-  return { runId: run.id, resumed, donePages };
+  return { runId: run.id, resumed, doneTiles };
 }
 
 // Eén pagina: FormData met runId/dossierId/page/width/height + het beeld als File.
@@ -349,8 +351,18 @@ export async function ocrPageAction(formData: FormData): Promise<
   const page = intOrNull(formData.get("page"));
   const width = intOrNull(formData.get("width"));
   const height = intOrNull(formData.get("height"));
+  // O4 (A3-tiling): optioneel tegelnummer + tegeltotaal. Afwezig = hele pagina
+  // (tile 0, count 1) — de huidige client-loop stuurt de velden nog niet mee,
+  // dus het gedrag blijft byte-identiek tot de tegel-lus (volgende stap) landt.
+  const tileRaw = formData.get("tile");
+  const tile = tileRaw == null ? 0 : intOrNull(tileRaw);
+  const tileCountRaw = formData.get("tileCount");
+  const tileCount = tileCountRaw == null ? 1 : intOrNull(tileCountRaw);
   const image = formData.get("image");
   if (!dossierId || !runId || !page || page < 1 || !width || !height) {
+    return { error: "Invalid OCR page request." };
+  }
+  if (tile == null || tile < 0 || tileCount == null || tileCount < 1) {
     return { error: "Invalid OCR page request." };
   }
   // Server-hardening: de client-loop stuurt altijd JPEG (canvas → toBlob
@@ -378,6 +390,8 @@ export async function ocrPageAction(formData: FormData): Promise<
   const result = await processOcrPage(db, {
     runId,
     page,
+    tile,
+    tileCount,
     imageBytes,
     mime: image.type,
     width,

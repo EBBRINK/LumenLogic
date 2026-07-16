@@ -11,13 +11,17 @@
 // Dit bestand is bewust los van armaturenboek.ts/extract.ts gehouden, gespiegeld aan
 // extract.ts: de client-bundle krijgt alleen unpdf, niet de parser.
 import { getDocumentProxy } from "unpdf";
+import { OCR_JPEG_QUALITY, OCR_MAX_SIDE_PX, type PageTile } from "@/lib/pdf/tiles";
 
 // Anthropic-vision-limiet: beelden > 1568 px op de langste zijde worden door de API
 // teruggeschaald — dat kost juist de pixels van de armatuurcodes. Dus zelf exact op
 // 1568 px (langste zijde) renderen; nooit opschalen boven de bronresolutie is niet
 // nodig: het boek is 600 dpi, ruim boven dit doel.
-export const OCR_MAX_SIDE_PX = 1568;
-export const OCR_JPEG_QUALITY = 0.8;
+// Sinds stap 5 (O4, A3-tiling) leven de constanten in lib/pdf/tiles.ts (puur, nul
+// imports — gedeeld met het tegelplan, het meetscript en de repo-laag); deze
+// re-export houdt bestaande importeurs (scripts/eval/raster.ts, render.test.ts)
+// ongewijzigd werkend.
+export { OCR_JPEG_QUALITY, OCR_MAX_SIDE_PX };
 
 export type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 
@@ -38,6 +42,40 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDocument> {
 // Rendert één pagina naar JPEG met de langste zijde op maxSidePx. Geef hetzelfde
 // canvas bij elke aanroep mee om per-pagina-allocaties te vermijden (B1: canvas
 // hergebruiken); zonder canvas wordt er één aangemaakt.
+// O4 (stap 5): één tegel van een pagina renderen via een offset-viewport — NOOIT
+// de hele pagina groot renderen en croppen (een A3 op 300 dpi is ~70 MB RGBA,
+// boven de iOS-Safari-canvaslimiet). pdfjs neemt offsetX/offsetY als translatie
+// op in de viewport-transform; het canvas (exact outPx) clipt de rest weg.
+// De aanroeper beheert getPage/cleanup: één getPage per pagina, cleanup pas ná
+// de laatste tegel — zo wordt het bronbeeld één keer gedecodeerd per pagina.
+export async function renderPdfTileToJpeg(
+  page: Awaited<ReturnType<PdfDocument["getPage"]>>,
+  tile: PageTile,
+  options: { canvas?: HTMLCanvasElement; quality?: number } = {},
+): Promise<{ blob: Blob; width: number; height: number }> {
+  const quality = options.quality ?? OCR_JPEG_QUALITY;
+  const viewport = page.getViewport({
+    scale: tile.renderScale,
+    offsetX: -tile.sourceRect.xPt * tile.renderScale,
+    offsetY: -tile.sourceRect.yPt * tile.renderScale,
+  });
+  const canvas = options.canvas ?? document.createElement("canvas");
+  canvas.width = tile.outPx.width;
+  canvas.height = tile.outPx.height;
+  await page.render({ canvas, viewport }).promise;
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) =>
+        b
+          ? resolve(b)
+          : reject(new Error(`Tegel ${tile.tile}: canvas.toBlob gaf null`)),
+      "image/jpeg",
+      quality,
+    );
+  });
+  return { blob, width: canvas.width, height: canvas.height };
+}
+
 export async function renderPdfPageToJpeg(
   pdf: PdfDocument,
   pageNumber: number,

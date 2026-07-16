@@ -33,13 +33,15 @@ export type PdfPagesImportAction = (input: {
 }) => Promise<{ error: string } | void>;
 
 // Signatures spiegelen exact de server-actions in app/projects/actions.ts.
+// O4 (A3-tiling, stap 5): de action levert gedane TEGELS ({page, tile}); tile 0
+// = hele pagina (de dpi-drempel in lib/pdf/tiles.ts beslist per pagina).
 export type StartOcrAction = (input: {
   dossierId: string;
   filename: string;
   pageCount: number;
 }) => Promise<
   | { error: string }
-  | { runId: string; resumed: boolean; donePages: number[] }
+  | { runId: string; resumed: boolean; doneTiles: { page: number; tile: number }[] }
 >;
 
 export type OcrPageAction = (formData: FormData) => Promise<
@@ -62,9 +64,13 @@ export interface PendingOcrRun {
   pagesTotal: number | null;
 }
 
-// Geschatte resttijd op basis van het gemiddelde van de al gedane pagina's.
-function etaText(avgMsPerPage: number, pagesLeft: number): string {
-  const seconds = Math.round((avgMsPerPage * pagesLeft) / 1000);
+// Geschatte resttijd. Sinds O4 (tiling) meten we per TEGEL: een A3-pagina is 12
+// tegels en een A4-pagina 1 — per pagina middelen zou de ETA een factor 12
+// laten liegen zodra de maten mengen. Resterend werk = tegels die nog moeten
+// (voor nog-niet-geplande pagina's schatten we het tegelgemiddelde van de al
+// geplande pagina's — lazy, geen upfront getPage-scan over 500 pagina's).
+function etaText(avgMsPerTile: number, tilesLeft: number): string {
+  const seconds = Math.round((avgMsPerTile * tilesLeft) / 1000);
   if (seconds < 5) return "";
   if (seconds < 90) return ` — about ${seconds}s left`;
   return ` — about ${Math.round(seconds / 60)} min left`;
@@ -105,72 +111,111 @@ export function PdfUploadCard({
       setError(start.error);
       return;
     }
-    const donePages = new Set(start.donePages);
-    const todo: number[] = [];
-    for (let p = 1; p <= pageCount; p++) if (!donePages.has(p)) todo.push(p);
+    // O4: gedane tegels als "page:tile"-sleutels; per pagina beslist
+    // planPageTiles (dpi-drempel) of het één hele-pagina-beeld (tile 0) of een
+    // reeks 300dpi-tegels wordt. Alleen ontbrekende tegels gaan de deur uit.
+    // Randgeval: wijzigt de tegelgeometrie tussen deploys midden in een run, dan
+    // vangt het (run,page,tile)-lock dubbele uploads (alreadyDone) en dedupt de
+    // rijkste-wint-logica de regels — geen extra machinerie.
+    const doneTiles = new Set(start.doneTiles.map((t) => `${t.page}:${t.tile}`));
 
     // B1: het document één keer openen, pagina's strikt sequentieel renderen op
     // één hergebruikt canvas; elk beeld gaat direct de deur uit en de blob wordt
     // meteen losgelaten — nooit 31 blobs tegelijk in het geheugen.
     // NB: het bestand wordt hier opnieuw gelezen — pdfjs neemt de ArrayBuffer van
     // de tekstextractie over (transfer → detached), dus die bytes zijn al weg.
-    const { openPdfDocument, renderPdfPageToJpeg } = await import(
+    const { openPdfDocument, renderPdfTileToJpeg } = await import(
       "@/lib/pdf/render"
     );
+    const { planPageTiles } = await import("@/lib/pdf/tiles");
     const pdf = await openPdfDocument(new Uint8Array(await file.arrayBuffer()));
-    let failed = 0;
+    let failed = 0; // pagina's met ≥1 gefaalde tegel (de eenheid die Timo kent)
     let timedMs = 0;
-    let timedPages = 0;
+    let timedTiles = 0;
+    let plannedTiles = 0;
+    let plannedPages = 0;
+    let sentResumePrefix = start.resumed;
     try {
       const canvas = document.createElement("canvas");
-      for (let i = 0; i < todo.length; i++) {
-        const pageNo = todo[i];
-        const resumePrefix =
-          start.resumed && i === 0 ? `Resuming OCR from page ${pageNo} — ` : "";
-        const eta =
-          timedPages > 0 ? etaText(timedMs / timedPages, todo.length - i) : "";
-        const failNote = failed > 0 ? ` (${failed} pages failed)` : "";
-        setBusy(
-          `${resumePrefix}Reading page ${pageNo}/${pageCount} with OCR…${eta}${failNote}`,
-        );
-        const t0 = performance.now();
-
-        const rendered = await renderPdfPageToJpeg(pdf, pageNo, { canvas });
-        const form = new FormData();
-        form.set("dossierId", dossierId);
-        form.set("runId", start.runId);
-        form.set("page", String(pageNo));
-        form.set("width", String(rendered.width));
-        form.set("height", String(rendered.height));
-        form.set(
-          "image",
-          new File([rendered.blob], `page-${pageNo}.jpg`, {
-            type: "image/jpeg",
-          }),
-        );
-        const result = await ocrPageAction(form);
-
-        if ("stopped" in result) {
-          // Budget op (run staat serverside op 'gestopt') of key weggevallen:
-          // loop afbreken met een eerlijke melding hoeveel pagina's bleven liggen.
-          const left = todo.length - i;
-          setError(
-            result.stopped === "budget"
-              ? `OCR stopped: the €1 budget for this book is used up — ${left} of ${pageCount} pages were not read. The lines read so far are on the project.`
-              : `OCR stopped: the AI key is missing — ${left} of ${pageCount} pages were not read. Once a key is configured, choose the same PDF to resume.`,
+      for (let pageNo = 1; pageNo <= pageCount; pageNo++) {
+        // Lazy per pagina plannen: pt-maten pas opvragen als de pagina aan de
+        // beurt is; cleanup pas ná de laatste tegel van de pagina zodat het
+        // bronbeeld één keer per pagina gedecodeerd wordt.
+        const page = await pdf.getPage(pageNo);
+        try {
+          const base = page.getViewport({ scale: 1 });
+          const tiles = planPageTiles(base.width, base.height);
+          plannedTiles += tiles.length;
+          plannedPages++;
+          const missing = tiles.filter(
+            (t) => !doneTiles.has(`${pageNo}:${t.tile}`),
           );
-          return;
+          let pageFailed = false;
+          for (let j = 0; j < missing.length; j++) {
+            const tile = missing[j];
+            const resumePrefix =
+              sentResumePrefix ? `Resuming OCR from page ${pageNo} — ` : "";
+            sentResumePrefix = false;
+            // Resterende tegels: rest van deze pagina + (tegelgemiddelde van de
+            // al geplande pagina's × resterende pagina's).
+            const avgTilesPerPage = plannedTiles / plannedPages;
+            const tilesLeft =
+              missing.length - j + avgTilesPerPage * (pageCount - pageNo);
+            const eta =
+              timedTiles > 0 ? etaText(timedMs / timedTiles, tilesLeft) : "";
+            const failNote = failed > 0 ? ` (${failed} pages failed)` : "";
+            const tileNote =
+              tiles.length > 1 ? ` (tile ${tile.tile}/${tiles.length})` : "";
+            setBusy(
+              `${resumePrefix}Reading page ${pageNo}/${pageCount} with OCR…${tileNote}${eta}${failNote}`,
+            );
+            const t0 = performance.now();
+
+            const rendered = await renderPdfTileToJpeg(page, tile, { canvas });
+            const form = new FormData();
+            form.set("dossierId", dossierId);
+            form.set("runId", start.runId);
+            form.set("page", String(pageNo));
+            form.set("tile", String(tile.tile));
+            form.set("tileCount", String(tiles.length));
+            form.set("width", String(rendered.width));
+            form.set("height", String(rendered.height));
+            form.set(
+              "image",
+              new File([rendered.blob], `page-${pageNo}-tile-${tile.tile}.jpg`, {
+                type: "image/jpeg",
+              }),
+            );
+            const result = await ocrPageAction(form);
+
+            if ("stopped" in result) {
+              // Budget op (run staat serverside op 'gestopt') of key weggevallen:
+              // beide lussen afbreken met een eerlijke melding. Een pagina kan
+              // half gelezen zijn (tegels 1–k) — die regels blijven staan, net
+              // als vroeger de regels van eerdere pagina's bij een stop.
+              const left = pageCount - pageNo + 1;
+              setError(
+                result.stopped === "budget"
+                  ? `OCR stopped: the €1 budget for this book is used up — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are on the project.`
+                  : `OCR stopped: the AI key is missing — ${left} of ${pageCount} pages were not (fully) read. Once a key is configured, choose the same PDF to resume.`,
+              );
+              return;
+            }
+            if ("error" in result) {
+              // Ongeldige aanroep/run — dit herhaalt zich op elke tegel, dus stoppen.
+              setError(result.error);
+              return;
+            }
+            // {failed}: per-tegel-fout is al gelogd (event) — pagina markeren, doorgaan.
+            if ("failed" in result) pageFailed = true;
+            // {alreadyDone} of {created}: gewoon door naar de volgende tegel.
+            timedMs += performance.now() - t0;
+            timedTiles++;
+          }
+          if (pageFailed) failed++;
+        } finally {
+          page.cleanup();
         }
-        if ("error" in result) {
-          // Ongeldige aanroep/run — dit herhaalt zich op elke pagina, dus stoppen.
-          setError(result.error);
-          return;
-        }
-        // {failed}: per-pagina-fout is al gelogd (event) — tellen en doorgaan.
-        if ("failed" in result) failed++;
-        // {alreadyDone} of {created}: gewoon door naar de volgende pagina.
-        timedMs += performance.now() - t0;
-        timedPages++;
       }
 
       setBusy("Finishing OCR…");
