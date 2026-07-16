@@ -92,6 +92,16 @@ Een item is pas "done" als **alles** hieronder waar is:
 
 - **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
   Eduard zélf bevestigd worden** — Timo's aanname is geen toezegging. Harde voorwaarde vóór week 4.
+- **Waar dient het vangnet voor in tender?** (uit 0.1b) Een regel is rood/open **omdat** de
+  matcher het exacte product niet vond; in tender mag het vangnet **alleen datzelfde exacte
+  product** suggereren. Het zoekt daar dus naar wat al bewezen afwezig is — **`suggested: 0` is
+  in tender bijna tautologisch**. Niet helemaal: de AI kan een naamvariant redden die de
+  token-matcher miste (juist op de 0-treffer-regels zoals Lp601/Lr701). Dit is ijzeren regel 4
+  die correct wérkt, geen bug.
+  **Besluit: nog géén sprintitem — eerst data.** Het kost ~€0,01/regel (~€1 voor een boek van
+  100 regels, binnen de €10-cap), dus de urgentie is laag, en of het z'n geld waard is valt
+  alleen te zeggen ná een paar echte armaturenboeken. Herijken zodra die er zijn; `parseFailed`
+  en `suggested` in de `ai_vangnet_run`-payload leveren het bewijs vanzelf.
 
 ---
 
@@ -121,12 +131,19 @@ terugkeren als bouwklus.
 
 **Klaar wanneer** (vault): upload → verstuurbare PDF werkt zonder haperen, **én het plan is akkoord**.
 
-**0.1 — AI-vangnet live** (~2 u) — 🔄 **hoofddoel gehaald 16 jul; één restitem open (0.1b)**
+**0.1 — AI-vangnet live** (~2 u) — ✅ **AFGEROND 16 jul** (hoofddoel + 0.1b)
 - ✅ *Given* `ANTHROPIC_API_KEY` in `.env.local` én als Vercel-env, *when* het test-armaturenboek in productie wordt geïmporteerd, *then* draait het vangnet over de restregels ~~verschijnen AI-suggesties in review~~, en is er géén `ai_vangnet_skipped_no_key`-event meer maar wél vangnet-events met kosten in `llm_usage`.
   **Bewijs** (onafhankelijk geverifieerd tegen de live DB, 16 jul): event `ai_vangnet_run` met `checked: 7, suggested: 0, phase: tender` op dossier `49c6340e-83d8-45c7-84d9-64fe1f48cb88` ("ZZ-TEST 0.1 vangnet 16-07"), deploy-SHA `966191f`, 08:56–08:58 UTC · 21 calls / **€0,0619** met `purpose='vangnet'` · nul `ai_vangnet_skipped_no_key` · statussen ongemoeid.
 - ✅ *Given* het budget in de instellingen, *when* de teller de cap nadert (test met tijdelijk lage cap), *then* stopt het vangnet met een budgetstop-event.
   **Bewijs**: cap tijdelijk op €0,01 → `ai_vangnet_skipped_budget` (`budgetEur 0.01, spendEur 0.1022`), kosten €0. Cap staat permanent op **€10/maand** (`app_settings.llm_budget_eur = 10`).
-- ⬜ **0.1b — zichtbaar maken wát het model antwoordde** (~2 u) — *besluit Timo 16 jul; scope herzien na navraag bij de 0.1-sessie.*
+- ✅ **0.1b — zichtbaar maken wát het model antwoordde** — **afgerond 16 jul** (`e28d46d` meting + parserfix, `9870226` live bewijs). Briefing: `docs/sprint0-1b-suggestiepad.md`.
+  **Uitkomst: de parser at niets op — `suggested: 0` was eerlijk.** Alle 7 regels gaven `stop_reason=end_turn` en een nette slottekst eindigend op `{"suggesties":[]}`; de ongefixte regex parseert die vormen empirisch allemaal correct. Rij 2 van de briefingtabel dus.
+  **Waarom het niets vond: ijzeren regel 4, correct werkend.** De tender-tak van `systemPrompt` zegt "zoek uitsluitend het GEVRAAGDE product; alternatieven niet toegestaan" — en het model schreef dat ook terug. Het vond nabije kandidaten en verwierp ze bewust (Kreon Holon 30,2W vs. gevraagd 40W · Axo Light NEST 7/10W vs. 9W · XAL UNICO Q4 15,7W vs. Q4 30W).
+  **Wél gebouwd** (criterium 2 eiste het onverkort): string-bewuste, accolade-balancerende matcher i.p.v. de gulzige `[\s\S]*` (**de bug was latent, niet actief**) · kloppend commentaar · **de stille `catch` laat nu een spoor na**: event `ai_suggestion_parse_failed` + teller `parseFailed` in de `ai_vangnet_run`-payload (jsonb, geen migratie; payload bevat **nooit** de modeltekst — besluit Timo).
+  **Daarmee is de uitleestabel een DB-query geworden:** `suggested: 0, parseFailed: 0` = model vond echt niets · `suggested: 0, parseFailed: >0` = wij konden het niet lezen. Dát onderscheid bestond niet, en het is precies waarom `discarded: 0` nooit bewees wat het leek.
+  **Criterium 3 is afgesloten met onderbouwing, niet met een `ai_suggestions`-rij** — zoals de briefing voorschreef ("verzin geen suggestie"). De tabel is DB-breed leeg. Een rij afdwingen kan alleen door de fase te forceren, en dat verbood de briefing.
+  **Live bewijs:** `ai_vangnet_run` 10:14:16 UTC met `{"phase":"tender","checked":7,"discarded":0,"suggested":0,"parseFailed":0}`. Het veld `parseFailed` bestaat alléén in de gefixte code; de twee oudere runs hebben het niet. Onafhankelijk geverifieerd. Kosten: meting €0,0654 + verificatie €0,0796; maandtotaal **€0,3091** van €10.
+  *Historisch — de scope-herziening die tot dit item leidde:*
   Het vangnet gaf 0 suggesties. **De eerste aanname — "de catalogus voerde het gevraagde merk niet" — is weerlegd**: 5 van de 7 restregels kregen **8 treffers** terug (= `SEARCH_LIMIT`, dus er waren er ≥8) op merken die de catalogus wél voert (Axo Light 2×, XAL 3×, Kreon 1×, Flos 1×; alleen Lp601 en Lr701 kwamen op 0). Het model hád materiaal en stelde niets voor.
   **En dat "niets" is niet te vertrouwen:** `finalText` wordt geparsed en weggegooid (`lib/ai/vangnet.ts:679, 706, 747`) — niet gelogd, niet opgeslagen. `parseSuggestions` geeft `[]` in drie **ononderscheidbare** gevallen: regex vindt niets · `JSON.parse` gooit (stille `catch`) · de array is écht leeg. `discarded: 0` bewijst dus **niet** dat het model leeg teruggaf — een parse-mislukking geeft nul suggesties én nul discards.
   *Wél uitgesloten:* beurten-uitputting. De 21 `llm_usage`-rijen sluiten exact op 14 zoekacties + 1 slotcall per regel = 21; `MAX_TURNS_PER_LINE` (6) is nooit geraakt. Alle 7 regels producéérden een slottekst — we weten alleen niet wat erin stond.
@@ -136,7 +153,7 @@ terugkeren als bouwklus.
   - **0.1 wordt pas afgevinkt als één echte `ai_suggestions`-rij op `/projects/[id]/review` in productie staat** — óf als bewezen is dat "niets" hier het juiste antwoord was.
   - *Niet doen:* een `gegund`-project forceren om cross-merk-suggesties te ontsluiten. `phase` is afgeleid (`derivePhase`, `lib/repo/project-status.ts:68`), één schrijver, geen toggle; het zou de commerciële status wijzigen én de meting vertroebelen — cross-merk is niet het knelpunt.
 - Briefing + geverifieerde stand: `docs/sprint0-1-ai-vangnet-live.md`; uitkomst in `HANDOVER.md` (entry 2026-07-16).
-- **Opruimen ná 0.1b:** testproject `49c6340e` ("ZZ-TEST 0.1 vangnet 16-07") staat nog in productie als bewijsspoor. Weghalen zodra 0.1 is afgevinkt — `scripts/cleanup-testdata.ts`. (~5 min)
+- ⬜ **Testproject `49c6340e` staat nog in productie** ("ZZ-TEST 0.1 vangnet 16-07") — bewijsspoor onder 0.1 én 0.1b, bewust laten staan (besluit Timo). ⚠️ **Kan níét met `scripts/cleanup-testdata.ts`**: dat scoopt op org "Van Dijk Elektro" en dit dossier heeft geen `organizationId` (zie item 2.5). Weghalen is handwerk en onomkeerbaar → **op de week 4-checklist vóór de overdracht**: geen ZZ-TEST-dossiers in productie.
 - *Meegekomen in 0.1, los gecommit (al gepusht):* `step="0.01"` op het budgetveld (`4c3a849`) · budget 0 = echt plafond i.p.v. "geen cap" (`7071038`) · de permanente 301 `/dossiers` → `/projecten` wees naar een niet-bestaande route, nu `/projects` (`966191f`).
 
 **0.2 — Repo synchroon** (~4,5 u) — ✅ **afgerond 15 jul** (PR #3). Zie `docs/sprint0-2-notitie-aan-parallelle-sessies.md`.
@@ -207,6 +224,8 @@ uitgeschreven in `HANDOVER.md` §"Open punten uit sprint 0.1". Twee ervan zijn U
 - *Given* een OCR-run die op budget stopte (`ocrStatus = gestopt`), *when* de cap omhoog gaat, *then* is hervatten mogelijk — nu is die toestand **terminaal** (hervatten kan alleen bij `bezig`). (~1 u)
 - *Given* `getLlmSpend`, *then* rekent `startOfMonth` in **UTC** — nu lokale tijdzone, latente bug in de eerste uren van een maand op Vercel. (~0,25 u)
 - **Keuze nodig:** de maandcap is **gedeeld** tussen OCR en vangnet, dus OCR kan het vangnet wegdrukken. `getLlmSpendForPurpose` bestaat al voor een uitsplitsing. Splitsen of gedeeld laten? (~0,5 u als we splitsen)
+- *(nieuw, uit 0.1b)* **Beurten-uitputting blijft stil.** Raakt `runLine` `MAX_TURNS_PER_LINE` zónder slottekst, dan is `finalText` leeg → `parseFailed: false` → opnieuw een onverklaarde nul. Zelfde blinde vlek als de stille `catch`, één laag hoger. (G4 bewijst dat dit bij `49c6340e` niet speelde.) (~0,25 u)
+- *(nieuw, uit 0.1b)* **`scripts/cleanup-testdata.ts` raakt losse testdossiers niet.** Het scoopt op org "Van Dijk Elektro" (`ORG_NAME`, regel 27); dossier `49c6340e` heeft géén `organizationId` en valt er dus buiten. Óf het script verbreden, óf accepteren dat losse testdossiers handwerk zijn — maar de briefing van 0.1b ging er ten onrechte van uit dat dit script het opruimt. (~0,5 u)
 - Opruimen: **`VANGNET_MAX_MS` (120 s) is dood beleid** onder `after()` — het is een zachte grens *tussen* regels; de live run haalde 52 s voor 7 regels, één regel kan theoretisch ~360 s duren. Plus **stale comments in `lib/ai/vangnet.ts`** die nog beweren dat de run "awaited in de import-respons" wordt. (~0,25 u, → bufferuren)
 
 **2.U — UITLOOP (schrapbaar): aanvullende widgets** (~4 u)
