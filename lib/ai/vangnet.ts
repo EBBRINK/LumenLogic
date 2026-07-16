@@ -482,7 +482,7 @@ export function parseSuggestions(
 // ── Budget & selectie ────────────────────────────────────────────────────────
 async function overBudget(db: AppDb): Promise<{ over: boolean; budget: number | null; spend: number }> {
   const budget = await getSetting<number>(db, "llm_budget_eur");
-  if (budget == null || !(budget > 0)) return { over: false, budget: null, spend: 0 };
+  if (budget == null) return { over: false, budget: null, spend: 0 };
   const spend = await getLlmSpend(db);
   return { over: spend >= budget, budget, spend };
 }

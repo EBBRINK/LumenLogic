@@ -342,7 +342,7 @@ export async function checkOcrBudget(
     };
   }
   const monthBudget = await getSetting<number>(db, "llm_budget_eur");
-  if (monthBudget != null && monthBudget > 0) {
+  if (monthBudget != null) {
     const monthSpend = await getLlmSpend(db);
     if (monthSpend >= monthBudget) {
       return {
