@@ -161,9 +161,20 @@ actiegericht en volledig verzonnen.
 &Tradition 539 — precies de merken die Jayden offreerde. Het systeem heeft ze nooit gezocht.
 
 **Twee losse bevindingen:**
-- **De matcher kapt af op 8 kandidaten, alfabetisch gesorteerd.** Jayden's artikel stond op
-  rang 105 van 8.495 → nooit in beeld. Het vangnet zoekt wél op similariteit (`SEARCH_LIMIT`,
-  `lib/ai/vangnet.ts:61`); matcher en vangnet gebruiken dus twee verschillende zoekpaden.
+- ~~**De matcher kapt af op 8 kandidaten, alfabetisch gesorteerd.**~~ **INGETROKKEN 16 jul na
+  hermeting.** `engine.ts:250` sorteert wél op relevantie (`matchCount → prefixBonus →
+  similarity → naam`); naam is enkel de tiebreak. De sortering klapt alleen samen tot
+  alfabetisch als `productText` geen tokens ≥2 tekens oplevert — en dat gebeurt hier níét
+  (alle 31 regels hebben tokens, tot 631 tekens). **De top-8-afkap is in geen enkele testcase
+  een bewezen oorzaak**: in de echte run gaan alle 31 regels blauw, dus `fetchCandidates` wordt
+  nooit aangeroepen. Het getal "rang 105 van 8.495" kwam uit een contrafeitelijke test waarin
+  `productText` met de hand op `"SASSO PRO 100"` was gezet — een meetfout, geen bevinding.
+  De afkap blijft een reële eigenschap van de code, maar zit verstopt achter de merkfout.
+  **Er is dus één oorzaak, niet twee.** Repareer de merkkolom en de matcher komt tot leven:
+  alle vier de Raadhuis-regels gaan van blauw naar **geel/open mét kandidaten** — de mens
+  krijgt ze op de reviewbank in plaats van dat de keten stilvalt. Of de top-8 dán knelt is een
+  aparte meting ná de fix. *(Zowel testcase 1 als de sprintmaster hadden hier een verkeerde
+  hypothese; beide zijn met een trouwe hermeting weerlegd.)*
 - **Rood vs. blauw wordt op de verkeerde grond beslist.** `brandExists`
   (`lib/matching/engine.ts:176`) toetst of er een merk-*rij* bestaat, niet of dat merk producten
   heeft. `Focus` (0 producten, rij bestaat) → rood; `Vergaderruimte` (geen rij) → blauw. De
