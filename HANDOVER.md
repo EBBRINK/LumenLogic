@@ -146,25 +146,23 @@ Nu de meting er ligt, is het een schoon apart item; `parseFailed` is de beslisgr
 sprint wijzigen maakt een vervolgmeting onuitlegbaar) en de stale comments rond de tijdgrenzen
 (besluit Timo: blijft hygiëne-item 2.5)._
 
-## ⚠️ Ongecommit werk in de working tree zonder bekende eigenaar (16 jul 2026)
+## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
-Vijf bestanden staan lokaal gewijzigd en zijn **van geen enkele sprint-0-sessie**. Hier
-vastgelegd omdat de enige andere plek waar ze genoemd worden een chatsessie is — en die wordt
-gearchiveerd. Niemand heeft ze aangeraakt; ze zijn nergens in meegelift (alle sprint-0-commits
-gebruikten expliciete paden).
+_Stond hier als open punt (`d4b933f`); afgerond dezelfde dag na bevestiging door Timo._
 
-- `lib/field-catalog.ts` + `lib/field-catalog.test.ts` + `components/data/brand-message.test.tsx`
-  + `components/data/brand-relations.test.tsx` — **schrapt de must-velden `name_nl` en
-  `description_nl`** uit de field-catalog en hangt `measure: col("name")` / `col("description")`
-  om naar de Engelse keys. Inhoudelijk een i18n-nafix op de merk-Excel-template: na de Engelse
-  vertaalslag is "Productnaam (NL)" als must-veld onzinnig.
-  **Gecontroleerd (sprintmaster, 16 jul):** coherent en compleet — 29 tests groen, must-totaal
-  blijft 3 (sac, name_en, category), geen dwalende verwijzingen. De `name_nl`/`description_nl`
-  die elders nog bestaan zitten op `brands`/`categories`, niet op `products`, dus er is geen
-  conflict. **Committen kan veilig — maar door wie het gemaakt heeft**, inclusief eigen DoD.
-- `CLAUDE.md` — de magic-link-notitie (`vercel logs --expand`). Staat er los van.
+Vijf bestanden stonden lokaal gewijzigd zonder bekende eigenaar — van geen enkele
+sprint-0-sessie. Ze zijn nergens in meegelift (alle sprint-0-commits gebruikten expliciete
+paden) en zijn alsnog netjes afgerond:
 
-Blijft dit liggen, dan is het les 0007/0008 die zich herhaalt.
+- **Merk-vragenlijst: NL-productnaam eruit** (`34e1e57`) — `lib/field-catalog.ts` +
+  `field-catalog.test.ts` + `brand-message.test.tsx` + `brand-relations.test.tsx`. De
+  must-velden `name_nl`/`description_nl` zijn geschrapt en `measure: col("name")` /
+  `col("description")` verhuisd naar de Engelse keys: na de Engelse vertaalslag is
+  "Productnaam (NL)" als must-veld onzinnig. Must-totaal blijft 3 (sac, name_en, category).
+  Timo heeft bevestigd dat dit klopt. 529 tests groen, tsc schoon.
+- **CLAUDE.md** (`96d573e`) — de magic-link-notitie (`vercel logs --expand`).
+
+`git status` is daarmee schoon.
 
 ## Open punten uit sprint 0.1 — vastgelegd, bewust niet gefixt
 
