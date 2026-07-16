@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --env-file=.env.local db/migrate.ts",
     "import": "bun --env-file=.env.local scripts/import.ts",
+    "eval": "bun --env-file=.env.local scripts/eval-testset.ts",
     "seed:demo": "bun --env-file=.env.local scripts/seed-demo.ts",
     "test": "vitest run",
     "seed:scenario": "bun --env-file=.env.local scripts/seed-scenario.ts",

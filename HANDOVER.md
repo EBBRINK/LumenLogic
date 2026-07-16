@@ -145,6 +145,24 @@ Nu de meting er ligt, is het een schoon apart item; `parseFailed` is de beslisgr
 0, dan loont het niet). Ook niet gedaan: de prompt aanraken (ander item — prompt én parser in één
 sprint wijzigen maakt een vervolgmeting onuitlegbaar) en de stale comments rond de tijdgrenzen
 (besluit Timo: blijft hygiëne-item 2.5)._
+_2026-07-16 (AI-leesroute **stap 0 — het meetinstrument staat**): `scripts/eval-testset.ts`
+(+ `scripts/eval/grondwaarheid.ts` met test) haalt de vier echte testcases uit
+`~/Downloads/lumenlogic-testset` (env `EVAL_DIR`; echte klantdata, nooit in git) door het
+exacte productiecodepad — read-only: alleen `evaluateSpecLine`-selects, geen runMatcher/
+logEvent/imports. `bun run eval --assert-nulmeting` reproduceert het 16 jul-ijkpunt exact:
+Raadhuis 31/31 gelezen · merk 31× fout (zaalnamen) · {blauw:30, paars:1} (`Lf901` paars via
+NON_LIGHTING-woord "tafel") · keuze 0/4 — KvK 0/49 — TNO 15/20 · {blauw:13, rood:2}
+(zaalnaam "Focus" bestaat als merk, het O5-geval) — Dordrecht 0/18 (geen tekstlaag).
+**Denominator-correctie KvK:** nulmeting zei 0/28, LEESMIJ zei 20; de tekstlaag bevat
+aantoonbaar **49 unieke codetokens (27 basiscodes)** — beide eerdere zeven waren fout, de
+PDF wint; het "KvK 20/20"-einddoel uit het goal-doc heet voortaan 49/49. Jayden-mapping voor
+rang/keuze: Raadhuis 4 codes (via mail-aantallen), Dordrecht 6 (via handgeschreven
+aantallen, incl. Kurbis-setje); KvK/TNO eerlijk "n.v.t.". L-prefix-bevinding: Jayden's
+XIS-artikelcodes staan letterlijk (mét L-prefix) in `visible_products.article_code`; de zes
+Dordrecht-artikelcodes staan (nog) helemaal niet in de catalogus. `--ai`-flag bestaat maar
+de OCR-route is bewust doorgeschoven naar bouwstap 2 (rasterisatie server-side is daar pas
+nodig; de nulmeting heeft hem niet nodig). Fixtures in de vier codestijlen:
+`lib/pdf/codestijl-fixtures.ts` + tests (invariant-asserts die stap 1–6 overleven)._
 
 ## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
