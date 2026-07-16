@@ -228,6 +228,27 @@ bevinding voor Timo:** merkloze regels matchen catalogus-breed — KvK toont 39/
 generieke tokens (3000K, Downlight) tegen willekeurige merken; eerlijk volgens de huidige
 beslisboom, maar "nooit groen zonder gevraagd merk" is een statussen-semantiek-besluit dat
 alleen Timo kan nemen (vangrail)._
+_2026-07-16 (AI-leesroute **stap 4 — O5: bekend = merk mét producten, plus aliassen**):
+`brandExists` vervangen door `resolveBrand` (één query): "bekend" = ≥1 productrij in de
+**basistabel** `products` (verlopen prijslijst blijft bekend → rood, nooit blauw; kandidaten
+strikt `visible_products`, regel 3), en `brand_aliases` (migratie **0010, toegepast op
+Neon**, additief + 3 seeds: aromasdelcampo→Aromas, intralight→Intra-lighting,
+signify→**MyCreations** — níét Philips: de Dordrecht-artikelcodes L322… wijzen hard naar
+MyCreations) resolvet boek-woorden naar het canonieke merk; de gecureerde alias wint van
+naamgelijkheid (Signify bestaat zelf als lege merkrij). Wachtrij krijgt de canonieke key;
+enrichment-hermatch is alias-aware (anders bleef "Intralight" blauw ná het inladen van
+Intra-lighting). **Schaal-gevolg, bewust en zichtbaar: 405 van de 436 merken hebben 0
+productrijen — die zijn nu blauw (+ inlaadwachtrij) i.p.v. rood.** Meetscript-delta:
+Raadhuis {blauw:27, groen:14, paars:1} — Bega/ETAP/Trilux/Barthelme staan nu als
+inlaadwerk op de wachtrij; Dordrecht 19/20 blauw; acceptatietest: Lp801/Ls802 aantoonbaar
+terug van rood naar blauw incl. inlaadwachtrij (het regressiebewijs uit stap 1).
+Alias-acceptatie "Aromas del Campo → kandidaten van Aromas" bewezen in unit-tests; de
+meetscript-demonstratie wacht op stap 5 — **de vision-lezingen op ~95 dpi variëren per run**
+(deze run las F leeg en D "Signify"; TNO-merken schommelen 9–13/13 tussen runs — O4).
+Grondwaarheid: Ad verwacht nu "Signify" (wat het boek drukt; "Philips" kwam uit de
+OPDRACHT-samenvatting). Intra-lighting/MyCreations hebben 0 producten — aliassen leveren
+daar blauw-met-juiste-key, pas kandidaten na inladen ("geen datagat" uit het probleemdoc
+gold alleen voor XAL/Aromas/&Tradition/Muuto)._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

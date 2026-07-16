@@ -26,6 +26,7 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  brandAliases,
   brandLoadQueue,
   brands,
   enrichmentItems,
@@ -455,7 +456,10 @@ export async function markBrandLoaded(
     .set({ status: "ingeladen", loadedAt: new Date(), updatedAt: new Date() })
     .where(eq(brandLoadQueue.id, queueId));
 
-  // hermatchen op de genormaliseerde merksleutel (brand_key is al genormaliseerd)
+  // hermatchen op de genormaliseerde merksleutel (brand_key is al genormaliseerd);
+  // alias-aware (O5): een regel met boek-woord 'Intralight' hoort bij de canonieke
+  // wachtrij-key 'intralighting' — zonder de map bleef zo'n regel blauw.
+  const aliasMap = await brandAliasKeyMap(db);
   const lines = await db
     .select({ id: specLines.id, brandText: specLines.brandText })
     .from(specLines)
@@ -463,7 +467,8 @@ export async function markBrandLoaded(
   let rematched = 0;
   for (const l of lines) {
     if (!l.brandText) continue;
-    if (brandKeyOf(l.brandText) !== q.brandKey) continue;
+    const lineKey = brandKeyOf(l.brandText);
+    if ((aliasMap.get(lineKey) ?? lineKey) !== q.brandKey) continue;
     await runMatcher(db, l.id, actor);
     rematched++;
   }
@@ -478,7 +483,20 @@ export async function markBrandLoaded(
   return { rematched };
 }
 
-// Gedeelde hermatch-helper: alle blauwe/open regels van een merk (op naam) opnieuw matchen.
+// Gecureerde merknaam-redirects (O5) als vergelijkingsmap: alias_key → canonieke
+// brandKey (via brands.name). Eén fetch per hermatch-ronde; de regel-key gaat door
+// deze map vóór de vergelijking, zodat boek-woorden ('Intralight') meetellen bij
+// het canonieke merk ('Intra-lighting').
+async function brandAliasKeyMap(db: AppDb): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ aliasKey: brandAliases.aliasKey, brandName: brands.name })
+    .from(brandAliases)
+    .innerJoin(brands, eq(brands.id, brandAliases.brandId));
+  return new Map(rows.map((r) => [r.aliasKey, brandKeyOf(r.brandName)]));
+}
+
+// Gedeelde hermatch-helper: alle blauwe/open regels van een merk (op naam) opnieuw
+// matchen — alias-aware (O5), zie brandAliasKeyMap.
 async function rematchBrandLines(
   db: AppDb,
   brandName: string,
@@ -486,6 +504,7 @@ async function rematchBrandLines(
 ): Promise<number> {
   const key = brandKeyOf(brandName);
   if (!key) return 0;
+  const aliasMap = await brandAliasKeyMap(db);
   const lines = await db
     .select({ id: specLines.id, brandText: specLines.brandText })
     .from(specLines)
@@ -493,7 +512,8 @@ async function rematchBrandLines(
   let n = 0;
   for (const l of lines) {
     if (!l.brandText) continue;
-    if (brandKeyOf(l.brandText) !== key) continue;
+    const lineKey = brandKeyOf(l.brandText);
+    if ((aliasMap.get(lineKey) ?? lineKey) !== key) continue;
     await runMatcher(db, l.id, actor);
     n++;
   }

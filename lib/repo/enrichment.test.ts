@@ -7,10 +7,13 @@ import { eq } from "drizzle-orm";
 import {
   addProductToBrand,
   createTestDb,
+  seedBrand,
+  seedBrandAlias,
   seedBrandProduct,
 } from "@/db/test-db";
 import {
   enrichmentItems,
+  priceLists,
   products,
   projectDossiers,
   specLines,
@@ -230,6 +233,63 @@ test("markBrandLoaded hermatcht blauwe regels van de wachtrij", async () => {
 
   // merk inladen (product bestaat nu) en de wachtrij afvinken
   await seedBrandWithBareProducts(db);
+  const res = await markBrandLoaded(db, item!.id, "tester");
+  expect(res?.rematched).toBeGreaterThanOrEqual(1);
+
+  const [afterRow] = await db
+    .select({ status: specLines.status })
+    .from(specLines)
+    .where(eq(specLines.id, line.id));
+  expect(afterRow.status).not.toBe("blauw");
+});
+
+// O5: de hermatch is alias-aware. Een regel met boek-woord 'Intralight' krijgt via de
+// gecureerde alias de canonieke wachtrij-key 'intralighting'; als Intra-lighting later
+// producten krijgt moet markBrandLoaded die regel pakken — zonder de alias-map bleef
+// brandKeyOf('Intralight') ('intralight') ≠ 'intralighting' en bleef de regel blauw.
+test("markBrandLoaded hermatcht óók regels met een alias-boek-woord (Intralight → Intra-lighting)", async () => {
+  const db = await createTestDb();
+
+  // Canoniek merk als kale rij (nog geen producten) + de gecureerde redirect.
+  const { brandId } = await seedBrand(db, "Intra-lighting");
+  await seedBrandAlias(db, brandId, "intralight", "TNO-boek");
+
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Alias-dossier", phase: "tender" })
+    .returning();
+  const [line] = await addSpecLines(db, dossier.id, [
+    {
+      fixtureCode: "Lp201",
+      quantity: 2,
+      brandText: "Intralight", // het boek-woord, niet de catalogusnaam
+      productText: "Wave Round",
+    },
+  ]);
+  await runMatcher(db, line.id); // alias resolvet, maar 0 producten → blauw
+
+  // De wachtrij draagt de CANONIEKE key (runMatcher gebruikt outcome.brandKey).
+  const queue = await listBrandLoadQueue(db);
+  const item = queue.find((q) => q.brandKey === "intralighting");
+  expect(item).toBeDefined();
+
+  // Nu krijgt Intra-lighting producten (eigen prijslijst op het bestaande merk).
+  const [pl] = await db
+    .insert(priceLists)
+    .values({
+      brandId,
+      name: "Prijslijst Intra-lighting",
+      validFrom: "2026-01-01",
+      validUntil: "2999-12-31",
+    })
+    .returning();
+  await addProductToBrand(db, {
+    brandId,
+    priceListId: pl.id,
+    name: "Wave Round Prisma 3000K",
+    kelvin: 3000,
+  });
+
   const res = await markBrandLoaded(db, item!.id, "tester");
   expect(res?.rematched).toBeGreaterThanOrEqual(1);
 

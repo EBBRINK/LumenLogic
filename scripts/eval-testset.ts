@@ -47,9 +47,9 @@ import { readFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { brands, llmUsage } from "@/db/schema";
+import { brandAliases, brands, llmUsage } from "@/db/schema";
 import {
   beslisRoute,
   LEESROUTE_BATCH_PAGES,
@@ -280,19 +280,26 @@ type CaseResultaat = {
   duurMs: number;
 };
 
-// ── merk-oordeel (in-process, één brands-fetch) ──────────────────────────────
-// Drie emmers: "bestaand merk" (brandKeyOf ∈ brands én — waar verwacht bekend —
-// gelijk aan het verwachte merk), "fout" (gevuld maar geen bestaand merk óf ≠
-// verwacht-waar-bekend), "leeg" (null — eerlijk onbekend, GEEN fout).
+// ── merk-oordeel (in-process, één brands- + één brand_aliases-fetch) ─────────
+// Drie emmers: "bestaand merk" (brandKeyOf ∈ brands∪aliassen én — waar verwacht
+// bekend — gelijk aan het verwachte merk), "fout" (gevuld maar geen bestaand merk
+// óf ≠ verwacht-waar-bekend), "leeg" (null — eerlijk onbekend, GEEN fout).
+// O5: alias-merken tellen als "bestaand" — de meting meet zoals de matcher werkt:
+// 'Intralight'/'Aromas del Campo' resolven via brand_aliases naar een echt merk en
+// zijn dus geen leesfout. De vergelijking met het verwachte merk loopt óók door de
+// alias-map (canonicaliseren aan beide kanten), anders zou "Aromas del Campo" vs
+// grondwaarheid "Aromas" alsnog als fout tellen.
 function merkOordeel(
   brandText: string | null,
   verwachtMerk: string | undefined,
   brandKeySet: Set<string>,
+  aliasCanon: Map<string, string>,
 ): MerkOordeel {
   if (brandText == null || brandText.trim() === "") return "leeg";
+  const canon = (k: string) => aliasCanon.get(k) ?? k;
   const key = brandKeyOf(brandText);
   if (!brandKeySet.has(key)) return "fout";
-  if (verwachtMerk && key !== brandKeyOf(verwachtMerk)) return "fout";
+  if (verwachtMerk && canon(key) !== canon(brandKeyOf(verwachtMerk))) return "fout";
   return "bestaand";
 }
 
@@ -527,6 +534,7 @@ async function meetCase(
   evalDir: string,
   brandNames: string[],
   brandKeySet: Set<string>,
+  aliasCanon: Map<string, string>,
   flags: Flags,
   runKosten: { eur: number },
 ): Promise<CaseResultaat> {
@@ -602,15 +610,21 @@ async function meetCase(
     const outcome = await evaluateSpecLine(db, req);
     status[outcome.status] = (status[outcome.status] ?? 0) + 1;
 
-    // merk-oordeel
-    const oordeel = merkOordeel(line.brandText ?? null, verwachtMerk, brandKeySet);
+    // merk-oordeel (alias-aware, O5 — zie merkOordeel)
+    const oordeel = merkOordeel(
+      line.brandText ?? null,
+      verwachtMerk,
+      brandKeySet,
+      aliasCanon,
+    );
     merk[oordeel]++;
     merk.gelezenTotaal++;
     if (verwachtMerk) {
       merk.verwachtBekend++;
+      const canon = (k: string) => aliasCanon.get(k) ?? k;
       if (
         line.brandText != null &&
-        brandKeyOf(line.brandText) === brandKeyOf(verwachtMerk)
+        canon(brandKeyOf(line.brandText)) === canon(brandKeyOf(verwachtMerk))
       ) {
         merk.verwachtGoed++;
       }
@@ -1010,11 +1024,25 @@ async function main() {
     process.exit(1);
   }
 
-  // één brands-fetch; merk-oordeel gebeurt daarna volledig in-process
+  // één brands-fetch (+ één brand_aliases-fetch, O5); merk-oordeel gebeurt daarna
+  // volledig in-process. Alias-keys tellen in de meetkolom "merk" als BESTAAND merk:
+  // de matcher resolvet ze naar een echt merk, dus de meting hoort ze niet als
+  // leesfout te tellen. aliasCanon (alias_key → canonieke brandKey) canonicaliseert
+  // óók de vergelijking met het verwachte merk.
   const brandNames = (
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
-  const brandKeySet = new Set(brandNames.map(brandKeyOf));
+  const aliasRows = await db
+    .select({ aliasKey: brandAliases.aliasKey, brandName: brands.name })
+    .from(brandAliases)
+    .innerJoin(brands, eq(brands.id, brandAliases.brandId));
+  const brandKeySet = new Set([
+    ...brandNames.map(brandKeyOf),
+    ...aliasRows.map((a) => a.aliasKey),
+  ]);
+  const aliasCanon = new Map(
+    aliasRows.map((a) => [a.aliasKey, brandKeyOf(a.brandName)]),
+  );
 
   let gitRev = "onbekend";
   try {
@@ -1037,7 +1065,7 @@ async function main() {
   const results: CaseResultaat[] = [];
   for (const c of cases) {
     results.push(
-      await meetCase(c, evalDir, brandNames, brandKeySet, flags, runKosten),
+      await meetCase(c, evalDir, brandNames, brandKeySet, aliasCanon, flags, runKosten),
     );
   }
 

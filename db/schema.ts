@@ -199,6 +199,28 @@ export const brands = pgTable("brands", {
   ...timestamps,
 });
 
+// brand_aliases (O5, goal-import-ai-leesroute stap 4): gecureerde merknaam-redirects.
+// Een boek-woord ("Aromas del Campo", "Intralight", "Signify") wijst naar het canonieke
+// merk in brands. alias_key is altijd al genormaliseerd (brandKeyOf-vorm; een CHECK in
+// migratie 0010 dwingt het af) en de unique index garandeert dat één alias nooit naar
+// twee merken wijst. Seeds leven in de migratie zelf (dev = prod). Bewust géén fuzzy
+// alternatief: een alias is een bewuste, menselijke keuze — nooit een gok.
+export const brandAliases = pgTable(
+  "brand_aliases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "cascade" }),
+    aliasKey: text("alias_key").notNull(), // genormaliseerd (lowercase, alfanumeriek)
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("brand_aliases_key_uniq").on(t.aliasKey)],
+);
+
 // categories: 3 niveaus (hoofd > sub > subsub), zelf-refererend.
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey(),
@@ -1008,6 +1030,7 @@ export const brandRelations = pgTable(
 
 export type Product = typeof products.$inferSelect;
 export type Brand = typeof brands.$inferSelect;
+export type BrandAlias = typeof brandAliases.$inferSelect;
 export type ProjectDossier = typeof projectDossiers.$inferSelect;
 export type SpecLine = typeof specLines.$inferSelect;
 export type SpecLineCandidate = typeof specLineCandidates.$inferSelect;

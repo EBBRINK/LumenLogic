@@ -207,7 +207,12 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       "H1", "H2", "H3", "J", "S", "T", "T1", "Tn1",
     ],
     verwachtMerkPerCode: {
-      Ad: "Philips",
+      // Het boek drukt bij de GreenSpace-regels "Signify" (vision leest dat in
+      // beide runs consistent); Jayden's offerte voert ze onder "MyCreations"
+      // (L322…) — de alias signify→mycreations (migratie 0010) verbindt beide.
+      // De eerdere waarde "Philips" kwam uit de OPDRACHT-samenvatting, niet uit
+      // het boek zelf.
+      Ad: "Signify",
       D: "Valerie Objects",
       F: "Aromas",
       H1: "Ferm Living",

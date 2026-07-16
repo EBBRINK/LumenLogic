@@ -5,6 +5,8 @@
 // De boom (functioneel ontwerp §4.3):
 //   1. verlichting? nee → PAARS
 //   2. merk in catalogus? nee → BLAUW (+ inlaadwachtrij)
+//      "in catalogus" = ≥1 productrij in de basistabel (O5); gecureerde aliassen
+//      (brand_aliases) resolven boek-woorden naar het canonieke merk
 //   3. SKU in de regel? → exacte match (SKU-normalisatie)
 //      anders parametrisch binnen merk + fuzzy op producttekst
 //   4. geen kandidaten (ook na zoekhypotheses)? → ROOD
@@ -17,8 +19,8 @@
 // De uitkomst is een `MatchOutcome`: status + twee kandidatenlijsten + afwijkingen.
 // Het persisteren (spec_line_candidates, status, events) doet lib/repo/matching.ts.
 
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { brands, visibleProducts } from "@/db/schema";
+import { and, asc, desc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
+import { brandAliases, brands, products, visibleProducts } from "@/db/schema";
 import type { MatchDeviation } from "@/db/schema";
 import type { AppDb } from "@/lib/repo/db";
 import {
@@ -170,20 +172,59 @@ export function toDelivered(r: Record<string, unknown>): DeliveredSpecs {
   };
 }
 
-// Is dit merk überhaupt in de catalogus? (stap 2 — los van zichtbaarheid/prijs, want
-// een merk zonder geldige prijslijst is nog steeds "bekend"; dat wordt rood/dagprijs,
-// niet blauw.)
-async function brandExists(db: AppDb, brandText: string): Promise<boolean> {
+// Is dit merk überhaupt in de catalogus? (stap 2, O5.) "Bekend" = het merk heeft ≥1
+// productrij in de BASISTABEL products — bewust níét visible_products: een merk met
+// alleen een verlopen prijslijst is nog steeds bekend en wordt rood/dagprijs, nooit
+// blauw (de verlopen-prijslijst-verdediging van vroeger blijft dus overeind). De
+// kandidaten zelf blijven strikt uit visible_products komen (ijzeren regel 3) — deze
+// toets verandert daar niets aan. Een kale merkrij zónder producten is daarentegen
+// een datagat: blauw + inlaadwachtrij, want er valt niets te matchen.
+//
+// Resolutie in één query, twee routes naar een merkrij:
+//   • gecureerde alias (brand_aliases, strikt op brand_id gejoind — 0 dangling,
+//     geverifieerd; een tekst-join zou een fuzzy-sluiproute zijn en fuzzy/prefix-gok
+//     als merkmatch is expliciet verboden), of
+//   • exacte naamgelijkheid op de genormaliseerde merknaam.
+// De alias wint van naamgelijkheid: "Signify" bestaat zelf als (lege) merkrij, maar
+// de gecureerde redirect signify → MyCreations is de bewuste keuze — vandaar
+// ORDER BY via-alias eerst, dan heeft-producten, dan naam (deterministisch).
+async function resolveBrand(
+  db: AppDb,
+  brandText: string,
+): Promise<{
+  key: string;
+  canonicalName: string | null;
+  brandId: string | null;
+  hasProducts: boolean;
+}> {
   const key = brandKeyOf(brandText);
-  if (!key) return false;
+  if (!key) return { key, canonicalName: null, brandId: null, hasProducts: false };
+  const viaAlias = sql<boolean>`(${brandAliases.id} is not null)`;
+  const hasProducts = sql<boolean>`exists (select 1 from ${products} where ${products.brandId} = ${brands.id})`;
   const rows = await db
-    .select({ id: brands.id })
+    .select({ id: brands.id, name: brands.name, hasProducts })
     .from(brands)
-    .where(
-      sql`regexp_replace(lower(${brands.name}), '[^a-z0-9]', '', 'g') = ${key}`,
+    .leftJoin(
+      brandAliases,
+      and(eq(brandAliases.brandId, brands.id), eq(brandAliases.aliasKey, key)),
     )
+    .where(
+      or(
+        isNotNull(brandAliases.id),
+        sql`regexp_replace(lower(${brands.name}), '[^a-z0-9]', '', 'g') = ${key}`,
+      ),
+    )
+    .orderBy(desc(viaAlias), desc(hasProducts), asc(brands.name))
     .limit(1);
-  return rows.length > 0;
+  if (rows.length === 0) {
+    return { key, canonicalName: null, brandId: null, hasProducts: false };
+  }
+  return {
+    key,
+    canonicalName: rows[0].name,
+    brandId: rows[0].id,
+    hasProducts: Boolean(rows[0].hasProducts),
+  };
 }
 
 // Kandidaten ophalen: exact-op-SKU eerst, anders fuzzy binnen merk (C-03/C-04).
@@ -286,32 +327,47 @@ export async function evaluateSpecLine(
     };
   }
 
-  // Stap 2 — merk in catalogus? (BLAUW)
+  // Stap 2 — merk in catalogus? (BLAUW) "In catalogus" = merk mét producten in de
+  // basistabel (zie resolveBrand). brandKey is bij een resolve de CANONIEKE key
+  // (brandKeyOf(canonicalName)): de inlaadwachtrij moet het merk dragen dat wij écht
+  // zouden inladen ('mycreations'), niet het boek-woord ('signify'); zonder resolve
+  // blijft het de eigen key.
   const brand = (req.brandText ?? "").trim();
-  if (brand.length > 0 && !(await brandExists(db, brand))) {
+  const resolved = brand.length > 0 ? await resolveBrand(db, brand) : null;
+  if (resolved && !resolved.hasProducts) {
     return {
       status: "blauw",
-      reason: `merk '${brand}' niet in de catalogus`,
-      brandKey: brandKeyOf(brand),
+      reason: `merk '${brand}' niet in de catalogus (geen producten)`,
+      brandKey: resolved.canonicalName
+        ? brandKeyOf(resolved.canonicalName)
+        : resolved.key,
       provable: [],
       incomplete: [],
       topDeviations: [],
     };
   }
 
+  // Substitutie (O5): bij een alias-hit zoekt fetchCandidates verder met de canonieke
+  // merknaam ('Intralight' → 'Intra-lighting'), anders vindt de merkconditie niets.
+  // Eén gesubstitueerd request voor de kandidaten-stap ÉN de C-09-fallback hieronder;
+  // fetchCandidates zelf blijft ongewijzigd (en kandidaten strikt visible_products).
+  const effectiveReq: SpecRequest = resolved?.canonicalName
+    ? { ...req, brandText: resolved.canonicalName }
+    : req;
+
   // Stap 3 — kandidaten zoeken.
-  let rows = await fetchCandidates(db, req, limit);
+  let rows = await fetchCandidates(db, effectiveReq, limit);
 
   // Stap 3-fallback (C-09): geen kandidaten → deeltermen uit de producttekst proberen
   // vóór "rood". Deterministisch (langste tokens eerst); LLM-hypotheses zijn een latere
   // uitbreiding en zitten nooit vóór deze stap.
-  if (rows.length === 0 && req.productText) {
-    const tokens = req.productText
+  if (rows.length === 0 && effectiveReq.productText) {
+    const tokens = effectiveReq.productText
       .split(/\s+/)
       .filter((t) => t.length >= 3)
       .sort((a, b) => b.length - a.length);
     for (const t of tokens) {
-      rows = await fetchCandidates(db, { ...req, productText: t }, limit);
+      rows = await fetchCandidates(db, { ...effectiveReq, productText: t }, limit);
       if (rows.length > 0) break;
     }
   }

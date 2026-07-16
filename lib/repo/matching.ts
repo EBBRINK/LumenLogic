@@ -140,15 +140,20 @@ export async function runMatcher(
     });
   }
 
-  // blauw → merk op de inlaadwachtrij (frequentie++)
+  // blauw → merk op de inlaadwachtrij (frequentie++). De wachtrij krijgt de CANONIEKE
+  // key uit de engine (O5: bij een alias-hit b.v. 'mycreations' voor boek-woord
+  // 'Signify' — dát merk moeten wij inladen); het event bewaart beide (regel 5).
   if (outcome.status === "blauw" && line.brandText) {
-    await enqueueBrandLoad(db, line.brandText);
+    await enqueueBrandLoad(db, line.brandText, outcome.brandKey);
     await logEvent(db, {
       entity: "spec_line",
       entityId: specLineId,
       action: "brand_load_requested",
       actor,
-      payload: { brandText: line.brandText },
+      payload: {
+        brandText: line.brandText,
+        brandKey: outcome.brandKey ?? brandKeyOf(line.brandText),
+      },
     });
   }
 
@@ -167,9 +172,15 @@ export async function runMatcher(
   return outcome;
 }
 
-// H-08: merk op de inlaadwachtrij, frequentie ophogen bij herhaling.
-export async function enqueueBrandLoad(db: AppDb, brandText: string) {
-  const key = brandKeyOf(brandText);
+// H-08: merk op de inlaadwachtrij, frequentie ophogen bij herhaling. brandKey is
+// optioneel (backwards compatible, bv. setLineStatus): meegegeven is het de canonieke
+// key uit de engine (alias-resolve, O5); zonder valt hij terug op brandKeyOf(brandText).
+export async function enqueueBrandLoad(
+  db: AppDb,
+  brandText: string,
+  brandKey?: string,
+) {
+  const key = brandKey ?? brandKeyOf(brandText);
   if (!key) return;
   const existing = await db
     .select({ id: brandLoadQueue.id, frequency: brandLoadQueue.frequency })

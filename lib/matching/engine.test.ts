@@ -7,11 +7,13 @@ import { expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   createTestDb,
+  seedBrand,
+  seedBrandAlias,
   seedBrandProduct,
   addProductToBrand,
   type TestDb,
 } from "@/db/test-db";
-import { projectDossiers, specLines, brandLoadQueue } from "@/db/schema";
+import { events, projectDossiers, specLines, brandLoadQueue } from "@/db/schema";
 import {
   evaluateSpecLine,
   brandKeyOf,
@@ -324,6 +326,137 @@ test("blauw: runMatcher zet het onbekende merk op de brand_load_queue en de rege
   expect(queue.length).toBe(1);
   expect(queue[0].brandKey).toBe(brandKeyOf("Occhio"));
   expect(queue[0].frequency).toBe(1);
+});
+
+// ── O5 (stap 4): "bekend" = producten in de basistabel; aliassen resolven ─────
+// docs/goal-import-ai-leesroute.md stap 4: de bestaanstoets verschuift van de
+// merkRIJ naar productrijen in de BASISTABEL products. Een kale merkrij is een
+// datagat (blauw); een merk met alleen onzichtbare (verlopen-prijslijst-)producten
+// blijft bekend (rood, nooit blauw — ijzeren regel 3 blijft: kandidaten strikt uit
+// visible_products). Gecureerde aliassen (brand_aliases) resolven boek-woorden naar
+// het canonieke merk — nooit fuzzy.
+
+test("o5: merkrij zonder producten → blauw (datagat), brandKey eigen key", async () => {
+  const db = await createTestDb();
+  await seedBrand(db, "Zumtobel"); // rij bestaat, 0 producten
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "Zumtobel", productText: "PANOS", specs: {} }),
+  );
+  expect(out.status).toBe("blauw");
+  expect(out.brandKey).toBe("zumtobel");
+  expect(out.reason).toContain("geen producten");
+  expect(out.provable).toHaveLength(0);
+});
+
+test("o5: merk met alléén onzichtbare producten (verlopen prijslijst) → NIET blauw maar rood", async () => {
+  const db = await createTestDb();
+  // Product bestaat in de basistabel maar de prijslijst is verlopen → onzichtbaar in
+  // visible_products. Bekend merk dus (rood/dagprijs-territorium), geen datagat.
+  await seedBrandProduct(db, {
+    brand: "Modular",
+    name: "Smart 48",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "Modular", productText: "Smart 48", specs: {} }),
+  );
+  expect(out.status).toBe("rood"); // geen zichtbare kandidaten, maar merk is bekend
+  expect(out.status).not.toBe("blauw");
+  expect(out.provable).toHaveLength(0);
+  expect(out.incomplete).toHaveLength(0);
+});
+
+test("o5: alias 'aromasdelcampo' → kandidaten van Aromas (substitutie-bewijs)", async () => {
+  const db = await createTestDb();
+  const aromas = await seedBrandProduct(db, {
+    brand: "Aromas",
+    name: "GINGER WALL 3000K",
+    kelvin: 3000,
+  });
+  await seedBrandAlias(db, aromas.brandId, "aromasdelcampo", "Dordrecht-boek");
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "Aromas del Campo", productText: "GINGER WALL", specs: {} }),
+  );
+  expect(out.status).not.toBe("blauw");
+  // zonder substitutie zou de merkconditie ('%aromasdelcampo%') niets vinden;
+  // de kandidaat bewijst dat er met de canonieke naam 'Aromas' gezocht is
+  const namen = [...out.provable, ...out.incomplete].map((c) => c.name);
+  expect(namen).toContain("GINGER WALL 3000K");
+});
+
+test("o5: normalisatie — 'AROMAS  del-Campo!' resolvet naar dezelfde alias", async () => {
+  const db = await createTestDb();
+  const aromas = await seedBrandProduct(db, {
+    brand: "Aromas",
+    name: "GINGER WALL 3000K",
+    kelvin: 3000,
+  });
+  await seedBrandAlias(db, aromas.brandId, "aromasdelcampo");
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "AROMAS  del-Campo!", productText: "GINGER WALL", specs: {} }),
+  );
+  expect(out.status).not.toBe("blauw");
+  const namen = [...out.provable, ...out.incomplete].map((c) => c.name);
+  expect(namen).toContain("GINGER WALL 3000K");
+});
+
+test("o5: alias wint van naamgelijkheid — 'Signify' → blauw met canonieke brandKey 'mycreations'", async () => {
+  const db = await createTestDb();
+  // Het echte prod-geval: 'Signify' bestaat zélf als (lege) merkrij, maar de
+  // gecureerde redirect wijst naar MyCreations (ook zonder producten) — de alias
+  // gaat voor, dus de wachtrij-key wordt de canonieke 'mycreations'.
+  const mycreations = await seedBrand(db, "MyCreations");
+  await seedBrand(db, "Signify");
+  await seedBrandAlias(db, mycreations.brandId, "signify", "Dordrecht-vision");
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "Signify", productText: "Downlight", specs: {} }),
+  );
+  expect(out.status).toBe("blauw");
+  expect(out.brandKey).toBe("mycreations"); // canoniek, niet het boek-woord
+});
+
+test("o5: runMatcher zet bij alias-blauw de CANONIEKE key op de wachtrij + beide in het event", async () => {
+  const db = await createTestDb();
+  const mycreations = await seedBrand(db, "MyCreations");
+  await seedBrand(db, "Signify");
+  await seedBrandAlias(db, mycreations.brandId, "signify");
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Aliasdossier" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Ad",
+      brandText: "Signify",
+      productText: "Downlight",
+    })
+    .returning();
+
+  const outcome = await runMatcher(db as TestDb, line.id);
+  expect(outcome.status).toBe("blauw");
+
+  const queue = await db.select().from(brandLoadQueue);
+  expect(queue).toHaveLength(1);
+  expect(queue[0].brandKey).toBe("mycreations"); // canoniek — dít merk laden wij in
+  expect(queue[0].displayName).toBe("Signify"); // het boek-woord blijft leesbaar
+
+  const evts = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "brand_load_requested"));
+  expect(evts).toHaveLength(1);
+  expect(evts[0].payload).toMatchObject({
+    brandText: "Signify",
+    brandKey: "mycreations",
+  });
 });
 
 // ── B3: geel auto-door — unambiguousYellow (de ondubbelzinnige bijna-match) ──

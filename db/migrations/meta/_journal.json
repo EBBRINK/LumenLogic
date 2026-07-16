@@ -71,6 +71,13 @@
       "when": 1784080000000,
       "tag": "0009_ocr",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784090000000,
+      "tag": "0010_brand_aliases",
+      "breakpoints": true
     }
   ]
 }

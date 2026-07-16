@@ -16,6 +16,7 @@ import projectstatusSql from "./migrations/0006_projectstatus_ai.sql?raw";
 import datamodelSql from "./migrations/0007_datamodel_productspecs.sql?raw";
 import merkrelatiesSql from "./migrations/0008_merkrelaties.sql?raw";
 import ocrSql from "./migrations/0009_ocr.sql?raw";
+import brandAliasesSql from "./migrations/0010_brand_aliases.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -33,13 +34,15 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(datamodelSql); // 0007: veldcatalogus + archive + prijsherkomst
   await client.exec(merkrelatiesSql); // 0008: merkrelaties — brand_relations + statusenum
   await client.exec(ocrSql); // 0009: OCR — ocr_page_images + llm_usage.import_run_id + ocr_status
+  // 0010: brand_aliases (O5) — de seed-INSERT…SELECT's matchen in een verse test-DB
+  // niets en inserten dus niets; tests seeden hun eigen aliassen via seedBrandAlias.
+  await client.exec(brandAliasesSql);
   return drizzle(client, { schema });
 }
 
 // Seed alléén een merkrij — geen prijslijst, geen product. Nodig om "merkrij bestaat,
-// maar zonder producten" te testen (stap 1: zo'n merk is voor de rij-gebaseerde
-// brandExists 'bekend' → rood; de product-gebaseerde toets van stap 4/O5 maakt het
-// weer blauw).
+// maar zonder producten" te testen: sinds stap 4 (O5) toetst de engine op prodúcten
+// in de basistabel, dus zo'n merk is een datagat → blauw + inlaadwachtrij.
 export async function seedBrand(db: TestDb, name: string) {
   const brandId = crypto.randomUUID();
   await db.insert(schema.brands).values({
@@ -48,6 +51,22 @@ export async function seedBrand(db: TestDb, name: string) {
     slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "merk",
   });
   return { brandId };
+}
+
+// Seed een gecureerde merknaam-redirect (O5): aliasKey moet al genormaliseerd zijn
+// (brandKeyOf-vorm, lowercase alfanumeriek) — precies zoals productie; de CHECK in
+// migratie 0010 dwingt het ook hier af.
+export async function seedBrandAlias(
+  db: TestDb,
+  brandId: string,
+  aliasKey: string,
+  note?: string,
+) {
+  await db.insert(schema.brandAliases).values({
+    brandId,
+    aliasKey,
+    note: note ?? null,
+  });
 }
 
 // Seed één merk + prijslijst + product + prijs. Elke aanroep krijgt een eigen merk

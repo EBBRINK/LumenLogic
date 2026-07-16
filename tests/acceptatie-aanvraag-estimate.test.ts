@@ -21,12 +21,11 @@
 //       → chosenBy 'system:auto' + event near_match_auto_accepted
 //     • 2× IN REVIEW (twee schoon-gele kandidaten → ambigu, geen auto-door):
 //       Lw102 (watt 8→10 = 25%), Lw103 (9→10 = 11%) — twee NEST-kleurvarianten
-//   rood   4× — Lp601, Lr701 (merk wél in catalogus, product niet) plus Lp801 en
-//               Ls802 (merkrij zonder producten geseed — zie beforeAll; sinds stap 1
-//               levert splitBrandType de canonieke merknaam, dus de rij-gebaseerde
-//               brandExists zegt "bekend" en het wordt rood, niet blauw)
-//   blauw  0× — tot stap 4 (O5): dan toetst brandExists op producten en worden
-//               Lp801/Ls802 weer blauw met inlaadwachtrij
+//   rood   2× — Lp601, Lr701 (merk wél in catalogus, product niet)
+//   blauw  2× — Lp801, Ls802 (merkrij zonder producten geseed — zie beforeAll; sinds
+//               stap 4/O5 toetst de engine op prodúcten in de basistabel: een kale
+//               merkrij is een datagat → blauw + inlaadwachtrij, precies zoals
+//               docs/matching-regelset.md:77-79 het definieert)
 //   paars  2× — Lx901 (stoel), Lx902 (kast) — geen verlichting
 //
 // De tests in dit bestand zijn ÉÉN doorlopend verhaal en draaien in volgorde
@@ -187,10 +186,10 @@ beforeAll(async () => {
     price: "160.00",
     kelvin: 2700,
   });
-  // Zumtobel en Trilux als merkRIJ zonder producten (stap 1): splitBrandType herkent
-  // ze en levert de canonieke naam, dus de rij-gebaseerde brandExists zegt "bekend"
-  // → rood is tot stap 4 het eerlijke antwoord. Het blauw-ontwerp (inlaadwachtrij)
-  // keert in stap 4 (O5) terug, als brandExists op prodúcten gaat toetsen.
+  // Zumtobel en Trilux als merkRIJ zonder producten — dit is nu de blauw-fixture
+  // (stap 4/O5): splitBrandType herkent ze en levert de canonieke naam, maar de
+  // engine toetst "bekend" op prodúcten in de basistabel. Een kale merkrij is een
+  // datagat → blauw + inlaadwachtrij (het H-08-ontwerp, terug van weggeweest).
   await seedBrand(db, "Zumtobel");
   await seedBrand(db, "Trilux");
   // Vitra en USM bewust NIET geseed: paars (geen verlichting — merk doet er niet toe;
@@ -272,7 +271,7 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
 }, 120_000);
 
 // ── Stap 3 — matcher-uitkomsten (verdeling zoals bovenaan gedocumenteerd) ────
-test("matcher: 9 groen · 5 geel (3 auto-door + 2 review) · 4 rood · 0 blauw (tot stap 4) · 2 paars", async () => {
+test("matcher: 9 groen · 5 geel (3 auto-door + 2 review) · 2 rood · 2 blauw (O5) · 2 paars", async () => {
   const rows = await getSpecLines(db, dossierId);
   const byStatus = (s: string) =>
     rows.filter((r) => r.status === s).map((r) => r.fixtureCode).sort();
@@ -283,8 +282,11 @@ test("matcher: 9 groen · 5 geel (3 auto-door + 2 review) · 4 rood · 0 blauw (
   expect(byStatus("geel")).toEqual(
     ["Ld202", "Lw102", "Ld106", "Lw103", "Ld107"].sort(),
   );
-  expect(byStatus("rood")).toEqual(["Lp601", "Lp801", "Lr701", "Ls802"].sort());
-  expect(byStatus("blauw")).toEqual([]);
+  expect(byStatus("rood")).toEqual(["Lp601", "Lr701"].sort());
+  // Blauw is per docs/matching-regelset.md:77-79 het correcte antwoord op een merk
+  // zonder data: wíj moeten inladen, de klant hoeft niets. Dit is het
+  // regressiebewijs van stap 4 (O5).
+  expect(byStatus("blauw")).toEqual(["Lp801", "Ls802"].sort());
   expect(byStatus("paars")).toEqual(["Lx901", "Lx902"].sort());
 
   // B3 auto-door: Ld202/Ld106/Ld107 hebben precies één schoon-gele kandidaat
@@ -316,10 +318,11 @@ test("matcher: 9 groen · 5 geel (3 auto-door + 2 review) · 4 rood · 0 blauw (
   const lp301 = await lineByCode("Lp301");
   expect(lp301.matchedProductId).toBeNull();
 
-  // Geen blauw → geen inlaadwachtrij; H-08 keert terug in stap 4 (O5).
+  // H-08 is terug (O5): beide productloze merken staan op de inlaadwachtrij, met
+  // hun genormaliseerde key, en elk blauw is als brand_load_requested gelogd.
   const queueRows = await db.select().from(brandLoadQueue);
-  expect(queueRows).toEqual([]);
-  expect(await eventsByAction("brand_load_requested")).toHaveLength(0);
+  expect(queueRows.map((q) => q.brandKey).sort()).toEqual(["trilux", "zumtobel"]);
+  expect(await eventsByAction("brand_load_requested")).toHaveLength(2);
 
   // Elke regel is gematcht en gelogd (ijzeren regel 5).
   expect(await eventsByAction("matched_status")).toHaveLength(20);
@@ -328,11 +331,13 @@ test("matcher: 9 groen · 5 geel (3 auto-door + 2 review) · 4 rood · 0 blauw (
 // ── Stap 4 — AI-vangnet met gemockte client (suggesties, nooit beslissingen) ─
 // De mock doet per regel één brede zoekactie (input {} — in tender vergrendelt de
 // server de zoektocht toch op het gevraagde merk) en suggereert het eerste
-// toolresultaat. Restregels = geel-in-review (Lw102, Lw103) + rood (Lp601, Lr701,
-// Lp801, Ls802); auto-door-geel en groen/paars worden overgeslagen. Voor Lp801/Ls802
-// levert de merkvergrendelde zoektocht (Zumtobel/Trilux zonder producten) 0 resultaten
-// → de mock geeft een lege suggestielijst, dus suggested blijft 4.
-test("vangnet (mock): 6 restregels gecheckt, 4 suggesties, statussen onaangetast", async () => {
+// toolresultaat. Restregels = geel-in-review (Lw102, Lw103) + rood (Lp601, Lr701).
+// Blauw (Lp801/Ls802) selecteert het vangnet in tender bewust NIET (regel 4: een
+// blauw-suggestie is per definitie een ander merk) — sinds O5 zijn die twee blauw,
+// dus checked zakt van 6 naar 4. Alle vier de gecheckte regels vinden binnen hun
+// merk een kandidaat → 4 suggesties (dat was óók 4: Lp801/Ls802 leverden vroeger
+// 0 zoekresultaten op en dus geen suggestie).
+test("vangnet (mock): 4 restregels gecheckt, 4 suggesties, statussen onaangetast", async () => {
   const mockClient: VangnetClient = {
     async createMessage(params) {
       if (params.messages.length === 1) {
@@ -376,8 +381,8 @@ test("vangnet (mock): 6 restregels gecheckt, 4 suggesties, statussen onaangetast
 
   const result = await runVangnet(db, dossierId, { client: mockClient, actor: ACTOR });
   expect(result.skipped).toBeUndefined();
-  expect(result.checked).toHaveLength(6); // Lw102, Lw103, Lp601, Lr701, Lp801, Ls802
-  expect(result.suggested).toBe(4); // Lp801/Ls802: 0 zoekresultaten → geen suggestie
+  expect(result.checked).toHaveLength(4); // Lw102, Lw103, Lp601, Lr701 (blauw doet niet mee)
+  expect(result.suggested).toBe(4); // elk van de vier vindt binnen zijn merk een kandidaat
   expect(result.discarded).toBe(0);
 
   // Suggesties zijn opgeslagen, met model + rationale — en het zijn SUGGESTIES:
@@ -395,17 +400,17 @@ test("vangnet (mock): 6 restregels gecheckt, 4 suggesties, statussen onaangetast
   }
 
   // Audit (regel 5): zoekacties herkenbaar als vangnet, suggesties gelogd,
-  // run-samenvatting aanwezig. Tokens tellen mee in llm_usage (2 calls × 6 regels).
+  // run-samenvatting aanwezig. Tokens tellen mee in llm_usage (2 calls × 4 regels).
   const searches = await eventsByAction("search");
   const vangnetSearches = searches.filter(
     (e) => (e.payload as { bron?: string } | null)?.bron === "ai_vangnet",
   );
-  expect(vangnetSearches).toHaveLength(6);
+  expect(vangnetSearches).toHaveLength(4);
   expect(await eventsByAction("ai_suggestion_created")).toHaveLength(4);
   const runs = await eventsByAction("ai_vangnet_run");
   expect(runs).toHaveLength(1);
-  expect((runs[0].payload as { checked: number }).checked).toBe(6);
-  expect(await db.select().from(llmUsage)).toHaveLength(12); // 2 calls × 6 regels
+  expect((runs[0].payload as { checked: number }).checked).toBe(4);
+  expect(await db.select().from(llmUsage)).toHaveLength(8); // 2 calls × 4 regels
 }, 60_000);
 
 // ── Stap 5 — review afronden ─────────────────────────────────────────────────
@@ -451,9 +456,9 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   expect(lp601Na.matchedProductId).toBe(sassoId);
   expect(lp601Na.chosenBy).toBe(ACTOR);
 
-  // 5d. De rest blijft bewust staan: Lr701 rood (p.m. back to customer), en ook
-  // Lp801/Ls802 blijven rood (merkrij zonder producten — tot stap 4); paars
-  // onveranderd. De review-wachtrij is leeg.
+  // 5d. De rest blijft bewust staan: Lr701 rood (p.m. back to customer), Lp801/Ls802
+  // blauw (merkrij zonder producten → inlaadwachtrij, O5 — onze actie, niet die van
+  // de klant); paars onveranderd. De review-wachtrij is leeg.
   expect((await lineByCode("Lr701")).status).toBe("rood");
   const queue = await getReviewQueue(db, dossierId);
   expect(queue.pending).toHaveLength(0);
@@ -462,14 +467,13 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   expect(await eventsByAction("review_decided")).toHaveLength(2);
   expect(await eventsByAction("manual_link")).toHaveLength(1);
 
-  // Eindverdeling na review: 12 groen · 3 geel (auto-door) · 3 rood · 2 paars —
-  // géén blauw-sleutel: de reduce telt alleen statussen die er zijn.
+  // Eindverdeling na review: 12 groen · 3 geel (auto-door) · 1 rood · 2 blauw · 2 paars.
   const rows = await getSpecLines(db, dossierId);
   const tally = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
     return acc;
   }, {});
-  expect(tally).toEqual({ groen: 12, geel: 3, rood: 3, paars: 2 });
+  expect(tally).toEqual({ groen: 12, geel: 3, rood: 1, blauw: 2, paars: 2 });
 }, 60_000);
 
 // ── Stap 6 — estimate: offertenummer, totalen, PDF terugleesbaar ─────────────
@@ -490,8 +494,9 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   const data = (await getEstimateData(db, dossierId))!;
   expect(data.lines).toHaveLength(20); // álle regels — niets stilzwijgend weg
   expect(data.computed.totals).toEqual({ groen: 660, geel: 490, samen: 1150 });
-  // blauw-sleutel blijft bestaan (computeEstimate levert hem altijd), maar staat op 0
-  expect(data.computed.pm).toEqual({ blauw: 0, rood: 3, paars: 2, total: 5 });
+  // p.m.-verdeling sinds O5: de twee productloze merken zijn blauw (inladen — onze
+  // actie), niet rood; het p.m.-totaal blijft 5.
+  expect(data.computed.pm).toEqual({ blauw: 2, rood: 1, paars: 2, total: 5 });
   // merktekens op de estimate-data (scherm en PDF gebruiken dezelfde bron)
   const flag = (code: string) => data.lines.find((l) => l.fixtureCode === code)!;
   expect(flag("Ld202").autoAccepted).toBe(true);
@@ -514,9 +519,10 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   expect(text).toContain("Combined (green + yellow)");
 
   // p.m.-posten: getoond, nooit opgeteld
-  expect(text).toContain("blue 0 · red 3 · purple 2");
-  // geen blauw → geen inlaadregels; "load brand …" keert terug in stap 4 (O5)
-  expect(text).not.toContain("load brand");
+  expect(text).toContain("blue 2 · red 1 · purple 2");
+  // blauw = inladen, onze actie (O5): beide merken staan als "load brand … (us)"
+  expect(text).toContain("load brand Zumtobel (us)");
+  expect(text).toContain("load brand Trilux (us)");
   expect(text).toContain("back to customer");
   expect(text).toContain("outside assortment");
 
@@ -562,7 +568,7 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
   expect(count("matched_status")).toBe(20); // matcher over élke regel
   expect(count("product_considered")).toBeGreaterThanOrEqual(17); // kandidaten-goud (K-02)
   expect(count("near_match_auto_accepted")).toBe(3); // B3 auto-door
-  expect(count("brand_load_requested")).toBe(0); // geen blauw meer; terug naar 2 in stap 4
+  expect(count("brand_load_requested")).toBe(2); // blauw is terug (O5): Zumtobel + Trilux
   expect(count("ai_vangnet_skipped_no_key")).toBe(1); // import zonder key: skip, geen fout
   expect(count("ai_suggestion_created")).toBe(4); // AI-suggesties (mock-run)
   expect(count("ai_vangnet_run")).toBe(1);
@@ -580,5 +586,5 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
       e.action === "search" &&
       (e.payload as { bron?: string } | null)?.bron === "ai_vangnet",
   );
-  expect(vangnetSearch).toHaveLength(6);
+  expect(vangnetSearch).toHaveLength(4); // 4 gecheckte restregels (blauw doet niet mee)
 }, 30_000);
