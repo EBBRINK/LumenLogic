@@ -10,6 +10,8 @@ import { createTestDb, type TestDb } from "@/db/test-db";
 import {
   checkOcrBudget,
   ocrPage,
+  MAX_TOKENS_PER_PAGE,
+  MAX_TOKENS_RETRY,
   OCR_MAX_EUR_PER_RUN,
   OCR_MODEL,
   OCR_RESERVE_EUR,
@@ -57,6 +59,15 @@ function toolResponse(regels: unknown, usage = USAGE): OcrResponse {
     stop_reason: "tool_use",
     usage,
   };
+}
+
+// Afgekapte respons (O3-tripwire): bij max_tokens midden in een tool_use-blok
+// levert de API het incomplete blok NIET mee → content is leeg, regels dus 0.
+// Vaste usage zodat de kosten exact te asserten zijn.
+const TRUNC_USAGE = { input_tokens: 1600, output_tokens: 4000 };
+// (1600 × €1 + 4000 × €5) / 1M = €0,0216
+function truncatedResponse(usage = TRUNC_USAGE): OcrResponse {
+  return { content: [], stop_reason: "max_tokens", usage };
 }
 
 async function seedRun(db: TestDb) {
@@ -133,9 +144,11 @@ test("happy path: 2 regels uit de tool-output, codeValid, echte kosten en event"
   expect(result.inputTokens).toBe(USAGE.input_tokens);
   expect(result.outputTokens).toBe(USAGE.output_tokens);
 
-  // Call-vorm: klein model, geforceerde tool, beeld als base64-blok (B3).
+  // Call-vorm: klein model, geforceerde tool, beeld als base64-blok (B3),
+  // eerste call altijd met het paginabudget.
   expect(calls.length).toBe(1);
   expect(calls[0].model).toBe(OCR_MODEL);
+  expect(calls[0].max_tokens).toBe(MAX_TOKENS_PER_PAGE);
   expect(calls[0].tool_choice).toEqual({ type: "tool", name: "lever_regels" });
   const [img, txt] = calls[0].messages[0].content;
   expect(img).toMatchObject({
@@ -166,6 +179,7 @@ test("happy path: 2 regels uit de tool-output, codeValid, echte kosten en event"
     codeInvalid: 0,
     tokens: { input: USAGE.input_tokens, output: USAGE.output_tokens },
     costEur: Number(USAGE_COST),
+    truncated: 0,
   });
   expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
 });
@@ -173,7 +187,7 @@ test("happy path: 2 regels uit de tool-output, codeValid, echte kosten en event"
 test("lege pagina: 0 regels zonder fout — een lege lijst is een goed antwoord", async () => {
   const db = await createTestDb();
   const run = await seedRun(db);
-  const { client } = mockClient([toolResponse([])]);
+  const { client, calls } = mockClient([toolResponse([])]);
 
   const result = await ocrPage(db, {
     importRunId: run.id,
@@ -185,10 +199,180 @@ test("lege pagina: 0 regels zonder fout — een lege lijst is een goed antwoord"
 
   if (!isOcrPageSuccess(result)) throw new Error("verwachtte succes");
   expect(result.regels).toEqual([]);
+  // Leeg + stop_reason "tool_use" is legitiem blanco: NOOIT een tweede betaalde
+  // call, en geen truncated-event.
+  expect(calls.length).toBe(1);
+  expect((await eventsByAction(db, "ocr_page_truncated")).length).toBe(0);
   expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
   const done = await eventsByAction(db, "ocr_page_done");
   expect(done.length).toBe(1);
   expect(done[0].payload).toMatchObject({ page: 1, regels: 0 });
+});
+
+// ── O3-tripwire: afkapping → precies één retry ──────────────────────────────
+test("afkapping: retry met dubbel budget slaagt — regels compleet, kosten en events kloppen", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const volledig = [
+    {
+      armatuurcode: "Lp301",
+      merk: "XAL",
+      type: "SASSO 100",
+      ruwe_tekst: "Lp301 XAL SASSO 100",
+    },
+    { armatuurcode: "Ls004", merk: null, type: null, ruwe_tekst: "Ls004" },
+  ];
+  const { client, calls } = mockClient([
+    truncatedResponse(),
+    toolResponse(volledig),
+  ]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 4,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+    actor: ACTOR,
+  });
+
+  if (!isOcrPageSuccess(result)) throw new Error("verwachtte succes");
+  // Regels van de beste (tweede) poging, tokens als som over beide calls.
+  expect(result.regels.map((r) => r.armatuurcode)).toEqual(["Lp301", "Ls004"]);
+  expect(result.truncated).toBe(1);
+  expect(result.inputTokens).toBe(TRUNC_USAGE.input_tokens + USAGE.input_tokens);
+  expect(result.outputTokens).toBe(
+    TRUNC_USAGE.output_tokens + USAGE.output_tokens,
+  );
+
+  // Precies twee calls: eerst het paginabudget, dan het retry-plafond.
+  expect(calls.length).toBe(2);
+  expect(calls[0].max_tokens).toBe(MAX_TOKENS_PER_PAGE);
+  expect(calls[1].max_tokens).toBe(MAX_TOKENS_RETRY);
+
+  // Eén llm_usage-rij per PAGINA met de exacte som van beide calls:
+  // ((1600+2000) × €1 + (4000+300) × €5) / 1M = €0,0251.
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].costEur).toBe("0.0251");
+
+  // Eén truncated-event voor poging 1 (niet final: de retry volgde nog).
+  const trunc = await eventsByAction(db, "ocr_page_truncated");
+  expect(trunc.length).toBe(1);
+  expect(trunc[0].entityId).toBe(run.id);
+  expect(trunc[0].actor).toBe(ACTOR);
+  expect(trunc[0].payload).toMatchObject({
+    page: 4,
+    attempt: 1,
+    maxTokens: MAX_TOKENS_PER_PAGE,
+    outputTokens: TRUNC_USAGE.output_tokens,
+    final: false,
+  });
+
+  const done = await eventsByAction(db, "ocr_page_done");
+  expect(done.length).toBe(1);
+  expect(done[0].payload).toMatchObject({
+    page: 4,
+    regels: 2,
+    truncated: 1,
+    attempts: 2,
+    tokens: {
+      input: TRUNC_USAGE.input_tokens + USAGE.input_tokens,
+      output: TRUNC_USAGE.output_tokens + USAGE.output_tokens,
+    },
+    costEur: 0.0251,
+  });
+  expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
+});
+
+test("retry kapt wéér af: succes met 0 regels en truncated 2 — nooit {failed}, nooit een derde call", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([
+    truncatedResponse(),
+    truncatedResponse(),
+  ]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 8,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+  });
+
+  // GEEN {failed}: dat zou de beeldrij wissen en een hervat-lus starten die
+  // opnieuw tegen dezelfde afkapping aanloopt (geldverbranding).
+  if (!isOcrPageSuccess(result)) throw new Error("verwachtte succes");
+  expect(result.regels).toEqual([]);
+  expect(result.truncated).toBe(2);
+  expect(calls.length).toBe(2);
+
+  // Beide pogingen gelogd; de tweede (laatste) is final.
+  const trunc = await eventsByAction(db, "ocr_page_truncated");
+  expect(trunc.length).toBe(2);
+  expect(trunc[0].payload).toMatchObject({
+    page: 8,
+    attempt: 1,
+    maxTokens: MAX_TOKENS_PER_PAGE,
+    final: false,
+  });
+  expect(trunc[1].payload).toMatchObject({
+    page: 8,
+    attempt: 2,
+    maxTokens: MAX_TOKENS_RETRY,
+    outputTokens: TRUNC_USAGE.output_tokens,
+    final: true,
+  });
+
+  const done = await eventsByAction(db, "ocr_page_done");
+  expect(done.length).toBe(1);
+  expect(done[0].payload).toMatchObject({ regels: 0, truncated: 2, attempts: 2 });
+
+  // Kosten = som van beide afgekapte calls:
+  // (2 × 1600 × €1 + 2 × 4000 × €5) / 1M = €0,0432.
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].costEur).toBe("0.0432");
+  expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
+});
+
+test("pure laag: readPageWithVision levert attempts-metadata en gesommeerde usage", async () => {
+  const { client, calls } = mockClient([
+    truncatedResponse(),
+    toolResponse([
+      { armatuurcode: "Lp301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lp301" },
+    ]),
+  ]);
+
+  const result = await readPageWithVision({
+    client,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    pageNumber: 11,
+  });
+
+  expect(calls.length).toBe(2);
+  expect(result.regels.length).toBe(1);
+  expect(result.truncated).toBe(1);
+  expect(result.attempts).toEqual([
+    {
+      maxTokens: MAX_TOKENS_PER_PAGE,
+      stopReason: "max_tokens",
+      inputTokens: TRUNC_USAGE.input_tokens,
+      outputTokens: TRUNC_USAGE.output_tokens,
+    },
+    {
+      maxTokens: MAX_TOKENS_RETRY,
+      stopReason: "tool_use",
+      inputTokens: USAGE.input_tokens,
+      outputTokens: USAGE.output_tokens,
+    },
+  ]);
+  expect(result.usage).toEqual({
+    inputTokens: TRUNC_USAGE.input_tokens + USAGE.input_tokens,
+    outputTokens: TRUNC_USAGE.output_tokens + USAGE.output_tokens,
+  });
 });
 
 // ── Defensieve parser ────────────────────────────────────────────────────────

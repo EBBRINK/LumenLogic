@@ -570,7 +570,11 @@ export async function processOcrPage(
 // formaat is verdacht — de OCR-review en het lage vertrouwen maken dat zichtbaar.
 // Geldige codes krijgen constant 'middel' (B3: LLM-confidence is slecht
 // gekalibreerd, we doen niet alsof).
-function regelToSpecLine(
+// Geëxporteerd (stap 2, goal-import-ai-leesroute) uitsluitend zodat het meetscript
+// (scripts/eval-testset.ts, --ai-route) de EXACTE productie-omzetting OcrRegel →
+// SpecLineInput meet in plaats van een eigen kopie. De functie is puur (geen DB,
+// geen I/O); dit is alleen een zichtbaarheidswijziging, geen gedragswijziging.
+export function regelToSpecLine(
   regel: OcrRegel,
   page: number,
   runId: string,

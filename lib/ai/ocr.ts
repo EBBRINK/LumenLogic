@@ -11,16 +11,18 @@
 // Ijzeren regels die hier afgedwongen worden:
 //   • Regel 2: geen prijzen — het model krijgt geen catalogus-context en geen tools
 //     behalve het verplichte lever_regels-afleverkanaal; de prompt verbiedt prijzen.
-//   • Regel 5: elke gelezen pagina (ocr_page_done) en elke fout (ocr_page_failed)
-//     wordt gelogd in events. Skip-events (geen key / budget) logt de AANROEPER
+//   • Regel 5: elke gelezen pagina (ocr_page_done), elke afgekapte poging
+//     (ocr_page_truncated) en elke fout (ocr_page_failed) wordt gelogd in events. Skip-events (geen key / budget) logt de AANROEPER
 //     (bouwstap 4) — daarvoor geeft deze module heldere {skipped: …}-vormen terug.
 //
 // Plafond (B4, hard): OCR_MAX_EUR_PER_RUN per boek, bovenop het maandbudget (L-06).
-// Reserveringspatroon — gekozen: UPDATE-IN-PLACE. Vóór de API-call schrijven we een
-// llm_usage-rij met een geschatte kost (OCR_RESERVE_EUR); ná de call werken we
-// diezelfde rij bij naar de echte tokenkosten. Zo telt de SUM-check een in-flight
-// call mee zodra de reservering geschreven is, en blijft er precies één rij per
-// call over — verwijderen+opnieuw inserten zou een venster openen waarin de call
+// Reserveringspatroon — gekozen: UPDATE-IN-PLACE. Vóór de eerste API-call schrijven
+// we een llm_usage-rij met een geschatte kost (OCR_RESERVE_EUR); ná de call(s) werken
+// we diezelfde rij bij naar de echte tokenkosten. Eén rij per PAGINA — een pagina is
+// 1–2 calls (de O3-retry bij afkapping, zie readPageWithVision) en de rij krijgt de
+// SOM van die calls. Zo telt de SUM-check een in-flight pagina mee zodra de
+// reservering geschreven is, en blijft er precies één rij per pagina over —
+// verwijderen+opnieuw inserten zou een venster openen waarin de pagina
 // onzichtbaar is. Nuance gelijktijdigheid (reviewer bouwstap 3): check+insert is
 // hier NIET atomisch — twee écht gelijktijdige checks kunnen elkaars reservering
 // missen. Dat het plafond tóch hard is komt van de laag erboven: de beeldrij-lock
@@ -30,7 +32,8 @@
 // Faalt de call, dan
 // blíjft de reservering staan als conservatieve kostenpost (een timeout kan aan de
 // API-kant tóch gekost hebben; te hoog tellen is veilig, te laag niet). Effectief
-// plafond: €1 + maximaal één paginaprijs, want de check gebeurt vóór de reservering.
+// plafond: €1 + hooguit één paginaprijs incl. eventuele retry, want de check
+// gebeurt vóór de reservering en per pagina zijn er maximaal twee calls.
 import type AnthropicSdk from "@anthropic-ai/sdk";
 import { eq, sql } from "drizzle-orm";
 import { llmUsage } from "@/db/schema";
@@ -52,12 +55,18 @@ export const OCR_ACTOR = "ai:ocr";
 // B4: hard plafond per boek (importrun). Gedocumenteerd effectief plafond:
 // OCR_MAX_EUR_PER_RUN + hooguit één paginaprijs (de check loopt vóór de reservering).
 export const OCR_MAX_EUR_PER_RUN = 1.0;
-// Geschatte kost per paginacall die vóór de call gereserveerd wordt. Ruim boven de
-// verwachte werkelijkheid (~1568px-beeld + ~1500 output-tokens ≈ €0,01) — reserveren
-// mag te hoog zijn, nooit te laag.
-export const OCR_RESERVE_EUR = 0.02;
-// Eén pagina levert hooguit enkele tientallen korte regels — 1500 tokens is ruim.
-const MAX_TOKENS_PER_PAGE = 1500;
+// Geschatte kost per PAGINA (1–2 calls) die vóór de eerste call gereserveerd wordt.
+// Worst case: call 1 vol afgekapt op 4000 output ≈ €0,02 + retry vol op 8000 output
+// ≈ €0,04 + 2× beeldinput ≈ €0,003 ≈ €0,065 — reserveren mag te hoog zijn, nooit
+// te laag, dus €0,08.
+export const OCR_RESERVE_EUR = 0.08;
+// O3-tripwire (goal-import-ai-leesroute, stap 2): een dichte A3-pagina kan ver boven
+// de oude 1500 tokens uitkomen (Dordrecht 16 jul: stil afgekapt → 0/18 regels).
+// 4000 is het ruime paginabudget voor de eerste call.
+export const MAX_TOKENS_PER_PAGE = 4000;
+// Retry-plafond: 2× het paginabudget; meer dan 8000 output voor één pagina is
+// pathologisch, en het plafond begrenst de retry-kosten op ~€0,04.
+export const MAX_TOKENS_RETRY = 8000;
 const TOOL_NAME = "lever_regels";
 
 // ── Injecteerbare client ─────────────────────────────────────────────────────
@@ -148,8 +157,9 @@ export function createAnthropicOcrClient(apiKey: string): OcrClient {
 const LEVER_REGELS_TOOL: OcrToolDef = {
   name: TOOL_NAME,
   description:
-    "Deliver the luminaire rows that are literally printed on this page. " +
-    "Deliver an empty list if the page contains no luminaire rows.",
+    "Deliver ALL luminaire rows that are literally printed on this page, " +
+    "every single one. An empty list is only correct when the page contains " +
+    "no luminaire rows at all.",
   input_schema: {
     type: "object",
     properties: {
@@ -196,8 +206,11 @@ const SYSTEM_PROMPT =
   "- A row typically starts with a fixture code such as Lp301, Ls004 or Lw201-a, " +
   "followed by a brand and a product type.\n" +
   "- Put the complete literal row text in ruwe_tekst.\n" +
-  "- If the page contains no luminaire rows (cover, photo, floor plan, blank), " +
-  "deliver an empty list. An empty list is a good answer.\n" +
+  "- Only if the page truly contains no luminaire rows at all (a cover, a photo " +
+  "page, a floor plan, a completely blank page), deliver an empty list.\n" +
+  "- If the page shows even one luminaire row, deliver every single row on the " +
+  "page. Never deliver an empty or shortened list because the page is long, " +
+  "dense or hard to read.\n" +
   "- Prices do not exist for you; never read, mention or estimate them.\n" +
   "- You make no decisions and no judgements — you only transcribe.";
 
@@ -266,49 +279,94 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 // ── De vision-call zelf (puur: geen database) ────────────────────────────────
-// Eén API-call: paginabeeld als base64-image-blok + geforceerde lever_regels-tool.
-// Gooit alleen bij een client-/netwerkfout; kapotte model-output → gewoon 0 regels.
+// Per pagina 1–2 API-calls: paginabeeld als base64-image-blok + geforceerde
+// lever_regels-tool. Gooit alleen bij een client-/netwerkfout; kapotte model-output
+// → gewoon 0 regels.
+export type OcrAttempt = {
+  maxTokens: number;
+  stopReason: string | null;
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export async function readPageWithVision(opts: {
   client: OcrClient;
   imageBytes: Uint8Array;
   mime: string;
   pageNumber: number;
 }): Promise<{
+  // Regels van de BESTE poging (de poging met de meeste geparste regels).
   regels: OcrRegel[];
+  // SOMTOTALEN over alle pogingen — dit is wat de pagina gekost heeft.
   usage: { inputTokens: number; outputTokens: number };
+  attempts: OcrAttempt[];
+  // Aantal afgekapte pogingen (0 | 1 | 2). Het onderscheid afgekapt-vs-blanco
+  // komt híér vandaan, nooit uit de regels zelf.
+  truncated: number;
 }> {
-  const res = await opts.client.createMessage({
-    model: OCR_MODEL,
-    max_tokens: MAX_TOKENS_PER_PAGE,
-    system: SYSTEM_PROMPT,
-    tools: [LEVER_REGELS_TOOL],
-    tool_choice: { type: "tool", name: TOOL_NAME },
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: opts.mime,
-              data: toBase64(opts.imageBytes),
-            },
+  const messages: OcrMessageParams["messages"] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: opts.mime,
+            data: toBase64(opts.imageBytes),
           },
-          {
-            type: "text",
-            text: `Read the luminaire rows on page ${opts.pageNumber} of this luminaire schedule.`,
-          },
-        ],
-      },
-    ],
-  });
-  return {
-    regels: parseLeverRegels(res.content),
-    usage: {
+        },
+        {
+          type: "text",
+          text: `Read the luminaire rows on page ${opts.pageNumber} of this luminaire schedule.`,
+        },
+      ],
+    },
+  ];
+
+  const attempts: OcrAttempt[] = [];
+  const parsed: OcrRegel[][] = [];
+  const attempt = async (maxTokens: number): Promise<string | null> => {
+    const res = await opts.client.createMessage({
+      model: OCR_MODEL,
+      max_tokens: maxTokens,
+      system: SYSTEM_PROMPT,
+      tools: [LEVER_REGELS_TOOL],
+      tool_choice: { type: "tool", name: TOOL_NAME },
+      messages,
+    });
+    attempts.push({
+      maxTokens,
+      stopReason: res.stop_reason,
       inputTokens: res.usage.input_tokens,
       outputTokens: res.usage.output_tokens,
+    });
+    parsed.push(parseLeverRegels(res.content));
+    return res.stop_reason;
+  };
+
+  // O3-tripwire-retry. Bij een non-streaming respons die midden in een
+  // tool_use-blok op max_tokens stuit wordt het incomplete blok NIET meegeleverd
+  // (de respons-JSON moet geldig blijven) — parseLeverRegels levert dan vrijwel
+  // zeker []. Reken dus nooit op partiële regels (Dordrecht-empirie 16 jul:
+  // stop_reason max_tokens → stil 0/18). Maximaal twee calls, hard; de
+  // retry-trigger is uitsluitend stop_reason === "max_tokens" — een leeg antwoord
+  // met stop_reason "tool_use"/"end_turn" is legitiem blanco en mag nooit een
+  // tweede betaalde call veroorzaken.
+  const stop1 = await attempt(MAX_TOKENS_PER_PAGE);
+  if (stop1 === "max_tokens") {
+    await attempt(MAX_TOKENS_RETRY);
+  }
+
+  const best = parsed.reduce((a, b) => (b.length > a.length ? b : a));
+  return {
+    regels: best,
+    usage: {
+      inputTokens: attempts.reduce((s, a) => s + a.inputTokens, 0),
+      outputTokens: attempts.reduce((s, a) => s + a.outputTokens, 0),
     },
+    attempts,
+    truncated: attempts.filter((a) => a.stopReason === "max_tokens").length,
   };
 }
 
@@ -365,9 +423,16 @@ export type OcrPageResult =
   | { failed: string }
   | {
       regels: OcrRegel[];
+      // Somtotalen over alle pogingen (1–2 calls) voor deze pagina.
       inputTokens: number;
       outputTokens: number;
       costEur: number;
+      // Aantal afgekapte pogingen (0 | 1 | 2). Een dubbel afgekapte pagina is
+      // bewust GEEN {failed}: dat zou in processOcrPage de beeldrij wissen en
+      // een hervat-lus starten die opnieuw tegen dezelfde afkapping aanloopt
+      // (geldverbranding). Het is een succes met de regels van de beste poging
+      // (vrijwel zeker []) en truncated: 2 — de events maken het zichtbaar.
+      truncated: number;
     };
 
 export function isOcrPageSuccess(
@@ -411,12 +476,13 @@ export async function ocrPage(
     .returning();
 
   try {
-    const { regels, usage } = await readPageWithVision({
+    const { regels, usage, attempts, truncated } = await readPageWithVision({
       client,
       imageBytes: opts.imageBytes,
       mime: opts.mime,
       pageNumber: opts.pageNumber,
     });
+    // usage is de SOM over alle pogingen, dus de kosten volgen daar vanzelf uit.
     const costEur =
       (usage.inputTokens * EUR_PER_MTOK_IN +
         usage.outputTokens * EUR_PER_MTOK_OUT) /
@@ -426,7 +492,29 @@ export async function ocrPage(
       .set({ costEur: costEur.toFixed(4) })
       .where(eq(llmUsage.id, reservation.id));
 
-    // Regel 5: elke gelezen pagina in het event-log, met tokens en kosten.
+    // Regel 5: elke afgekapte poging in het event-log (O3-tripwire zichtbaar).
+    // final: true alleen op een afgekapte LAATSTE poging — dan zijn de regels
+    // van deze pagina vrijwel zeker onvolledig gebleven.
+    for (let i = 0; i < attempts.length; i++) {
+      const a = attempts[i];
+      if (a.stopReason !== "max_tokens") continue;
+      await logEvent(db, {
+        entity: "import_run",
+        entityId: opts.importRunId,
+        action: "ocr_page_truncated",
+        actor: opts.actor ?? OCR_ACTOR,
+        payload: {
+          page: opts.pageNumber,
+          attempt: i + 1,
+          maxTokens: a.maxTokens,
+          outputTokens: a.outputTokens,
+          final: i === attempts.length - 1,
+        },
+      });
+    }
+
+    // Regel 5: elke gelezen pagina in het event-log, met tokens (somtotalen)
+    // en kosten.
     await logEvent(db, {
       entity: "import_run",
       entityId: opts.importRunId,
@@ -438,6 +526,8 @@ export async function ocrPage(
         codeInvalid: regels.filter((r) => !r.codeValid).length,
         tokens: { input: usage.inputTokens, output: usage.outputTokens },
         costEur: Number(costEur.toFixed(4)),
+        truncated,
+        attempts: attempts.length,
       },
     });
     return {
@@ -445,6 +535,7 @@ export async function ocrPage(
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       costEur,
+      truncated,
     };
   } catch (err) {
     // Reservering blijft bewust staan (conservatieve kostenpost). Fout = event

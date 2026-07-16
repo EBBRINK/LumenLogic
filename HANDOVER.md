@@ -184,6 +184,24 @@ hoofdletter) en leest daardoor "Etap" van NVr001 — segmentatie-bevinding voor 
 in het meetscript is niet-deterministisch binnen naam-identieke varianten (drie STRETTA's
 heten exact gelijk; orderBy heeft geen tiebreaker na naam) — eventuele `asc(articleCode)`-
 tiebreaker is een bewuste engine-wijziging voor later, niet meegesmokkeld._
+_2026-07-16 (AI-leesroute **stap 2 — O3-tripwire + --ai-meetroute**): `MAX_TOKENS_PER_PAGE`
+1500 → 4000, nieuw `MAX_TOKENS_RETRY` 8000; `readPageWithVision` retryt intern precies één
+keer bij `stop_reason === "max_tokens"` en retourneert additief `attempts`/`truncated`/som-
+usage; `ocrPage` logt per afkapping `ocr_page_truncated` (page/attempt/maxTokens/final) en
+zet `truncated`+`attempts` in het `ocr_page_done`-payload — een dubbel afgekapte pagina is
+succes-met-waarschuwing, nooit `{failed}` (dat zou de beeldrij wissen → hervat-lus =
+geldverbranding). `OCR_RESERVE_EUR` 0,02 → 0,08 (dekt 1–2 calls). Promptzin "An empty list
+is a good answer" vervangen door de strikte variant. Meetscript: `--ai`-route gebouwd
+(scripts/eval/raster.ts: unpdf + @napi-rs/canvas, zelfde 1568px/q80 als de browser-route;
+`regelToSpecLine` uit lib/repo/ocr.ts geëxporteerd — puur, alleen zichtbaarheid) met
+maandbudget-poort, €1-runteller en `llm_usage`-logging (purpose **'eval'**, importRunId
+null — de enige DB-write van het script). **Acceptatie gehaald: Dordrecht 18/18 codes
+gelezen (was 0/18)**, spookcode Th1, geen truncation meer nodig (output 1718/2112 tokens —
+boven de oude cap van 1500, het directe O3-bewijs). Kosten €0,0244/run; purpose 'eval'
+totaal €0,05; maandtotaal €0,38 van de €10. Merken op ~95 dpi effectief nog grotendeels
+mis/verzonnen ("Pern Lusing" ≈ Ferm Living, Philips/Signify-verwarring) = O4 → stap 5;
+"Aromas del Campo" ≠ "Aromas" = O5 → stap 4. A3-dpi-feit voor stap 5: 1568px lange zijde op
+A3 landscape = 94,8 dpi effectief._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

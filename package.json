@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.3",
+    "@napi-rs/canvas": "^0.1.65",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
