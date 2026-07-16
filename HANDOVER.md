@@ -191,7 +191,9 @@ punten blokkeert het vangnet.
 - **De maandcap is gedeeld** tussen OCR en vangnet; OCR kan het vangnet wegdrukken.
   `getLlmSpendForPurpose` bestaat al voor een uitsplitsing.
 - **Testproject `49c6340e` ("ZZ-TEST 0.1 vangnet 16-07") staat nog in productie** — bewust
-  bewaard als bewijsspoor. Opruimen kan met `scripts/cleanup-testdata.ts`.
+  bewaard als bewijsspoor. Opruimen kan **niet** met `scripts/cleanup-testdata.ts` (dat
+  scoopt op org "Van Dijk Elektro"; dit dossier heeft geen `organizationId` — zie de
+  0.1b-entry hierboven). Handwerk, staat op de week 4-checklist vóór de overdracht.
 
 ## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 
