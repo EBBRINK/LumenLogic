@@ -34,10 +34,14 @@ merge. Bestandsnaam bewust NIET hernummerd (DB kent "0007" al als toegepast). Ve
 `bunx tsc --noEmit` schoon; `bun vitest run` (met `.worktrees` uitgesloten) **509 groen,
 0 failures** (58 files); twee onafhankelijke agents (bouw + verify) + git-controle bevestigden
 dat OCR (0009) + merkrelaties (0008) byte-identiek behouden bleven en de `schema.ts`-unie
-compleet is. Lokale `main` weer synchroon met `origin/main`. Losse aandachtspunten voor de
-sprint 1-buffer: `vitest.config.ts` exclude dekt `**/.claude/**` maar niet de actieve worktree
-in `.worktrees/ocr` (test-vervuiling — CLI-flag `--exclude '**/.worktrees/**'` gebruikt als
-workaround); `.worktrees/` staat untracked en hoort in `.gitignore`._
+compleet is. Lokale `main` weer synchroon met `origin/main`. Opgeruimd: de gemergede
+OCR-worktree in `.worktrees/ocr` verwijderd, `/.worktrees/` toegevoegd aan `.gitignore` en de
+`vitest.config.ts`-exclude uitgebreid naar `**/.worktrees/**` (geneste worktrees vervuilden de
+testrun — de exclude dekte alleen `**/.claude/**`); daarna 509 tests groen zónder CLI-flag.
+De vier bronbranches (`runs-4-6-vijfstatussen`, `english-xis`, `english-xis-ship`,
+`datamodel-productspecs`) + de integratiebranch zijn lokaal en op GitHub verwijderd; hun
+inhoud zit in `main`. Let op: `datamodel-productspecs` was ge-cherry-pickt, dus de oude SHA
+`6dc4cef` is géén voorouder van `main` — de inhoud is dat wel (geverifieerd)._
 
 ## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 
