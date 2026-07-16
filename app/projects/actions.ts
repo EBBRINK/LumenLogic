@@ -39,7 +39,9 @@ import {
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
+import { beslisRoute } from "@/lib/ai/leesroute";
 import { envApiKey } from "@/lib/ai/shared";
+import { recordLeesrouteImport } from "@/lib/repo/leesroute";
 import { setDossierOrg } from "@/lib/repo/orgs";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
@@ -181,6 +183,65 @@ export async function importArmaturenboekPagesAction(input: {
     pages,
     brandNames,
   );
+
+  // Router (goal-import-ai-leesroute, stap 3): vertrouwt de deterministische
+  // parser het merk-lezen (≥60% bekende merken), dan blijft het bestaande €0-pad;
+  // anders leest het model de tekstlaag (recordLeesrouteImport). Alleen bij een
+  // aanwezige tekstlaag — zonder tekstlaag valt er niets te lezen en blijft de
+  // eerlijke "no-text-layer"-melding (de beeld-OCR-route is dan de weg).
+  const route = hadText ? beslisRoute(lines) : null;
+  const routePayload = route
+    ? route.route === "leesroute"
+      ? {
+          route: route.route,
+          reden: route.reden,
+          bekendeMerken: route.bekendeMerken,
+          totaal: route.totaal,
+        }
+      : {
+          route: route.route,
+          bekendeMerken: route.bekendeMerken,
+          totaal: route.totaal,
+        }
+    : {};
+
+  if (route?.route === "leesroute" && envApiKey()) {
+    const result = await recordLeesrouteImport(db, {
+      dossierId,
+      filename,
+      pages,
+      markdown,
+      brandNames,
+      routerBesluit: {
+        reden: route.reden,
+        bekendeMerken: route.bekendeMerken,
+        totaal: route.totaal,
+      },
+      actor,
+    });
+    await logEvent(db, {
+      entity: "dossier",
+      entityId: dossierId,
+      action: "pdf_import",
+      actor,
+      payload: {
+        file: filename,
+        hadText,
+        imported: result.created,
+        runId: result.run.id,
+        ...routePayload,
+        batches: result.batches,
+        truncated: result.truncated,
+        costEur: Number(result.costEur.toFixed(4)),
+        ...(result.gestopt ? { gestopt: result.gestopt } : {}),
+      },
+    });
+    revalidatePath(`/projects/${dossierId}`);
+    redirect(
+      `/projects/${dossierId}?pdf=${result.created}&run=${result.run.id}&route=leesroute`,
+    );
+  }
+
   // B2/stap 5: de import krijgt altijd een run (status 'bevestigd') als vaste plek voor
   // het markdown-controlespoor — ook bij nul regels of een ontbrekende tekstlaag.
   const { run } = await recordPdfImport(db, {
@@ -190,12 +251,29 @@ export async function importArmaturenboekPagesAction(input: {
     rawMarkdown: markdown,
     actor,
   });
+  if (route?.route === "leesroute") {
+    // Router zei leesroute maar er is geen AI-key: eerlijk terugvallen op het
+    // deterministische resultaat, mét skip-event op de run — nooit stil.
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: run.id,
+      action: "leesroute_skipped_no_key",
+      actor,
+      payload: { reden: "no_key", routerReden: route.reden },
+    });
+  }
   await logEvent(db, {
     entity: "dossier",
     entityId: dossierId,
     action: "pdf_import",
     actor,
-    payload: { file: filename, hadText, imported: lines.length, runId: run.id },
+    payload: {
+      file: filename,
+      hadText,
+      imported: lines.length,
+      runId: run.id,
+      ...routePayload,
+    },
   });
   revalidatePath(`/projects/${dossierId}`);
   redirect(

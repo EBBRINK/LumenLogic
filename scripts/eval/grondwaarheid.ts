@@ -17,6 +17,11 @@ export type GrondwaarheidCase = {
   tekstlaagVerwacht: boolean;
   // alle armatuurcodes die het boek werkelijk bevat (de N van de importkolom)
   codes: string[];
+  // Codes die de bron óók letterlijk bevat maar die buiten de scope van de
+  // grondwaarheid vallen (noodverlichting, sensoren, losse verwijzingen): een
+  // AI-lezing die ze levert is dus GEEN hallucinatie. Het meetscript telt ze
+  // apart van onverwachte spookcodes en markeert ze "(bekend, buiten scope)".
+  bekendeExtraCodes?: string[];
   historischeNoot?: string;
   // verwacht merk per code, alleen waar empirisch gestaafd
   verwachtMerkPerCode: Record<string, string>;
@@ -43,6 +48,16 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       "Ls001", "Ls002", "Ls003", "Ls004", "Ls005", "Ls006",
       "Ls201", "Ls202", "Ls203",
       "Lw001", "Lw002", "Lw003", "Lw101",
+    ],
+    // Letterlijk in de tekstlaag geverifieerd (16 jul 2026, wegwerp-extractie):
+    // de NV-noodverlichtingssectie ("NVr001 Vluchtroutes Diverse Noodverlichting",
+    // "NVr201 Vluchtroutes Inbouw Noodverlichting", …) en de twee Helvar-sensoren
+    // ("SENSOR_B Diverse Inbouw Sensor Helvar"). Let op: de eerder gesuggereerde
+    // NVw001 staat NIET in de tekstlaag; NVr201/NVr202/NVr203 wél.
+    bekendeExtraCodes: [
+      "NVr001", "NVr002", "NVr201", "NVr202", "NVr203",
+      "NVs201", "NVs202", "NVw101", "NVw102",
+      "SENSOR_B", "SENSOR_M",
     ],
     // Fabricaatkolom per code, letterlijk geverifieerd in de tekstlaag (16 jul 2026,
     // adversariële check stap 1). De OPDRACHT-zin "één merk (XAL)" gold alleen voor
@@ -116,16 +131,25 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       "L007a", "L007b",
       "L008a", "L008b",
       "L009a", "L009b",
-      "L010", "L010a", "L010b", "L010c", "L010d",
+      // Kaal "L010" staat NIET in de lijst: het komt in de hele tekstlaag alléén
+      // voor als prozavoorbeeld op p.8 ("bijv. L010 of L011" — een keuze-instructie,
+      // geen armatuurregel). Kaal L011 staat wél als echt label (p.34). Geverifieerd
+      // 16 jul; de eerdere 49-telling nam het prozavoorbeeld mee — de PDF wint.
+      "L010a", "L010b", "L010c", "L010d",
       "L011", "L011a", "L011b",
       "L012", "L013", "L014", "L015", "L016", "L017", "L018",
       "L019a", "L019b",
       "L020a", "L020b",
       "L021", "L022", "L023", "L024", "L025", "L026", "L031",
     ],
+    // "T001" komt 6× letterlijk in de tekstlaag voor ("Track voor spot op track",
+    // "L010a T001+ Rail/Track", …): de railcode waar de spots op hangen — buiten
+    // de armaturen-scope, maar geen hallucinatie als een lezing hem levert.
+    bekendeExtraCodes: ["T001"],
     historischeNoot:
       "nulmeting 16 jul rapporteerde 0/28 (foute zeef); LEESMIJ corrigeerde naar 20 " +
-      "(óók een foute zeef); de tekstlaag bevat aantoonbaar 49 unieke codetokens " +
+      "(óók een foute zeef); de tekstlaag bevat 48 echte codes (een 49e token, " +
+      "kaal L010, bleek een prozavoorbeeld op p.8) " +
       "(27 basiscodes) — de PDF wint.",
     verwachtMerkPerCode: {},
     // geen betrouwbare code→offerte-mapping: dezelfde Zora TAKEO bedient 15 codes
@@ -143,7 +167,31 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       "Ls001", "Ls002", "Ls003",
       "Lw201",
     ],
-    verwachtMerkPerCode: {},
+    // Merkkolom per code, LETTERLIJK geverifieerd in de tekstlaag (16 jul 2026,
+    // wegwerp-extractie; kolomkop: "Toepassing/Functie Armatuurtype Merk
+    // Productnaam"). Elk entry draagt zijn citaat. Bij Lp601a/b/Lp602 staan twee
+    // subrijen onder elkaar (armatuur + lichtbron); de merkkolom paart in dezelfde
+    // volgorde: eerste merk = armatuur, tweede (Philips) = de losse lichtbron.
+    verwachtMerkPerCode: {
+      Lr301: "Philips", // "Lr301 Basis fit-out Inbouw downlight Philips Greenspace"
+      Lr302: "XAL", // "Lr302 Vergaderruimte Richtbare downlight XAL Sasso 100"
+      Lr303: "XAL", // "Lr303 Belcel / Focusplek Richtbare downlight XAL Sasso 100"
+      Lr304: "XAL", // "Lr304 Pantry Richtbare downlight XAL Sasso 100"
+      Lr305: "XAL", // "Lr305 Focusplek Richtbare downlight XAL Sasso 100 Dubbel"
+      Lp201: "Intralight", // "Lp201 Vergaderruimte Pendel armatuur Intralight Wave Round Prisma"
+      Lp202: "Intralight", // "Lp202 Vergaderruimte Pendel armatuur Intralight Wave Prisma"
+      Lp203: "MOOOI", // "Lp203 Woonkamer Pendel armatuur MOOOI NomNom Light"
+      Lw201: "Muuto", // "Lw201 Belcel Wand armatuur Muuto Calm wall Opaal"
+      Ls001: "Led linear", // "Ls001 Focusplek Lijn armatuur Led linear Xooline Opaal"
+      Lp601a: "Oblure", // "Lp601a Aanlandplek Pendel armatuur lichtbron Oblure Philips Arch MASTER Value Dim"
+      Lp601b: "Oblure", // "Lp601b Aanlandplek Pendel armatuur lichtbron Oblure Philips Arch MASTER Value Dim"
+      Lp602: "Pantone", // "Lp602 Aanlandplek Pendel armatuur lichtbron Pantone Philips Flowerpot MASTER LED Dim" — zo gedrukt (niet "Panton")
+      // GEEN entry (merk is een placeholder — de import hoort hier leeg te lezen):
+      //   Lr001/Lr001B/Lr001C/Lr001_N — "Lineair inlegarmatuur n.t.b. n.t.b."
+      //   Ls002 — "Te bepalen door meubelmaker voorstel:KKDC" (voorstel ≠ merk)
+      //   Ls003 — "Te bepalen door wandenmaker voorstel:Led linear" (idem)
+      //   Lp101 — "Lp101 Woonkamer Pendel armatuur - Rope Opaal" (merk "-")
+    },
     // geen mapping beschikbaar → keuzekolom rapporteert "n.v.t.", nooit 0%
     keuze: {},
   },

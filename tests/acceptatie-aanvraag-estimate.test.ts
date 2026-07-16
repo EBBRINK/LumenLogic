@@ -50,6 +50,7 @@ import {
   seedBrandProduct,
   type TestDb,
 } from "@/db/test-db";
+import { beslisRoute } from "@/lib/ai/leesroute";
 import {
   runVangnet,
   VANGNET_MODEL,
@@ -228,6 +229,20 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
   expect(parsed.lines).toHaveLength(20); // het volledige boek, niets weggelaten
   expect(parsed.markdown.startsWith("## Page 1")).toBe(true);
 
+  // Router (goal-import-ai-leesroute, stap 3): het Deerns-boek bewandelt het
+  // deterministische €0-pad. De geseede catalogus geeft 18 van de 20 regels een
+  // bekend merk (alleen Lx901/Lx902 — Vitra/USM, bewust niet geseed — blijven
+  // leeg): 90% ≥ de 60%-drempel. De server-action zelf wordt hier bewust niet
+  // e2e getest: importArmaturenboekPagesAction is precies beslisRoute +
+  // recordPdfImport (deterministisch) — samen zijn ze het pad dat deze test
+  // bewandelt en bewijst.
+  const route = beslisRoute(parsed.lines);
+  expect(route).toEqual({
+    route: "deterministisch",
+    bekendeMerken: 18,
+    totaal: 20,
+  });
+
   const { run, created } = await recordPdfImport(db, {
     dossierId,
     filename: "test-armaturenboek.pdf",
@@ -247,6 +262,13 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
   // De import triggert het vangnet automatisch; zonder ANTHROPIC_API_KEY slaat
   // dat netjes over mét event (nooit een importfout) — bewust gedrag.
   expect(await eventsByAction("ai_vangnet_skipped_no_key")).toHaveLength(1);
+
+  // Het €0-bewijs: het deterministische pad heeft géén AI-call gedaan — geen
+  // llm_usage met purpose 'leesroute' en geen enkel leesroute_*-event.
+  const usage = await db.select().from(llmUsage);
+  expect(usage.filter((u) => u.purpose === "leesroute")).toEqual([]);
+  const alleEvents = await db.select().from(events);
+  expect(alleEvents.filter((e) => e.action.startsWith("leesroute_"))).toEqual([]);
 }, 120_000);
 
 // ── Stap 3 — matcher-uitkomsten (verdeling zoals bovenaan gedocumenteerd) ────

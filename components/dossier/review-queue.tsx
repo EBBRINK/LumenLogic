@@ -400,7 +400,14 @@ function OcrCard({
   // B6: de échte bron van een OCR-regel is het opgeslagen paginabeeld — toon het
   // paginanummer en link ernaar (nieuw tabblad) zodat de reviewer het boek naast
   // de gelezen waarden kan leggen. Alleen als de regel zijn herkomst draagt.
+  // Leesroute-regels (AI-tekstroute, stap 3 fase B) delen reviewKind 'ocr' maar
+  // hun run heeft GEEN paginabeelden (hasPageImages === false uit de review-
+  // query) — blind naar /ocr-image linken gaf een 404. Dan linkt de kaart naar
+  // het markdown-controlespoor van de importrun, met hetzelfde paginanummer als
+  // tekst. undefined (fixtures/oudere aanroepers) blijft de beeldlink: bestaand
+  // OCR-gedrag ongewijzigd.
   const hasSource = item.importRunId != null && item.sourcePage != null;
+  const hasImage = item.hasPageImages !== false;
   return (
     <>
       <p className="text-sm text-muted-foreground">
@@ -412,14 +419,25 @@ function OcrCard({
           Read from page{" "}
           <span className="font-medium text-foreground">{item.sourcePage}</span>
           {" · "}
-          <a
-            href={`/projects/${dossierId}/ocr-image/${item.importRunId}/${item.sourcePage}`}
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            View page image
-          </a>
+          {hasImage ? (
+            <a
+              href={`/projects/${dossierId}/ocr-image/${item.importRunId}/${item.sourcePage}`}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              View page image
+            </a>
+          ) : (
+            <a
+              href={`/projects/${dossierId}/import/${item.importRunId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              View source text
+            </a>
+          )}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">

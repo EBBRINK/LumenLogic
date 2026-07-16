@@ -153,8 +153,11 @@ export function createAnthropicOcrClient(apiKey: string): OcrClient {
 
 // ── Tool & prompt ────────────────────────────────────────────────────────────
 // Eén verplichte tool: het afleverkanaal voor de gelezen regels. Geen zoek- of
-// catalogus-tools — het model leest, meer niet (B3).
-const LEVER_REGELS_TOOL: OcrToolDef = {
+// catalogus-tools — het model leest, meer niet (B3). Geëxporteerd als
+// koppelcontract: de tekst-leesroute (lib/ai/leesroute.ts) leidt haar eigen
+// toolvariant hiervan af (goal-import-ai-leesroute, stap 3) — één tool-definitie
+// voor beeld én tekst.
+export const LEVER_REGELS_TOOL: OcrToolDef = {
   name: TOOL_NAME,
   description:
     "Deliver ALL luminaire rows that are literally printed on this page, " +
@@ -197,9 +200,11 @@ const LEVER_REGELS_TOOL: OcrToolDef = {
 
 // Prompt: alleen lezen wat er staat. Geen prijzen (regel 2), geen catalogus-context,
 // geen beslissingen — dat is allemaal werk van de deterministische pipeline en de mens.
-const SYSTEM_PROMPT =
-  "You read one page image from a luminaire schedule ('armaturenboek'). " +
-  "Extract the luminaire rows and deliver them with the lever_regels tool.\n" +
+// De KERN (het Rules-blok) wordt gedeeld met de tekst-leesroute (lib/ai/leesroute.ts);
+// alleen de intro-zin verschilt per medium (paginabeeld vs. tekstlaag). De compositie
+// intro + kern is byte-identiek aan de oorspronkelijke ene literal — een snapshot-test
+// in lib/ai/leesroute.test.ts legt de oude string vast en bewaakt dat.
+export const SYSTEM_PROMPT_KERN =
   "Rules:\n" +
   "- Report ONLY what is literally printed on the page. Never invent, guess, " +
   "complete or normalise codes, brands or types.\n" +
@@ -214,6 +219,13 @@ const SYSTEM_PROMPT =
   "- Prices do not exist for you; never read, mention or estimate them.\n" +
   "- You make no decisions and no judgements — you only transcribe.";
 
+// De vision-intro blijft hier lokaal in de compositie; de leesroute plakt haar
+// eigen intro (en extra tekstlaag-regels) om dezelfde kern heen.
+export const SYSTEM_PROMPT =
+  "You read one page image from a luminaire schedule ('armaturenboek'). " +
+  "Extract the luminaire rows and deliver them with the lever_regels tool.\n" +
+  SYSTEM_PROMPT_KERN;
+
 // ── Resultaatvormen ──────────────────────────────────────────────────────────
 export type OcrRegel = {
   armatuurcode: string;
@@ -224,6 +236,11 @@ export type OcrRegel = {
   // gaan wél mee (het stond er, dus we geven het door) maar gemarkeerd — bouwstap 4
   // beslist wat ermee gebeurt. sourceConfidence blijft daar constant 'middel' (B3).
   codeValid: boolean;
+  // Paginanummer zoals het model het rapporteert (leesroute: verplicht veld in het
+  // toolschema, uit de '=== PAGE N ==='-markers). De vision-route levert per pagina
+  // en heeft dit veld niet — dan blijft het weggelaten. parseLeverRegels neemt het
+  // alleen mee als het een positieve integer is.
+  pagina?: number | null;
 };
 
 // Defensieve parser over de tool-output: ongeldige of ontbrekende structuur levert
@@ -254,12 +271,21 @@ export function parseLeverRegels(content: OcrContentBlock[]): OcrRegel[] {
         : null;
     const ruweTekst =
       typeof row.ruwe_tekst === "string" ? row.ruwe_tekst.trim() : "";
+    // Pagina alleen meenemen als het een positieve integer is; anders wéglaten
+    // (niet null zetten) zodat vision-regels exact hun oude vorm houden.
+    const pagina =
+      typeof row.pagina === "number" &&
+      Number.isInteger(row.pagina) &&
+      row.pagina > 0
+        ? row.pagina
+        : null;
     out.push({
       armatuurcode: code,
       merk,
       type,
       ruweTekst,
       codeValid: CODE.test(code),
+      ...(pagina != null ? { pagina } : {}),
     });
   }
   return out;
@@ -278,10 +304,10 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-// ── De vision-call zelf (puur: geen database) ────────────────────────────────
-// Per pagina 1–2 API-calls: paginabeeld als base64-image-blok + geforceerde
-// lever_regels-tool. Gooit alleen bij een client-/netwerkfout; kapotte model-output
-// → gewoon 0 regels.
+// ── De lever_regels-call met tripwire-retry (puur: geen database) ────────────
+// Gedeeld hart van de vision-route (hieronder) en de tekst-leesroute
+// (lib/ai/leesroute.ts): 1–2 API-calls met geforceerde lever_regels-tool. Gooit
+// alleen bij een client-/netwerkfout; kapotte model-output → gewoon 0 regels.
 export type OcrAttempt = {
   maxTokens: number;
   stopReason: string | null;
@@ -289,19 +315,82 @@ export type OcrAttempt = {
   outputTokens: number;
 };
 
+export async function leverRegelsMetRetry(opts: {
+  client: OcrClient;
+  system: string;
+  tools: OcrToolDef[];
+  messages: OcrMessageParams["messages"];
+  maxTokensEerste: number;
+  maxTokensRetry: number;
+}): Promise<{
+  // Regels van de BESTE poging (de poging met de meeste geparste regels).
+  regels: OcrRegel[];
+  // SOMTOTALEN over alle pogingen — dit is wat de aanroep gekost heeft.
+  usage: { inputTokens: number; outputTokens: number };
+  attempts: OcrAttempt[];
+  // Aantal afgekapte pogingen (0 | 1 | 2). Het onderscheid afgekapt-vs-blanco
+  // komt híér vandaan, nooit uit de regels zelf.
+  truncated: number;
+}> {
+  const attempts: OcrAttempt[] = [];
+  const parsed: OcrRegel[][] = [];
+  const attempt = async (maxTokens: number): Promise<string | null> => {
+    const res = await opts.client.createMessage({
+      model: OCR_MODEL,
+      max_tokens: maxTokens,
+      system: opts.system,
+      tools: opts.tools,
+      tool_choice: { type: "tool", name: TOOL_NAME },
+      messages: opts.messages,
+    });
+    attempts.push({
+      maxTokens,
+      stopReason: res.stop_reason,
+      inputTokens: res.usage.input_tokens,
+      outputTokens: res.usage.output_tokens,
+    });
+    parsed.push(parseLeverRegels(res.content));
+    return res.stop_reason;
+  };
+
+  // O3-tripwire-retry. Bij een non-streaming respons die midden in een
+  // tool_use-blok op max_tokens stuit wordt het incomplete blok NIET meegeleverd
+  // (de respons-JSON moet geldig blijven) — parseLeverRegels levert dan vrijwel
+  // zeker []. Reken dus nooit op partiële regels (Dordrecht-empirie 16 jul:
+  // stop_reason max_tokens → stil 0/18). Maximaal twee calls, hard; de
+  // retry-trigger is uitsluitend stop_reason === "max_tokens" — een leeg antwoord
+  // met stop_reason "tool_use"/"end_turn" is legitiem blanco en mag nooit een
+  // tweede betaalde call veroorzaken.
+  const stop1 = await attempt(opts.maxTokensEerste);
+  if (stop1 === "max_tokens") {
+    await attempt(opts.maxTokensRetry);
+  }
+
+  const best = parsed.reduce((a, b) => (b.length > a.length ? b : a));
+  return {
+    regels: best,
+    usage: {
+      inputTokens: attempts.reduce((s, a) => s + a.inputTokens, 0),
+      outputTokens: attempts.reduce((s, a) => s + a.outputTokens, 0),
+    },
+    attempts,
+    truncated: attempts.filter((a) => a.stopReason === "max_tokens").length,
+  };
+}
+
+// ── De vision-call zelf (puur: geen database) ────────────────────────────────
+// Dunne wrapper: bouwt het image-message (paginabeeld als base64-blok + korte
+// tekstinstructie) en delegeert naar leverRegelsMetRetry met de paginabudgetten.
+// Signatuur en gedrag ongewijzigd sinds bouwstap 3.
 export async function readPageWithVision(opts: {
   client: OcrClient;
   imageBytes: Uint8Array;
   mime: string;
   pageNumber: number;
 }): Promise<{
-  // Regels van de BESTE poging (de poging met de meeste geparste regels).
   regels: OcrRegel[];
-  // SOMTOTALEN over alle pogingen — dit is wat de pagina gekost heeft.
   usage: { inputTokens: number; outputTokens: number };
   attempts: OcrAttempt[];
-  // Aantal afgekapte pogingen (0 | 1 | 2). Het onderscheid afgekapt-vs-blanco
-  // komt híér vandaan, nooit uit de regels zelf.
   truncated: number;
 }> {
   const messages: OcrMessageParams["messages"] = [
@@ -323,51 +412,14 @@ export async function readPageWithVision(opts: {
       ],
     },
   ];
-
-  const attempts: OcrAttempt[] = [];
-  const parsed: OcrRegel[][] = [];
-  const attempt = async (maxTokens: number): Promise<string | null> => {
-    const res = await opts.client.createMessage({
-      model: OCR_MODEL,
-      max_tokens: maxTokens,
-      system: SYSTEM_PROMPT,
-      tools: [LEVER_REGELS_TOOL],
-      tool_choice: { type: "tool", name: TOOL_NAME },
-      messages,
-    });
-    attempts.push({
-      maxTokens,
-      stopReason: res.stop_reason,
-      inputTokens: res.usage.input_tokens,
-      outputTokens: res.usage.output_tokens,
-    });
-    parsed.push(parseLeverRegels(res.content));
-    return res.stop_reason;
-  };
-
-  // O3-tripwire-retry. Bij een non-streaming respons die midden in een
-  // tool_use-blok op max_tokens stuit wordt het incomplete blok NIET meegeleverd
-  // (de respons-JSON moet geldig blijven) — parseLeverRegels levert dan vrijwel
-  // zeker []. Reken dus nooit op partiële regels (Dordrecht-empirie 16 jul:
-  // stop_reason max_tokens → stil 0/18). Maximaal twee calls, hard; de
-  // retry-trigger is uitsluitend stop_reason === "max_tokens" — een leeg antwoord
-  // met stop_reason "tool_use"/"end_turn" is legitiem blanco en mag nooit een
-  // tweede betaalde call veroorzaken.
-  const stop1 = await attempt(MAX_TOKENS_PER_PAGE);
-  if (stop1 === "max_tokens") {
-    await attempt(MAX_TOKENS_RETRY);
-  }
-
-  const best = parsed.reduce((a, b) => (b.length > a.length ? b : a));
-  return {
-    regels: best,
-    usage: {
-      inputTokens: attempts.reduce((s, a) => s + a.inputTokens, 0),
-      outputTokens: attempts.reduce((s, a) => s + a.outputTokens, 0),
-    },
-    attempts,
-    truncated: attempts.filter((a) => a.stopReason === "max_tokens").length,
-  };
+  return leverRegelsMetRetry({
+    client: opts.client,
+    system: SYSTEM_PROMPT,
+    tools: [LEVER_REGELS_TOOL],
+    messages,
+    maxTokensEerste: MAX_TOKENS_PER_PAGE,
+    maxTokensRetry: MAX_TOKENS_RETRY,
+  });
 }
 
 // ── Budget (B4) ──────────────────────────────────────────────────────────────

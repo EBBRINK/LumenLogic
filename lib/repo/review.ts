@@ -5,7 +5,7 @@
 // werkvoorraad op de review-pagina ("Niet gevonden — handmatig linken"). Rood is een
 // STATUS, geen review-flag — die regels krijgen dus geen reviewKind, maar een eigen query.
 import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { specLineCandidates, specLines } from "@/db/schema";
+import { ocrPageImages, specLineCandidates, specLines } from "@/db/schema";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
@@ -29,6 +29,12 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
       // linkt naar het opgeslagen paginabeeld — de échte bron van de lezing (B6).
       sourcePage: specLines.sourcePage,
       importRunId: specLines.importRunId,
+      // Leesroute-regels (AI-tekstroute, stap 3 fase B) delen reviewKind 'ocr'
+      // maar hun run heeft GEEN paginabeelden — blind naar /ocr-image linken gaf
+      // een 404. Bewust een EXISTS zonder ook maar één kolom van ocr_page_images
+      // te selecteren (B2-harde eis: alléén getOcrPageImage raakt de bytes-kolom;
+      // deze query blijft volledig bytes-vrij).
+      hasPageImages: sql<boolean>`exists (select 1 from ${ocrPageImages} where ${ocrPageImages.importRunId} = ${specLines.importRunId})`,
     })
     .from(specLines)
     .where(eq(specLines.dossierId, dossierId))

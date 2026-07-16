@@ -202,6 +202,32 @@ totaal €0,05; maandtotaal €0,38 van de €10. Merken op ~95 dpi effectief no
 mis/verzonnen ("Pern Lusing" ≈ Ferm Living, Philips/Signify-verwarring) = O4 → stap 5;
 "Aromas del Campo" ≠ "Aromas" = O5 → stap 4. A3-dpi-feit voor stap 5: 1568px lange zijde op
 A3 landscape = 94,8 dpi effectief._
+_2026-07-16 (AI-leesroute **stap 3 — de AI-tekstroute draait**): nieuw `lib/ai/leesroute.ts`
+(één `lever_regels`-koppelcontract voor beeld én tekst: tool + promptkern geëxporteerd uit
+ocr.ts; tekstvariant met verplicht `pagina`-veld en "=== PAGE N ==="-markers, batches van 8,
+eigen tripwire-budgetten 8k/16k met per-pagina-escalatie) + `lib/repo/leesroute.ts`
+(`recordLeesrouteImport`: run + `verwerkGelezenRegels` — de uit `processOcrPage`
+geëxtraheerde B7-persistlus — reviewKind 'ocr' op élke AI-regel, rijkste-wint-dedup,
+events `leesroute_batch_done/_truncated/_failed`, purpose **'leesroute'**, gedeelde €1-cap
+per boek via `checkOcrBudget`). Router `beslisRoute` (puur; 0 regels óf <60% bekende merken
+→ AI-route) aangeroepen in de import-action; geen key → eerlijke terugval op het
+deterministische pad + `leesroute_skipped_no_key`. Reviewkaart linkt bij runs zonder
+paginabeelden naar het markdown-controlespoor i.p.v. de 404'ende ocr-image-route.
+**Acceptatie (meetscript, €0,16/volle run): Raadhuis 31/31 met verwacht merk 21/21 · KvK
+48/48 · TNO 20/20 met merk 13/13; Deerns-acceptatietest bewijst het €0-snelpad** (route
+"deterministisch" + geen leesroute-purpose/events). Bijvangst: leesroute brengt blauw/H-08
+terug (Raadhuis: Trilux/Barthelme → 10× blauw op de inlaadwachtrij-route). **Engine-fix
+(aparte commit): `fetchCandidates` crashte op `ORDER BY 0`** zodra een regel geen
+producttekst-tokens had (bereikbaar sinds AI-regels met alleen een code bestaan) — constante
+sorteertermen worden nu overgeslagen (semantisch identiek, regel 2 onaangeraakt) en een
+regel zonder énig zoeksignaal krijgt eerlijk [] → rood. **Grondwaarheid-correcties:** KvK-N
+49 → 48 (kaal L010 bleek een prozavoorbeeld op p.8, geen armatuurregel); TNO-merken per
+code gevuld (13 letterlijk geverifieerd); `bekendeExtraCodes` (Raadhuis NV-sectie +
+Helvar-sensoren; KvK T001) worden apart gerapporteerd als "bekend, buiten scope". **Open
+bevinding voor Timo:** merkloze regels matchen catalogus-breed — KvK toont 39/48 "groen" op
+generieke tokens (3000K, Downlight) tegen willekeurige merken; eerlijk volgens de huidige
+beslisboom, maar "nooit groen zonder gevraagd merk" is een statussen-semantiek-besluit dat
+alleen Timo kan nemen (vangrail)._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

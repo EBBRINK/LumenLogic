@@ -355,6 +355,146 @@ async function upgradeOcrLine(
   });
 }
 
+// ── Gelezen regels persisteren (stappen c–f, gedeeld met de leesroute) ───────
+// VERBATIM geëxtraheerd uit processOcrPage (fase B, goal-import-ai-leesroute
+// stap 3): rijkste-wint-dedup tegen run.rows, addSpecLines → runMatcher →
+// reviewKind 'ocr' alleen-waar-nog-null (B7), upgradeOcrLine (incl. spookmatch-
+// fix), de rows/checked-boekhouding en de run-snapshot-update. Eén verschil in
+// vorm, niet in gedrag: de pagina komt per REGEL mee (regel.page) in plaats van
+// als één opts.page — processOcrPage geeft elke regel dezelfde pagina mee, de
+// leesroute (lib/repo/leesroute.ts) het pagina-veld uit de batch. De helper
+// werkt het run-snapshot zelf bij (zoals processOcrPage dat deed) en geeft de
+// nieuwe rows/counts terug zodat een batchende aanroeper niet hoeft te herladen.
+export async function verwerkGelezenRegels(
+  db: AppDb,
+  opts: {
+    run: typeof importRuns.$inferSelect;
+    regels: (OcrRegel & { page: number })[];
+    brandNames: string[];
+    actor?: string;
+  },
+): Promise<{
+  created: number;
+  duplicates: number;
+  upgraded: number;
+  rows: ImportRow[];
+  counts: Record<string, number>;
+}> {
+  const { run, brandNames } = opts;
+
+  // (c) Regels verwerken. Dedupe op armatuurcode tegen álles wat deze run al las
+  // (run.rows is de volledige leesgeschiedenis, incl. eerdere pagina's): een boek
+  // noemt een armatuur vaak op meerdere pagina's. Vroeger won de eerste lezing
+  // altijd; nu wint de RIJKSTE lezing (item A, docs/probleem-ocr-toc-verdringt-
+  // specs.md) — een arme inhoudsopgave-rij wordt overschreven zodra de rijkere
+  // detailpagina van dezelfde code langskomt.
+  const existingCodes = new Set(
+    ((run.rows ?? []) as ImportRow[]).map((r) => r.fixtureCode),
+  );
+
+  // Mutabele kopie van de al opgebouwde rows: bij een upgrade zetten we de
+  // eerdere winnende entry van dezelfde code terug op checked:false (stap f).
+  const priorRows = [...((run.rows ?? []) as ImportRow[])];
+  const newRows: ImportRow[] = [];
+  let created = 0;
+  let duplicates = 0;
+  let upgraded = 0;
+
+  for (const regel of opts.regels) {
+    const line = regelToSpecLine(regel, regel.page, run.id, brandNames);
+    const baseRow: ImportRow = {
+      fixtureCode: regel.armatuurcode,
+      quantity: line.quantity ?? null,
+      brandText: line.brandText ?? null,
+      productText: line.productText ?? null,
+      source: "ocr",
+      rawText: regel.ruweTekst,
+      page: regel.page,
+      checked: false,
+    };
+
+    if (!existingCodes.has(regel.armatuurcode)) {
+      // Nog nooit gezien in deze run → huidig pad (created), ongewijzigd.
+      existingCodes.add(regel.armatuurcode);
+      const [createdLine] = await addSpecLines(db, run.dossierId, [line]);
+      await runMatcher(db, createdLine.id, opts.actor);
+      // B7: OCR-review op elke nieuwe regel die nog géén reviewKind heeft. De
+      // matcher draaide zonet en kan 'geel' hebben gezet — dat moet in de DB
+      // gecheckt worden (isNull-where), niet op het createdLine-object van vóór
+      // runMatcher: die flag blijft staan (één review per regel; de gele kaart
+      // toont de bron erbij).
+      await db
+        .update(specLines)
+        .set({ reviewKind: "ocr", reviewedAt: null, updatedAt: new Date() })
+        .where(
+          and(eq(specLines.id, createdLine.id), isNull(specLines.reviewKind)),
+        );
+      created++;
+      newRows.push({ ...baseRow, checked: true });
+      continue;
+    }
+
+    // Code al bekend in deze run — kijk of er echt al een eigen spec_line voor
+    // bestaat (gescoopt op run+code). Binnen dezelfde pagina kan dezelfde code
+    // twee keer voorkomen vóórdat de eerste al is weggeschreven — dat blijft,
+    // net als voorheen, gewoon een duplicaat (geen spec_line om tegen te upgraden).
+    const existing = await getOwnOcrLine(db, run.id, regel.armatuurcode);
+    if (!existing) {
+      duplicates++;
+      newRows.push(baseRow);
+      continue;
+    }
+
+    const newRichness = specRichness(line);
+    const oldRichness = specRichness(existing);
+    if (newRichness <= oldRichness) {
+      // Gelijke of armere rijkdom: bestaande lezing blijft staan (ties geen churn).
+      duplicates++;
+      newRows.push(baseRow);
+      continue;
+    }
+
+    // Rijkere lezing → upgrade (spookmatch-fix + audit-bewaring zitten in
+    // upgradeOcrLine hierboven).
+    await upgradeOcrLine(db, {
+      existing,
+      line,
+      fixtureCode: regel.armatuurcode,
+      page: regel.page,
+      actor: opts.actor,
+    });
+    upgraded++;
+    newRows.push({ ...baseRow, checked: true });
+    // f) De eerdere winnende entry van deze code is niet langer de "checked"
+    // lezing — precies één rij per code mag checked:true zijn. CodeRabbit (PR #4,
+    // Major): dat eerdere winnende exemplaar kan ook al in newRows staan (vision
+    // levert per ongeluk twee keer dezelfde code op ÉÉN pagina — de arme eerste
+    // keer werd hierboven al als upgrade verwerkt en zit als checked:true in
+    // newRows), niet alleen in priorRows (een vorige pagina). Beide arrays
+    // doorzoeken voorkomt dat twee rijen checked:true blijven staan.
+    for (const r of [...priorRows, ...newRows]) {
+      if (r.fixtureCode === regel.armatuurcode && r.checked) {
+        r.checked = false;
+        break;
+      }
+    }
+  }
+
+  // Run-snapshot bijwerken: rows groeit per pagina aan, counts tellen mee.
+  const rows = [...priorRows, ...newRows];
+  const counts = {
+    ...(run.counts ?? {}),
+    total: rows.length,
+    checked: rows.filter((r) => r.checked).length,
+  };
+  await db
+    .update(importRuns)
+    .set({ rows, counts, updatedAt: new Date() })
+    .where(eq(importRuns.id, run.id));
+
+  return { created, duplicates, upgraded, rows, counts };
+}
+
 // ── Eén pagina verwerken ─────────────────────────────────────────────────────
 // VOLGORDE-AFSPRAAK (B4): éérst de beeldrij, dán pas de vision-call. De unique
 // (run,page)-index is het lock dat het €1-plafond hard maakt: een pagina kan maar
@@ -441,118 +581,18 @@ export async function processOcrPage(
     return { failed: result.failed };
   }
 
-  // (c) Regels verwerken. Dedupe op armatuurcode tegen álles wat deze run al las
-  // (run.rows is de volledige leesgeschiedenis, incl. eerdere pagina's): een boek
-  // noemt een armatuur vaak op meerdere pagina's. Vroeger won de eerste lezing
-  // altijd; nu wint de RIJKSTE lezing (item A, docs/probleem-ocr-toc-verdringt-
-  // specs.md) — een arme inhoudsopgave-rij wordt overschreven zodra de rijkere
-  // detailpagina van dezelfde code langskomt.
-  const existingCodes = new Set(
-    ((run.rows ?? []) as ImportRow[]).map((r) => r.fixtureCode),
-  );
+  // (c)–(f): persist-lus — verplaatst naar verwerkGelezenRegels (gedeeld met de
+  // AI-leesroute, fase B). Elke vision-regel krijgt hier uniform de pagina van
+  // deze call mee; het gedrag is verder byte-identiek aan vóór de extractie.
   const brandNames = (
     await db.select({ name: brands.name }).from(brands)
   ).map((b) => b.name);
-
-  // Mutabele kopie van de al opgebouwde rows: bij een upgrade zetten we de
-  // eerdere winnende entry van dezelfde code terug op checked:false (stap f).
-  const priorRows = [...((run.rows ?? []) as ImportRow[])];
-  const newRows: ImportRow[] = [];
-  let created = 0;
-  let duplicates = 0;
-  let upgraded = 0;
-
-  for (const regel of result.regels) {
-    const line = regelToSpecLine(regel, opts.page, run.id, brandNames);
-    const baseRow: ImportRow = {
-      fixtureCode: regel.armatuurcode,
-      quantity: line.quantity ?? null,
-      brandText: line.brandText ?? null,
-      productText: line.productText ?? null,
-      source: "ocr",
-      rawText: regel.ruweTekst,
-      page: opts.page,
-      checked: false,
-    };
-
-    if (!existingCodes.has(regel.armatuurcode)) {
-      // Nog nooit gezien in deze run → huidig pad (created), ongewijzigd.
-      existingCodes.add(regel.armatuurcode);
-      const [createdLine] = await addSpecLines(db, run.dossierId, [line]);
-      await runMatcher(db, createdLine.id, opts.actor);
-      // B7: OCR-review op elke nieuwe regel die nog géén reviewKind heeft. De
-      // matcher draaide zonet en kan 'geel' hebben gezet — dat moet in de DB
-      // gecheckt worden (isNull-where), niet op het createdLine-object van vóór
-      // runMatcher: die flag blijft staan (één review per regel; de gele kaart
-      // toont de bron erbij).
-      await db
-        .update(specLines)
-        .set({ reviewKind: "ocr", reviewedAt: null, updatedAt: new Date() })
-        .where(
-          and(eq(specLines.id, createdLine.id), isNull(specLines.reviewKind)),
-        );
-      created++;
-      newRows.push({ ...baseRow, checked: true });
-      continue;
-    }
-
-    // Code al bekend in deze run — kijk of er echt al een eigen spec_line voor
-    // bestaat (gescoopt op run+code). Binnen dezelfde pagina kan dezelfde code
-    // twee keer voorkomen vóórdat de eerste al is weggeschreven — dat blijft,
-    // net als voorheen, gewoon een duplicaat (geen spec_line om tegen te upgraden).
-    const existing = await getOwnOcrLine(db, run.id, regel.armatuurcode);
-    if (!existing) {
-      duplicates++;
-      newRows.push(baseRow);
-      continue;
-    }
-
-    const newRichness = specRichness(line);
-    const oldRichness = specRichness(existing);
-    if (newRichness <= oldRichness) {
-      // Gelijke of armere rijkdom: bestaande lezing blijft staan (ties geen churn).
-      duplicates++;
-      newRows.push(baseRow);
-      continue;
-    }
-
-    // Rijkere lezing → upgrade (spookmatch-fix + audit-bewaring zitten in
-    // upgradeOcrLine hierboven).
-    await upgradeOcrLine(db, {
-      existing,
-      line,
-      fixtureCode: regel.armatuurcode,
-      page: opts.page,
-      actor: opts.actor,
-    });
-    upgraded++;
-    newRows.push({ ...baseRow, checked: true });
-    // f) De eerdere winnende entry van deze code is niet langer de "checked"
-    // lezing — precies één rij per code mag checked:true zijn. CodeRabbit (PR #4,
-    // Major): dat eerdere winnende exemplaar kan ook al in newRows staan (vision
-    // levert per ongeluk twee keer dezelfde code op ÉÉN pagina — de arme eerste
-    // keer werd hierboven al als upgrade verwerkt en zit als checked:true in
-    // newRows), niet alleen in priorRows (een vorige pagina). Beide arrays
-    // doorzoeken voorkomt dat twee rijen checked:true blijven staan.
-    for (const r of [...priorRows, ...newRows]) {
-      if (r.fixtureCode === regel.armatuurcode && r.checked) {
-        r.checked = false;
-        break;
-      }
-    }
-  }
-
-  // Run-snapshot bijwerken: rows groeit per pagina aan, counts tellen mee.
-  const rows = [...priorRows, ...newRows];
-  const counts = {
-    ...(run.counts ?? {}),
-    total: rows.length,
-    checked: rows.filter((r) => r.checked).length,
-  };
-  await db
-    .update(importRuns)
-    .set({ rows, counts, updatedAt: new Date() })
-    .where(eq(importRuns.id, opts.runId));
+  const { created, duplicates, upgraded } = await verwerkGelezenRegels(db, {
+    run,
+    regels: result.regels.map((r) => ({ ...r, page: opts.page })),
+    brandNames,
+    actor: opts.actor,
+  });
 
   return { created, duplicates, upgraded, costEur: result.costEur };
 }

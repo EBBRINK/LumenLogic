@@ -10,19 +10,26 @@
 //   --rank-limit=<n>     kandidaten-limiet voor de rang-meting (default 50)
 //   --assert-nulmeting   toets de nulmeting van 16 jul; exit 1 bij elke afwijking
 //                        (zonder AI gedefinieerd — combineren met --ai is een fout)
-//   --ai                 OCR/vision-route voor cases zónder tekstlaag (nu: dordrecht).
-//                        Echte API-calls (kosten!); vereist ANTHROPIC_API_KEY.
+//   --ai                 AI-routes met echte API-calls (kosten!); vereist
+//                        ANTHROPIC_API_KEY. Twee smaken, exact het productiepad:
+//                        • geen tekstlaag → OCR/vision per pagina (dordrecht);
+//                        • tekstlaag maar router zegt leesroute (beslisRoute:
+//                          0 regels of merkdekking < 60%) → AI-tekstroute in
+//                          batches van LEESROUTE_BATCH_PAGES (readPagesTextWithModel,
+//                          de pure variant). Zonder --ai blijft bij een leesroute-
+//                          besluit het deterministische resultaat staan, mét melding.
 //
 // ── CONTRACT: STRIKT READ-ONLY (met één gedocumenteerde uitzondering) ────────
 // Dit script schrijft geen domeindata. Het roept bewust géén runMatcher, logEvent,
 // addSpecLines of enige andere functie aan die insert/update/delete doet. Het enige
 // DB-verkeer is evaluateSpecLine (lib/matching/engine.ts) — die doet uitsluitend
 // selects — plus één `select name from brands` en één pg_trgm-smoke-select.
-// UITZONDERING (--ai, budgetplicht): elke echte vision-call insert precies één
-// llm_usage-rij { purpose: 'eval', costEur, importRunId: null }. Dev draait op de
-// prod-database, dus elke betaalde call MOET meetellen in het maandbudget (L-06) —
-// niet schrijven zou de budgetteller ondergraven. GEEN events, GEEN spec_lines,
-// GEEN import_runs; llm_usage is de enige toegestane write.
+// UITZONDERING (--ai, budgetplicht): elke echte AI-call-eenheid (vision-pagina óf
+// leesroute-batch) insert precies één llm_usage-rij { purpose: 'eval', costEur,
+// importRunId: null }. Dev draait op de prod-database, dus elke betaalde call MOET
+// meetellen in het maandbudget (L-06) — niet schrijven zou de budgetteller
+// ondergraven. GEEN events, GEEN spec_lines, GEEN import_runs; llm_usage is de
+// enige toegestane write.
 // (Nuance: regelToSpecLine wordt uit lib/repo/ocr.ts geïmporteerd — die module
 // bevat óók schrijvende functies, maar dit script roept uitsluitend de pure
 // helpers regelToSpecLine en specRichness aan.)
@@ -43,6 +50,12 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { brands, llmUsage } from "@/db/schema";
+import {
+  beslisRoute,
+  LEESROUTE_BATCH_PAGES,
+  readPagesTextWithModel,
+  type LeesroutePagina,
+} from "@/lib/ai/leesroute";
 import {
   createAnthropicOcrClient,
   readPageWithVision,
@@ -168,6 +181,10 @@ type RegelResultaat = {
   code: string;
   gelezen: boolean;
   spook: boolean;
+  // Spookcode die in bekendeExtraCodes staat: de bron bevat hem letterlijk maar
+  // hij valt buiten de grondwaarheid-scope — "(bekend, buiten scope)", geen
+  // hallucinatie. Apart geteld van onverwachte spookcodes.
+  spookBekend: boolean;
   // Alleen OCR-route: matcht de gelezen code de CODE-regex? Informatief, geen
   // poort — Dordrecht-lettercodes (Ad, B, C1…) zijn per definitie codeValid=false.
   // Tekstroute: null (daar bestaat het begrip niet — de parser matcht per regex).
@@ -200,6 +217,26 @@ type OcrCaseMeta = {
   truncatedPaginas: number; // pagina's met ≥1 afgekapte poging
 };
 
+// Tripwire-metadata per leesroute-batch (--ai, tekstlaag met leesroute-besluit):
+// wat de tekst-call deed en kostte, plus het paginaOnbekend-signaal (regels
+// waarvoor het model geen geldige batchpagina rapporteerde).
+type LeesrouteBatchMeta = {
+  paginas: [number, number]; // [eerste..laatste] pagina van de batch
+  regels: number;
+  codeInvalid: number;
+  paginaOnbekend: number;
+  attempts: OcrAttempt[];
+  truncated: number;
+  costEur: number;
+};
+
+type LeesrouteCaseMeta = {
+  batches: LeesrouteBatchMeta[];
+  kostenEur: number;
+  truncatedBatches: number; // batches met ≥1 afgekapte poging
+  paginaOnbekend: number;
+};
+
 type CaseResultaat = {
   key: string;
   bron: string;
@@ -207,13 +244,21 @@ type CaseResultaat = {
   tekstlaagVerwacht: boolean;
   melding: string | null;
   historischeNoot: string | null;
+  // Het routerbesluit (beslisRoute) over het deterministische parse-resultaat —
+  // exact het productie-beslispad; null zonder tekstlaag (dan beslist de router niet).
+  router: ReturnType<typeof beslisRoute> | null;
   // alleen gevuld als de OCR/vision-route echt gedraaid heeft (--ai, geen tekstlaag)
   ocr: OcrCaseMeta | null;
+  // alleen gevuld als de AI-tekstroute echt gedraaid heeft (--ai + router: leesroute)
+  leesroute: LeesrouteCaseMeta | null;
   import: {
     gelezen: number;
     verwacht: number;
     gemist: string[];
+    // onverwachte spookcodes (mogelijk hallucinatie) …
     spookcodes: string[];
+    // … versus codes die de bron wél letterlijk bevat maar buiten scope vallen
+    spookcodesBekend: string[];
   };
   merk: {
     bestaand: number;
@@ -363,6 +408,118 @@ async function ocrCase(
   };
 }
 
+// ── AI-tekstroute (--ai + router: leesroute) ─────────────────────────────────
+// Het eval-equivalent van recordLeesrouteImport (lib/repo/leesroute.ts): lege
+// pagina's deterministisch overslaan, batches van LEESROUTE_BATCH_PAGES door
+// readPagesTextWithModel (de PURE productiefunctie, incl. batch-retry-tripwire),
+// per regel de exacte productie-omzetting regelToSpecLine(regel, regel.pagina, …)
+// en de rijkste-wint-dedup — zelfde vorm als de bestaande OCR-tak hierboven.
+// Budget: dezelfde maandbudget-poort + scriptlokale runcap als ocrCase; elke
+// batch-call is één llm_usage-rij { purpose: 'eval', importRunId: null }.
+async function leesrouteCase(
+  c: GrondwaarheidCase,
+  pages: string[],
+  brandNames: string[],
+  runKosten: { eur: number },
+): Promise<{
+  lines: SpecLineInput[];
+  codeValidByCode: Map<string, boolean>;
+  meta: LeesrouteCaseMeta;
+  melding: string | null;
+}> {
+  const client = createAnthropicOcrClient(envApiKey()!);
+  const batches: LeesrouteBatchMeta[] = [];
+  const beste = new Map<string, { line: SpecLineInput; codeValid: boolean }>();
+  let melding: string | null = null;
+  let paginaOnbekendTotaal = 0;
+
+  // Zelfde deterministische zeef als recordLeesrouteImport: een lege pagina
+  // heeft niets te lezen en mag geen call kosten.
+  const paginas: LeesroutePagina[] = pages
+    .map((text, i) => ({ pageNumber: i + 1, text }))
+    .filter((p) => p.text.trim() !== "");
+
+  for (let i = 0; i < paginas.length; i += LEESROUTE_BATCH_PAGES) {
+    const batch = paginas.slice(i, i + LEESROUTE_BATCH_PAGES);
+    const bereik: [number, number] = [
+      batch[0].pageNumber,
+      batch[batch.length - 1].pageNumber,
+    ];
+    // Budgetpoorten vóór elke call (zelfde semantiek als checkOcrBudget):
+    // eerst het maandbudget (L-06) …
+    const maandCap = await getSetting<number>(db, "llm_budget_eur");
+    if (maandCap != null) {
+      const maandSpend = await getLlmSpend(db);
+      if (maandSpend >= maandCap) {
+        melding =
+          `maandbudget bereikt (€${maandSpend.toFixed(2)} ≥ €${maandCap.toFixed(2)}) — ` +
+          `leesroute gestopt vóór p.${bereik[0]}–${bereik[1]}`;
+        break;
+      }
+    }
+    // … dan het €1-runplafond, scriptlokaal.
+    if (runKosten.eur >= EVAL_RUN_CAP_EUR) {
+      melding =
+        `eval-runplafond €${EVAL_RUN_CAP_EUR.toFixed(2)} bereikt ` +
+        `(€${runKosten.eur.toFixed(4)}) — leesroute gestopt vóór p.${bereik[0]}–${bereik[1]}`;
+      break;
+    }
+
+    const { regels, paginaOnbekend, usage, attempts, truncated } =
+      await readPagesTextWithModel({ client, pages: batch });
+    const costEur =
+      (usage.inputTokens * EUR_PER_MTOK_IN +
+        usage.outputTokens * EUR_PER_MTOK_OUT) /
+      1_000_000;
+    runKosten.eur += costEur;
+    // Budgetplicht (zie contract in de kop): de enige toegestane DB-write.
+    await db.insert(llmUsage).values({
+      purpose: "eval",
+      costEur: costEur.toFixed(4),
+      importRunId: null,
+    });
+
+    batches.push({
+      paginas: bereik,
+      regels: regels.length,
+      codeInvalid: regels.filter((r) => !r.codeValid).length,
+      paginaOnbekend,
+      attempts,
+      truncated,
+      costEur,
+    });
+    paginaOnbekendTotaal += paginaOnbekend;
+    process.stderr.write(
+      `[${c.key} leesroute p.${bereik[0]}–${bereik[1]}] regels=${regels.length} ` +
+        `paginaOnbekend=${paginaOnbekend} attempts=${attempts.length} ` +
+        `truncated=${truncated} kosten=€${costEur.toFixed(4)}\n`,
+    );
+
+    for (const regel of regels) {
+      // "eval" als runId-placeholder — de regel gaat nooit naar de DB.
+      const line = regelToSpecLine(regel, regel.pagina, "eval", brandNames);
+      const huidige = beste.get(regel.armatuurcode);
+      if (!huidige || specRichness(line) > specRichness(huidige.line)) {
+        beste.set(regel.armatuurcode, { line, codeValid: regel.codeValid });
+      }
+    }
+  }
+
+  return {
+    lines: [...beste.values()].map((b) => b.line),
+    codeValidByCode: new Map(
+      [...beste.entries()].map(([code, b]) => [code, b.codeValid]),
+    ),
+    meta: {
+      batches,
+      kostenEur: batches.reduce((s, b) => s + b.costEur, 0),
+      truncatedBatches: batches.filter((b) => b.truncated > 0).length,
+      paginaOnbekend: paginaOnbekendTotaal,
+    },
+    melding,
+  };
+}
+
 // ── één case meten ───────────────────────────────────────────────────────────
 
 async function meetCase(
@@ -383,10 +540,14 @@ async function meetCase(
 
   // het exacte productiecodepad (app/projects/actions.ts, importArmaturenboekPagesAction)
   const parsed = parseSpecLinesFromPages(pages, brandNames);
+  // … inclusief het routerbesluit (stap 3): beslisRoute over het deterministische
+  // resultaat — alleen bij een aanwezige tekstlaag, precies zoals de action.
+  const router = parsed.hadText ? beslisRoute(parsed.lines) : null;
 
   let lines = parsed.lines;
   let melding: string | null = null;
   let ocrMeta: OcrCaseMeta | null = null;
+  let leesrouteMeta: LeesrouteCaseMeta | null = null;
   let codeValidByCode: Map<string, boolean> | null = null;
   if (!parsed.hadText) {
     if (!flags.ai) {
@@ -401,9 +562,25 @@ async function meetCase(
       ocrMeta = ocr.meta;
       melding = ocr.melding;
     }
+  } else if (router != null && router.route === "leesroute") {
+    if (!flags.ai) {
+      // Zonder --ai blijft het deterministische resultaat het meetobject — zo
+      // blijft --assert-nulmeting geldig; de melding maakt het besluit zichtbaar.
+      melding = `AI-leesroute nodig (router: ${router.reden}) — overgeslagen zonder --ai`;
+    } else if (!envApiKey()) {
+      melding =
+        "--ai gevraagd maar geen ANTHROPIC_API_KEY in de omgeving — AI-leesroute overgeslagen";
+    } else {
+      const lr = await leesrouteCase(c, pages, brandNames, runKosten);
+      lines = lr.lines;
+      codeValidByCode = lr.codeValidByCode;
+      leesrouteMeta = lr.meta;
+      melding = lr.melding;
+    }
   }
 
   const codesSet = new Set(c.codes);
+  const bekendeExtra = new Set(c.bekendeExtraCodes ?? []);
   const lineByCode = new Map<string, SpecLineInput>();
   for (const l of lines) lineByCode.set(l.fixtureCode, l);
 
@@ -470,6 +647,7 @@ async function meetCase(
       code,
       gelezen: true,
       spook,
+      spookBekend: spook && bekendeExtra.has(code),
       codeValid: codeValidByCode ? (codeValidByCode.get(code) ?? null) : null,
       merkText: line.brandText ?? null,
       merkOordeel: oordeel,
@@ -493,6 +671,7 @@ async function meetCase(
       code,
       gelezen: false,
       spook: false,
+      spookBekend: false,
       codeValid: null,
       merkText: null,
       merkOordeel: null,
@@ -502,9 +681,11 @@ async function meetCase(
       top1: null,
     });
   }
-  const spookcodes = lines
+  const alleSpook = lines
     .map((l) => l.fixtureCode)
     .filter((code) => !codesSet.has(code));
+  const spookcodes = alleSpook.filter((code) => !bekendeExtra.has(code));
+  const spookcodesBekend = alleSpook.filter((code) => bekendeExtra.has(code));
 
   return {
     key: c.key,
@@ -513,12 +694,15 @@ async function meetCase(
     tekstlaagVerwacht: c.tekstlaagVerwacht,
     melding,
     historischeNoot: c.historischeNoot ?? null,
+    router,
     ocr: ocrMeta,
+    leesroute: leesrouteMeta,
     import: {
       gelezen: gelezenVerwacht.length,
       verwacht: c.codes.length,
       gemist,
       spookcodes,
+      spookcodesBekend,
     },
     merk,
     status,
@@ -546,6 +730,17 @@ function printCase(r: CaseResultaat, rankLimit: number) {
   out("");
   out(`═══ ${r.key} ─ ${r.bron} ═══`);
   if (r.historischeNoot) out(`  noot: ${r.historischeNoot}`);
+  if (r.router) {
+    const dekking =
+      r.router.totaal > 0
+        ? `${Math.round((r.router.bekendeMerken / r.router.totaal) * 100)}%`
+        : "–";
+    out(
+      `  router : ${r.router.route}` +
+        ("reden" in r.router ? ` (reden: ${r.router.reden})` : "") +
+        ` — bekende merken ${r.router.bekendeMerken}/${r.router.totaal} (dekking ${dekking})`,
+    );
+  }
   if (r.melding) out(`  melding: ${r.melding}`);
   out("");
   // compacte regel-tabel: code · gelezen · merk→oordeel · status · rang · keuze
@@ -572,7 +767,7 @@ function printCase(r: CaseResultaat, rankLimit: number) {
       "  " +
         pad(
           regel.code +
-            (regel.spook ? "*" : "") +
+            (regel.spook ? (regel.spookBekend ? "‡" : "*") : "") +
             (regel.codeValid === false ? "†" : ""),
           W.code,
         ) +
@@ -586,6 +781,12 @@ function printCase(r: CaseResultaat, rankLimit: number) {
   if (r.import.spookcodes.length) {
     out(`  * spookcodes (gelezen maar niet in grondwaarheid): ${r.import.spookcodes.length} — ${r.import.spookcodes.join(", ")}`);
   }
+  if (r.import.spookcodesBekend.length) {
+    out(
+      `  ‡ (bekend, buiten scope) — staat letterlijk in de bron maar buiten de ` +
+        `grondwaarheid: ${r.import.spookcodesBekend.length} — ${r.import.spookcodesBekend.join(", ")}`,
+    );
+  }
   if (r.regels.some((regel) => regel.codeValid === false)) {
     out(
       "  † codeValid=false: code matcht de CODE-regex niet — informatief, geen poort",
@@ -595,7 +796,10 @@ function printCase(r: CaseResultaat, rankLimit: number) {
   // case-samenvatting
   out(`  import : ${r.import.gelezen}/${r.import.verwacht} gelezen` +
     (r.import.gemist.length ? ` · gemist: ${r.import.gemist.join(", ")}` : "") +
-    ` · spookcodes: ${r.import.spookcodes.length}`);
+    ` · spookcodes: ${r.import.spookcodes.length}` +
+    (r.import.spookcodesBekend.length
+      ? ` · bekend buiten scope: ${r.import.spookcodesBekend.length}`
+      : ""));
   out(
     `  merk   : bestaand merk ${r.merk.bestaand}/${r.merk.gelezenTotaal} · ` +
       `verwacht merk ${r.merk.verwachtGoed}/${r.merk.verwachtBekend}-waar-bekend · ` +
@@ -618,6 +822,27 @@ function printCase(r: CaseResultaat, rankLimit: number) {
       out(
         `           ${pg.pdf} p.${pg.pagina}: ${pg.regels} regels ` +
           `(codeInvalid ${pg.codeInvalid}) · pogingen: ${pogingen} · €${pg.costEur.toFixed(4)}`,
+      );
+    }
+  }
+  if (r.leesroute) {
+    out(
+      `  leesroute: ${r.leesroute.batches.length} batch(es) gelezen · ` +
+        `kosten €${r.leesroute.kostenEur.toFixed(4)} · ` +
+        `truncated ${r.leesroute.truncatedBatches} batch(es) · ` +
+        `paginaOnbekend ${r.leesroute.paginaOnbekend}`,
+    );
+    for (const b of r.leesroute.batches) {
+      const pogingen = b.attempts
+        .map(
+          (a) =>
+            `${a.stopReason ?? "?"} @max ${a.maxTokens} (in ${a.inputTokens}/uit ${a.outputTokens})`,
+        )
+        .join(" → ");
+      out(
+        `           p.${b.paginas[0]}–${b.paginas[1]}: ${b.regels} regels ` +
+          `(codeInvalid ${b.codeInvalid}, paginaOnbekend ${b.paginaOnbekend}) · ` +
+          `pogingen: ${pogingen} · €${b.costEur.toFixed(4)}`,
       );
     }
   }
@@ -705,7 +930,9 @@ function assertNulmeting(results: CaseResultaat[]): string[] {
   if (!kvk) fouten.push("kvk: case ontbreekt in de resultaten");
   else {
     eq("kvk hadText", kvk.hadText, true);
-    eq("kvk import", `${kvk.import.gelezen}/${kvk.import.verwacht}`, "0/49");
+    // denominator 16 jul: 49; op 16 jul (stap 3) gecorrigeerd naar 48 — kaal L010
+    // bleek een prozavoorbeeld ("bijv. L010 of L011"), geen armatuurregel.
+    eq("kvk import", `${kvk.import.gelezen}/${kvk.import.verwacht}`, "0/48");
   }
 
   const tno = by("tno");

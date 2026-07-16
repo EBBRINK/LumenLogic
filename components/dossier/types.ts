@@ -144,6 +144,11 @@ export type ReviewItem = {
   // de OcrCard — zodat de reviewer het boek naast de gelezen waarden kan leggen.
   sourcePage?: number | null;
   importRunId?: string | null;
+  // Heeft de run opgeslagen paginabeelden? false = AI-tekstroute (stap 3 fase B):
+  // dan linkt de OcrCard naar het markdown-controlespoor van de importrun in
+  // plaats van naar het (niet-bestaande) paginabeeld. undefined = onbekend
+  // (oudere aanroepers/fixtures) → gedraagt zich als vanouds (beeldlink).
+  hasPageImages?: boolean;
 };
 
 // Zoekresultaat op de rood-kaart (handmatig linken) — uit visible_products.

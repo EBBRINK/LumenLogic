@@ -7,7 +7,7 @@ import { GRONDWAARHEID, grondwaarheidByKey } from "./grondwaarheid";
 
 const VERWACHTE_N: Record<string, number> = {
   raadhuis: 31,
-  kvk: 49,
+  kvk: 48, // was 49; kaal L010 bleek een prozavoorbeeld, geen armatuurregel
   tno: 20,
   dordrecht: 18,
 };
@@ -52,6 +52,23 @@ test("verwachtMerkPerCode-codes zijn een deelverzameling van de codes", () => {
   }
 });
 
+// bekendeExtraCodes (stap 3 fase B): codes die de bron wél bevat maar die buiten
+// de grondwaarheid-scope vallen — per definitie disjunct van de codes-lijst
+// (anders was het geen "extra") en uniek.
+test("bekendeExtraCodes zijn uniek, niet leeg en disjunct van de codes", () => {
+  for (const c of GRONDWAARHEID) {
+    const extra = c.bekendeExtraCodes ?? [];
+    expect(new Set(extra).size, `${c.key}: dubbele extra codes`).toBe(extra.length);
+    for (const code of extra) {
+      expect(code.trim().length, `${c.key}: lege extra code`).toBeGreaterThan(0);
+      expect(c.codes, `${c.key}: ${code} staat óók in codes`).not.toContain(code);
+    }
+  }
+  // De geverifieerde lijsten (16 jul): raadhuis NV-sectie + sensoren, kvk de rail.
+  expect(grondwaarheidByKey("raadhuis")!.bekendeExtraCodes).toHaveLength(11);
+  expect(grondwaarheidByKey("kvk")!.bekendeExtraCodes).toEqual(["T001"]);
+});
+
 test("dordrecht: aantallen dekken exact de 18 codes", () => {
   const d = grondwaarheidByKey("dordrecht")!;
   expect(d.aantallen).toBeDefined();
@@ -73,5 +90,28 @@ test("raadhuis: verwachte merken volgen de geverifieerde fabricaatkolom", () => 
   // de vier geoffreerde codes (de keuze-mapping) zijn allemaal XAL
   for (const code of Object.keys(r.keuze)) {
     expect(r.verwachtMerkPerCode[code]).toBe("XAL");
+  }
+});
+
+// TNO gevuld op 16 jul (stap 3 fase B): dertien codes met een letterlijk in de
+// tekstlaag geverifieerde merkkolom; de n.t.b.-familie (Lr001*), de "te bepalen"-
+// regels (Ls002/Ls003) en het "-"-merk (Lp101) hebben bewust GEEN entry.
+test("tno: verwachte merken volgen de geverifieerde merkkolom", () => {
+  const t = grondwaarheidByKey("tno")!;
+  const perMerk = Object.entries(t.verwachtMerkPerCode).reduce<
+    Record<string, number>
+  >((acc, [, merk]) => ({ ...acc, [merk]: (acc[merk] ?? 0) + 1 }), {});
+  expect(perMerk).toEqual({
+    XAL: 4,
+    Philips: 1,
+    Intralight: 2,
+    MOOOI: 1,
+    Muuto: 1,
+    "Led linear": 1,
+    Oblure: 2,
+    Pantone: 1,
+  });
+  for (const code of ["Lr001", "Lr001B", "Lr001C", "Lr001_N", "Ls002", "Ls003", "Lp101"]) {
+    expect(t.verwachtMerkPerCode[code], `${code} hoort geen entry te hebben`).toBeUndefined();
   }
 });
