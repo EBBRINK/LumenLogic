@@ -276,10 +276,43 @@ terugkeren als bouwklus.
 **Klaar wanneer** (vault): één echt merk is van begin tot eind door de route gegaan.
 **Harde voorwaarde:** migratie 0007 gecommit en op Neon — ✅ gehaald (0.2).
 
-**1.1 — Format-validatiemodule (herbruikbare motor)** (~5 u)
-- *Given* een geüpload .xlsx, *when* het niet ons template-format is (kolomkoppen/sheet ontbreken), *then* een duidelijke afwijzing "dit is niet ons format" met wat er mist — er wordt níéts opgeslagen.
-- *Given* een correct format met inhoudelijke twijfels (lege must-velden, onbekende artikelcodes, dubbele rijen), *then* per rij dubbelcheck-waarschuwingen.
-- Module is een losse lib-functie + tests, zodat week 4-uitloop B hem ongewijzigd hergebruikt.
+**1.1 — Format-validatiemodule (herbruikbare motor)** (~5 u) — ✅ **AFGEROND 16 jul**
+Briefing: `docs/sprint1-1-briefing.md`; probleemstelling: `docs/sprint1-1-probleem.md`;
+stand in `HANDOVER.md`. Commits `a068912` · `af16bef` · `505e798` · `bafe059` op `origin/main`.
+- ✅ *Given* een geüpload .xlsx, *when* het niet ons template-format is (kolomkoppen/sheet ontbreken), *then* een duidelijke afwijzing "dit is niet ons format" met wat er mist — er wordt níéts opgeslagen.
+- ✅ *Given* een correct format met inhoudelijke twijfels (lege must-velden, onbekende artikelcodes, dubbele rijen), *then* per rij dubbelcheck-waarschuwingen.
+- ✅ Module is een losse lib-functie + tests, zodat week 4-uitloop B hem ongewijzigd hergebruikt.
+  **Sterker dan gevraagd**: `lib/excel-validate.ts` levert *codes + parameters, geen proza*;
+  `lib/excel-validate-messages.ts` draagt de taal. De validator heeft daarmee geen publiek en
+  4.B krijgt geen tweede smaak.
+
+**Onafhankelijk geverifieerd door de sprintmaster** (niet op het rapport geloofd):
+`bunx tsc --noEmit` exit 0 · de 56 nieuwe tests geïsoleerd nagedraaid, **56/56 groen** ·
+`bafe059` staat aantoonbaar op `origin/main` · `grep` op `excel-validate` buiten de module
+zelf geeft **nul treffers** — er is geen aanroeper, dus de deploy kán bestaand gedrag niet
+veranderd hebben · de HANDOVER-diff verwijdert **0 regels** (andermans secties ongemoeid).
+
+**Twee kanttekeningen bij het rapport** (geen blokkade):
+- "de 4 commits raken **nul** bestaande bestanden" is net te sterk: `HANDOVER.md` is een
+  bestaand bestand en staat als `M` in de diff. Alleen aangevuld, geen regel weg — de
+  strekking (geen gedragswijziging) klopt, de formulering niet.
+- De 605 van de volledige suite is gemeten met het **ongecommitte werk van de
+  leesroute-sessie in dezelfde working tree** (`lib/pdf/armaturenboek.ts`, `lib/repo/ocr.ts`,
+  `db/test-db.ts` e.a.). Niet vals, wel geen schone meting. Daarom zijn de 56 apart gedraaid.
+  ⚠️ **Twee sessies delen één working directory**: één `git add -A` sleept andermans WIP mee.
+  1.1 ontliep dat door expliciete paden te gebruiken; dat is geluk noch garantie.
+
+**Wat de bouwsessie beter deed dan de briefing** — mutatietest: de suite ging in één keer
+groen, wat de sessie verdacht vond. Ze brak de module op drie load-bearing punten en vond dat
+de datarij-regel **vacuüm** getest was (`eachRow({includeEmpty:false})` sloeg de 200 lege
+invulrijen zelf al over). Twee tests toegevoegd die de regel wél raken. Ook signaleerde ze de
+taalfout in de briefing i.p.v. hem blind te volgen (besluit W1).
+
+**Open punten uit 1.1 → mee naar 1.2:** uploadgrootte begrenzen (geen format-oordeel, hoort
+op het uploadpad) · leidende nullen gaan vóór ons verloren in Excel (instructie-kwestie) ·
+een veld naar `must` promoveren is een breaking change voor merkbestanden onderweg (een
+wijzigingsdetector-test pint de huidige vier vast) · **nog niet tegen een écht merk-Excel
+getest** — één handmatige Google-Sheets-export-check hoort in 1.2.
 
 **1.2 — Retour-pad: upload → voorstel → goedkeuren** (~9 u)
 - *Given* een merkrelatie-pagina, *when* Brink een ingevulde template uploadt die de validatie passeert, *then* toont een voorstel-scherm per veld: **nieuw gevuld / gewijzigd (oud→nieuw) / conflict** — niets staat dan al in de database.
