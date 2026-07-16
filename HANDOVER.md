@@ -42,6 +42,72 @@ De vier bronbranches (`runs-4-6-vijfstatussen`, `english-xis`, `english-xis-ship
 `datamodel-productspecs`) + de integratiebranch zijn lokaal en op GitHub verwijderd; hun
 inhoud zit in `main`. Let op: `datamodel-productspecs` was ge-cherry-pickt, dus de oude SHA
 `6dc4cef` is géén voorouder van `main` — de inhoud is dat wel (geverifieerd)._
+_2026-07-16 (sprint 0.1 — **AI-vangnet draait live**): het vangnet heeft voor het eerst in
+productie gedraaid. Beslissend bewijs: event `ai_vangnet_run` met `checked: 7, suggested: 0,
+phase: tender` op dossier **`49c6340e-83d8-45c7-84d9-64fe1f48cb88`** ("ZZ-TEST 0.1 vangnet
+16-07"), deploy-SHA **`966191f`** (`dpl_DXy9T3HdreW57HJt4DRCdSAm5RV2`), meetmoment 16 jul
+08:56–08:58 UTC. Volledige import van `docs/examples/test-armaturenboek.pdf` → 1 tekstpagina
+(géén OCR), 20 spec-regels. **Gemeten kosten: €0,0619** over 21 API-calls (`llm_usage`,
+`purpose='vangnet'`); maandtotaal daarmee €0,1641. **Budgetcap staat permanent op €10/maand**
+(`app_settings.llm_budget_eur = 10`).
+· **`after()` werkt in productie — het maxDuration-risico is weerlegd**: de import was klaar op
+08:56:59.708 (`pdf_import`), het vangnet draaide daarna nog **54 s** door (14 `search`-events
+met actor `ai:vangnet` van 08:57:01.661 tot 08:57:52.481) en sloot af met `ai_vangnet_run` om
+08:57:53.808 — 7 ms na de laatste `llm_usage`-rij. Geen `FUNCTION_INVOCATION_TIMEOUT`, geen
+afgekapte run. Er is dus géén `maxDuration`-export of `vercel.json` nodig gebleken.
+· **Acceptatiecriterium 2 (budgetstop) afgevinkt** met een gratis probe (€0): cap tijdelijk op
+€0,01 → `editSpecLineAction` → `ai_vangnet_skipped_budget` (`budgetEur 0.01, spendEur 0.1022`).
+Dat dit event verscheen i.p.v. `ai_vangnet_skipped_no_key` bewijst dat `ANTHROPIC_API_KEY`
+zichtbaar is voor de runtime (de no-key-check zit vóór de budgetcheck).
+· **Correctie op een eerdere aanname (was F8 in `docs/sprint0-1-ai-vangnet-live.md`)**: de 31
+OCR-rijen van 15 jul (€0,1022) komen uit een **lokale `bun dev`-run, niet uit productie** —
+`lib/ai/ocr.ts` is aangemaakt om 13:44:15, ná die rijen. `llm_usage` heeft geen omgevingskolom,
+dus de DB kan dev niet van prod onderscheiden (dev = prod, één Neon-DB, besluit B1). Trap daar
+niet in.
+· **`checked: 7` is correct en verklaarbaar**: `selectLines` pakt rood/open + geel-in-review;
+4 rood + 3 geel = 7. De 2 blauwe regels bleven terecht buiten beeld omdat het project in
+**tender**-fase staat (ijzeren regel 4). Het vangnet raakte **geen enkele status** aan — na de
+matcher (08:56:59.686) staat er geen `matched_status` meer; een suggestie is geen beslissing.
+· **Nog niet bewezen**: `suggested: 0`, dus het schrijven van een `ai_suggestions`-rij en het
+tonen ervan op `/projects/[id]/review` is in productie nog **niet** end-to-end waargenomen.
+Nul suggesties is legitiem (het model mag `{"suggesties":[]}` teruggeven) en gold vooraf als
+geslaagd, maar dat pad blijft ongetest live.
+· Drie fixes meegegaan: `step="0.01"` op het budgetveld (`4c3a849`; met `step="1"` weigerde de
+browser €0,01 en was de budgettest onmogelijk) · budget `0` is nu een **echt plafond** i.p.v.
+"geen cap" (`7071038`, `overBudget` in `vangnet.ts` + `checkOcrBudget` in `ocr.ts`; alleen
+`budget == null` betekent nog "geen cap") · redirect `/dossiers` wees permanent (301) naar de
+niet-bestaande route `/projecten` → `/projects` (`966191f`).
+· Let op bij vervolgmetingen: de actor van `ai_vangnet_run` is het **ingelogde e-mailadres**,
+niet `ai:vangnet` — filter op `action LIKE 'ai_%'`, alleen `search` hardcodeert de actor._
+
+## Open punten uit sprint 0.1 — vastgelegd, bewust niet gefixt
+
+Gevonden tijdens 0.1, buiten scope gehouden om de sprint klein te houden. Geen van deze
+punten blokkeert het vangnet.
+
+- **De OCR-budgetmelding liegt.** Bij een maandcap-stop toont de UI hardcoded "het €1-boek-
+  budget is op" (`app/projects/actions.ts:310-311` plet beide redenen tot één string +
+  `components/dossier/pdf-upload-card.tsx:158-160`). Het event in de DB heeft de waarheid.
+- **Een OCR-run die op budget stopt is terminaal**: `ocrStatus` gaat naar `gestopt` en
+  hervatten kan alleen bij `bezig` — ook nadat de cap weer omhoog gaat.
+- **De instellingen-UI spreekt de budget-fix tegen.** Na `7071038` is budget `0` een hard,
+  actief afgedwongen plafond, maar `components/settings/llm-budget-block.tsx:24` gebruikt
+  `hasBudget = budgetEur != null && budgetEur > 0` en toont bij `0` dus "No monthly cap set" —
+  precies het tegenovergestelde van wat er gebeurt. Losse UI-fix waard.
+- **Geen test dekt het nieuwe `budget = 0`-gedrag.** `vangnet.test.ts` gebruikt alleen cap `1`,
+  `ocr.test.ts` `0.5`, `settings.test.tsx` rendert `budgetEur` `20`/`50`/`null` — nooit `0`.
+  De fix is met code-inspectie geverifieerd, maar staat regressie-onbeschermd.
+- **Stale comments in `lib/ai/vangnet.ts`** (rond de tijdgrenzen) beweren nog dat de run
+  "awaited in de import-respons" wordt. Sinds de `after()`-refactor klopt dat niet — en 0.1
+  heeft nu live gemeten dat de run inderdaad ná de response draait (54 s).
+- **`VANGNET_MAX_MS` (120 s) is dood beleid** onder `after()`: het is een zachte grens *tussen*
+  regels, en de live run haalde 52 s voor 7 regels — één regel kan theoretisch tot ~360 s duren.
+- **`getLlmSpend` gebruikt de lokale tijdzone** voor `startOfMonth` (op Vercel UTC) — latente
+  bug in de eerste uren van een maand.
+- **De maandcap is gedeeld** tussen OCR en vangnet; OCR kan het vangnet wegdrukken.
+  `getLlmSpendForPurpose` bestaat al voor een uitsplitsing.
+- **Testproject `49c6340e` ("ZZ-TEST 0.1 vangnet 16-07") staat nog in productie** — bewust
+  bewaard als bewijsspoor. Opruimen kan met `scripts/cleanup-testdata.ts`.
 
 ## Status: runs 4–6 staan — vijfstatussen in de volledige keten
 
@@ -184,8 +250,10 @@ en UI staan klaar; alleen de externe koppeling/sleutel ontbreekt.
   CRI lager dan gevraagd = rood (minimum-eis), afwijkend dim-protocol = geel. Herijken met Eduard.
 - Variant-kleuren in het review-station zijn een vaste lijst (wit/zwart/grijs/aluminium) omdat
   er geen kleur-enum in het schema staat — makkelijk te vervangen.
-- LLM-verrijking (H-04) is nog niet aangesloten (geen key); de parser-route draait deterministisch.
-  De budgetteller (`llm_usage`) en cap staan klaar in /instellingen.
+- LLM-verrijking (H-04) is nog niet aangesloten; de parser-route draait deterministisch.
+  ~~Geen key~~ — achterhaald sinds 16 jul: `ANTHROPIC_API_KEY` staat in Vercel (Production) en
+  is bewezen zichtbaar voor de runtime; het AI-vangnet draait live. Budgetteller (`llm_usage`)
+  en cap staan op `/settings` (**niet** `/instellingen` — i18n-slag), cap = €10/maand.
 - Vorm (`req_shape`) en beam angle worden pas echt bruikbaar zodra run 5-verrijking die velden
   op producten vult; de matcher behandelt ze nu meestal als "geen data" (grijze vlag).
 
