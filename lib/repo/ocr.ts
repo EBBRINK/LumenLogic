@@ -560,6 +560,9 @@ export async function processOcrPage(
 // Eén gelezen regel → SpecLineInput, met de bestaande deterministische helpers:
 // gaf vision geen merk, dan knipt splitBrandType het uit de typetekst (zelfde
 // helper als de tekstlaag-import); specs komen uit parseProductName (nooit geraden).
+// Sinds stap 1 (O1-fix) kan splitBrandType óók null opleveren (geen bekend merk →
+// eerlijk onbekend, geen eerste-woord-gok meer); de verplichte OCR-review (B7)
+// vangt dat — een mens ziet de regel sowieso vóór hij meetelt.
 // quantity blijft leeg: een armaturenboek-pagina noemt geen aantallen en OCR
 // verzint niets — het bestek koppelt de aantallen later (A-07).
 // codeValid=false-regels gaan WÉL mee, maar met sourceConfidence 'laag': het stond

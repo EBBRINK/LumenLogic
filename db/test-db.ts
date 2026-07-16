@@ -36,6 +36,20 @@ export async function createTestDb(): Promise<TestDb> {
   return drizzle(client, { schema });
 }
 
+// Seed alléén een merkrij — geen prijslijst, geen product. Nodig om "merkrij bestaat,
+// maar zonder producten" te testen (stap 1: zo'n merk is voor de rij-gebaseerde
+// brandExists 'bekend' → rood; de product-gebaseerde toets van stap 4/O5 maakt het
+// weer blauw).
+export async function seedBrand(db: TestDb, name: string) {
+  const brandId = crypto.randomUUID();
+  await db.insert(schema.brands).values({
+    id: brandId,
+    name,
+    slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "merk",
+  });
+  return { brandId };
+}
+
 // Seed één merk + prijslijst + product + prijs. Elke aanroep krijgt een eigen merk
 // (eigen prijslijst-geldigheid) zodat verlopen vs. geldige prijslijsten los te sturen zijn.
 export async function seedBrandProduct(

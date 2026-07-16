@@ -66,8 +66,10 @@ test("tno: suffix-varianten worden opgeslokt in het record van hun voorganger", 
   for (const code of ["Lr001B", "Lr001C", "Lr001_N", "Lp601a", "Lp601b"]) {
     expect(lines[0].productText).toContain(code);
   }
-  // GEEN merk-assert op deze fixture: het eerste woord na de code is een ruimtenaam
-  // ("Vergaderruimte" — het O1-patroon) en dat fallback-gedrag verandert in stap 1.
+  // Stap 1 (O1-fix): het fixture-merk "Fenolux" staat niet in de BRANDS-testarray,
+  // dus splitBrandType claimt niets — brandText is null (eerlijk onbekend), niet
+  // langer de ruimtenaam "Vergaderruimte" (de oude eerste-woord-gok).
+  expect(lines[0].brandText).toBeNull();
 });
 
 // — dordrecht: korte lettercodes, merk+type al ingevuld in de tabel —

@@ -38,8 +38,26 @@ export function pagesToMarkdown(pages: string[]): string {
   return `${md.slice(0, MARKDOWN_CAP)}\n\n${TRUNCATION_NOTE}`;
 }
 
-// Splitst "XAL SASSO 100" → { brand, type } door de langst mogelijke bekende merknaam
-// vooraan te matchen. Zo blijven "Wever & Ducré", "LED Linear", "Landscape Forms Inc" heel.
+// Splitst een recordtekst → { brand, type } door een bekende merknaam ÓVERAL in de
+// tekst te herkennen (O1-fix, stap 1 van docs/goal-import-ai-leesroute.md) — niet
+// alleen als prefix, want echte armaturenboeken zetten vaak een ruimtenaam-kolom vóór
+// het fabricaat ("Raadzaal Inbouw Downlight XAL SASSO PRO 100").
+// Spelregels:
+//   • herkenning op hele-token-concatenaties, genormaliseerd (lowercase, [a-z0-9]) —
+//     de woordgrens komt gratis: "XALIGHT" matcht nooit "XAL";
+//   • merknamen met < 3 genormaliseerde tekens doen niet mee (te veel valse treffers);
+//   • per startpositie wint de LANGSTE match ("Axo Light" boven "Light"), over
+//     startposities heen de EERSTE (kolomvolgorde is ruimte → fabricaat → type, dus
+//     het eerste merkwoord is de fabrikantkolom);
+//   • de woorden vóór de match (zaal-/zonenamen) vallen bewust weg uit type — ze
+//     vervuilen de C-09-fallback (langste-token-eerst) en de matchCount-ranking; het
+//     volledige record blijft in rawMarkdown/ruweTekst bewaard;
+//   • géén bekend merk → { brand: null, type: volledige rest } — eerlijk onbekend,
+//     nooit meer het eerste woord als merkclaim; de volledige rest blijft staan zodat
+//     paars-detectie blijft werken ("USM Haller kast laag" houdt "kast").
+// De return is de CANONIEKE catalogusnaam, waardoor het tekstpad per constructie
+// brandExists passeert en geen blauw meer produceert — blauw komt terug via de
+// AI-leesroute (stap 3) en de product-gebaseerde brandExists (stap 4).
 // Geëxporteerd (bouwstap 4): de OCR-repo-laag (lib/repo/ocr.ts) knipt met exact dezelfde
 // helper wanneer vision geen merk las — parser en OCR lopen zo nooit uiteen.
 export function splitBrandType(
@@ -47,30 +65,37 @@ export function splitBrandType(
   brandNames: string[],
 ): { brand: string | null; type: string } {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const restNorm = norm(rest);
-  let best: string | null = null;
+  // sleutelset per aanroep: genormaliseerde merknaam → canonieke catalogusnaam
+  const keys = new Map<string, string>();
+  let maxKeyLen = 0;
   for (const b of brandNames) {
     const bn = norm(b);
-    if (bn.length >= 2 && restNorm.startsWith(bn)) {
-      if (!best || bn.length > norm(best).length) best = b;
-    }
+    if (bn.length < 3) continue;
+    if (!keys.has(bn)) keys.set(bn, b);
+    if (bn.length > maxKeyLen) maxKeyLen = bn.length;
   }
-  if (best) {
-    // knip de merknaam (op woordgrens) van de originele tekst
-    const words = rest.split(/\s+/);
+
+  const words = rest.split(/\s+/).filter((w) => w.length > 0);
+  for (let s = 0; s < words.length; s++) {
     let acc = "";
-    let cut = 0;
-    for (let i = 0; i < words.length; i++) {
-      acc += words[i];
-      cut = i + 1;
-      if (norm(acc) === norm(best)) break;
-      if (norm(acc).length >= norm(best).length) break;
+    let match: { brand: string; end: number } | null = null;
+    for (let e = s; e < words.length; e++) {
+      const wn = norm(words[e]);
+      // een token zonder genormaliseerde inhoud ("&") kan een merknaam niet
+      // afsluiten; hij telt gewoon mee in de concatenatie ("Wever & Ducré")
+      if (wn.length === 0) continue;
+      acc += wn;
+      if (acc.length > maxKeyLen) break;
+      const hit = keys.get(acc);
+      if (hit) match = { brand: hit, end: e + 1 }; // langste match per startpositie
     }
-    return { brand: best, type: words.slice(cut).join(" ").trim() };
+    if (match) {
+      // eerste startpositie wint; woorden vóór de match (zaalnamen) vallen weg
+      return { brand: match.brand, type: words.slice(match.end).join(" ") };
+    }
   }
-  // geen bekend merk herkend: eerste woord als merk, rest als type
-  const words = rest.split(/\s+/);
-  return { brand: words[0] ?? null, type: words.slice(1).join(" ").trim() };
+  // geen bekend merk herkend → eerlijk onbekend, de VOLLEDIGE rest als type
+  return { brand: null, type: words.join(" ") };
 }
 
 export function parseTocText(

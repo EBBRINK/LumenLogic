@@ -13,9 +13,93 @@ import {
   pagesToMarkdown,
   parseSpecLinesFromPages,
   parseTocText,
+  splitBrandType,
 } from "./armaturenboek";
 
 const BRANDS = ["XAL", "LED Linear", "iGuzzini", "NORKA", "Wever & Ducré"];
+
+// — splitBrandType (stap 1, O1-fix): bekend merk overal herkennen, nooit meer gokken —
+
+test("splitBrandType: bekend merk midden in de recordtekst wint van de zaalnaam ervoor", () => {
+  expect(
+    splitBrandType("Raadzaal Inbouw Downlight XAL SASSO PRO 100", BRANDS),
+  ).toEqual({ brand: "XAL", type: "SASSO PRO 100" });
+});
+
+test("splitBrandType: meerwoords merk midden in de tekst blijft heel", () => {
+  expect(
+    splitBrandType("Vergaderruimte 2.01 Wever & Ducré SCAVA 1.0", BRANDS),
+  ).toEqual({ brand: "Wever & Ducré", type: "SCAVA 1.0" });
+});
+
+test("splitBrandType: geen bekend merk → brand null en de VOLLEDIGE rest als type", () => {
+  expect(splitBrandType("Woonkamer pendel messing", BRANDS)).toEqual({
+    brand: null,
+    type: "Woonkamer pendel messing",
+  });
+});
+
+test("splitBrandType: langste match wint op één startpositie ('Axo Light' boven 'Light')", () => {
+  expect(splitBrandType("Foyer Axo Light NEST", ["Light", "Axo Light"])).toEqual({
+    brand: "Axo Light",
+    type: "NEST",
+  });
+});
+
+test("splitBrandType: woordgrens — merknaam als deel van een langer woord matcht nooit", () => {
+  // "XALIGHT" is één token en concateneert nooit tot exact "xal"
+  expect(splitBrandType("XALIGHT 3000K", BRANDS)).toEqual({
+    brand: null,
+    type: "XALIGHT 3000K",
+  });
+  // "Focusplek" begint met het merk "Focus" maar is er geen hele token van
+  expect(splitBrandType("Focusplek spot", ["Focus"])).toEqual({
+    brand: null,
+    type: "Focusplek spot",
+  });
+});
+
+test("splitBrandType: eerste startpositie wint (fabrikantkolom vóór merk-in-typetekst)", () => {
+  expect(
+    splitBrandType("XAL adapter voor Artemide rail", ["XAL", "Artemide"]),
+  ).toEqual({ brand: "XAL", type: "adapter voor Artemide rail" });
+});
+
+test("splitBrandType: merknaam met < 3 genormaliseerde tekens wordt nooit geclaimd", () => {
+  // "X!" normaliseert naar "x" (1 teken) → doet niet mee, ook niet als prefix
+  expect(splitBrandType("X! Serie 500", ["X!"])).toEqual({
+    brand: null,
+    type: "X! Serie 500",
+  });
+});
+
+test("splitBrandType: prefix-regressie — merk vooraan blijft gewoon werken", () => {
+  expect(splitBrandType("XAL SASSO 100", BRANDS)).toEqual({
+    brand: "XAL",
+    type: "SASSO 100",
+  });
+});
+
+test("parseTocText: zaalnaam-prefix valt weg bij bekend merk; onbekend merk → null + volledige rest", () => {
+  const text =
+    "Armatuurcode Ruimte Merk Type Blz " +
+    "Lp301 Raadzaal XAL SASSO PRO 100 20 " +
+    "Ls004 Woonkamer pendel messing 22";
+  const lines = parseTocText(text, BRANDS);
+  expect(lines).toHaveLength(2);
+  // bekend merk mid-record: zaalnaam weggeknipt uit productText (blijft in rawMarkdown)
+  expect(lines[0]).toMatchObject({
+    fixtureCode: "Lp301",
+    brandText: "XAL",
+    productText: "SASSO PRO 100",
+  });
+  // geen bekend merk: brandText null, productText = de volledige rest
+  expect(lines[1]).toMatchObject({
+    fixtureCode: "Ls004",
+    brandText: null,
+    productText: "Woonkamer pendel messing",
+  });
+});
 
 test("segmenteert één doorlopende tekststroom op armatuurcodes", () => {
   const text =
@@ -115,12 +199,14 @@ test("productiepad op het test-armaturenboek: 20 regels, vastgelegde eerste/laat
     reqBeamAngle: null,
     reqDimmable: null,
   });
-  // laatste regel: onbekend merk (USM, niet in BRANDS) → eerste woord als merk, geen specs
+  // laatste regel: onbekend merk (USM ∉ BRANDS) → eerlijk onbekend (brand null) en de
+  // VOLLEDIGE rest als productText — de eerste-woord-gok was O1 en is eruit (stap 1);
+  // zo blijft "kast" staan voor de paars-detectie.
   expect(result.lines[19]).toEqual({
     fixtureCode: "Lx902",
     quantity: 1,
-    brandText: "USM",
-    productText: "Haller kast laag",
+    brandText: null,
+    productText: "USM Haller kast laag",
     reqKelvin: null,
     reqCri: null,
     reqIp: null,
