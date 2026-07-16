@@ -105,7 +105,7 @@ export function LlmBudgetBlock({
             name="budget"
             type="number"
             min="0"
-            step="1"
+            step="0.01"
             inputMode="decimal"
             defaultValue={budgetEur ?? ""}
             placeholder="50"
