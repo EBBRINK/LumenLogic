@@ -57,7 +57,7 @@ export const VANGNET_ACTOR = "ai:vangnet";
 // aantal beurten per regel — een regel kost zo hooguit enkele duizenden tokens.
 const MAX_TOKENS_PER_CALL = 700;
 const MAX_TURNS_PER_LINE = 6;
-const MAX_SUGGESTIONS_PER_LINE = 3;
+export const MAX_SUGGESTIONS_PER_LINE = 3;
 const SEARCH_LIMIT = 8;
 // Tijdgrenzen: de run wordt awaited in de import-/edit-respons, dus hangen mag niet.
 // Per API-call CALL_TIMEOUT_MS (shared.ts) met hooguit één retry; per run een harde
@@ -452,31 +452,84 @@ function linePrompt(line: Line): string {
   ].join("\n");
 }
 
-// Laatste JSON-object met "suggesties" uit de slottekst vissen. Defensief: een model
-// dat geen geldige JSON teruggeeft levert gewoon nul suggesties op.
-export function parseSuggestions(
-  text: string,
-): { productId: string; rationale: string }[] {
-  const match = text.match(/\{[^{}]*"suggesties"[\s\S]*\}/);
-  if (!match) return [];
-  try {
-    const obj = JSON.parse(match[0]) as {
-      suggesties?: { productId?: unknown; rationale?: unknown }[];
-    };
-    if (!Array.isArray(obj.suggesties)) return [];
-    return obj.suggesties
-      .filter((s) => typeof s?.productId === "string" && s.productId.length > 0)
-      .slice(0, MAX_SUGGESTIONS_PER_LINE)
-      .map((s) => ({
-        productId: String(s.productId),
-        rationale:
-          typeof s.rationale === "string" && s.rationale.trim().length > 0
-            ? s.rationale.trim()
-            : "(geen onderbouwing gegeven)",
-      }));
-  } catch {
-    return [];
+// Alle top-level gebalanceerde {…}-objecten uit een tekst halen, in leesvolgorde.
+// String-bewust: een accolade BINNEN een JSON-string telt niet mee voor de balans, en
+// een geëscapete quote (\") sluit die string niet af. Balanceert een gevonden `{` niet
+// (tekst houdt op), dan schuiven we één teken op — een losse accolade in proza mag de
+// rest van de tekst niet blokkeren. Balanceert hij wél, dan springen we voorbij het
+// hele object, zodat geneste objecten niet apart terugkomen.
+function balancedJsonObjects(text: string): string[] {
+  const found: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          found.push(text.slice(i, j + 1));
+          i = j; // buitenste lus telt zelf +1 op → verder ná dit object
+          break;
+        }
+      }
+    }
   }
+  return found;
+}
+
+export type ParseOutcome = {
+  suggesties: { productId: string; rationale: string }[];
+  parseFailed: boolean;
+};
+
+// Het JSON-object met "suggesties" uit de slottekst vissen. De prompt vraagt om precies
+// één JSON-object als LAATSTE regel, dus we proberen de kandidaten van achter naar voren:
+// het laatste bruikbare object wint. Werkt daarmee ook voor de vormen die het model in de
+// praktijk gebruikt: JSON in een ```json-fence, JSON gevolgd door proza (ook proza mét een
+// accolade erin), en accolades of geëscapete quotes binnen een rationale.
+//
+// parseFailed onderscheidt "het model gaf niets" van "wij konden het niet lezen": alleen
+// als de tekst wél "suggesties" noemt maar geen enkel object een leesbare suggesties-array
+// oplevert, is dat een parse-mislukking. Een nette lege array of proza zonder JSON is een
+// geldig antwoord, geen fout.
+export function parseSuggestions(text: string): ParseOutcome {
+  const kandidaten = balancedJsonObjects(text).filter((c) =>
+    c.includes('"suggesties"'),
+  );
+  for (let i = kandidaten.length - 1; i >= 0; i--) {
+    let obj: { suggesties?: { productId?: unknown; rationale?: unknown }[] };
+    try {
+      obj = JSON.parse(kandidaten[i]);
+    } catch {
+      continue; // kapotte kandidaat → probeer de vorige
+    }
+    if (!Array.isArray(obj.suggesties)) continue;
+    return {
+      suggesties: obj.suggesties
+        .filter((s) => typeof s?.productId === "string" && s.productId.length > 0)
+        .slice(0, MAX_SUGGESTIONS_PER_LINE)
+        .map((s) => ({
+          productId: String(s.productId),
+          rationale:
+            typeof s.rationale === "string" && s.rationale.trim().length > 0
+              ? s.rationale.trim()
+              : "(geen onderbouwing gegeven)",
+        })),
+      parseFailed: false,
+    };
+  }
+  return { suggesties: [], parseFailed: text.includes('"suggesties"') };
 }
 
 // ── Budget & selectie ────────────────────────────────────────────────────────
@@ -544,6 +597,9 @@ export type VangnetRunResult = {
   checked: string[]; // spec_line-ids die daadwerkelijk langs de AI gingen
   suggested: number;
   discarded: number;
+  // regels waarvan de slottekst "suggesties" noemde maar onleesbaar was — nul is de
+  // gezonde stand; niet-nul betekent dat we een antwoord van het model misliepen.
+  parseFailed: number;
 };
 
 export async function runVangnet(
@@ -552,7 +608,12 @@ export async function runVangnet(
   // `now` is injecteerbaar zodat de tijdsgrens-logica testbaar is met een nep-klok.
   opts: { client?: VangnetClient; actor?: string; now?: () => number } = {},
 ): Promise<VangnetRunResult> {
-  const result: VangnetRunResult = { checked: [], suggested: 0, discarded: 0 };
+  const result: VangnetRunResult = {
+    checked: [],
+    suggested: 0,
+    discarded: 0,
+    parseFailed: 0,
+  };
   const now = opts.now ?? Date.now;
   const startMs = now();
 
@@ -634,6 +695,7 @@ export async function runVangnet(
       result.checked.push(line.id);
       result.suggested += lineOutcome.suggested;
       result.discarded += lineOutcome.discarded;
+      if (lineOutcome.parseFailed) result.parseFailed++;
     } catch (err) {
       // Eén kapotte regel mag de rest niet blokkeren; de fout is een event (regel 5).
       await logEvent(db, {
@@ -656,6 +718,7 @@ export async function runVangnet(
       checked: result.checked.length,
       suggested: result.suggested,
       discarded: result.discarded,
+      parseFailed: result.parseFailed,
     },
   });
   return result;
@@ -669,7 +732,7 @@ async function runLine(
   line: Line,
   phase: Phase,
   actor?: string,
-): Promise<{ suggested: number; discarded: number }> {
+): Promise<{ suggested: number; discarded: number; parseFailed: boolean }> {
   const seenIds = new Set<string>();
   const messages: VangnetMessageParam[] = [
     { role: "user", content: linePrompt(line) },
@@ -744,7 +807,24 @@ async function runLine(
   // hier bewust NOOIT aangeraakt — een suggestie is geen beslissing.
   let suggested = 0;
   let discarded = 0;
-  for (const s of parseSuggestions(finalText)) {
+  const parsed = parseSuggestions(finalText);
+  // Een parse-mislukking laat nu een spoor na (regel 5) in plaats van stil `[]` te zijn:
+  // suggested 0 / discarded 0 zou anders niet te onderscheiden zijn van "model gaf niets".
+  // GEEN modeltekst in de payload — besluit Timo: geen permanente opslag van modelantwoorden.
+  if (parsed.parseFailed) {
+    await logEvent(db, {
+      entity: "spec_line",
+      entityId: line.id,
+      action: "ai_suggestion_parse_failed",
+      actor: actor ?? VANGNET_ACTOR,
+      payload: {
+        reden:
+          'slottekst noemde "suggesties" maar leverde geen leesbare suggesties-array',
+        tekstLengte: finalText.length,
+      },
+    });
+  }
+  for (const s of parsed.suggesties) {
     if (!seenIds.has(s.productId)) {
       discarded++;
       await logEvent(db, {
@@ -786,7 +866,7 @@ async function runLine(
       },
     });
   }
-  return { suggested, discarded };
+  return { suggested, discarded, parseFailed: parsed.parseFailed };
 }
 
 // Niet-blokkerende trigger voor import/hermatch (413/latency-fix deel 2): binnen een

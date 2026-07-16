@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import {
+  MAX_SUGGESTIONS_PER_LINE,
   parseSuggestions,
   runVangnet,
   VANGNET_MAX_MS,
@@ -497,22 +498,155 @@ test("verwerpen: dismissed_at/by + event; regel blijft onaangeroerd", async () =
 });
 
 // ── Parser (defensief) ───────────────────────────────────────────────────────
-test("parseSuggestions: JSON uit slottekst, hooguit 3, kapotte JSON → leeg", () => {
+// De parser balanceert accolades en is string-bewust. parseFailed onderscheidt "het
+// model gaf niets" (geldig antwoord) van "wij konden het niet lezen" (onze bug).
+test("parseSuggestions: JSON uit slottekst, cap en rationale-fallback", () => {
   expect(
     parseSuggestions('Toelichting.\n{"suggesties":[{"productId":"a","rationale":"x"}]}'),
-  ).toEqual([{ productId: "a", rationale: "x" }]);
-  expect(parseSuggestions('{"suggesties":[]}')).toEqual([]);
-  expect(parseSuggestions("geen json")).toEqual([]);
-  expect(parseSuggestions('{"suggesties":[{')).toEqual([]);
-  const four = parseSuggestions(
+  ).toEqual({ suggesties: [{ productId: "a", rationale: "x" }], parseFailed: false });
+
+  // meer dan het maximum → afgekapt op MAX_SUGGESTIONS_PER_LINE
+  const teveel = parseSuggestions(
     JSON.stringify({
-      suggesties: [
-        { productId: "a", rationale: "1" },
-        { productId: "b", rationale: "2" },
-        { productId: "c", rationale: "3" },
-        { productId: "d", rationale: "4" },
-      ],
+      suggesties: Array.from({ length: MAX_SUGGESTIONS_PER_LINE + 1 }, (_, i) => ({
+        productId: `p${i}`,
+        rationale: `${i}`,
+      })),
     }),
   );
-  expect(four.length).toBe(3);
+  expect(teveel.suggesties.length).toBe(MAX_SUGGESTIONS_PER_LINE);
+  expect(teveel.parseFailed).toBe(false);
+
+  // ontbrekende/lege rationale → nette fallback i.p.v. undefined
+  expect(
+    parseSuggestions('{"suggesties":[{"productId":"a"},{"productId":"b","rationale":"  "}]}')
+      .suggesties,
+  ).toEqual([
+    { productId: "a", rationale: "(geen onderbouwing gegeven)" },
+    { productId: "b", rationale: "(geen onderbouwing gegeven)" },
+  ]);
+});
+
+// DE bug van 0.1b: de oude regex rekte gulzig tot de LAATSTE `}` in de slottekst en
+// gooide dan stil — een prima antwoord verdween zo geruisloos.
+test("parseSuggestions: JSON gevolgd door proza mét accolade blijft leesbaar", () => {
+  expect(
+    parseSuggestions(
+      '{"suggesties":[{"productId":"a","rationale":"past"}]}\n' +
+        "Let op: de notatie {merk, type} in het boek wijkt af.",
+    ),
+  ).toEqual({ suggesties: [{ productId: "a", rationale: "past" }], parseFailed: false });
+});
+
+test("parseSuggestions: accolades en escaped quotes binnen een rationale", () => {
+  expect(
+    parseSuggestions(
+      '{"suggesties":[{"productId":"a","rationale":"boek noteert {3000K} als \\"warm\\""}]}',
+    ),
+  ).toEqual({
+    suggesties: [{ productId: "a", rationale: 'boek noteert {3000K} als "warm"' }],
+    parseFailed: false,
+  });
+});
+
+// De vorm die in de 0.1b-meting live is waargenomen (Ld107, Lp601, Lr701).
+test("parseSuggestions: ```json-fence eromheen (live gemeten vorm)", () => {
+  expect(
+    parseSuggestions(
+      'Geen passend product gevonden.\n```json\n{"suggesties":[]}\n```',
+    ),
+  ).toEqual({ suggesties: [], parseFailed: false });
+  expect(
+    parseSuggestions(
+      '```json\n{"suggesties":[{"productId":"a","rationale":"past"}]}\n```',
+    ),
+  ).toEqual({ suggesties: [{ productId: "a", rationale: "past" }], parseFailed: false });
+});
+
+test("parseSuggestions: leeg/geen JSON = geldig antwoord; onleesbaar = parseFailed", () => {
+  // het model gaf netjes niets → geen fout
+  expect(parseSuggestions('{"suggesties":[]}')).toEqual({
+    suggesties: [],
+    parseFailed: false,
+  });
+  expect(parseSuggestions("geen json")).toEqual({ suggesties: [], parseFailed: false });
+  // sleutel aanwezig maar onleesbaar → dát is een parse-mislukking
+  expect(parseSuggestions('{"suggesties":[{')).toEqual({
+    suggesties: [],
+    parseFailed: true,
+  });
+});
+
+test("parseSuggestions: laatste bruikbare object wint", () => {
+  // de prompt bedoelt het laatste JSON-object als slot
+  expect(
+    parseSuggestions(
+      '{"suggesties":[{"productId":"oud","rationale":"eerste poging"}]}\n' +
+        'Nee, toch niet.\n{"suggesties":[{"productId":"nieuw","rationale":"beter"}]}',
+    ),
+  ).toEqual({
+    suggesties: [{ productId: "nieuw", rationale: "beter" }],
+    parseFailed: false,
+  });
+
+  // kapot laatste object → terugvallen op het vorige, dat is geen mislukking
+  expect(
+    parseSuggestions(
+      '{"suggesties":[{"productId":"goed","rationale":"past"}]}\n' +
+        '{"suggesties":[{"productId":,}]}',
+    ),
+  ).toEqual({
+    suggesties: [{ productId: "goed", rationale: "past" }],
+    parseFailed: false,
+  });
+});
+
+// ── Parse-mislukking laat een spoor na in de run ─────────────────────────────
+test("onleesbare slottekst → parseFailed-teller + event, zonder modeltekst", async () => {
+  const db = await createTestDb();
+  const dossier = await seedDossier(db);
+  const line = await addLine(db, dossier.id, { fixtureCode: "Lr1", status: "rood" });
+
+  const kapot: VangnetResponse = {
+    content: [{ type: "text", text: 'Hier komt het:\n{"suggesties":[{' }],
+    stop_reason: "end_turn",
+    usage: USAGE,
+  };
+  const result = await runVangnet(db, dossier.id, {
+    client: mockClient([kapot]).client,
+    actor: ACTOR,
+  });
+
+  expect(result.suggested).toBe(0);
+  expect(result.discarded).toBe(0);
+  expect(result.parseFailed).toBe(1);
+
+  const evts = await eventsByAction(db, "ai_suggestion_parse_failed");
+  expect(evts.length).toBe(1);
+  expect(evts[0].entityId).toBe(line.id);
+  const payload = evts[0].payload as { reden: string; tekstLengte: number };
+  expect(payload.reden).toContain("suggesties");
+  expect(payload.tekstLengte).toBeGreaterThan(0);
+  // geen permanente opslag van modelantwoorden: de tekst zelf zit er niet in
+  expect(JSON.stringify(payload)).not.toContain("Hier komt het");
+
+  // en de run-samenvatting draagt de teller mee
+  const runEvts = await eventsByAction(db, "ai_vangnet_run");
+  expect((runEvts[0].payload as { parseFailed: number }).parseFailed).toBe(1);
+});
+
+test("nette lege slottekst → geen parse-mislukking, geen event", async () => {
+  const db = await createTestDb();
+  const dossier = await seedDossier(db);
+  await addLine(db, dossier.id, { fixtureCode: "Lr1", status: "rood" });
+
+  const result = await runVangnet(db, dossier.id, {
+    client: mockClient([finalJson([])]).client,
+    actor: ACTOR,
+  });
+
+  expect(result.parseFailed).toBe(0);
+  expect((await eventsByAction(db, "ai_suggestion_parse_failed")).length).toBe(0);
+  const runEvts = await eventsByAction(db, "ai_vangnet_run");
+  expect((runEvts[0].payload as { parseFailed: number }).parseFailed).toBe(0);
 });

@@ -79,6 +79,59 @@ browser €0,01 en was de budgettest onmogelijk) · budget `0` is nu een **echt 
 niet-bestaande route `/projecten` → `/projects` (`966191f`).
 · Let op bij vervolgmetingen: de actor van `ai_vangnet_run` is het **ingelogde e-mailadres**,
 niet `ai:vangnet` — filter op `action LIKE 'ai_%'`, alleen `search` hardcodeert de actor._
+_2026-07-16 (sprint 0.1b — **gemeten: de parser at niets op; `suggested: 0` was eerlijk**):
+de meting van stap 2 is uitgevoerd (lokaal, `runVangnet` direct op de prod-DB — zelfde
+codepad als productie op `after()` na, dat was al bewezen in 0.1/G7). **Alle 7 regels** van
+`49c6340e` gaven `stop_reason=end_turn` en een nette slottekst die eindigt op
+`{"suggesties":[]}`; drie ervan (Ld107, Lp601, Lr701) in een ```json-fence. De ongefixte
+regex is empirisch tegen die vormen nagedraaid en parseert ze **allemaal correct** — er is
+dus **géén parse-mislukking** geweest. Briefingtabel rij 2: het model vond echt niets.
+· **WAAROM — en dit is de eigenlijke vondst.** Het model gaf niets omdat het **ijzeren regel
+4 gehoorzaamt**. De tender-tak van `systemPrompt` (`vangnet.ts`) zegt letterlijk: *"zoek
+uitsluitend het GEVRAAGDE product (zelfde merk en type). Suggesties voor andere merken of
+alternatieven zijn hier niet toegestaan."* Het model schreef dat ook terug, bv. Ld202: *"Aangezien
+dit een TENDER-fase betreft en ik uitsluitend het exact gevraagde product mag suggereren …"*.
+Het vond wél nabije kandidaten (Kreon Holon 80 in-Cana 3000K **30,2W** vs. gevraagd 40W · Axo
+Light NEST SEMI-RECESSED 3000K **7W/10W** vs. gevraagd 9W · XAL UNICO **Q4 15,7W** en **WALL 4L
+29,8W** vs. gevraagd Q4 30W) en verwierp ze allemaal als "ander type / afwijkend vermogen".
+· **Structureel gevolg — lees dit vóór je 0.1b's criterium 3 opnieuw probeert te halen.** Een
+regel is rood/open *omdat* de matcher het exacte product niet vond. In tender mag het vangnet
+alléén datzelfde exacte product suggereren. Het vangnet zoekt daar dus precies naar wat al
+bewezen afwezig is: **`suggested: 0` is in tender bijna tautologisch**. Het is geen tautologie —
+de AI kan een naamvariant redden die de token-matcher miste — maar zit het product niet in de
+catalogus, dan is 0 het enige juiste antwoord. **Criterium 3 is daarom afgesloten met
+onderbouwing i.p.v. met een `ai_suggestions`-rij** (zoals de briefing voorzag: "verzin geen
+suggestie"). Een rij afdwingen op dít dossier kan alleen door de fase te forceren — expliciet
+verboden in de briefing.
+· **De parserfix is er tóch** (criterium 2 eist hem onverkort): `parseSuggestions` gebruikt nu
+een string-bewuste, accolade-balancerende matcher die alle kandidaten van achter naar voren
+probeert (laatste bruikbare wint, conform de prompt). De gulzige `[\s\S]*` is weg — die rekte
+tot de láátste `}` in de tekst en gooide stil zodra het model ná zijn JSON proza met een
+accolade schreef. **De bug was latent, niet actief**: in deze run stond de JSON steeds als
+laatste. Het liegende commentaar erboven is vervangen door een kloppend commentaar.
+· **De stille `catch` laat nu een spoor na.** `ParseOutcome { suggesties, parseFailed }` →
+event `ai_suggestion_parse_failed` per regel (payload alléén `reden` + `tekstLengte`, **nooit**
+de modeltekst — besluit Timo) + een teller `parseFailed` in de `ai_vangnet_run`-payload
+(`events.payload` is jsonb, **geen migratie**). Daarmee is de uitleestabel voortaan een
+DB-query: `suggested: 0, parseFailed: 0` = model vond echt niets · `suggested: 0, parseFailed: >0`
+= wij konden het niet lezen. Dát onderscheid was vóór 0.1b onmogelijk, en het is waarom
+`discarded: 0` nooit bewees wat het leek te bewijzen.
+· **Kosten**: de meting kostte €0,0654 (`llm_usage` purpose `vangnet`: 21 → 42 rijen, €0,0619 →
+€0,1273). Maandtotaal **€0,2295** van de €10-cap. Geen tweede hermatch nodig gebleken.
+· **Criterium 4 (log eruit) is hard geverifieerd**: `grep -rn "console\." lib/ai/` geeft niets —
+exact de G5-nulmeting van vóór de sprint. De tijdelijke meetcode en `scripts/meet-0-1b.ts`
+bestaan niet meer; ze hebben **nooit in productie gedraaid** (de meting was lokaal, dat scheelde
+twee deploys).
+· **Nieuw open punt**: beurten-uitputting blijft stil. Raakt `runLine` `MAX_TURNS_PER_LINE`
+zonder slottekst, dan is `finalText` leeg → `parseFailed: false` → opnieuw een onverklaarde nul.
+G4 bewijst dat dit bij `49c6340e` niet speelde. Zelfde blinde vlek, één laag hoger.
+· **Bewust niet gedaan**: de slotbeurt een *tool call* maken (`submit_suggestions`) i.p.v. JSON
+in vrije tekst — optie (c) uit de briefing. Reden: het vervangt het modelantwoord door een ánder
+antwoord vóórdat je het oude gelezen hebt, en dat vernietigt juist de meting die 0.1b moest doen.
+Nu de meting er ligt, is het een schoon apart item; `parseFailed` is de beslisgrond (blijft die
+0, dan loont het niet). Ook niet gedaan: de prompt aanraken (ander item — prompt én parser in één
+sprint wijzigen maakt een vervolgmeting onuitlegbaar) en de stale comments rond de tijdgrenzen
+(besluit Timo: blijft hygiëne-item 2.5)._
 
 ## Open punten uit sprint 0.1 — vastgelegd, bewust niet gefixt
 
