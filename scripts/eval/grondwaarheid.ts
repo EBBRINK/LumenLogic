@@ -44,18 +44,41 @@ export const GRONDWAARHEID: GrondwaarheidCase[] = [
       "Ls201", "Ls202", "Ls203",
       "Lw001", "Lw002", "Lw003", "Lw101",
     ],
-    // het hele boek is één merk: XAL
-    verwachtMerkPerCode: Object.fromEntries(
-      [
-        "Lf901", "Lf902",
-        "Lp201", "Lp202", "Lp203", "Lp204", "Lp205", "Lp206",
-        "Lp000", "Lp001", "Lp002", "Lp003", "Lp004",
-        "Lr001", "Lr301", "Lr302", "Lr303", "Lr304",
-        "Ls001", "Ls002", "Ls003", "Ls004", "Ls005", "Ls006",
-        "Ls201", "Ls202", "Ls203",
-        "Lw001", "Lw002", "Lw003", "Lw101",
-      ].map((c) => [c, "XAL"]),
-    ),
+    // Fabricaatkolom per code, letterlijk geverifieerd in de tekstlaag (16 jul 2026,
+    // adversariële check stap 1). De OPDRACHT-zin "één merk (XAL)" gold alleen voor
+    // de vier geoffreerde codes; het boek voert zes fabricaten. De eerdere config
+    // ("alles XAL") was een verkeerde aanname — de PDF wint.
+    verwachtMerkPerCode: {
+      Lr301: "XAL", // "Raadzaal Inbouw Downlight XAL SASSO PRO 100" — geoffreerd
+      Lr303: "XAL", // "Kelder Inbouw Downlight XAL SASSO PRO 100" — geoffreerd
+      Lw001: "XAL", // "Toilet Wand Lineair XAL STRETTA WALL 600×80×40" — geoffreerd
+      Lw002: "XAL", // "Toilet kelder Wand Lineair XAL STRETTA WALL 900×80×40" — geoffreerd
+      Lp202: "Bega", // "Vergaderruimte Pendel Rond BEGA 50 823"
+      Lp203: "Bega", // "Kantoor Pendel Rond BEGA 50 823"
+      Lp204: "Bega", // "Circulatie Pendel Rond BEGA 50 820"
+      Lp205: "Bega", // "Belcel Pendel Rond BEGA 50 822"
+      Lr304: "Bega", // "Douches Inbouw Downlight BEGA 24786W"
+      Ls201: "Bega", // "Toilet voorruimte/pantry BG Opbouw Rond BEGA 50 659"
+      Ls202: "Bega", // "Toiletcel Trappenhuis klein Opbouw Rond BEGA 12 141"
+      Ls203: "Bega", // "Douche Opbouw Rond BEGA 24 029"
+      Lr302: "Exenia", // "Raadzaal Inbouw Downlight EXENIA Dark Fix Max trimless"
+      // Fabricaat staat in het boek maar (nog) niet in de brands-tabel — de
+      // deterministische route hoort hier leeg te lezen; stap 3 (AI) moet ze als
+      // vrije tekst leveren en stap 4/H-08 maakt ze blauw:
+      Lp004: "Trilux", // "Zolder Pendel Lineair Trilux Yonos"
+      Ls001: "Trilux", // "Boven legramen Opbouw Lineair Trilux Tugra"
+      Ls002: "Trilux", // "Techniek/Opslag/Circulatie kelder … Trilux ARAGON FIT 1257"
+      Ls003: "Trilux", // "Circulatie kelder … Trilux ARAGON FIT 695"
+      Ls004: "Trilux", // "EHBO/Kleedkamer/Circulatie … Trilux 3331"
+      Ls005: "Trilux", // "Keuken Opbouw Lineair Trilux Olisq"
+      Lr001: "Barthelme", // "Bodepantry/horeca Inbouw Lineair Barthelme LEDLIGHT FLEX 08"
+      Ls006: "Barthelme", // "Sanitaire cel … Barthelme LEDLIGHT FLEX 08"
+      // GEEN entry (fabricaat "-", maatwerk architect): Lf901, Lf902, Lp201, Lp206,
+      // Lp000–Lp003, Lw003 én Lw101. Let op Lw101: het record slokt de NV-noodver-
+      // lichtingssectie op (NVr001… matcht CODE niet — tweede letter hoofdletter);
+      // het "Etap" dat de parser daar leest is het fabricaat van NVr001, niet van
+      // Lw101 — segmentatie-artefact, bevinding voor stap 3.
+    },
     keuze: {
       Lr301: {
         artikelCodes: ["L3600482413537F"],

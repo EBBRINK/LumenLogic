@@ -61,8 +61,17 @@ test("dordrecht: aantallen dekken exact de 18 codes", () => {
   }
 });
 
-test("raadhuis: alle 31 codes verwachten XAL (boek is één merk)", () => {
+// Bijgewerkt 16 jul (stap 1-verificatie): de aanname "boek is één merk (XAL)" is
+// weerlegd tegen de tekstlaag — het boek voert zes fabricaten en 10 maatwerk-records
+// zonder fabricaat. De 4 geoffreerde codes zijn wél allemaal XAL.
+test("raadhuis: verwachte merken volgen de geverifieerde fabricaatkolom", () => {
   const r = grondwaarheidByKey("raadhuis")!;
-  expect(Object.keys(r.verwachtMerkPerCode).sort()).toEqual([...r.codes].sort());
-  expect(new Set(Object.values(r.verwachtMerkPerCode))).toEqual(new Set(["XAL"]));
+  const perMerk = Object.entries(r.verwachtMerkPerCode).reduce<
+    Record<string, number>
+  >((acc, [, merk]) => ({ ...acc, [merk]: (acc[merk] ?? 0) + 1 }), {});
+  expect(perMerk).toEqual({ XAL: 4, Bega: 8, Exenia: 1, Trilux: 6, Barthelme: 2 });
+  // de vier geoffreerde codes (de keuze-mapping) zijn allemaal XAL
+  for (const code of Object.keys(r.keuze)) {
+    expect(r.verwachtMerkPerCode[code]).toBe("XAL");
+  }
 });

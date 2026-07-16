@@ -163,6 +163,27 @@ Dordrecht-artikelcodes staan (nog) helemaal niet in de catalogus. `--ai`-flag be
 de OCR-route is bewust doorgeschoven naar bouwstap 2 (rasterisatie server-side is daar pas
 nodig; de nulmeting heeft hem niet nodig). Fixtures in de vier codestijlen:
 `lib/pdf/codestijl-fixtures.ts` + tests (invariant-asserts die stap 1–6 overleven)._
+_2026-07-16 (AI-leesroute **stap 1 — O1-fix: splitBrandType raadt nooit meer**): bekend
+catalogusmerk wordt nu overal in de recordtekst herkend (hele-token-concatenaties,
+genormaliseerd ≥3 tekens, langste match per startpositie, eerste positie wint — kolomvolgorde
+is ruimte→fabricaat→type); geen bekend merk → `brandText: null` + `productText` = volledige
+rest. Meetscript-delta Raadhuis: merk van 31× zaalnaam-fout naar **14 bestaand / 0 fout /
+17 leeg**, status van {blauw:30, paars:1} naar {open:13, rood:12, geel:5, paars:1}; de vier
+geoffreerde regels staan geel/open **mét kandidaten** (Lw002 rang 3). TNO: 7 merken bestaand,
+0 fout. Acceptatietest: Zumtobel/Trilux nu geseed als merkrij zónder producten (`seedBrand`
+in test-db) → **rood i.p.v. blauw (tot stap 4)** — het alternatief (niets seeden) zou vals
+GROEN geven omdat merkloze regels catalogus-breed fuzzy matchen op "3000K". Blauw-semantiek
+blijft unit-gedekt (engine.test.ts). **Risico's tot stap 3/4:** (1) het tekstlaag-pad voedt
+de inlaadwachtrij (H-08) niet meer — onbekende merken zijn null, nooit blauw; (2) een
+spec-arme regel zonder merk kan vals groen matchen op een generiek token. **Vondsten:**
+grondwaarheid-correctie — het Raadhuis-boek voert zés fabricaten (XAL 4× geoffreerd, Bega 8,
+Exenia 1, Trilux 6, Barthelme 2, 10× maatwerk "-"); "alles XAL" was een verkeerde lezing van
+de OPDRACHT. Trilux/Barthelme staan niet in de brands-tabel (blijven leeg tot stap 3/4).
+Lw101 slokt de noodverlichtingssectie op (NV-codes matchen `CODE` niet — tweede letter is
+hoofdletter) en leest daardoor "Etap" van NVr001 — segmentatie-bevinding voor stap 3. Rang
+in het meetscript is niet-deterministisch binnen naam-identieke varianten (drie STRETTA's
+heten exact gelijk; orderBy heeft geen tiebreaker na naam) — eventuele `asc(articleCode)`-
+tiebreaker is een bewuste engine-wijziging voor later, niet meegesmokkeld._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
