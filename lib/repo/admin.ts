@@ -6,7 +6,7 @@
 //
 // Zelfde patroon als de andere repo's: db geïnjecteerd, disclosure-schrijfacties hergebruikt
 // uit lib/repo/disclosure.ts zodat de gating-contract op één plek leeft.
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import {
   brandUploads,
   brands,
@@ -21,6 +21,7 @@ import {
   type DisclosureTier,
 } from "./disclosure";
 import { logEvent, recentEvents } from "./events";
+import { TEMPLATE_UPLOAD_KIND } from "./template-return";
 
 export type BrandWithTier = {
   id: string;
@@ -98,6 +99,14 @@ export async function setBrandFieldOverride(
 // ── Merk-uploads: één publicatiepad via staging → goedkeuring (H-11) ─────────
 // Alleen wat wacht op een menselijke keuze. Approved/rejected zijn afgehandeld en horen
 // niet meer in de wachtrij.
+//
+// kind='template' hoort hier NIET (sprint 1.2, plan besluit 9): approveUpload hieronder flipt
+// alleen de status en past NIETS toe. Een retour-pad-upload zou hier dus een goedkeurknop
+// krijgen die stil niets doet — precies het gedrag dat 1.2 moet uitroeien — en die de upload
+// bovendien van staging haalt, waarmee het échte voorstel-scherm (de dubbelklik-poort van
+// applyTemplateProposal kijkt naar exact deze status) onbereikbaar wordt. Template-uploads
+// worden beoordeeld op hun eigen voorstel-scherm bij de merkrelatie:
+// /data/brand-relations/[brandId]/upload/[uploadId] — één upload, één goedkeuringspoort.
 export async function listBrandUploadsForReview(db: AppDb) {
   return db
     .select({
@@ -111,7 +120,12 @@ export async function listBrandUploadsForReview(db: AppDb) {
     })
     .from(brandUploads)
     .leftJoin(brands, eq(brands.id, brandUploads.brandId))
-    .where(eq(brandUploads.status, "staging"))
+    .where(
+      and(
+        eq(brandUploads.status, "staging"),
+        ne(brandUploads.kind, TEMPLATE_UPLOAD_KIND),
+      ),
+    )
     .orderBy(asc(brandUploads.createdAt));
 }
 
