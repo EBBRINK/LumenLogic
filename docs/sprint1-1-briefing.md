@@ -69,8 +69,13 @@ gebeurt in 1.2. Week 4-uitloop B (merkportaal-self-serve-upload) moet deze modul
    naam-gebaseerd (kolommen herkennen ongeacht volgorde, onbekende kolommen negeren-met-
    melding). De acceptatiecriteria eisen alleen dat een fout format duidelijk afgewezen
    wordt; kies wat robuust is voor rommelende merken en leg de keuze vast.
-4. **Meldingen in het Nederlands** — de interne UI is Nederlands; Brink is de gebruiker die
-   uploadt. (Het template zelf is Engels; dat blijft zo.)
+4. **Meldingen in het Engels.** ⚠️ *Gecorrigeerd 16 jul — de eerste versie van deze briefing
+   zei "Nederlands" en dat was fout van de sprintmaster.* De interne UI is Engels sinds de
+   i18n-slag (PR #1): de nav zegt "Projects / Catalog / Settings", `STATUS_LABEL` in
+   `components/data/brand-relations-table.tsx` zegt "Not approached", de werklijst zegt
+   "No response (> 14 days)". Engels is dus consistent met het scherm waar de meldingen
+   landen, met het Engelse template, én met de merken die in week 4-uitloop B zelf gaan
+   uploaden.
 5. **Plaats en naam**: naast de builder, bv. `lib/excel-validate.ts` (of vergelijkbaar) —
    zelfde laag als `lib/excel-template.ts`. Definitieve naam is aan het plan.
 6. **Testdekking minimaal**: geldig bestand → 0 fouten · ontbrekend werkblad · ontbrekende/

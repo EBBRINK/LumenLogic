@@ -88,6 +88,19 @@ Een item is pas "done" als **alles** hieronder waar is:
 | C9 | **Einddemo 17 aug**; runbook-blind-volgen ís de slotdemo | Geen aparte afspraak inplannen |
 | C10 | *(16 jul)* **Onboarding = PIN → wachtwoord.** Brink maakt het account aan met een tijdelijke PIN; de gebruiker vult die in en kiest direct een wachtwoord; dat wachtwoord zijn daarna de inloggegevens. **Wachtwoord vergeten = Brink geeft een nieuwe PIN** — zelfde pad, géén apart resetmechanisme | **Vult het gat dat besluit 6 achterliet.** Week 3-item 3.1 kan hierop ontworpen worden. Raakt Better Auth: nu magic-link zonder wachtwoorden → wachtwoord-auth. Open bij het ontwerp: hoe de PIN de gebruiker bereikt (out-of-band: telefonisch/persoonlijk) en of intern ook overgaat of op magic link blijft |
 
+### Uit week 1 (2026-07-16 e.v.)
+
+| # | Besluit | Consequentie |
+|---|---|---|
+| W1 | **Meldingen van de format-validatie zijn Engels**, niet Nederlands. De interne UI is Engels sinds de i18n-slag (PR #1) — nav "Projects/Catalog/Settings", `STATUS_LABEL` "Not approached", werklijst "No response (> 14 days)" | Consistent met het scherm waar de meldingen landen, met het Engelse merk-template en met de merken die in 4.B zelf uploaden. Geldt ook voor 1.2/1.3 |
+
+**Fout van de sprintmaster, vastgelegd:** kaderpunt 4 van `docs/sprint1-1-briefing.md` schreef
+"meldingen in het Nederlands" voor. Dat was fout: de sprintmaster had de Engelse nav en
+`STATUS_LABEL` in dezelfde sessie zélf gelezen en trok de conclusie niet door. De bouwsessie
+signaleerde de tegenspraak in plaats van de briefing blind te volgen — dat is het gedrag dat
+de werkwijze beoogt. Briefing gecorrigeerd. **Les: een briefing die de codebase tegenspreekt
+is een briefingfout, niet een bouwfout; blijf de briefing toetsen aan wat er staat.**
+
 ### Openstaand — géén besluit (bewust)
 
 - **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
