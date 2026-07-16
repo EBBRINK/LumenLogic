@@ -105,6 +105,33 @@ Een item is pas "done" als **alles** hieronder waar is:
 
 ---
 
+## Wat de evaluatieset blootlegde (16 jul 2026) — raakt de scope
+
+Gevonden bij het bouwen van de evaluatieset uit **528 echte XIS-aanvragen** (210 van Jayden).
+Geen van deze punten is een bug; het zijn aannames in het plan die de werkelijkheid niet halen.
+
+- **De aantallen zitten nooit in het armaturenboek.** Bij Raadhuis de Pauw staan ze in de
+  **mailtekst** ("Lr301 24x, Lr303 25x…", plus de eis "alle armaturen dienen Dali-2 compatibel");
+  bij Dordrecht **met de hand in pen** in de kantlijn van een scan (bevestigd: het handgeschreven
+  `124` staat als `124 x` in de offerte). Lumen Logic importeert alleen de PDF en krijgt dus wél
+  de specs maar niet de vraag. **Feature A-07 ("aantal ontbreekt → stukprijs-modus") is daarmee
+  geen randgeval maar de hoofdregel** — en de mail is een bron die nergens in het ontwerp bestaat.
+- **Armatuurcodes hebben geen standaard.** Deerns gebruikt `Lp301`, WTB Buro gebruikt `Ad`, `C1`,
+  `Tn1`. Een parser die één codepatroon aanneemt, mist een hele klasse aanvragen.
+- **De meeste intake is géén armaturenboek.** Van 52 doorgezochte projectaanvragen bevatten er
+  **4** een leesbaar gecodeerd boek. De rest is tekeningen (A1-plattegronden, ceiling power plans,
+  lightplans), bestekken, of verlopen WeTransfer-links. Dat relativeert hoeveel van Brinks échte
+  werk de PDF-import dekt — tekeningen lezen is besluit C2 ("wens voor later").
+- **Brink offreert lang niet alles.** Bij Dordrecht zijn 8 van de 18 codes nooit geoffreerd
+  (andere leverancier). "Staat niet in de offerte" ≠ "systeem miste het" — relevant voor elk
+  scoreblad.
+
+**Vervolg:** vier testcases liggen klaar in `~/Downloads/lumenlogic-testset/`, elk met de
+grondwaarheid uit XIS. Timo werkt ze één voor één af. Gaat dat goed, dan kan de evaluatieset
+intern in productie (besluit Timo 16 jul).
+
+---
+
 ## Vastgestelde technische feiten (niet opnieuw ter discussie stellen)
 
 Live gemeten in sprint 0.1 (16 jul 2026). Hier vastgelegd zodat weerlegde risico's niet
@@ -160,7 +187,7 @@ terugkeren als bouwklus.
 
 **0.3 — Externe aanvragen de deur uit** (~3 u) — ✅ **afgerond 16 jul**; tracking in `docs/sprint0-externe-aanvragen.md`.
 - ~~(a) Resend-account + DNS-records~~ — *vervallen (besluit 6): geen mailverzending deze sprintperiode.*
-- (b) evaluatieset-uitvraag ligt bij de binnendienst — loopt bij Jayden.
+- (b) ~~evaluatieset-uitvraag ligt bij de binnendienst — loopt bij Jayden~~ — **herzien 16 jul: Jayden redt het niet, Timo heeft het overgenomen en zelf gebouwd.** De evaluatieset bestaat en is beter dan de oorspronkelijke uitvraag: geen gevraagde spec-regels, maar **echte klantaanvragen uit XIS met de bijbehorende offerte als grondwaarheid**. Vier bruikbare paren in `~/Downloads/lumenlogic-testset/` (Raadhuis de Pauw · KvK Alkmaar · TNO AvB · Dordrecht), elk met een eigen `OPDRACHT.md`. Zie ook "Wat de evaluatieset blootlegde" hieronder.
 - (c) XIS-attributenlijst ingediend bij Lynx, taak #107781 — Menno's team maakt de API-keys aan.
 - (d) Supabase-rename afgerond; bevestigd dat Supabase niet meer gebruikt wordt (app draait op Neon) — geen impact.
 
