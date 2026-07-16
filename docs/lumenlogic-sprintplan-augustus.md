@@ -349,7 +349,50 @@ een veld naar `must` promoveren is een breaking change voor merkbestanden onderw
 wijzigingsdetector-test pint de huidige vier vast) · **nog niet tegen een écht merk-Excel
 getest** — één handmatige Google-Sheets-export-check hoort in 1.2.
 
-**1.2 — Retour-pad: upload → voorstel → goedkeuren** (~9 u)
+**1.2 — Retour-pad: upload → voorstel → goedkeuren** (~9 u) — 🟡 **GEBOUWD EN LIVE 16 jul;
+één DoD-punt open: de handmatige live-verificatie.**
+Briefing: `docs/sprint1-2-briefing.md` · probleem: `docs/probleem-1-2-retourpad.md` · plan:
+`docs/plan-1-2-retourpad.md`. Commits `f60c766` (motor) · `f26395b` (schermen) · `5999794`
+(verificatie-fix) — **alle drie op `origin/main`, dus gedeployed**.
+
+**Onafhankelijk geverifieerd door de sprintmaster:** 64 tests groen over 4 bestanden
+(`template-diff` 24 · `template-return` 14 · `price-archive` 8 · `template-proposal` 18,
+incl. screenshots licht/donker) · `bunx tsc --noEmit` exit 0 · **nul `db.transaction()`**
+(alleen commentaar dat de neon-http-val uitlegt) · **`replacePriceList` wordt op dit pad
+nergens aangeroepen** — de hazard is aantoonbaar vermeden · **geen migratie** · **geen enkel
+bestand van de leesroute-sessie meegecommit** ondanks een gedeelde working tree.
+
+**Ontwerpkeuzes (uit het rapport, geverifieerd):**
+- **De hazard is opgelost, niet omzeild.** Een template = *gedeeltelijke bijwerking*; een
+  regel-niveau `upsertPriceLines` archiveert alleen daadwerkelijk vervangen regels. De
+  hazard-test bewijst het: upsert van 1 van 3 producten laat de andere 2 zichtbaar.
+- **Het voorstel leeft in `brand_uploads` met `kind: 'template'`** — `kind` is `text`, dus nul
+  migraties en géén nummer-race met de leesroute. `import_runs` viel af op zijn NOT NULL FK
+  naar `project_dossiers`. De diff wordt nooit opgeslagen maar vers herberekend.
+- **"Conflict"** = wissen / onverwerkbaar / bestand spreekt zichzelf tegen; **"changed"** =
+  merk levert een andere waarde. Conflictregel geldt voor beide.
+- **Eigen `SCHRIJF_MAPPING`** i.p.v. `field-catalog.measure` — zie de vondst hieronder.
+- **Gat gedicht dat de briefing niet noemde:** `/admin/imports` liste álle staging-uploads met
+  een goedkeurknop die alleen de status flipt; die zou een template-upload stil niets laten
+  doen én het echte voorstel-scherm permanent dichtzetten. Nu gefilterd.
+
+**Wat de zelfverificatie van de bouwsessie ving** (een echte bug in het werk van haar eigen
+agents): bij een nieuw product draagt het ene productvinkje de hele rij, maar de apply eiste
+tóch een aparte prijssleutel die het scherm nooit meestuurt. Gevolg: product aangemaakt,
+prijs stil weg, product buiten `visible_products` — **ijzeren regel 3, afgevuurd door een
+vinkje dat "creates the product with everything below" belooft.** Beide bestaande prijstests
+draaiden op een bestáánd product en zagen het niet. Dezelfde foute conditie zat óók in de
+vroege prijslijst-poort. Op één plek gerepareerd; de regressietest faalt aantoonbaar zonder
+de fix.
+
+⬜ **Open — kan alleen Timo:** handmatige verificatie in de live app, inclusief de
+**Google-Sheets-export-check** uit 1.1 (de meest waarschijnlijke bron van een
+format-verrassing; er is nog nooit tegen een écht merk-Excel getest).
+
+**Restrisico (uit HANDOVER):** het micro-venster binnen de apply blijft open — gevolg van de
+neon-http-beperking, bewust geaccepteerd, zelfde patroon als de eerdere race-risico's.
+
+*Oorspronkelijke acceptatiecriteria:*
 - *Given* een merkrelatie-pagina, *when* Brink een ingevulde template uploadt die de validatie passeert, *then* toont een voorstel-scherm per veld: **nieuw gevuld / gewijzigd (oud→nieuw) / conflict** — niets staat dan al in de database.
 - *Given* het voorstel-scherm, *when* Brink goedkeurt, *then* worden wijzigingen toegepast, events gelogd, en gaat de relatiestatus naar `data_ontvangen`/`verwerkt`; *when* afgewezen, *then* verandert er niets.
 - Conflictregel (vooraf vastgelegd): bestaand veld wint, tenzij expliciet aangevinkt.
