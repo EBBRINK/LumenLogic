@@ -68,8 +68,8 @@ test("meetbare velden: elke measure.column bestaat als échte drizzle-kolom", ()
   const byKey = new Map(
     FIELD_CATALOG.flatMap((b) => b.fields).map((f) => [f.key, f]),
   );
-  expect(byKey.get("name_nl")?.measure).toEqual({ kind: "column", column: "name" });
-  expect(byKey.get("name_en")?.measure).toEqual({ kind: "none" });
+  expect(byKey.get("name_en")?.measure).toEqual({ kind: "column", column: "name" });
+  expect(byKey.get("description_en")?.measure).toEqual({ kind: "column", column: "description" });
   expect(byKey.get("dimmable")?.measure).toEqual({ kind: "column", column: "dimmable" });
   expect(byKey.get("dim_protocol")?.measure).toEqual({ kind: "none" });
   expect(byKey.get("category")?.measure).toEqual({ kind: "column", column: "category_path" });
@@ -82,7 +82,7 @@ test("meetbare velden: elke measure.column bestaat als échte drizzle-kolom", ()
 test("bucketScore: 0 producten → ratio 0, niets 'filled'", () => {
   const bucket = FIELD_CATALOG.find((b) => b.key === "basis_identiteit")!;
   const score = bucketScore(bucket, {}, 0);
-  expect(score.must).toEqual({ filled: 0, total: 3, ratio: 0 }); // sac, name_nl, category
+  expect(score.must).toEqual({ filled: 0, total: 3, ratio: 0 }); // sac, name_en, category
   expect(score.wanna.ratio).toBe(0);
   expect(score.measurableTotal + score.unmeasurable).toBe(bucket.fields.length);
 });

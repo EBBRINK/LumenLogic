@@ -18,7 +18,7 @@ const viewports = {
 // Zelfde soort stand als de detail-fixture: deels gevulde data + verlopen prijslijst.
 const filled: Record<string, number> = {
   supplier_article_code: 30,
-  name_nl: 30,
+  name_en: 30,
   category: 30,
   list_price_excl_vat: 12,
   kelvin: 3,

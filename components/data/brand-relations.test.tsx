@@ -169,7 +169,7 @@ test("mini-scorecard: n/a bij 0 producten en donkergroen bij 100% must", async (
 
 const filledByField: Record<string, number> = {
   supplier_article_code: 2,
-  name_nl: 2,
+  name_en: 2,
   category: 1,
   list_price_excl_vat: 2,
   kelvin: 2,
