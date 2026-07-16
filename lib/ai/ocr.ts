@@ -189,6 +189,16 @@ export const LEVER_REGELS_TOOL: OcrToolDef = {
               type: "string",
               description: "The full row text exactly as printed on the page",
             },
+            // O6 (stap 6): aantallen bestaan wél — Dordrecht heeft ze met pen in
+            // de kantlijn. Alleen wat er letterlijk staat; ontbreekt het → null
+            // (A-07 stukprijs-modus blijft de fallback, niet meer de aanname).
+            aantal: {
+              type: ["number", "null"],
+              description:
+                "The quantity for this row, only if a number is literally " +
+                "printed or handwritten next to the row (e.g. a count in the " +
+                "margin); otherwise null. Never guess or default to 1.",
+            },
           },
           required: ["armatuurcode", "ruwe_tekst"],
         },
@@ -216,6 +226,10 @@ export const SYSTEM_PROMPT_KERN =
   "- If the page shows even one luminaire row, deliver every single row on the " +
   "page. Never deliver an empty or shortened list because the page is long, " +
   "dense or hard to read.\n" +
+  "- Report a quantity (aantal) only when a number is literally printed or " +
+  "handwritten next to the row — a count in the margin counts, a wattage or " +
+  "dimension does not. No quantity printed for the row → aantal is null; " +
+  "never guess and never default to 1.\n" +
   "- Prices do not exist for you; never read, mention or estimate them.\n" +
   "- You make no decisions and no judgements — you only transcribe.";
 
@@ -241,6 +255,12 @@ export type OcrRegel = {
   // en heeft dit veld niet — dan blijft het weggelaten. parseLeverRegels neemt het
   // alleen mee als het een positieve integer is.
   pagina?: number | null;
+  // O6 (stap 6): het aantal zoals het létterlijk bij de regel staat (gedrukt of
+  // met pen in de kantlijn — Dordrecht). Alleen positieve integers; alles anders
+  // → null/afwezig. Geen aantal gelezen → stukprijs-modus (A-07 als fallback).
+  // Optioneel zodat bestaande OcrRegel-constructies (tests) geldig blijven;
+  // parseLeverRegels zet het veld altijd.
+  aantal?: number | null;
 };
 
 // Defensieve parser over de tool-output: ongeldige of ontbrekende structuur levert
@@ -279,12 +299,21 @@ export function parseLeverRegels(content: OcrContentBlock[]): OcrRegel[] {
       row.pagina > 0
         ? row.pagina
         : null;
+    // Aantal: alleen een positieve integer telt — een 1.5 of 0 is nooit een
+    // geloofwaardig handgeschreven/gedrukt stuksaantal en wordt null.
+    const aantal =
+      typeof row.aantal === "number" &&
+      Number.isInteger(row.aantal) &&
+      row.aantal > 0
+        ? row.aantal
+        : null;
     out.push({
       armatuurcode: code,
       merk,
       type,
       ruweTekst,
       codeValid: CODE.test(code),
+      aantal,
       ...(pagina != null ? { pagina } : {}),
     });
   }

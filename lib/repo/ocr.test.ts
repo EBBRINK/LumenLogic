@@ -1560,3 +1560,176 @@ test("voortgang per tegel: pagesDone = distinct pagina's, tilesDone = alle tegel
   expect(resumedEvents).toHaveLength(1);
   expect(resumedEvents[0].payload).toMatchObject({ tilesDone: 3, pagesDone: 2 });
 });
+
+// ── O6 (stap 6): aantallen — lezen, mergen en backfillen, nooit verzinnen ────
+// De Dordrecht-flow: de armaturenlijst (specs, geen aantallen) en de
+// aantallen-lijst (pen-aantallen, spec-arm) gaan door dezelfde run. Een gelezen
+// aantal mag nooit verloren gaan aan de rijkste-wint-dedup, en een lezing
+// zonder aantal mag een eerder aantal nooit wissen.
+test("O6: aantal uit de tool-output landt als quantity; zonder aantal blijft hij null", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+  const result = await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 800,
+    height: 600,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Lp301",
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: "Lp301 XAL SASSO 100",
+          aantal: 124, // het geverifieerde pen-aantal
+        },
+        {
+          armatuurcode: "Lp302",
+          merk: "XAL",
+          type: "SASSO 200",
+          ruwe_tekst: "Lp302 XAL SASSO 200",
+          // geen aantal geleverd → null, nooit default 1
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(result).toMatchObject({ created: 2 });
+  const lines = await runLines(db, run.id);
+  const byCode = new Map(lines.map((l) => [l.fixtureCode, l]));
+  expect(byCode.get("Lp301")!.quantity).toBe(124);
+  expect(byCode.get("Lp302")!.quantity).toBeNull();
+});
+
+test("O6: rijkere spec-lezing zonder aantal wist het eerder gelezen aantal niet (merge)", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+  // Pagina 1 = de aantallen-lijst: spec-arm maar mét pen-aantal.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 800,
+    height: 600,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Ad",
+          merk: null,
+          type: null,
+          ruwe_tekst: "Ad 124",
+          aantal: 124,
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  // Pagina 2 = de armaturenlijst: rijke specs, géén aantal → upgrade mét merge.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 800,
+    height: 600,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Ad",
+          merk: "Signify",
+          type: "GreenSpace",
+          ruwe_tekst: "Ad Signify GreenSpace 3000 K CRI ≥ 90 IP44",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  expect(p2).toMatchObject({ upgraded: 1 });
+  const lines = await runLines(db, run.id);
+  expect(lines).toHaveLength(1);
+  expect(lines[0].quantity).toBe(124); // gemerged, niet gewist
+  expect(lines[0].reqKelvin).toBe(3000); // de rijkere specs wonnen wél
+});
+
+test("O6: armere lezing mét aantal backfillt alleen het aantal (event, geen hermatch-churn)", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 2,
+    actor: ACTOR,
+  });
+  // Pagina 1 = de armaturenlijst: rijke specs, geen aantal.
+  await processOcrPage(db, {
+    runId: run.id,
+    page: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 800,
+    height: 600,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Ad",
+          merk: "Signify",
+          type: "GreenSpace",
+          ruwe_tekst: "Ad Signify GreenSpace 3000 K CRI ≥ 90 IP44",
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  // Pagina 2 = de aantallen-lijst: spec-arm (verliest de rijkste-wint) mét aantal.
+  const p2 = await processOcrPage(db, {
+    runId: run.id,
+    page: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    width: 800,
+    height: 600,
+    client: mockClient([
+      toolResponse([
+        {
+          armatuurcode: "Ad",
+          merk: null,
+          type: null,
+          ruwe_tekst: "Ad 124",
+          aantal: 124,
+        },
+      ]),
+    ]).client,
+    actor: ACTOR,
+  });
+  // Duplicaat voor de rijkdom-telling, maar het aantal is wél bijgeschreven.
+  expect(p2).toMatchObject({ duplicates: 1, upgraded: 0 });
+  const lines = await runLines(db, run.id);
+  expect(lines).toHaveLength(1);
+  expect(lines[0].quantity).toBe(124);
+  expect(lines[0].reqKelvin).toBe(3000); // de rijke lezing bleef intact
+  const backfills = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "ocr_quantity_backfilled"));
+  expect(backfills).toHaveLength(1);
+  expect(backfills[0].payload).toMatchObject({
+    fixtureCode: "Ad",
+    quantity: 124,
+    page: 2,
+  });
+});

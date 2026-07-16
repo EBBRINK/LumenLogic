@@ -265,6 +265,10 @@ async function upgradeOcrLine(
     .set({
       brandText: line.brandText ?? null,
       productText: line.productText ?? null,
+      // O6: quantity MERGEN, niet overschrijven — een rijkere spec-lezing zonder
+      // aantal (de armaturenlijst) mag het eerder gelezen pen-aantal (de
+      // aantallen-lijst) nooit wissen. Nieuw aantal wint alleen als het er is.
+      quantity: line.quantity ?? existing.quantity,
       reqKelvin: line.reqKelvin ?? null,
       reqCri: line.reqCri ?? null,
       reqIp: line.reqIp ?? null,
@@ -465,6 +469,28 @@ export async function verwerkGelezenRegels(
     const oldRichness = specRichness(existing);
     if (newRichness <= oldRichness) {
       // Gelijke of armere rijkdom: bestaande lezing blijft staan (ties geen churn).
+      // O6-uitzondering: draagt déze lezing een aantal terwijl de winnende regel
+      // er nog geen heeft (Dordrecht: de aantallen-lijst is spec-arm maar heeft
+      // de pen-aantallen), dan alleen het aantal gericht bijschrijven — nooit
+      // gelezen data verliezen omdat de rest van de lezing armer is. Matching
+      // raakt quantity niet, dus geen hermatch; wel een event (regel 5).
+      if (line.quantity != null && existing.quantity == null) {
+        await db
+          .update(specLines)
+          .set({ quantity: line.quantity, updatedAt: new Date() })
+          .where(eq(specLines.id, existing.id));
+        await logEvent(db, {
+          entity: "spec_line",
+          entityId: existing.id,
+          action: "ocr_quantity_backfilled",
+          actor: opts.actor,
+          payload: {
+            fixtureCode: regel.armatuurcode,
+            quantity: line.quantity,
+            page: regel.page,
+          },
+        });
+      }
       duplicates++;
       newRows.push(baseRow);
       continue;
@@ -633,8 +659,11 @@ export async function processOcrPage(
 // Sinds stap 1 (O1-fix) kan splitBrandType óók null opleveren (geen bekend merk →
 // eerlijk onbekend, geen eerste-woord-gok meer); de verplichte OCR-review (B7)
 // vangt dat — een mens ziet de regel sowieso vóór hij meetelt.
-// quantity blijft leeg: een armaturenboek-pagina noemt geen aantallen en OCR
-// verzint niets — het bestek koppelt de aantallen later (A-07).
+// quantity = wat het model létterlijk las (O6, stap 6): Dordrecht bewees dat
+// aantallen wél in het boek kunnen staan — met pen in de kantlijn. De oude
+// aanname "een armaturenboek-pagina noemt geen aantallen" vervalt als default;
+// géén aantal gelezen → null → stukprijs-modus (A-07 blijft de fallback, geen
+// natuurwet). Het model mag nooit raden (promptregel: alleen wat er staat).
 // codeValid=false-regels gaan WÉL mee, maar met sourceConfidence 'laag': het stond
 // er (dus we laten niets stilzwijgend weg), maar een code buiten het bekende
 // formaat is verdacht — de OCR-review en het lage vertrouwen maken dat zichtbaar.
@@ -670,7 +699,7 @@ export function regelToSpecLine(
   const specs = parseInput ? parseProductName(parseInput) : {};
   return {
     fixtureCode: regel.armatuurcode,
-    quantity: null,
+    quantity: regel.aantal ?? null,
     brandText: brand,
     productText: type || null,
     reqKelvin: specs.kelvin ?? null,

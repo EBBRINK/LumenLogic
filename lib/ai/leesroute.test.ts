@@ -109,11 +109,13 @@ async function eventsByAction(db: TestDb, action: string) {
 }
 
 // ── 1. Prompt- en toolcompositie: de ocr.ts-refactor is byte-neutraal ────────
-test("vision-SYSTEM_PROMPT is byte-identiek aan de oorspronkelijke literal", () => {
-  // De volledige oude literal uit ocr.ts vóór de splitsing in intro + kern —
-  // hier vastgelegd als snapshot. Wijzigt de compositie ook maar één byte, dan
-  // faalt deze test en is de refactor NIET gedrag-neutraal.
-  const OUDE_LITERAL =
+test("vision-SYSTEM_PROMPT is byte-identiek aan de vastgelegde literal", () => {
+  // De volledige prompt als snapshot: intro + kern. Wijzigt de compositie ook
+  // maar één byte, dan faalt deze test — elke promptwijziging is daardoor een
+  // bewuste, gemotiveerde testwijziging. Historie: stap 2 perkte de lege-lijst-
+  // regel in; stap 6 (O6) voegde de aantal-regel toe (aantallen alleen als ze
+  // er létterlijk staan — Dordrecht-pen-aantallen; nooit raden of 1 defaulten).
+  const VASTGELEGDE_LITERAL =
     "You read one page image from a luminaire schedule ('armaturenboek'). " +
     "Extract the luminaire rows and deliver them with the lever_regels tool.\n" +
     "Rules:\n" +
@@ -127,9 +129,13 @@ test("vision-SYSTEM_PROMPT is byte-identiek aan de oorspronkelijke literal", () 
     "- If the page shows even one luminaire row, deliver every single row on the " +
     "page. Never deliver an empty or shortened list because the page is long, " +
     "dense or hard to read.\n" +
+    "- Report a quantity (aantal) only when a number is literally printed or " +
+    "handwritten next to the row — a count in the margin counts, a wattage or " +
+    "dimension does not. No quantity printed for the row → aantal is null; " +
+    "never guess and never default to 1.\n" +
     "- Prices do not exist for you; never read, mention or estimate them.\n" +
     "- You make no decisions and no judgements — you only transcribe.";
-  expect(SYSTEM_PROMPT).toBe(OUDE_LITERAL);
+  expect(SYSTEM_PROMPT).toBe(VASTGELEGDE_LITERAL);
 });
 
 test("LEESROUTE_SYSTEM_PROMPT bevat de gedeelde kern én de merkkolom-regel", () => {
@@ -144,8 +150,10 @@ test("LEESROUTE_SYSTEM_PROMPT bevat de gedeelde kern én de merkkolom-regel", ()
 });
 
 test("LEVER_REGELS_TOOL_TEKST eist pagina; het OCR-schema bleef byte-gelijk", () => {
-  // Vastgelegde kopie van het OCR-toolschema (stand bouwstap 3). De structurele
-  // spread in leesroute.ts mag het origineel niet raken.
+  // Vastgelegde kopie van het OCR-toolschema. De structurele spread in
+  // leesroute.ts mag het origineel niet raken. Historie: stap 6 (O6) voegde
+  // het aantal-veld toe aan het koppelcontract — beeld én tekst lezen
+  // aantallen, alleen als ze er letterlijk staan.
   const OUDE_TOOL = {
     name: "lever_regels",
     description:
@@ -178,6 +186,13 @@ test("LEVER_REGELS_TOOL_TEKST eist pagina; het OCR-schema bleef byte-gelijk", ()
                 type: "string",
                 description:
                   "The full row text exactly as printed on the page",
+              },
+              aantal: {
+                type: ["number", "null"],
+                description:
+                  "The quantity for this row, only if a number is literally " +
+                  "printed or handwritten next to the row (e.g. a count in " +
+                  "the margin); otherwise null. Never guess or default to 1.",
               },
             },
             required: ["armatuurcode", "ruwe_tekst"],
@@ -281,6 +296,7 @@ test("KvK-stijl: tekstblok met PAGE-marker, geen image, geen prijs; L004 komt do
       type: "ronde pendelreeks",
       ruweTekst: "boven de balie een ronde pendelreeks, aangeduid als L004",
       codeValid: false,
+      aantal: null, // O6: geen aantal geleverd → null (nooit geraden)
       pagina: 1,
     },
   ]);

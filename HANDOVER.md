@@ -273,6 +273,21 @@ is reviewbank-ruis; een nette oplossing (bv. tabel-scope-detectie) is werk voor 
 De "Philips → fout"-tellingen in het meetscript zijn correcte lézingen — "Philips"
 bestaat alleen niet als merkrij (wel "Philips (lichtbronnen)" etc.); de kolom "verwacht
 merk x/6" is maatgevend._
+_2026-07-16 (AI-leesroute **stap 6 — O6: aantallen**): het `lever_regels`-koppelcontract
+(beeld én tekst) kent nu een `aantal`-veld (number|null) + de promptregel "alleen als het
+létterlijk gedrukt of handgeschreven bij de regel staat — nooit raden, nooit 1 defaulten".
+`regelToSpecLine` neemt het over (de A-07-aanname "een boekpagina noemt geen aantallen"
+vervalt als default, blijft als fallback: geen aantal → null → stukprijs-modus). Twee
+merge-regels zodat een gelezen aantal nooit verloren gaat aan de rijkste-wint-dedup
+(Dordrecht: de aantallen-lijst is spec-arm, de armaturenlijst heeft geen aantallen):
+`upgradeOcrLine` merge't quantity (nieuw ?? bestaand) en het duplicaat-pad backfillt een
+aantal op een regel zonder (event `ocr_quantity_backfilled`, geen hermatch — matching
+raakt quantity niet). Meetscript: aantal-kolom + dezelfde merge. **Acceptatie: Dordrecht
+18/18 aantallen correct incl. de geverifieerde 124 (tweede run; eerste run 17/18 —
+vision-ruis, doel was 15/15) · Raadhuis 0 aantallen gelezen (het boek heeft er geen; de
+echte aantallen staan in de mail — een bron die nog nergens in het ontwerp bestaat, dat
+blijft de A-07/mail-vondst uit de testset-bouw).** De prompt-/toolsnapshots in
+leesroute.test.ts zijn bewust bijgewerkt (gemotiveerde contractwijziging)._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

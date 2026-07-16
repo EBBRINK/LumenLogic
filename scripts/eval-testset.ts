@@ -280,6 +280,10 @@ type CaseResultaat = {
     top1Goed: number;
   };
   regels: RegelResultaat[];
+  // O6 (stap 6): aantallen-meting. Mét grondwaarheid (dordrecht): correct/verwacht
+  // + hoeveel regels een aantal droegen. Zonder grondwaarheid maar mét AI-route:
+  // gelezen aantallen horen 0 te zijn (Raadhuis: de aantallen staan in de mail).
+  aantallen: { verwacht: number; correct: number; gelezen: number } | null;
   duurMs: number;
 };
 
@@ -421,7 +425,16 @@ async function ocrCase(
             const line = regelToSpecLine(regel, p, "eval", brandNames);
             const huidige = beste.get(regel.armatuurcode);
             if (!huidige || specRichness(line) > specRichness(huidige.line)) {
+              // O6: quantity mergen zoals upgradeOcrLine — een rijkere spec-
+              // lezing zonder aantal mag een eerder gelezen aantal nooit wissen.
+              if (line.quantity == null && huidige?.line.quantity != null) {
+                line.quantity = huidige.line.quantity;
+              }
               beste.set(regel.armatuurcode, { line, codeValid: regel.codeValid });
+            } else if (line.quantity != null && huidige.line.quantity == null) {
+              // O6-backfill zoals verwerkGelezenRegels: armere lezing mét aantal
+              // (de aantallen-lijst) vult alleen het aantal aan.
+              huidige.line.quantity = line.quantity;
             }
           }
         }
@@ -538,7 +551,13 @@ async function leesrouteCase(
       const line = regelToSpecLine(regel, regel.pagina, "eval", brandNames);
       const huidige = beste.get(regel.armatuurcode);
       if (!huidige || specRichness(line) > specRichness(huidige.line)) {
+        // O6: quantity mergen (zie de OCR-tak) — nooit een gelezen aantal kwijt.
+        if (line.quantity == null && huidige?.line.quantity != null) {
+          line.quantity = huidige.line.quantity;
+        }
         beste.set(regel.armatuurcode, { line, codeValid: regel.codeValid });
+      } else if (line.quantity != null && huidige.line.quantity == null) {
+        huidige.line.quantity = line.quantity;
       }
     }
   }
@@ -732,6 +751,23 @@ async function meetCase(
   const spookcodes = alleSpook.filter((code) => !bekendeExtra.has(code));
   const spookcodesBekend = alleSpook.filter((code) => bekendeExtra.has(code));
 
+  // O6 (stap 6): aantallen-meting. Alleen zinvol op AI-gelezen regels — de
+  // deterministische parser zet altijd quantity 1 (inhoudsopgave-default), dat
+  // is geen lezing. Mét grondwaarheid: correct = exact gelijk aan het (hand-
+  // geschreven) aantal; gelezen = regels met een non-null aantal. Zonder
+  // grondwaarheid hoort gelezen 0 te zijn (Raadhuis: aantallen staan in de mail).
+  const aiRoute = ocrMeta != null || leesrouteMeta != null;
+  const aantallen = aiRoute
+    ? {
+        verwacht: Object.keys(c.aantallen ?? {}).length,
+        correct: Object.entries(c.aantallen ?? {}).filter(
+          ([code, n]) => lineByCode.get(code)?.quantity === n,
+        ).length,
+        gelezen: [...lineByCode.values()].filter((l) => l.quantity != null)
+          .length,
+      }
+    : null;
+
   return {
     key: c.key,
     bron: c.pdfPaden.join(" + "),
@@ -753,6 +789,7 @@ async function meetCase(
     status,
     keuze,
     regels,
+    aantallen,
     duurMs: Math.round(performance.now() - t0),
   };
 }
@@ -900,6 +937,15 @@ function printCase(r: CaseResultaat, rankLimit: number) {
           `pogingen: ${pogingen} · €${b.costEur.toFixed(4)}`,
       );
     }
+  }
+  if (r.aantallen) {
+    out(
+      r.aantallen.verwacht > 0
+        ? `  aantal : ${r.aantallen.correct}/${r.aantallen.verwacht} correct ` +
+            `(grondwaarheid: handgeschreven/gedrukt) · ${r.aantallen.gelezen} regels met aantal`
+        : `  aantal : ${r.aantallen.gelezen} gelezen — het boek heeft er geen, ` +
+            `verwacht 0 (niets verzinnen; aantallen staan elders, bv. de mail)`,
+    );
   }
   out(
     r.keuze.nvt
