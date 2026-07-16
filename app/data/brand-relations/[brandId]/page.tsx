@@ -10,17 +10,20 @@ import { brandRelations, brands, priceLists } from "@/db/schema";
 import { BrandMessageBlock } from "@/components/data/brand-message-block";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
+import { TemplateUploadCard } from "@/components/data/template-upload-card";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
 import { buildBrandMessage } from "@/lib/brand-message";
 import {
   getBrandCompleteness,
   priceListIndicator,
 } from "@/lib/repo/brand-relations";
+import { listBrandUploads } from "@/lib/repo/brand-portal";
 import { requireSession } from "@/lib/session";
 import {
   logBrandMessagePreparedAction,
   updateBrandRelationAction,
 } from "../actions";
+import { uploadTemplateAction } from "./upload-actions";
 
 export default async function MerkrelatieDetailPage({
   params,
@@ -48,6 +51,14 @@ export default async function MerkrelatieDetailPage({
   if (!row) notFound();
 
   const completeness = await getBrandCompleteness(db, brandId);
+
+  // Open template-voorstellen van dít merk (retour-pad, sprint 1.2). Alleen 'staging':
+  // een afgehandeld voorstel heeft geen werk meer en zou de lijst laten dichtslibben.
+  // Alleen kind 'template': prijslijst-/data-uploads uit het merkportaal lopen via
+  // /admin/imports en hebben hier geen voorstel-scherm.
+  const openVoorstellen = (await listBrandUploads(db, brandId)).filter(
+    (u) => u.kind === "template" && u.status === "staging",
+  );
 
   // Bericht (stap 7): prijslijst-stand via dezelfde indicator-logica als het overzicht.
   const [latestList] = await db
@@ -117,6 +128,38 @@ export default async function MerkrelatieDetailPage({
           message={message}
           onCopied={logBrandMessagePreparedAction}
         />
+      </section>
+
+      {/* Het retour-pad: de andere helft van "Prepare message" hierboven. Daar vraag je
+          de data op, hier komt hij terug. */}
+      <section className="mb-8">
+        <TemplateUploadCard brandId={row.id} uploadAction={uploadTemplateAction} />
+
+        {openVoorstellen.length > 0 && (
+          <div className="mt-4 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
+            <h2 className="mb-1 font-medium">Waiting for your review</h2>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Uploaded and checked, but nothing from{" "}
+              {openVoorstellen.length === 1 ? "this file" : "these files"} is in
+              the catalogue yet.
+            </p>
+            <ul className="space-y-1">
+              {openVoorstellen.map((upload) => (
+                <li key={upload.id}>
+                  <Link
+                    href={`/data/brand-relations/${row.id}/upload/${upload.id}`}
+                    className="text-sm underline underline-offset-4"
+                  >
+                    {String(upload.payload?.filename ?? "Filled template")}
+                  </Link>
+                  <span className="ml-2 text-xs text-muted-foreground tabular-nums">
+                    {upload.createdAt.toISOString().slice(0, 10)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section>
