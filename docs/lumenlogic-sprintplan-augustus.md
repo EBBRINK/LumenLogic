@@ -130,6 +130,59 @@ Geen van deze punten is een bug; het zijn aannames in het plan die de werkelijkh
 grondwaarheid uit XIS. Timo werkt ze één voor één af. Gaat dat goed, dan kan de evaluatieset
 intern in productie (besluit Timo 16 jul).
 
+### Uitkomst van de meting (16 jul) — vier cases, twee regels code
+
+Testcase 1 (Raadhuis), 2 (KvK) en 4 (TNO) zijn gemeten via het **exacte productiecodepad**,
+zonder DB-schrijfactie. Alle drie stranden op dezelfde twee plekken. Geen enkele case haalde
+een match.
+
+| Case | Import | Match | Keuze | Struikelpunt |
+|---|---|---|---|---|
+| 1 Raadhuis | 31/31 | **0/31** | 0/4 | merkkolom + matcher-ranking |
+| 2 KvK | **0/28** | n.v.t. | n.v.t. | code-regex (`L004`) |
+| 4 TNO | 15/**20** | **0/15** | 0/12 | code-regex + merkkolom |
+| 5 Dordrecht | *voorspeld 0/18* | | | code-regex (`Ad`,`C1`,`Tn1`) — **ook de OCR** |
+
+**Wortel 1 — de `CODE`-regex kent één huisstijl** (`lib/pdf/armaturenboek.ts:14`):
+`/^[A-Z][a-z]{1,2}\d{2,3}(?:-[a-z0-9])?$/`. Alleen Deerns' `Lp301` past. `L004` (KvK),
+`Lr001B`/`Lp601a`/`Lr001_N` (TNO) en álle Dordrecht-lettercodes vallen erbuiten.
+⚠️ **De OCR ontsnapt er niet aan**: `lib/ai/ocr.ts:48` importeert dezelfde `CODE` en toetst
+eraan op regel 249 — bewust ("parser en vision nooit uiteenlopen"), maar daardoor erft de
+vision-route de blinde vlek van de tekstroute.
+
+**Wortel 2 — de merkkolom wordt geraden** (`lib/pdf/armaturenboek.ts:72`): "geen bekend merk
+herkend: eerste woord als merk". `splitBrandType` herkent een merk alleen als *prefix*; op een
+brede tabel staat het merk middenin. Gevolg: de ruimte-/functiekolom wordt het merk. Bij TNO
+levert dat een estimate op die de binnendienst vraagt de merken **"Woonkamer", "Vergaderruimte",
+"Belcel", "Pantry"** in te laden — zes vertrekken van een TNO-kantoorpand. Zelfverzekerd,
+actiegericht en volledig verzonnen.
+
+**Het pijnlijke:** de data ligt er wél. **XAL heeft 31.420 producten geladen**, Muuto 276,
+&Tradition 539 — precies de merken die Jayden offreerde. Het systeem heeft ze nooit gezocht.
+
+**Twee losse bevindingen:**
+- **De matcher kapt af op 8 kandidaten, alfabetisch gesorteerd.** Jayden's artikel stond op
+  rang 105 van 8.495 → nooit in beeld. Het vangnet zoekt wél op similariteit (`SEARCH_LIMIT`,
+  `lib/ai/vangnet.ts:61`); matcher en vangnet gebruiken dus twee verschillende zoekpaden.
+- **Rood vs. blauw wordt op de verkeerde grond beslist.** `brandExists`
+  (`lib/matching/engine.ts:176`) toetst of er een merk-*rij* bestaat, niet of dat merk producten
+  heeft. `Focus` (0 producten, rij bestaat) → rood; `Vergaderruimte` (geen rij) → blauw. De
+  regelset zegt "ligt het probleem bij ons of bij de match? Ontbrekend merk = BLAUW". Een merkrij
+  met nul producten is ons datagat. De code-comment verdedigt een ander geval (verlopen
+  prijslijst) — dat is legitiem; het echte gat is dat de code "nooit producten gehad" niet kan
+  onderscheiden van "tijdelijk onzichtbaar".
+- **Cosmetisch maar raakt het weekdoel:** de UI toont "Import failed — please try again" naast
+  een geslaagde import (DB: één run, `bevestigd`, 15 regels).
+
+**Weekdoel-stand:** upload → verstuurbare PDF werkt *technisch* (HTTP 200, PDF terugleesbaar,
+`estimate_pdf_generated` gelogd). De letter is gehaald. De inhoud is €0,00 en 15 p.m.-regels.
+
+**Fout van de sprintmaster, vastgelegd:** de TNO-opdracht zei "15 codes"; het zijn er 20. Dat
+getal kwam uit de zeef van de sprintmaster, die **dezelfde blinde vlek had als de parser**. Een
+tweede regex bleek de omgekeerde blinde vlek te hebben (vond `Lr001B`, miste `L004`). Conclusie:
+**armatuurcodes zijn niet met een patroon te tellen** — dat is precies waarom wortel 1 een
+herontwerp vraagt en geen ruimere regex. Gecorrigeerd: Raadhuis 31 · KvK 20 · TNO 20 · Dordrecht 18.
+
 ---
 
 ## Vastgestelde technische feiten (niet opnieuw ter discussie stellen)
