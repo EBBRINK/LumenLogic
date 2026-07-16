@@ -18,6 +18,12 @@ serverconsole) · Tailwind 4 + shadcn/ui · Bun · Vercel.
 - `bunx drizzle-kit generate` / `migrate` — schema-migraties
 - `bun run import` — brondata (`data/source/*.csv`) → database
 
+Magic link ophalen (fase zonder mailprovider) — lokaal staat hij in de `bun dev`-terminal,
+op de deploy in de Vercel-logs:
+- `vercel logs --environment production --since 15m --expand --no-branch`
+- `--expand` is verplicht, anders zie je alleen de POST-regel en blijft de `console.log`
+  eronder verborgen. Link is 5 min geldig (Better Auth-default, geen `expiresIn` gezet).
+
 ## Werkwijze
 Elke feature: white-box RSC-test met screenshots (light/dark × mobile/desktop) vóór hij af
 heet. Kleine commits op main, regelmatig pushen (= preview-deploy). Aannames en open eindes
