@@ -31,6 +31,47 @@ wordt vandaag nergens aangeroepen.
 - Het aansluiten van `price-archive` hoort hier. Beoogde stroom:
   `docs/plan-datamodel-productspecs.md` §"Prijslijst-historie".
 
+## ⚠️ `measure` is een MEET-afbeelding, geen SCHRIJF-afbeelding
+
+*Toegevoegd 16 jul, ná fase 2 — de plan-agents van 1.2 vonden dit en de sprintmaster had het
+fout. De eerste versie van deze briefing noemde `measure.column` "jouw brug van catalog-key
+naar DB-kolom". Dat is aantoonbaar onjuist en zou stil data hebben weggegooid.*
+
+Gemeten tegen `db/schema.ts` (`productColumns`) en `lib/field-catalog.ts`:
+
+- **45 velden** hebben `measure: NONE` ("nog niet meetbaar") terwijl `products.<key>` **wél
+  bestaat** — o.a. `sdcm`, `ean_code`, `dim_protocol`, `ugr`, `efficacy`, `ik_rating`,
+  `energy_label`, alle `url_*`, alle `cutting_size_*`. Wie op `measure` schrijft, gooit die
+  45 stilzwijgend weg.
+- **2 velden wijzen naar de verkeerde kolom**: `name_en → col("name")` en
+  `description_en → col("description")`, terwijl `products.name_en` en
+  `products.description_en` allebei bestaan. Op `measure` schrijven zet de Engelse naam in
+  het verkeerde veld en laat het juiste leeg.
+
+**Waarom:** `measure` is er voor de **scorecard** ("is dit veld gevuld?"), en `col("name")`
+was daar een pragmatische proxy vóór 0007. Migratie `0007_datamodel_productspecs` voegde
+daarna het volledige schema toe (besluit B4: "volledig schema nú, gefaseerd vullen") — maar
+de opvolging in `field-catalog.ts` is nooit gedaan. `HANDOVER.md` kondigt hem aan: *"Daarna
+is per veld alleen `measure.column` invullen hier genoeg."* Dat is blijven liggen sinds
+15 juli.
+
+**Wat 1.2 moet doen:** bepaal je eigen, expliciete afbeelding van catalog-key → products-
+kolom, en **bewijs hem met een test tegen `db/schema.ts`** zodat hij niet opnieuw stil kan
+verlopen. Een veld dat je niet kunt plaatsen is geen veld dat je stil overslaat: dat is een
+melding. Repareer `measure` niet en passant — dat raakt de scorecard (zie hieronder) en is
+niet jouw item.
+
+**Niet jouw scope, wel jouw vondst:** doordat `bucketScore` alleen telt bij
+`measure.kind !== "none"`, rapporteert de **scorecard vandaag in productie te laag** — Brink
+ziet "niet meetbaar" bij velden die allang meetbaar zijn. De sprintmaster heeft dat
+overgenomen als apart punt; niet oppakken in 1.2.
+
+## ⚠️ `approveUpload` past niets toe
+
+`approveUpload` (`lib/repo/admin.ts:118`) **flipt alleen de status** en past geen data toe.
+Wie het `brand_uploads`-precedent overneemt zonder dat te zien, bouwt een goedkeurknop die
+stil niets doet. Ook dit vonden de plan-agents; ook dit stond niet in de eerste briefing.
+
 ## ⚠️ De hazard — lees dit vóór je plant
 
 **Een template-upload is waarschijnlijk géén volledige prijslijst, en `replacePriceList`
@@ -80,7 +121,7 @@ zonder prijzen. Data binnenkrijgen zonder de catalogus te slopen is meer waard d
 |---|---|---|
 | **Validatiemodule (1.1)** | `lib/excel-validate.ts` + `lib/excel-validate-messages.ts` | Jouw poort. Volledige API hieronder. **Ongewijzigd gebruiken** — 4.B hergebruikt hem ook. |
 | Template-builder | `lib/excel-template.ts` | Wat we uitsturen. Werkblad "Product data", labels op rij 2, data vanaf rij 4. |
-| Veldcatalogus | `lib/field-catalog.ts` | `excelColumns()`, `measure.column` = de products-kolom per veld. Jouw brug van catalog-key naar DB-kolom. |
+| Veldcatalogus | `lib/field-catalog.ts` | `excelColumns()` = de kolommen van het template. ⚠️ **`measure` is NIET je brug naar de DB** — zie de waarschuwing hieronder. |
 | **Price-archive (nog niet aangesloten)** | `lib/repo/price-archive.ts` | `archivePriceList` + `replacePriceList`. Zie §"De hazard". |
 | Beoogde prijsstroom | `docs/plan-datamodel-productspecs.md` §"Prijslijst-historie" | Match op `(brand_id, supplier_article_code)` → bijwerken, nooit dupliceren. |
 | Merkrelatie-pagina | `app/data/brand-relations/[brandId]/page.tsx` | Waar de upload landt. Heeft al scorecard + relatieformulier + template-download. |

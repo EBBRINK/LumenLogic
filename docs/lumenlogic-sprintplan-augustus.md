@@ -101,6 +101,41 @@ signaleerde de tegenspraak in plaats van de briefing blind te volgen — dat is 
 de werkwijze beoogt. Briefing gecorrigeerd. **Les: een briefing die de codebase tegenspreekt
 is een briefingfout, niet een bouwfout; blijf de briefing toetsen aan wat er staat.**
 
+### Nieuw gevonden in week 1 — de scorecard rapporteert te laag (16 jul)
+
+Gevonden door de plan-agents van 1.2, geverifieerd door de sprintmaster tegen `db/schema.ts`
+en `lib/field-catalog.ts`. **Geen bug in 1.1/1.2 — een losse eind uit 0007 dat nu bijt.**
+
+- **45 velden** staan in `lib/field-catalog.ts` als `measure: NONE` ("nog niet meetbaar")
+  terwijl `products.<key>` **wél bestaat** (o.a. `sdcm`, `ean_code`, `dim_protocol`, `ugr`,
+  `efficacy`, `ik_rating`, `energy_label`, alle `url_*`, alle `cutting_size_*`).
+- **2 velden wijzen naar de verkeerde kolom**: `name_en → col("name")` en
+  `description_en → col("description")`, terwijl `products.name_en`/`description_en` bestaan.
+- **Oorzaak**: migratie `0007_datamodel_productspecs` voegde het volledige schema toe
+  (besluit B4), maar de aangekondigde opvolging in `field-catalog.ts` is nooit gedaan.
+  `HANDOVER.md` (§Merkrelaties) zegt letterlijk: *"Daarna is per veld alleen `measure.column`
+  invullen hier genoeg."* Blijven liggen sinds 15 jul.
+- **Gevolg vandaag in productie**: `bucketScore` telt alleen bij `measure.kind !== "none"`,
+  dus de compleetheids-scorecard **rapporteert te laag** — Brink ziet grijs "niet meetbaar"
+  waar allang data kán staan. Precies het scherm dat 1.3 tot hoofdingang maakt, en de
+  scorecard waarin 1.4 moet aantonen dat de 0007-kolommen "aantoonbaar meetellen".
+- **Actie**: `measure` bijwerken is een klein, mechanisch item (45 regels invullen) mét een
+  test die `measure.column` tegen `db/schema.ts` toetst, zodat het niet opnieuw stil verloopt.
+  **Niet in 1.2** (ander item, raakt de scorecard). Kandidaat: **vóór 1.3**, want 1.3 zet dit
+  scherm in de hoofdnavigatie en 1.4 leunt erop. ⏳ **Wacht op besluit Timo.**
+
+**Fout van de sprintmaster, vastgelegd:** `docs/sprint1-2-briefing.md` wees `measure.column`
+aan als "de brug van catalog-key naar DB-kolom". Blind gevolgd had 1.2 **45 door het merk
+ingevulde velden stil weggegooid** en de Engelse naam in de verkeerde kolom gezet — exact het
+stil-wegschrijven dat besluit 1 verbiedt en waar het hele item tegen bedoeld is. De
+plan-agents (op Fable, conform de modelverdeling) vonden het en verifieerden het tegen het
+schema vóór ze bouwden. **Les: de sprintmaster leest catalogi als documentatie in plaats van
+ze tegen het schema te toetsen — dit is de tweede briefingfout op rij (na W1, de taal). Toets
+elke claim over een afbeelding voortaan met een grep, niet met een blik.** Tweede vondst van
+dezelfde agents, ook niet in de briefing: `approveUpload` (`lib/repo/admin.ts:118`) flipt
+alleen de status en past niets toe — het `brand_uploads`-precedent klakkeloos overnemen levert
+een goedkeurknop die stil niets doet.
+
 ### Openstaand — géén besluit (bewust)
 
 - **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
