@@ -164,6 +164,74 @@ de OCR-route is bewust doorgeschoven naar bouwstap 2 (rasterisatie server-side i
 nodig; de nulmeting heeft hem niet nodig). Fixtures in de vier codestijlen:
 `lib/pdf/codestijl-fixtures.ts` + tests (invariant-asserts die stap 1–6 overleven)._
 
+## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
+
+Poortwachter van het retour-pad: `lib/excel-validate.ts` toetst een ingevuld merk-template
+tegen ons format. Pure functie, geen DB/UI/route/migratie. Briefing:
+`docs/sprint1-1-briefing.md`, probleemanalyse `docs/sprint1-1-probleem.md`.
+
+- `validateFilledTemplateXlsx(bytes, { knownArticleCodes? })` → discriminated union op `ok`.
+  Afwijzing draagt géén rijen (type-niveau-garantie dat er niets half verwerkt wordt).
+- `lib/excel-validate-messages.ts` maakt tekst van de codes. Bewust apart — zie taal.
+- Tests: `lib/excel-validate.test.ts` (44) + `lib/excel-validate-messages.test.ts` (12).
+
+**Events: bewust géén.** 1.1 voegt geen runtime-gedrag toe — de module is nog nergens
+aangeroepen. Events horen in 1.2 op het upload-pad. Geen vergeten checkbox.
+
+### Aannames en besluiten die 1.2 moet kennen
+
+- **Kolomherkenning op naam** (genormaliseerd `labelEn`, rij 2), volgorde-onafhankelijk,
+  exact-na-normalisatie. Géén fuzzy matching: een vals-positieve kolommatch schrijft stil
+  de verkeerde data in het verkeerde veld.
+- **Ontbrekende must-kólom = afwijzing, lege must-cél = waarschuwing.** Oogt inconsistent,
+  is het niet: een ontbrekende kolom betekent dat het merk het veld nooit zag. Zonder
+  `Supplier article code` is per-rij-controle bovendien onmogelijk.
+- **`velden` is rauwe, getrimde tekst — niet geparsed.** Geen getallen, geen eenheden, geen
+  decimaalteken-normalisatie. `"129,50"` als getal getypt leest terug als `"129.5"`.
+  Denkt 1.2 dat de module normaliseerde, dan wordt dat een stille diff-fout. Prijs wordt
+  alleen op gevuld/leeg getoetst (IJzeren regel 2).
+- **`"cri" in rij.velden === false`** betekent "kolom ontbrak, stel niets voor";
+  `velden.cri === ""` betekent "kolom stond er, cel leeg". Verwar ze niet — dan stelt 1.2
+  voor om bestaande data te wissen.
+- **Contract op `knownArticleCodes`: exact de codes van dít ene merk.** Verkeerd gescoopt
+  (alle merken) → elke code "bekend", dubbelcheck vuurt nooit, en dat ziet er identiek uit
+  als een schoon bestand. Daarom staat `artikelcodesGecontroleerd` in het resultaat.
+- **Asymmetrische code-normalisatie, met opzet — niet "harmoniseren".** Bekende-codes-
+  lookup: alleen trimmen (want `products_brand_sac_uniq` is hoofdlettergevoelig; casefolden
+  zou de module laten zwijgen waar 1.2 exact matcht, "nieuw" concludeert en stil een
+  dubbelproduct maakt). Duplicaat-binnen-bestand: wél casefolden (gemist duplicaat = stille
+  schade, extra dubbelcheck = gratis).
+- **Gemergde datacel** (merk mergt `Category` over 3 rijen): exceljs geeft slaves de
+  master-waarde, dus alle drie de rijen tellen als gevuld. Inhoudelijk klopt dat; niet
+  gerepareerd.
+
+### Open punten
+
+- **TAAL — besluit aan Timo.** Kaderpunt 4 van de briefing zegt "meldingen in het
+  Nederlands, de interne UI is Nederlands". Dat klopt sinds de i18n-slag niet meer
+  (`docs/i18n-glossary-xis.md`; `/data/brand-relations` toont "Brand relations"). Beide
+  publieken lezen vandaag Engels. De renderer is daarom **Engels**. De kaders zijn expliciet
+  "aanbevelingen — plan-agents mogen beargumenteerd afwijken", vandaar geen stop. Wil je
+  Nederlands: dat is één bestand van ~60 regels, de module blijft ongemoeid.
+- **Geen rij- of bestandslimiet in de module** (een cap is geen format-oordeel en zou 4.B's
+  keuze voorwegnemen). **1.2 en 4.B moeten de uploadgrootte zelf begrenzen** — in 4.B komen
+  de bytes van een externe partij. Zie ook `docs/probleem-413-pdf-upload.md`.
+- **Leidende nullen gaan verloren vóór wij het bestand zien**: Excel slaat artikelcode
+  `0012345` op als getal `12345`. Niet repareerbaar in de module. Als dit bij een echt
+  merkbestand speelt, is het een instructie-kwestie richting het merk (cel als tekst
+  opmaken), geen validator-kwestie.
+- **Een veld naar `must` promoveren in `field-catalog.ts` is een breaking change** voor élk
+  merkbestand dat op dat moment onderweg is — de validator leidt de must-set runtime af en
+  verscherpt vanzelf mee. De wijzigingsdetector-test in `lib/excel-validate.test.ts` pint de
+  huidige vier vast, zodat dat een bewust besluit wordt en geen sluipend.
+- **Niet getest tegen een échte merk-Excel.** Alle fixtures zijn mutaties van onze eigen
+  builder; `~/Downloads/lumenlogic-testset/` is klantdata en bleef er conform briefing
+  buiten. Een Google Sheets-export is echte xlsx en hoort te werken, maar is niet
+  gefixtured — waard om in 1.2 één keer handmatig te proberen.
+- De rondgang-test bewijst dat builder en validator het eens zijn, niet dat ons format goed
+  is voor echte merken — beide volgen dezelfde catalog. Dat is de prijs van de
+  runtime-afleiding.
+
 ## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
 _Stond hier als open punt (`d4b933f`); afgerond dezelfde dag na bevestiging door Timo._
