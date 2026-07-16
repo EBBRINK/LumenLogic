@@ -288,6 +288,24 @@ vision-ruis, doel was 15/15) · Raadhuis 0 aantallen gelezen (het boek heeft er 
 echte aantallen staan in de mail — een bron die nog nergens in het ontwerp bestaat, dat
 blijft de A-07/mail-vondst uit de testset-bouw).** De prompt-/toolsnapshots in
 leesroute.test.ts zijn bewust bijgewerkt (gemotiveerde contractwijziging)._
+_2026-07-16 (AI-leesroute **stap 7 — rangmeting: de top-8 is niet het knelpunt**):
+eindmeting over de vier cases (€0,25/run). **Doel gehaald: Raadhuis 31/31 met merk
+21/21-waar-bekend en de vier geoffreerde regels groen mét kandidaten · KvK 48/48 · TNO
+20/20 · Dordrecht 18/18 met verwacht merk 6/6, 0 verzonnen, aantallen 18/18 incl. de
+geverifieerde 124.** De rangmeting (limit 50) wijst uit: Jayden's exacte artikelcode staat
+bij géén van de 10 gemapte regels in de top-50 — de ingetrokken top-8-hypothese blijft
+ingetrokken, maar het echte knelpunt ligt dieper: de naamtoken-ranking
+(matchCount→prefix→similarity op productnaam) kan de specifieke váriant die Jayden kiest
+(DALI, stralingshoek, kleur — specs die niet in de naam-fuzzy meewegen) niet naar boven
+halen in een assortiment met tientallen naamgenoten. Auto-keuze (B3) is overal 0 — eerlijk:
+kiezen blijft menswerk. Dit verdient een eigen probleemdoc (variant-ranking op specs), geen
+fix nu (vangrail: geen top-8-fix). **Restpunten voor een volgende sessie:** (1) de
+leesroute-merklezingen variëren per run (TNO 9–13/13; temperature staat niet op 0 — bewuste
+afweging waard); (2) Dordrecht-spookregels variëren 17–37 (de installatietabel op de scan —
+transcriptie, geen hallucinatie, maar reviewbank-ruis); (3) het KvK-vals-groen (28–39/48 op
+merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron bestaat nog
+nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
+op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

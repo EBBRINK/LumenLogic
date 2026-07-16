@@ -1,6 +1,12 @@
 # Goal: de import leert echte armaturenboeken lezen (AI-voorop)
 
-> **Status: klaar om uit te voeren, nog niet uitgevoerd.** Opgesteld 16 jul 2026 door de
+> **Status: UITGEVOERD, 16 jul 2026 — alle stappen 0–7 (commits 06396c6…f359b57).**
+> Eindmeting: Raadhuis 31/31 (merk 21/21-waar-bekend) · KvK 48/48 (N gecorrigeerd:
+> 49-token-telling bevatte een prozavoorbeeld) · TNO 20/20 · Dordrecht 18/18 met 0
+> verzonnen merken en aantallen 18/18 incl. de 124. Rangmeting (stap 7): Jayden's
+> variant staat nergens in de top-50 — variant-ranking op specs is een eigen,
+> volgend probleemdoc. Zie HANDOVER.md (entries 16 jul) voor delta's en restpunten.
+> Opgesteld 16 jul 2026 door de
 > sprintmaster-sessie na fase 1 (probleem, `docs/probleem-import-leest-verkeerd.md`) en
 > fase 2 (twee plan-agents). Besluit Timo: **AI-voorop** voor het kolom/code-lezen — het
 > model bepaalt welke kolom het merk is en wat een code is; de deterministische parser
