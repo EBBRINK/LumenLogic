@@ -212,6 +212,14 @@ async function fetchCandidates(
   }
 
   // 3b. Parametrisch binnen merk + fuzzy op producttekst.
+  // Zonder énig zoeksignaal (geen sku-match, geen merk, geen producttekst) is er
+  // niets om op te zoeken: kandidaten zoeken zonder criteria zou LIMIT-veel
+  // willekeurige producten opleveren (en vóór deze poort crashte de query zelfs:
+  // de constante-nul sorteertermen renderden als `ORDER BY 0` — een positionele
+  // verwijzing voor Postgres). Bereikbaar sinds de AI-leesroute regels met alleen
+  // een armatuurcode kan leveren (stap 3); de regel wordt dan rood → review/mens.
+  if (brand.length === 0 && productText.length === 0) return [];
+
   const conditions = [];
   if (brand.length > 0) {
     const nb = brandKeyOf(brand);
@@ -242,12 +250,20 @@ async function fetchCandidates(
     ? sql<number>`(case when ${visibleProducts.name} ilike ${productText + "%"} then 1 else 0 end)`
     : sql<number>`0`;
 
+  // Regel 2: #tokens, prefix, similariteit, naam. Nooit prijs.
+  // De constante-nul termen (geen tokens/producttekst) worden overgeslagen: een
+  // constante sorteert toch niets én zou als kaal `ORDER BY 0` een positionele
+  // verwijzing zijn (Postgres-fout). Semantisch identiek aan de oude volgorde.
+  const orderTerms = [
+    ...(tokens.length > 0 ? [desc(matchCount)] : []),
+    ...(productText.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+    asc(visibleProducts.name),
+  ];
   return db
     .select({ ...SELECTION, score, matchCount })
     .from(visibleProducts)
     .where(conditions.length ? and(...conditions) : undefined)
-    // Regel 2: #tokens, prefix, similariteit, naam. Nooit prijs.
-    .orderBy(desc(matchCount), desc(prefixBonus), desc(score), asc(visibleProducts.name))
+    .orderBy(...orderTerms)
     .limit(limit);
 }
 

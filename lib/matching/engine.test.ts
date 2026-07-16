@@ -468,3 +468,29 @@ test("b3: regel met alleen rood-kandidaten → rood, geen unambiguousYellow", as
   expect(out.status).toBe("rood");
   expect(out.unambiguousYellow).toBeUndefined();
 });
+
+// ── Stap 3 (AI-leesroute): regels met alléén een code zijn nu bereikbaar ──────
+// De leesroute kan een regel leveren zonder merk én zonder producttekst (bv. een
+// KvK-conceptpagina met een kale code). Vóór de poort in fetchCandidates crashte
+// dat op `ORDER BY 0` (constante sorteertermen als positionele verwijzing); nu is
+// het antwoord: geen zoeksignaal → geen kandidaten → rood (mens/review beslist).
+test("stap 3: geen merk, geen producttekst, geen specs → rood zonder crash", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
+  const out = await evaluateSpecLine(db, req({}));
+  expect(out.status).toBe("rood");
+  expect(out.provable).toHaveLength(0);
+  expect(out.incomplete).toHaveLength(0);
+});
+
+test("stap 3: wél merk maar geen producttekst → kandidaten binnen merk, geen crash", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
+  await seedBrandProduct(db, { brand: "Flos", name: "Bellhop" });
+  const out = await evaluateSpecLine(db, req({ brandText: "XAL" }));
+  // geen specs gevraagd → kandidaat is aantoonbaar (niets te toetsen = niets rood
+  // of onbekend); de kern van deze test is: geen ORDER BY-crash en merk-scoping.
+  const namen = [...out.provable, ...out.incomplete].map((c) => c.name);
+  expect(namen).toContain("SASSO 100");
+  expect(namen).not.toContain("Bellhop");
+});
