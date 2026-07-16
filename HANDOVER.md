@@ -271,6 +271,58 @@ aangeroepen. Events horen in 1.2 op het upload-pad. Geen vergeten checkbox.
   is voor echte merken — beide volgen dezelfde catalog. Dat is de prijs van de
   runtime-afleiding.
 
+## Sprint 1.2 — Retour-pad: upload → voorstel → goedkeuren — af 16 jul 2026
+
+Ingevulde templates komen binnen via de merkrelatie-pagina: upload → 1.1-validatie →
+voorstel-scherm → goedkeuren/afwijzen. Niets wordt stil weggeschreven. Hier is ook
+`lib/repo/price-archive.ts` eindelijk aangesloten. Briefing `docs/sprint1-2-briefing.md`,
+probleemanalyse `docs/probleem-1-2-retourpad.md`, besluiten `docs/plan-1-2-retourpad.md`.
+
+- `lib/template-diff.ts` — pure diff-engine + `SCHRIJF_MAPPING` + selectie-sleutels.
+- `lib/repo/template-return.ts` — staging/apply/reject. `lib/repo/price-archive.ts` kreeg
+  `upsertPriceLines` (regel-niveau). Schermen: `components/data/template-proposal.tsx`,
+  route `app/data/brand-relations/[brandId]/upload/[uploadId]/`.
+- Tests: `lib/template-diff.test.ts` (24), `lib/repo/template-return.test.ts` (14),
+  `lib/repo/price-archive.test.ts` (8), `components/data/template-proposal.test.tsx` (18).
+  **Geen migratie** — staging leeft op de bestaande `brand_uploads` met `kind: 'template'`.
+
+### Aannames en besluiten
+
+- **Een upload is een GEDEELTELIJKE bijwerking, nooit een lijstvervanging.** Het template
+  vraagt nergens volledigheid en de validator accepteert 40 van 500 rijen. `replacePriceList`
+  wordt op dit pad daarom nooit aangeroepen: het archiveert álle prijzen van het merk, en de
+  overige 460 producten zouden via `visible_products` stil uit élke zoekactie verdwijnen
+  (ijzeren regel 3). Prijzen lopen via `upsertPriceLines`, dat alleen daadwerkelijk vervangen
+  regels archiveert. "Prijslijst 2027 komt binnen" blijft het scenario van `replacePriceList`
+  en verdient een eigen ingang.
+- **Geen `db.transaction()`** (neon-http gooit, PGlite niet). De veiligheid komt uit de vorm:
+  idempotente upserts op natuurlijke sleutels, statusflip als laatste stap, verse
+  diff-herberekening bij elke render én bij toepassen. Een afgebroken run blijft herkenbaar op
+  `staging`; opnieuw goedkeuren maakt hem af.
+- **`data_ontvangen`** valt bij de upload, **`verwerkt`** bij goedkeuren. Afwijzen laat de
+  relatiestatus staan: er ís geleverd, het is alleen niet bruikbaar.
+- **Conflict ≠ gewijzigd.** `changed` = merk levert een andere waarde; `conflict` = wissen /
+  onverwerkbaar / bestand spreekt zichzelf tegen. Voor beide geldt: bestaand wint tenzij
+  aangevinkt. Nieuw product = één vinkje, default UIT (een tikfout maakt stil een
+  dubbelproduct), met "Select all new products" ernaast.
+
+### Open punten / restrisico's
+
+- **`field-catalog.ts` `measure` is verouderd** t.o.v. migratie 0007: tientallen velden staan
+  op `kind: "none"` terwijl hun products-kolom bestaat, en `name_en` wijst naar
+  `products.name`. `measure` is een scorecard-MEET-brug, geen schrijf-brug — de briefing zei
+  van wel. 1.2 gebruikt daarom een eigen `SCHRIJF_MAPPING`. Het repareren van `measure` raakt
+  scorecard-gedrag en K4-screenshots: **losse opvolgtaak**, bewust niet in 1.2.
+- **Micro-venster binnen de apply** tussen diff-lezen en updaten blijft open (zelfde klasse
+  als §Item A). De stale-guard dekt alleen het lange venster (tonen → toepassen).
+- **`conflict/not_storable` is vandaag onbereikbaar**: alle 66 template-kolommen zijn gemapt.
+  Het blijft als vangnet bestaan voor een toekomstig catalogusveld zonder mapping, maar geen
+  echt bestand kan hem produceren — alleen een fixture.
+- **Leidende nullen** gaan vóór ons verloren (Excel maakt van `007` een `7`); instructie-
+  kwestie, geen codefix. Relevant bij matchen op `supplier_article_code`.
+- **Nog niet handmatig tegen een écht merk-Excel getest** (Google-Sheets-export-check uit 1.1)
+  — dat kan pas na deploy.
+
 ## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
 _Stond hier als open punt (`d4b933f`); afgerond dezelfde dag na bevestiging door Timo._

@@ -41,6 +41,7 @@ import {
   type BestaandProduct,
   type FieldProposal,
   type PriceProposal,
+  type ProductDiff,
   type TemplateProposal,
   type TemplateReturnPayload,
 } from "@/lib/template-diff";
@@ -275,6 +276,32 @@ function prijsToepasbaar(voorstel: PriceProposal): string | null {
 }
 
 /**
+ * Draagt de selectie de prijs van deze rij? Twee soorten rijen, twee vinkjes — en dat
+ * verschil is de reden dat deze helper bestaat in plaats van twee losse checks.
+ *
+ * Bij een BESTAAND product heeft de prijs zijn eigen vinkje (priceSelectionKey): de
+ * conflictregel geldt, een bestaande prijs wint tenzij aangevinkt.
+ *
+ * Bij een NIEUW product niet. Daar draagt het ene productvinkje de hele rij — het scherm
+ * rendert de prijsrij read-only en stuurt priceSelectionKey dus nooit mee (zie
+ * template-proposal.tsx). Vroeg een de prijs hier tóch om zijn eigen sleutel, dan viel de
+ * prijs van elk nieuw product stil weg: product aangemaakt, geen prijsregel, en via
+ * visible_products meteen onzichtbaar in álle zoekresultaten — ijzeren regel 3 afgevuurd
+ * door een vinkje dat "creates the product with everything below" belooft.
+ */
+function prijsGevraagdVoor(
+  row: ProductDiff,
+  selection: ApplySelection,
+): boolean {
+  if (row.kind === "ambiguous_duplicate") return false;
+  if (row.price === null || prijsToepasbaar(row.price) === null) return false;
+  return row.kind === "new_product"
+    ? row.blocked === null &&
+        selection.newProducts.has(newProductSelectionKey(row.rij))
+    : selection.fields.has(priceSelectionKey(row.rij));
+}
+
+/**
  * De negen stappen van plan besluit 5. Zie de kop van dit bestand voor waarom er geen
  * transactie omheen zit en waarom dat veilig is.
  */
@@ -352,12 +379,8 @@ export async function applyTemplateProposal(
   // voorspelbare invoerfout. upsertPriceLines gooit daarop (terecht), maar dat zou pas ná de
   // product-writes gebeuren — dan is de run half klaar door een ontbrekend formulierveld.
   // Afwijking van de letterlijke stapvolgorde, geen afwijking van de volgorde van de WRITES.
-  const prijsGevraagd = proposal.rows.some(
-    (row) =>
-      row.kind !== "ambiguous_duplicate" &&
-      row.price !== null &&
-      prijsToepasbaar(row.price) !== null &&
-      selection.fields.has(priceSelectionKey(row.rij)),
+  const prijsGevraagd = proposal.rows.some((row) =>
+    prijsGevraagdVoor(row, selection),
   );
   if (prijsGevraagd && !priceListInput) {
     const actief = await actievePrijslijst(db, brandId);
@@ -448,7 +471,10 @@ export async function applyTemplateProposal(
     }
     if (!productId) continue;
 
-    if (row.price && selection.fields.has(priceSelectionKey(row.rij))) {
+    // Geen eigen prijsvinkje: het productvinkje hierboven draagt de prijs mee. Zonder dit
+    // wordt het product zichtbaar aangemaakt maar onzichtbaar gemaakt (geen prijsregel →
+    // buiten visible_products).
+    if (row.price && prijsGevraagdVoor(row, selection)) {
       const next = prijsToepasbaar(row.price);
       if (next !== null) prijsregels.push({ productId, grossPrice: next });
     }

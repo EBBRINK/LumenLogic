@@ -15,6 +15,7 @@ import {
   prices,
   pricesArchive,
   products,
+  visibleProducts,
 } from "@/db/schema";
 import type { GelezenRij, RijWaarschuwing } from "@/lib/excel-validate";
 import {
@@ -453,6 +454,98 @@ test("apply: prijs op een merk zonder actieve lijst mét datums → nieuwe lijst
   const [prijs] = await db.select().from(prices).where(eq(prices.productId, productId));
   expect(prijs.grossPrice).toBe("210.00");
   expect(await acties(db)).toContain("price_list_created");
+});
+
+// Regressie. Bij een NIEUW product draagt het ene productvinkje de hele rij: het scherm
+// rendert de prijsrij read-only en stuurt priceSelectionKey dus niet mee. De apply eiste die
+// sleutel eerst tóch, waardoor de prijs van elk nieuw product stil wegviel — product
+// aangemaakt, geen prijsregel, en daarmee buiten visible_products. Een vinkje dat belooft
+// "creates the product with everything below" maakte het product zo onvindbaar in álle
+// zoekresultaten. Beide bestaande prijstests draaiden op een bestaand product en zagen dit niet.
+test("nieuw product mét prijs: het productvinkje draagt de prijs — product is zichtbaar, niet stil onzichtbaar", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedMerk(db); // heeft een ACTIEVE, geldige lijst
+
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      {
+        rij: 5,
+        velden: {
+          supplier_article_code: "NIEUW-9",
+          name_en: "Spy 39 Trimless",
+          list_price_excl_vat: "210,00",
+        },
+      },
+    ]),
+  });
+
+  // Exact wat het formulier stuurt: alléén het productvinkje, géén prijssleutel.
+  const res = await applyTemplateProposal(
+    db,
+    uploadId,
+    selectie({}, [newProductSelectionKey(5)]),
+    null,
+    "timo@brink",
+  );
+
+  const nieuw = await productVan(db, brandId, "NIEUW-9");
+  expect(nieuw).not.toBeNull();
+  expect(res.alreadyProcessed === false && res.priceLines).toMatchObject({
+    inserted: 1,
+  });
+
+  const [prijs] = await db
+    .select()
+    .from(prices)
+    .where(eq(prices.productId, nieuw!.id));
+  expect(prijs.grossPrice).toBe("210.00");
+
+  // De eigenlijke eis: het product is vindbaar. Zonder prijsregel valt het buiten de view.
+  const zichtbaar = await db
+    .select({ id: visibleProducts.id })
+    .from(visibleProducts)
+    .where(eq(visibleProducts.brandId, brandId));
+  expect(zichtbaar.map((r) => r.id)).toContain(nieuw!.id);
+});
+
+test("nieuw product mét prijs op een merk zónder actieve lijst en zonder datums → Error vóór de product-write", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedMerk(db);
+  await archivePriceList(db, priceListId); // geen actieve lijst meer
+
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      {
+        rij: 5,
+        velden: {
+          supplier_article_code: "NIEUW-9",
+          name_en: "Spy 39 Trimless",
+          list_price_excl_vat: "210,00",
+        },
+      },
+    ]),
+  });
+
+  // De vroege poort moet de prijs van een nieuw product óók zien; anders wordt het product
+  // eerst aangemaakt en klapt upsertPriceLines pas daarna — precies de halve run die de
+  // poort moet voorkomen.
+  await expect(
+    applyTemplateProposal(
+      db,
+      uploadId,
+      selectie({}, [newProductSelectionKey(5)]),
+      null,
+    ),
+  ).rejects.toThrow(/no active price list/);
+
+  expect(await productVan(db, brandId, "NIEUW-9")).toBeNull();
+  const [upload] = await db
+    .select()
+    .from(brandUploads)
+    .where(eq(brandUploads.id, uploadId));
+  expect(upload.status).toBe("staging");
 });
 
 test("ALREADY PROCESSED: tweede klik op goedkeuren doet niets (de status ís het slot)", async () => {
