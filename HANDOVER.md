@@ -116,8 +116,21 @@ de modeltekst — besluit Timo) + een teller `parseFailed` in de `ai_vangnet_run
 DB-query: `suggested: 0, parseFailed: 0` = model vond echt niets · `suggested: 0, parseFailed: >0`
 = wij konden het niet lezen. Dát onderscheid was vóór 0.1b onmogelijk, en het is waarom
 `discarded: 0` nooit bewees wat het leek te bewijzen.
+· **Live geverifieerd in productie (DoD)**: na de deploy van `e28d46d` een no-op "Save & re-match"
+op regel Lw102 gedaan via de live app. Nieuw event `ai_vangnet_run` om **10:14:16 UTC**:
+`{"phase":"tender","checked":7,"discarded":0,"suggested":0,**"parseFailed":0**}`. Het veld
+`parseFailed` bestaat alléén in de gefixte code, dus deze ene regel bewijst drie dingen: de
+deploy serveert de nieuwe code, de tripwire werkt live, en `parseFailed: 0` bevestigt de meting
+(model gaf echt niets; de parser at niets op). De twee oudere runs (08:57:53 = 0.1, 09:39:41 =
+de meting) hebben het veld niet — precies zoals verwacht.
 · **Kosten**: de meting kostte €0,0654 (`llm_usage` purpose `vangnet`: 21 → 42 rijen, €0,0619 →
-€0,1273). Maandtotaal **€0,2295** van de €10-cap. Geen tweede hermatch nodig gebleken.
+€0,1273); de live-verificatie €0,0796 (42 → 67 rijen). Eindstand `vangnet` €0,2069, **maandtotaal
+€0,3091** van de €10-cap.
+· **Stap 6 van de briefing klopt niet — testdossier `49c6340e` staat er nog.** De briefing zegt
+"opruimen met `scripts/cleanup-testdata.ts`", maar dat script scoopt op organisatie "Van Dijk
+Elektro" (`ORG_NAME`, regel 27) en dit dossier heeft **geen `organizationId`**. Het script raakt
+het dus niet aan. Bewust niets handmatig verwijderd (onomkeerbaar, en het is het bewijsspoor
+onder 0.1 én 0.1b). Besluit Timo: laten staan, dit is het open punt.
 · **Criterium 4 (log eruit) is hard geverifieerd**: `grep -rn "console\." lib/ai/` geeft niets —
 exact de G5-nulmeting van vóór de sprint. De tijdelijke meetcode en `scripts/meet-0-1b.ts`
 bestaan niet meer; ze hebben **nooit in productie gedraaid** (de meting was lokaal, dat scheelde
