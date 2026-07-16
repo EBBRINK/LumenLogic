@@ -169,23 +169,47 @@ merk, product, artikelcode, kleurtemp/CRI/IP, status. **Print / PDF**.
   De huidige `phase`-schakelaar (tender/awarded) is precies dit mechanisme.
 - **Estimate = richtprijs**, de echte offerte-met-kortingen is een los toekomstig onderdeel.
 
-## C. Écht nog open — prompt voor Timo (vault)
+## C. Beantwoord — besluiten van Timo (sprint 0.4, 16 juli 2026)
 
-> Deze staan noch in de code, noch in de vault. Beantwoorden en het antwoord terug hierin.
+> Deze vragen zijn beantwoord in de 0.4-werksessie. Wat nog open staat, staat als zodanig
+> gemarkeerd onderaan — bouw daar niets op zonder het eerst te vragen.
 
-1. **XIS-lead-seintje — trigger & inhoud.** Wanneer schiet een project automatisch als lead
-   in XIS? (Bij aanmaken door een externe gebruiker, of pas bij "estimate versturen"?) En
-   welke gegevens gaan mee — alleen projectnaam + klant + wie het aanmaakte, of ook de regels?
-   Is het strikt één kant op (LL → XIS) en komt er niets terug?
-2. **Derde bron: tekening (`waar`).** Nu is locatie/zone een handmatig tekstveld per regel.
-   Wil je dat een tekening/plattegrond aan regels gekoppeld kan worden (locatie per armatuur),
-   of blijft locatie voorlopig gewoon een tekstveld?
-3. **Statusovergangen automatisch of handmatig?** Moet de status meebewegen met acties
-   (bv. estimate genereren + versturen → status automatisch "estimate gestuurd"), of blijft
-   het bewust een handmatige keuze in de dropdown?
-4. **Na gunning: aftersales / revisies / heropenen.** Werkvoorbereiding gaat open bij gegund.
-   Wil je in de deliver/aftersales-fase nog iets in de tool (nazorg, revisies, herbestellen),
-   en moet een gearchiveerd project weer te heropenen zijn?
-5. **Externe onboarding (raakt "wie maakt een project aan").** Hoe komt een installateur
-   binnen — zelf registreren of op uitnodiging? Nu is het een magic-link-allowlist.
-```
+1. **XIS-lead-seintje — trigger.** De lead vuurt zodra de **installateur de estimate bekijkt
+   of downloadt** — dus niet bij aanmaken en niet bij versturen, maar bij het eerste teken van
+   interesse van de ontvanger. In de beginfase handmatig, want de XIS-API-keys zijn er nog niet
+   (liggen bij Lynx, taak #107781). Strikt één kant op (LL → XIS), niets terug — zie §B.
+   **Bouwgevolg:** er is nog géén "estimate bekeken/gedownload"-event. Dat moet er komen
+   vóór de trigger kan werken.
+2. **Derde bron: tekening (`waar`).** Locatie blijft een **tekstveld** per regel ("begane grond,
+   entreehal"). Een plattegrond uploaden en per armatuur een punt prikken is een **wens voor
+   later** — expliciet niet gepland vóór 14 aug (tekening opslaan, coördinaten per regel en een
+   klik-interface passen niet in vijf weken). Alleen oppakken als er tijd overblijft.
+3. **Statusovergangen: automatisch.** Bij het versturen van een estimate springt de status
+   vanzelf mee. Handmatig corrigeren achteraf blijft mogelijk.
+4. **Na gunning: aftersales / revisies / heropenen.** Een gearchiveerd project moet **weer te
+   heropenen** zijn. Aftersales-functies (nazorg, revisies, herbestellen) komen nu niet.
+5. **Externe onboarding: op uitnodiging.** De magic-link-allowlist blijft. Zelf registreren pas
+   veel later, als Timo externe groepen echt gaat aanmaken.
+
+### Nog open — niet op bouwen
+
+- **Welke gegevens gaan mee in het XIS-seintje?** Alleen projectnaam + klant + aanmaker, of ook
+  de regels? Vraag 1 is alleen op de *trigger* beantwoord, niet op de *inhoud*.
+- **Wie wordt beheerder?** Vermoedelijk Eduard, die vervolgens anderen toegang geeft — maar
+  Timo zei "denk ik". Aanname, geen besluit; door Eduard laten bevestigen.
+- **Prijzen: let op een mogelijke botsing met §B.** §B zegt "Fase 0: niemand ziet prijzen".
+  Timo's antwoord in 0.4: nu is alles intern, dus **iedereen ziet prijzen**; voor externen geldt
+  vanaf week 3 "prijzen afgeschermd". De echte grens wordt pas een beslissing zodra er een
+  externe groep wordt aangemaakt. Als §B en dit elkaar tegenspreken: navragen, niet gokken.
+
+### Context bij deze besluiten
+
+- **Geldig sprintplan:** `timo-vault/projects/lumenlogic/sprintplan.md` (vijf weken, klaar op
+  **14 augustus**). Het repo-document `docs/lumenlogic-sprintplan-augustus.md` (tot 28 aug,
+  sprints 0–4) is **verouderd** — de 0.4-sessie werkte daar aantoonbaar uit tot het ontdekt werd.
+- **Einddemo: 17 augustus.** Het "runbook blind volgen" is geen aparte afspraak — het ís de
+  slotdemo, door Brink zelf uitgevoerd zonder hulp (week 4).
+- **Bouwvak:** eerste week augustus (3–7 aug) ligt Brink stil; Timo werkt door.
+- **Week 3 betekent *mogelijkheid*, geen echte externe gebruiker.** De DoD-tekst "een
+  testgebruiker van buiten heeft het hele rondje zelfstandig gedaan" is misleidend: getest wordt
+  met een testaccount. Zelfde logica als week 1 (merkgegevens *kunnen* binnenstromen).
