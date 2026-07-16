@@ -457,10 +457,16 @@ estimate-PDF terugleesbaar (offertenummer, totalen, p.m., beide merktekens) → 
 
 ### Open punten
 
-- **`ANTHROPIC_API_KEY` ontbreekt nog** — het vangnet slaat nu netjes over met event
-  `ai_vangnet_skipped_no_key` (nooit een importfout). Key zetten in `.env.local` én als
-  Vercel-env; daarna draait het vangnet automatisch mee bij import/hermatch.
-- **Resend/mailprovider** — magic-link gaat nog via de serverconsole (L-01).
+- ~~**`ANTHROPIC_API_KEY` ontbreekt nog**~~ — ✅ **opgelost 16 jul (sprint 0.1)**: key staat in
+  `.env.local` én als Vercel-env; het vangnet draait aantoonbaar live. Zie de entry van
+  2026-07-16 bovenaan. *(Stond hier als open punt sinds 14 jul; niet verwijderd maar
+  doorgestreept — de rest van deze sectie beschrijft de stand van 14 jul.)*
+- ~~**Resend/mailprovider**~~ — ❌ **vervallen 16 jul** (besluit 6): géén mailverzending vanuit
+  Lumen Logic deze sprintperiode. Onboarding gaat via **PIN → wachtwoord** (besluit Timo
+  16 jul): Brink maakt het account aan met een tijdelijke PIN, de gebruiker vult die in en
+  kiest direct een wachtwoord; dat wachtwoord zijn daarna de inloggegevens. Wachtwoord
+  vergeten = Brink geeft een nieuwe PIN (zelfde pad, geen apart resetmechanisme). Intern gaat
+  de magic link nog via de serverconsole (L-01).
 - **Echte XIS-API** — export is een idempotent snapshot in het payload-formaat; de echte
   Lynx-POST wacht op API-keys (extern).
 

@@ -86,12 +86,12 @@ Een item is pas "done" als **alles** hieronder waar is:
 | C7 | **Bouwvak**: Brink ligt stil 3–7 aug, **Timo werkt door** | Geen weekverschuiving |
 | C8 | **Brink-accounts** moeten nog aangemaakt worden (Timo, later). Vercel/Neon/GitHub/Supabase bestaan al en gaan bij de overdracht over | Harde voorwaarde vóór week 4 |
 | C9 | **Einddemo 17 aug**; runbook-blind-volgen ís de slotdemo | Geen aparte afspraak inplannen |
+| C10 | *(16 jul)* **Onboarding = PIN → wachtwoord.** Brink maakt het account aan met een tijdelijke PIN; de gebruiker vult die in en kiest direct een wachtwoord; dat wachtwoord zijn daarna de inloggegevens. **Wachtwoord vergeten = Brink geeft een nieuwe PIN** — zelfde pad, géén apart resetmechanisme | **Vult het gat dat besluit 6 achterliet.** Week 3-item 3.1 kan hierop ontworpen worden. Raakt Better Auth: nu magic-link zonder wachtwoorden → wachtwoord-auth. Open bij het ontwerp: hoe de PIN de gebruiker bereikt (out-of-band: telefonisch/persoonlijk) en of intern ook overgaat of op magic link blijft |
 
 ### Openstaand — géén besluit (bewust)
 
 - **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
-  Eduard bevestigd worden.** Bewust niet als besluit vastgelegd.
-- **Onboarding-mechanisme zonder e-mail** (gevolg van besluit 6) — te bepalen vóór week 3.
+  Eduard zélf bevestigd worden** — Timo's aanname is geen toezegging. Harde voorwaarde vóór week 4.
 
 ---
 
@@ -228,13 +228,13 @@ uitgeschreven in `HANDOVER.md` §"Open punten uit sprint 0.1". Twee ervan zijn U
 installateur die er die week doorheen loopt. Zelfde logica als week 1 — je bouwt dát
 merkgegevens binnen kunnen stromen, niet dat een merk het die week ook doet.
 
-**3.1 — Onboarding externen** (~8 u) — ⚠️ **HERZIENING NODIG vóór deze week start.**
-Het oorspronkelijke item ging volledig uit van Resend/e-mail (magic link per mail +
-uitnodigingsmail). Besluit 6 schrapt mailverzending; besluit C5 houdt "op uitnodiging +
-allowlist" overeind. Het **transport** van de uitnodiging is daarmee een open ontwerpvraag —
-denkrichtingen: link handmatig delen, of het account aanmaken via de serverconsole zoals nu
-ook al met magic links gebeurt. Acceptatiecriteria volgen zodra het mechanisme gekozen is.
-**Zonder die keuze is dit item niet uitvoerbaar.**
+**3.1 — Onboarding externen: PIN → wachtwoord** (~8 u) — *mechanisme gekozen 16 jul (besluit C10);
+het oorspronkelijke Resend/e-mail-ontwerp is vervallen met besluit 6.*
+- *Given* Brink in de instellingen, *when* Brink een gebruiker aanmaakt en aan een organisatie koppelt, *then* krijgt dat account een **tijdelijke PIN**.
+- *Given* die PIN, *when* de gebruiker hem invult, *then* kiest hij direct een wachtwoord; dat wachtwoord zijn daarna zijn inloggegevens en hij zit in de juiste organisatie.
+- *Given* een gebruiker die zijn wachtwoord vergeet, *when* hij zich bij Brink meldt, *then* geeft Brink een **nieuwe PIN** — zelfde pad als onboarding, géén apart resetmechanisme, geen mail nodig.
+- Nog te bepalen bij het ontwerp (klein, geen blocker): hoe de PIN de gebruiker bereikt (out-of-band — telefonisch/persoonlijk) · PIN-lengte, geldigheidsduur, eenmalig gebruik, rate limiting · of intern (Timo/Eduard) ook overgaat of op magic link blijft.
+- ⚠️ **Raakt Better Auth**: de app draait nu op magic link **zonder** wachtwoorden. Dit is een wissel naar wachtwoord-auth (andere plugin, hashing, sessieflow) — schat dat in vóór week 3 begint.
 
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
@@ -248,7 +248,7 @@ ook al met magic links gebeurt. Acceptatiecriteria volgen zodra het mechanisme g
 - *Given* de Lynx-keys, *when* de installateur **de estimate bekijkt of downloadt** (trigger, besluit C1), *then* schiet er idempotent een lead in XIS.
 - ⚠️ **Vóórwerk:** het "estimate bekeken/gedownload"-event bestaat nog niet en moet gebouwd worden vóór deze trigger kan werken. Geen keys → export-stub blijft, geen weekrisico; beginfase mag handmatig.
 
-**Risico's & plan B:** onboarding-mechanisme niet op tijd gekozen → **grootste risico van het plan**; besluit 6 heeft het oude pad geschrapt zonder vervanging, dus bepaal het mechanisme uiterlijk in week 2 · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
+**Risico's & plan B:** ~~onboarding-mechanisme niet op tijd gekozen~~ → **opgelost 16 jul met besluit C10** (PIN → wachtwoord); het resterende risico is de omvang van de Better-Auth-wissel, niet de keuze · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
 
 **Technische schuld & vooruitwerk (bufferuren):** GitHub-repo-transfer naar Brink-org alvast doen (laag risico, uit het spike-draaiboek) · minimale monitoring vóór externen: uptime-check + Vercel-foutalerts (~1 u) · restjes 2.U.
 
