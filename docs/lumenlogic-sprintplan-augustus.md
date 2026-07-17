@@ -246,6 +246,14 @@ herontwerp vraagt en geen ruimere regex. Gecorrigeerd: Raadhuis 31 · KvK 20 · 
 
 ## Vastgestelde technische feiten (niet opnieuw ter discussie stellen)
 
+- **Elke push naar `main` deployt automatisch naar productie** (geverifieerd 17 jul:
+  deployment `dpl_DyGUi8…` aangemaakt 3 s ná de push van `53c6198`; alias
+  `lumenlogic.vercel.app`; geen aparte preview→productie-stap). Gevolg: de vangrail
+  "stop vóór elke productie-deploy en vraag akkoord" betekent in dit project **stop vóór
+  de push**. CLAUDE.md is hierop gecorrigeerd (zei eerder onterecht "pushen =
+  preview-deploy"). Of dit zo blijft (of production branch ≠ main wordt) is een open
+  besluit van Timo — relevant uiterlijk vóór week 3, wanneer externe gebruikers erbij komen.
+
 Live gemeten in sprint 0.1 (16 jul 2026). Hier vastgelegd zodat weerlegde risico's niet
 terugkeren als bouwklus.
 

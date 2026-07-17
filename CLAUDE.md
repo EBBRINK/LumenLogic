@@ -26,5 +26,7 @@ op de deploy in de Vercel-logs:
 
 ## Werkwijze
 Elke feature: white-box RSC-test met screenshots (light/dark × mobile/desktop) vóór hij af
-heet. Kleine commits op main, regelmatig pushen (= preview-deploy). Aannames en open eindes
+heet. Kleine commits op main, regelmatig pushen — ⚠️ **elke push naar main deployt automatisch
+naar productie** (geverifieerd 17 jul: deployment 3 s na push; er is géén aparte preview-stap).
+"Stop vóór een productie-deploy" betekent hier dus: stop vóór de push. Aannames en open eindes
 altijd in `HANDOVER.md`. Brondata in `data/` is read-only en staat niet in git.
