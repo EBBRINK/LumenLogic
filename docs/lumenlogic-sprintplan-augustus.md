@@ -136,6 +136,46 @@ dezelfde agents, ook niet in de briefing: `approveUpload` (`lib/repo/admin.ts:11
 alleen de status en past niets toe — het `brand_uploads`-precedent klakkeloos overnemen levert
 een goedkeurknop die stil niets doet.
 
+### Opvolgtaken uit week 1 — vastgelegd, bewust niet gefixt (16 jul)
+
+Drie punten uit de live-check van 1.2. Geen ervan blokkeert; alle drie zijn ze groter dan het
+item waarin ze gevonden werden.
+
+- **`field-catalog.measure` is verouderd t.o.v. 0007** — 45 velden `NONE` terwijl de kolom
+  bestaat, 2 wijzen naar de verkeerde kolom. Gevolg: de scorecard **rapporteert vandaag te
+  laag** in productie. Klein en mechanisch (45 regels + een test die `measure.column` tegen
+  `db/schema.ts` toetst). Kandidaat **vóór 1.3** — 1.3 zet dat scherm in de hoofdnav en 1.4
+  leunt erop. ⏳ Wacht op besluit Timo. *(Volledige beschrijving hierboven.)*
+- **Geen herkomstspoor per veld op het retour-pad.** `products.tier2_source` bestaat (H-09,
+  bv. `{kelvin: 'parsed-from-name', cri: 'llm'}`) maar het retour-pad vult hem niet. Na
+  goedkeuren is niet meer te zien of `kelvin` van het merk kwam, uit een naam geparsed is, of
+  door een fixture binnenliep. De **events** houden het spoor bij, de **catalogus** niet — en
+  de catalogus is wat de matcher leest. Aangedragen door de 1.2-bouwsessie.
+- **Onze template-instructie nodigt clear-conflicts uit.** Het Instructions-blad zegt *"Fields
+  that do not apply to your products may simply be left empty"*, en de diff leest een lege cel
+  in een aanwezige kolom als *wissen* → conflict/clear (default uit, dus veilig). Bij Flos is
+  dat 1 van 66. Bij een merk met 500 producten en 40 kolommen die wij gevuld hebben en zij
+  niet invullen: **20.000 clear-conflicts** — niets breekt, maar het voorstel-scherm wordt
+  onleesbaar. Schaalt naar **4.B** (merkportaal-self-serve). Keuze later: instructie
+  aanscherpen, óf clear alleen voorstellen bij een expliciete wis-markering.
+
+**Fout van de 1.2-bouwsessie, vastgelegd (door haarzelf erkend):** voor de live-check bouwde
+ze een fixture met **verzonnen** specs (`kelvin 2700`, `cri 90`, "Brick red", prijs `899`) op
+een **echt** Flos-product, en stond op het punt die goed te keuren — via precies het pad dat
+"het merk heeft dit aangeleverd" betekent, op velden die de matcher sturen (kelvin matcht
+exact, CRI is een minimumeis). **`New` staat default aan**, dus een klik op Approve had ze
+zonder vinkje meegenomen: de conflictregel beschermt bestaande data, niet lege velden — en
+daar landde de verzonnen data. De sessie beschermde tegelijk wél tegen het *herkenbare*
+risico (geen testproduct in productie) — **het risico precies omgedraaid**: een artikel dat
+`TEST-…-DELETE-ME` heet is opruimbaar, een foute kelvin op een echte Flos is onzichtbare
+vervuiling. Gecorrigeerd: rij 4 draagt nu alleen de artikelcode + hun eigen prijs (→
+unchanged, no-op), en het testartikel draagt de nieuwe data.
+**Regel hieruit, geldt voortaan:** *testdata voor het retour-pad komt óf uit een merkbron, óf
+staat op een herkenbaar testartikel — nooit plausibele specs op een echt product.* De code
+deed niets fout; de aanname dat een fixture-waarde onschuldig is zodra hij door een echt pad
+loopt, wél. Zie ook de eerdere sprintmaster-fouten (W1 taal, `measure`): **drie keer op rij
+was de zwakte een aanname die niet tegen de bron getoetst was.**
+
 ### Openstaand — géén besluit (bewust)
 
 - **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
