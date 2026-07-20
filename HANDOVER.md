@@ -532,6 +532,74 @@ kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de n
   voor SQL, de ander camelCase Drizzle-properties voor schrijven, en `category` mapt in
   beide anders. Meten ≠ een merk toestaan te overschrijven.
 
+## Sprint 1.4 — End-to-end via een testmerk — af 20 jul 2026
+
+Het weekdoel: bewijzen dat merkdata door de héle keten komt en **zichtbaar wordt in de
+catalogus**. De Flos-check van 20 jul maakte een product zónder prijs en bewees die helft dus
+niet. Gedaan met een **testmerk**, omdat een verzonnen prijs alleen daar mag.
+
+**Wat er in productie blijft staan (bewust, niets verwijderd):**
+
+| | |
+|---|---|
+| Merk | `ZZTEST QA-14`, id `9ce0b729-c5e7-43ec-a7d1-4f62ce52ea5c` |
+| Producten | 3 (`ZZTEST-LL14-0001/0002/0003`), status `actief` |
+| Prijsregels | 2 (€111,11 en €222,22) — 0003 heeft er bewust géén |
+| Prijslijst | `ZZTEST prijslijst 1.4`, **verlopen** (`valid_until` = `current_date - 7`) |
+| Uploads / events | 1 upload, 13 events |
+
+**Uitschakeling is gebeurd via ijzeren regel 3, niet met DELETE.** `visible_products` voor dit
+merk staat op 0; producten, prijsregels en audit-spoor zijn intact. `archive.prices_archive`
+is leeg gebleven — bewijs dat `archivePriceList` (die DELETE't) níét gebruikt is.
+
+**Aannames en keuzes:**
+- Fixture met een **ongelijk vulpatroon** (3/3, 2/3, 1/3, 0/3), vooraf vastgelegd. Een fixture
+  die alles vult geeft overal 100% en is met elke kapotte implementatie verenigbaar.
+- Eén product **zonder prijs** als negatieve controle: binnen hetzelfde merk 2 zichtbaar,
+  1 niet. Dat scheidt "de view toont alle producten van het merk" van "…met geldige prijs".
+- Matcher-velden kregen **absurde waarden** (kelvin 9999, CRI 1, IP00, 1 lm). De scorecard
+  meet `IS NOT NULL` en leest de waarde nooit, dus volle dekking terwijl elk parametrisch
+  filter het product uitsluit.
+- Merknaam bewust **niet** `ZZ-TEST Lumen Logic` (de suggestie uit de briefing):
+  `lib/matching/engine.ts:294` vergelijkt merken met `LIKE '%query%'`, een substring — een
+  spec-regel met merktekst "Lumen" zou daarop matchen.
+
+**Restrisico's — open, niet gefixt:**
+- **`visible_specs` kent geen prijs-join** (`db/migrations/0005_h2_h3.sql:120-146`) en filtert
+  alleen op `status='actief'`. De productpagina van het testartikel blijft dus bestaan, mét
+  specs, zonder prijs. Regel 3 dekt `visible_products`, niet dit. Meting ná het verlopen:
+  `visible_products` = 0, `visible_specs` = 3.
+- **Verlopen is niet symmetrisch met aanmaken.** De lijst blijft "actief" in de
+  `replaced_at IS NULL`-zin, dus `actievePrijslijst()` geeft hem terug. Een volgende upload
+  voor dit merk toont daardoor géén prijslijst-fieldset en hangt prijzen aan een verlopen
+  lijst — stil onzichtbaar.
+
+**Codevondsten (gemeld met bewijs, bewust NIET gefixt — dit item verifieert die bestanden):**
+- **`template_apply_finished.appliedFields` is structureel 0** bij een run met alleen nieuwe
+  producten. `appliedFields` wordt alleen opgehoogd in de bestaande-producten-lus
+  (`lib/repo/template-return.ts:518`), nooit in de nieuwe-producten-lus (`:415-478`). In
+  productie gereproduceerd: `createdProducts: 3, appliedFields: 0` terwijl er 38 velden
+  geschreven zijn. De betrouwbare teller is `product_created_from_template.payload.fields`
+  (15 + 13 + 10 = 38).
+- **Nergens wordt gevalideerd dat `validFrom <= vandaag`** — niet in het formulier
+  (`components/data/template-proposal.tsx:630`, alleen `required`), niet in de action
+  (`upload-actions.ts:186-190`), niet in `upsertPriceLines`. Een `validFrom` in de toekomst
+  geeft **scorecard "prijs ✓" terwijl de catalogus leeg blijft**: de scorecard test alleen
+  `valid_until >= current_date` (`lib/repo/brand-relations.ts:170`), de view óók
+  `valid_from <= CURRENT_DATE`. Reëel gat, niet alleen een meetvalstrik.
+- **Een niet-opslagbaar veld op een nieuw product laat geen enkel event achter**
+  (`template-return.ts:419` + `template-diff.ts:525-548`). Bij bestaande producten is er nog
+  `template_field_skipped_stale`.
+- **`brand_template_downloaded` heeft `entity_id: null`** bij `entity: "brand"`
+  (`app/data/brand-relations/template/route.ts:17`); de route kent geen brandId. De download
+  is alleen op tijdstip aan een merk te koppelen.
+- **Verouderde comment:** `db/schema.ts:686` verwijst voor de `visible_products`-DDL naar
+  migratie 0001. De operatieve DDL staat in `db/migrations/0004_vijfstatussen.sql:201-241`
+  (0003 en 0004 hebben de view herschreven).
+- **Drizzle liet een onbekende kolom stil vallen:** `insert(brands).values({notes})` draaide
+  zonder fout terwijl `brands` geen `notes` heeft (die hoort bij `suppliers`). Pas
+  `bunx tsc --noEmit` ving het. Het merk is achteraf bijgewerkt met `description_nl`.
+
 ## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
 _Stond hier als open punt (`d4b933f`); afgerond dezelfde dag na bevestiging door Timo._
