@@ -1233,3 +1233,34 @@ toetst het 16 jul-ijkpunt en is **nu al rood** (verwacht raadhuis `merk-fout 31`
 `{open:13, blauw:10, geel:5, rood:2, paars:1}`) — herijken in de stap 2-commit, mét motivering,
 niet stilzwijgend. Stap 1 schrijft naar de **productie-DB** (dev draait op prod-Neon): afspraak
 met Timo is poort-eerst-repareren, reviewrijen tonen, publiceren pas na expliciet akkoord._
+
+_2026-07-20 (variant-ranking **stap 2 afgebroken — de hefboommeting van hierboven was fout**):
+de twee plan-agents voor stap 2 kwamen onafhankelijk met dezelfde bevinding terug en die klopt.
+**De hefboomtabel in de vorige entry is ingetrokken.** Hij was gebouwd op handgetypte invoer in
+plaats van de echte geparste `productText`: wat "huidig (vuile tekst)" heette was Lr303's tekst,
+en wat "schone producttekst (stap 2)" heette was de kále typeaanduiding `SASSO PRO 100` (3
+tokens) — een tekst die stap 2 helemaal niet oplevert. Hermeten op het echte codepad
+(`parseSpecLinesFromPages` → rang binnen de XAL-kandidatenset): **Lr301 (134 tok) → 2676,
+Lr303 (55 tok) → 2023**; met de volledige termenstapel uit stap 3 + 5 (kelvin/watt-emmers, beam
+uit optiekcode, dim-term, continue wattafstand) verschuift dat naar **2452 resp. 2020** — vrijwel
+niets. **Oorzaak, en het haalt stap 3 als ontwerp onderuit:** `matchCount` is de primaire
+sorteersleutel, Jayden's artikel scoort `mc=6` en ruim 2400 XAL-producten scoren hoger; een
+tiebreak kan alleen hérordenen bínnen een gelijke matchCount en haalt een verlies op de primaire
+sleutel per definitie nooit in. De doc-keuze "specScore is een tiebreak, geen gewogen som" had
+een goede reden maar maakt de fix structureel onmogelijk. **Stap 2 is ook niet de oorzaak:**
+Lr303's tekst is vandaag al schoon (55 tokens, geen paginarand) en staat op 2023 — de al-schone
+regel is even stuk als de vuile; de tokens waarop de verkeerde winnaar scoort (`CRI` 13.407
+producten, `LED` 22.621, `3000K` 10.607) staan in Lr301's **eigen** regeltekst, niet in de rand.
+**Meetlat bijgesteld:** `Lr301 < 25 tokens` is onhaalbaar — de schone body is ~57 tokens en
+tweelingregel Lr303 is 55 en geldt als gezond; onder 25 komen gooit `IP20/27 W/3000K/(39°)/2810
+lm` weg, precies de `req*`-velden die stap 3 en 5 consumeren. Nieuw: **≤ 65 tokens én
+reqKelvin/reqWatt/reqBeamAngle blijven gevuld**. **Wat de meting wél aanwijst:** het probleem zit
+in de tekstrelevantie-term zelf — zolang 50–130 beschrijvingstokens even zwaar tellen wint een
+product met veel generieke spec-woorden in zijn naam (`INS 100 1171 CRI90 HIGH LUMEN DALI …`,
+mc=9) van het product dat de typeaanduiding draagt (mc=6). Naïeve idf is géén oplossing: dan
+wegen `Gefacetteerde`/`SDCM`/`112x106mm`/`104` het zwaarst. **Status: stap 3/4/5 terug naar de
+plan-fase** als één ingreep op de tekstrelevantie; stap 2 (opruiming, herziene lat) en stap 1
+(beoordeling, poort eerst) blijven los uitvoerbaar. Geen code gewijzigd. **Les, tweede keer deze
+sessie en vijfde keer deze week:** elke rangmeting begint bij `parseSpecLinesFromPages` op het
+echte PDF, nooit bij een string in een script — beide keren zag de nagebouwde meting er
+plausibel uit en wees hij de verkeerde kant op._

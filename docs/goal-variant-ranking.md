@@ -192,21 +192,68 @@ De winnaar wint op *generieke* tokens uit de vervuilde producttekst — `CRI` (1
 *onderscheidende* tokens draagt: `SASSO` (4.846) en `PRO` (1.323). De vervuiling is dus geen
 schoonheidsfoutje in stap 2, maar **de oorzaak dat de hele SASSO-familie buiten beeld valt**.
 
-### De hefboommeting
+### De hefboommeting — INGETROKKEN, zie de hermeting hieronder
 
-Rang van `L360048-2413537F` (Lr301) onder zes ordeningen. **A is het echte codepad; B–H zijn
-SQL-simulaties** (XAL-only, zonder lijsttoekenning/beoordeling) — ze wijzen de richting, ze
-bewijzen niets. Elke stap wordt na het bouwen opnieuw met `eval-testset.ts` gemeten.
+> ⚠️ **Deze tabel was fout en is vervangen.** Hij is gebouwd op handgetypte invoer in plaats
+> van de echte geparste producttekst: wat "huidig (vuile tekst)" heette was Lr303's tekst, en
+> wat "schone producttekst (stap 2)" heette was de kále typeaanduiding `SASSO PRO 100` (3
+> tokens) — een tekst die stap 2 helemaal niet oplevert. Precies de fout waar het probleemdoc
+> voor waarschuwt: meten met een nagebouwde invoer in plaats van het echte codepad. De
+> conclusies die eruit volgden ("stap 2 is de eerste hefboom", "stap 3+5 brengt het naar 4")
+> zijn daarmee ongeldig. Bewaard als waarschuwing, niet als meting.
 
-| | ordening | rang |
+### De hefboommeting, hermeten op de ECHTE geparste producttekst
+
+Rang van Jayden's artikel binnen de XAL-kandidatenset, met `productText` zoals
+`parseSpecLinesFromPages` hem vandaag levert. Cumulatief op de bestaande ordening.
+
+| ordening | Lr301 (134 tok) | Lr303 (55 tok) |
 |---|---|---|
-| A | huidig (vuile tekst) — nulmeting | **448** |
-| B | schone producttekst (stap 2) | **105** |
-| C | idf-weging zónder stap 2 (stap 4 alleen) | **504** ⚠️ |
-| D | schone tekst + idf (stap 2+4) | 105 |
-| E | schone tekst + spec-tiebreak kelvin/watt (stap 2+3) | **21** |
-| F | + beam uit optiekcode FL/WF (stap 2+3+5) | **8** |
-| H | + dim-term op de `dimmable`-kolom | **4** (klasse op 3–4) |
+| 1 · huidig | **2676** | **2023** |
+| 2 · + spec-tiebreak (kelvin/watt) | 2464 | 2019 |
+| 3 · + beam uit optiekcode FL/WF | 2453 | 2017 |
+| 4 · + dim-term | 2453 | 2017 |
+| 5 · + continue wattafstand | **2452** | **2020** |
+
+**De hele termenstapel uit stap 3 en 5 beweegt vrijwel niets: 2676 → 2452.**
+
+### Waarom — en waarom dat stap 3 als ontwerp onderuithaalt
+
+`matchCount` is de **primaire** sorteersleutel. Jayden's artikel scoort `mc = 6`; ruim 2400
+XAL-producten scoren hoger. Een tiebreak kan per definitie alleen hérordenen *binnen* een
+gelijke matchCount — hij kan een product dat op de primaire sleutel verliest nooit inhalen.
+
+Het goal-doc kiest expliciet "specScore is een tiebreak, geen gewogen som", met een goede
+reden (anders kan een product dat één zwak token deelt maar toevallig 3000K is boven de echte
+SASSO uitkomen). Maar díe keuze maakt de fix structureel onmogelijk. Het is geen
+afstelprobleem — het is de ontwerpkeuze zelf.
+
+**En stap 2 is niet de oorzaak.** Lr303's producttekst is vandaag al schoon (55 tokens, geen
+paginarand) en zijn artikel staat op **2023**. De al-schone regel is even stuk als de vuile.
+Hygiëne is nog steeds de moeite waard — 134 tokens met de complete paginakop hoort niemand in
+een matcher te willen — maar het is een *opruimstap*, geen hefboom voor de rang.
+
+### Wat de meting wél aanwijst
+
+De enige invoer die het juiste artikel omhoog kreeg was de kále typeaanduiding `SASSO PRO 100`
+(3 tokens → rang 105, met spec-tiebreaks → 4). Daar tellen alleen `SASSO`/`PRO`/`100` mee, en
+verdwijnt het gewicht van `CRI`/`90`/`LED`/`3000K`/`reflector` — tokens uit Lr301's **eigen
+legitieme regeltekst**, niet uit de paginarand.
+
+Dat wijst allemaal één kant op: **het probleem zit in de tekstrelevantie-term zelf.** Zolang
+50–130 beschrijvingstokens elk even zwaar tellen, wint een product dat toevallig veel generieke
+spec-woorden in zijn naam heeft (`INS 100 1171 CRI90 HIGH LUMEN DALI …`, mc = 9) van het
+product dat de typeaanduiding draagt (mc = 6). Dat is stap 4-terrein (tokenselectiviteit), niet
+stap 3.
+
+**Maar let op de eerdere meting:** naïeve idf-weging op de volle beschrijving maakte het
+juist slechter. Zeldzame maar betekenisloze tokens (`Gefacetteerde`, `SDCM`, `112x106mm`,
+`104`) krijgen dan het hoogste gewicht. "Zeldzaam" is niet hetzelfde als "onderscheidend".
+
+**Er ligt hier dus geen uitgewerkt plan meer.** De vervolgvraag is een ontwerpvraag die opnieuw
+gesteld moet worden: hoe bepaal je de typeaanduiding binnen een beschrijving, en hoe weeg je die
+zwaarder dan de spec-prozaregels eromheen? Dat is stap 3 en 4 samen, en het is meer werk dan
+het goal-doc ervoor uittrekt.
 
 ### Wat daaruit volgt — vier bijstellingen
 
@@ -215,37 +262,56 @@ niet van. De claim "stap 0–1 is >50% van de winst" klopt niet voor dít doel. 
 moeite waard — het haalt `onbekend`-deviations weg bij de beoordeling en dicht de CRI-kolom — maar
 het is een *beoordelings*-stap, geen *rangschikkings*-stap, en het hoort niet vooraan.
 
-**2. Stap 4 vóór stap 2 is schadelijk, niet alleen nutteloos.** Scenario C maakt het slechter
-(448 → 504): zeldzame tokens uit de paginakop (`Gefacetteerde`, `pasring`, `SDCM`) krijgen juist
-het hoogste gewicht en tillen een `PENDANT SHEET METAL CLIP` naar rang 1. Zeldzaam ≠ relevant
-zolang de tekst rommel bevat. **Stap 4 mag pas ná stap 2**, en scenario D laat zien dat hij daarna
-voor Raadhuis niets meer toevoegt (105 → 105) — precies zoals het doc al zei: meten op KvK/TNO.
+**2. Naïeve idf-weging op de volle beschrijving maakt het slechter, niet beter.** Gemeten op de
+handgetypte invoer werd het 448 → 504, doordat zeldzame maar betekenisloze tokens
+(`Gefacetteerde`, `pasring`, `SDCM`, `112x106mm`, `104`) het hoogste gewicht kregen en een
+`PENDANT SHEET METAL CLIP` naar rang 1 tilden. Dit getal komt uit de ingetrokken meetreeks en
+is dus indicatief, maar het mechanisme staat los van die fout: **zeldzaam ≠ onderscheidend.**
+Stap 4 is daarmee niet "een gewicht toevoegen"; het vergt een begrip van wélke tokens de
+typeaanduiding vormen.
 
-**3. De spec-termen uit stap 3 missen `dimmable`.** Het boek eist DALI-2; 62 van de 131 SASSO PRO
-100-varianten hebben een gevulde `dimmable`-kolom. Zonder dim-term staan vier niet-dimbare
-varianten vóór Jayden's DALI-artikel (F: rang 8). Mét NULL-neutrale dim-term: rang 4.
-Voeg toe: `dimmable` bevat gevraagde dimtechniek +2, andere waarde −2, NULL 0.
+**3. Twee termen die stap 3 mist — bewaard voor later, want nu niet doorslaggevend.** Het boek
+eist DALI-2 en 62 van de 131 SASSO PRO 100-varianten hebben `dimmable` gevuld; en de
+watt-emmers scheiden 26,5 W niet van 27 W (beide binnen 10% → zelfde +2, daarna beslist het
+alfabet). Een `dimmable`-term (+2 / −2 / NULL 0) en een continue `abs(max_wattage − gevraagd)`
+ná de emmers lossen dat op. **Op de echte tekst gemeten leveren ze samen 1 plaats op** (2453 →
+2452) — ze zijn pas zinvol als de tekstrelevantie eerst gerepareerd is. Niet weggooien, wel
+achteraan zetten.
 
-**4. De watt-emmers uit stap 3 kunnen 26,5 W niet van 27 W scheiden.** Beide vallen binnen 10% en
-krijgen dus dezelfde +2; daarna beslist het alfabet, en `2412…` (26,5 W) wint van `2413…` (27 W).
-Dát is wat de equivalentieklasse op 3–4 houdt in plaats van 1–2. Los het op met een **continue
-tiebreak ná de emmers**: `asc(abs(max_wattage − gevraagd))`, NULL laatst. Emmers voor de grove
-scheiding, afstand voor de fijne — geen extra gewichten, geen gewogen som.
+**4. Stap 2 is geen hefboom maar wel terecht.** Zie hierboven: de al-schone Lr303 staat op 2023.
+Doe de hygiëne omdat 134 tokens paginakop in een matcher niet hoort, niet omdat het de rang
+redt. En bijstelling van de meetlat: **`Lr301 < 25 tokens` is niet haalbaar.** Lr301's schone
+body is ~57 tokens en zijn tweelingregel Lr303 is 55 en geldt als gezond; er bestaat geen knip
+die de één op 24 zet en de ander op 55 laat. Onder de 25 komen betekent `IP20`, `27 W`,
+`3000K`, `(39°)` en `2810 lm` weggooien — precies de `req*`-velden die stap 3 en 5 nodig hebben.
+Nieuwe lat: **Lr301 ≤ 65 tokens én `reqKelvin`/`reqWatt`/`reqBeamAngle` blijven gevuld.**
 
-### Herziene volgorde
+### Herziene volgorde — VERVALLEN
 
-| | stap | waarom hier |
-|---|---|---|
-| 1 | **stap 2** — producttekst-hygiëne | 448 → 105; zonder dit werkt geen enkele latere stap |
-| 2 | **stap 3** — spec-bewuste ordening (+ dim-term, + watt-afstand) | 105 → ~4 |
-| 3 | **stap 5** — optiekcode → beam angle | scheidt Lr301 (FL/39°) van Lr303 (WF/57°) |
-| 4 | **stap 1** — verrijkingsrun XAL | beoordeling, niet rang; poort eerst repareren |
-| 5 | **stap 4** — tokenselectiviteit | alleen ná stap 2; meten op KvK/TNO |
-| 6 | **stap 6** — equivalentieklassen tonen | ongewijzigd, optioneel |
+De volgorde uit de vorige correctie (2 → 3 → 5 → 1 → 4 → 6) berustte op de ingetrokken
+meetreeks en geldt niet meer. Wat de hermeting overlaat:
 
-De inhoud van elke stap blijft staan zoals hierboven beschreven, inclusief alle *Doet NIET*-regels
-en de acht punten onder "Wat expliciet géén goed idee is". Alleen de **volgorde** en de twee
-term-bijstellingen (dim + wattafstand) veranderen.
+- **Stap 3 en 5 zijn als tiebreak-ontwerp weerlegd** — ze kunnen niet werken zolang `matchCount`
+  de primaire sleutel is. Ze moeten opnieuw ontworpen worden, samen met stap 4, als één
+  ingreep op de tekstrelevantie-term. Dat is een nieuwe plan-fase, geen uitvoering.
+- **Stap 2** blijft nuttig als opruiming, met de herziene meetlat. Los uitvoerbaar.
+- **Stap 1** blijft nuttig voor de beoordeling (niet de rang). Los uitvoerbaar, poort eerst.
+- **Stap 6** ongewijzigd, optioneel.
+
+De acht punten onder "Wat expliciet géén goed idee is" blijven onverkort gelden — met één
+aantekening bij punt 3 (embeddings): de reden om ze af te wijzen was "vier `case`-expressies
+zetten het juiste artikel op rang 1". Die aanname is nu weerlegd. Dat máákt embeddings nog geen
+goed idee (de bezwaren over infra, latency en uitlegbaarheid staan los), maar de motivering moet
+opnieuw geschreven worden op iets dat wél klopt.
+
+### Les voor de volgende sessie
+
+Dit is binnen één sessie **twee keer** misgegaan op dezelfde manier: een meting gebouwd op
+handgetypte of nagebouwde invoer in plaats van op het echte codepad. Eerst de sprintmaster met
+een SQL-reproductie van `fetchCandidates` (zie het probleemdoc), daarna deze sessie met een
+handgetypte `productText`. Beide keren zag de uitkomst er plausibel uit en wees hij de verkeerde
+kant op. **Regel: elke rangmeting begint bij `parseSpecLinesFromPages` op het echte PDF, nooit
+bij een string in een script.**
 
 ### Nog vast te leggen bij stap 1
 
