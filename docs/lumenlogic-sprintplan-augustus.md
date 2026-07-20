@@ -93,6 +93,8 @@ Een item is pas "done" als **alles** hieronder waar is:
 | # | Besluit | Consequentie |
 |---|---|---|
 | W1 | **Meldingen van de format-validatie zijn Engels**, niet Nederlands. De interne UI is Engels sinds de i18n-slag (PR #1) — nav "Projects/Catalog/Settings", `STATUS_LABEL` "Not approached", werklijst "No response (> 14 days)" | Consistent met het scherm waar de meldingen landen, met het Engelse merk-template en met de merken die in 4.B zelf uploaden. Geldt ook voor 1.2/1.3 |
+| W2 | **1.4 draait op een testmerk, niet op een echt merk** (Timo, 20 jul) | Het criterium eist "zichtbaar in de catalogus", en dat vereist een geldige prijs. Een prijs verzinnen op een echt merk is exact de fout van 20 jul. Op een testmerk is er geen waarheid om tegen te liegen. Prijs: het weekdoel is bewezen op een *geconstrueerd* merk — de echte-merk-verificatie blijft open |
+| W3 | **Uitschakelen gebeurt door de prijslijst te laten verlopen, niet met `DELETE`** (20 jul) | Demonstreert ijzeren regel 3 live in plaats van hem te omzeilen, en laat het audit-spoor heel — waardoor bewijsbaar is dat *het verlopen* het product onzichtbaar maakte en niets anders |
 
 **Fout van de sprintmaster, vastgelegd:** kaderpunt 4 van `docs/sprint1-1-briefing.md` schreef
 "meldingen in het Nederlands" voor. Dat was fout: de sprintmaster had de Engelse nav en
@@ -100,6 +102,28 @@ Een item is pas "done" als **alles** hieronder waar is:
 signaleerde de tegenspraak in plaats van de briefing blind te volgen — dat is het gedrag dat
 de werkwijze beoogt. Briefing gecorrigeerd. **Les: een briefing die de codebase tegenspreekt
 is een briefingfout, niet een bouwfout; blijf de briefing toetsen aan wat er staat.**
+
+**Drie fouten van de sprintmaster in briefing 1.4, vastgelegd (20 jul).** Alle drie gevonden
+door de bouwsessie, geen ervan door de sprintmaster:
+1. **De eventketen telt 9 acties, niet 4.** De briefing somde er vier op. Juist de twee die
+   ontbraken — `price_list_created` en `price_lines_upserted` — zijn het énige spoor dát er een
+   prijs geschreven is. Wie de briefing braaf volgt, slaat de check over die het item moet
+   bewijzen. (Dat die twee vandaag voor het eerst afgingen, was daarmee bijna gemist.)
+2. **De briefing ging ervan uit dat "een prijslijst laten verlopen" een bestaand pad is.** Dat
+   is het niet. `archivePriceList` (`lib/repo/price-archive.ts:14`) zet `replaced_at` en
+   `DELETE`t de prijsregels — dat omzeilt regel 3 in plaats van hem te demonstreren, en
+   vernietigt precies het bewijs dat het verlopen het product onzichtbaar maakte.
+3. **De voorgestelde merknaam `ZZ-TEST Lumen Logic` was onveilig.** `fetchCandidates` stap 3b
+   is niet altijd merk-gescoped (`lib/matching/engine.ts:288`) en vergelijkt merken op
+   **substring** (`:294`) — een spec-regel met merktekst "Lumen" raakt dit merk dus. De
+   briefing benoemde de artikelcode als eerste bescherming en zag de merknaam zelf over het
+   hoofd.
+
+**Patroon, nu vier keer op rij: de zwakte was steeds een aanname die niet tegen de bron
+getoetst was** (W1 taal · `measure` als schrijf-brug · navlabel "Brands" · deze drie). En vier
+keer op rij ving de bouwsessie het, niet de sprintmaster. De werkwijze werkt — de briefing is
+géén gezag, alleen een startpunt — maar de conclusie voor de sprintmaster is scherper:
+**grep vóór je een afbeelding, een pad of een naam claimt; niet erna.**
 
 ### Nieuw gevonden in week 1 — de scorecard rapporteert te laag (16 jul)
 
@@ -176,6 +200,34 @@ deed niets fout; de aanname dat een fixture-waarde onschuldig is zodra hij door 
 loopt, wél. Zie ook de eerdere sprintmaster-fouten (W1 taal, `measure`): **drie keer op rij
 was de zwakte een aanname die niet tegen de bron getoetst was.**
 
+### Opvolgtaken uit 1.4 — gemeld met bewijs, bewust niet gefixt (20 jul)
+
+De 1.4-sessie had een expliciet fix-verbod: vindt ze een bug in 1.1/1.2/1.3, dan melden met
+bewijs, niet repareren — een verificatie die onderweg repareert bewijst niets meer. Ze hield
+zich eraan. Drie vondsten, alle drie door de sprintmaster tegen de live DB nagemeten:
+
+- **`appliedFields` is structureel 0 bij alleen-nieuwe-producten.** In productie
+  gereproduceerd: `template_apply_finished` meldt `{createdProducts: 3, appliedFields: 0}`
+  terwijl er 38 velden geschreven zijn. De teller in `lib/repo/template-return.ts:518` telt
+  alleen het update-pad (`:415-478`), niet het create-pad. Het event is daarmee **misleidend
+  als audit-spoor**: wie op dit veld vertrouwt concludeert dat er niets is toegepast. IJzeren
+  regel 5 wil dat het log klopt, dus dit is meer dan cosmetisch. Klein en mechanisch.
+- **Nergens validatie dat `validFrom <= vandaag`.** Een prijslijst met een datum in de toekomst
+  geeft de scorecard "prijs ✓" terwijl de catalogus leeg blijft — de twee schermen spreken
+  elkaar dan tegen zonder dat iets een fout meldt. Reëel productgat, geen meetdetail; treft
+  elk merk dat een nieuwe prijslijst vooruit inplant.
+- **Geen event bij een gedropt veld op een nieuw product**, en `brand_template_downloaded`
+  heeft `entity_id: null` (spoor niet terug te voeren op het merk).
+
+**Vondst van de sprintmaster, ná de rapportage (niet door de sessie gemeld):** het verlopen
+zet `valid_until` op `current_date - 7`, waardoor de prijslijst nu `valid_from = 2026-07-20`
+met `valid_until = 2026-07-13` draagt — een venster dat achterstevoren staat. Voor regel 3
+werkt dat correct (de view toetst `valid_until >= CURRENT_DATE`), en DB-breed is dit de énige
+zo'n rij. Maar er is **geen CHECK-constraint** die `valid_until >= valid_from` afdwingt, in
+migraties noch in Postgres — geverifieerd via `pg_constraint`. De uitschakelaar is dus geldig,
+maar hij laat een logisch onmogelijke rij achter, en het schema staat dat overal toe. Kandidaat
+voor een constraint; eerst besluit, want bestaande data kan hem schenden.
+
 ### Openstaand — géén besluit (bewust)
 
 - ~~**Wie wordt beheerder?**~~ ✅ **Beslist 20 jul: Eduard wordt beheerder** en geeft anderen
@@ -190,6 +242,30 @@ was de zwakte een aanname die niet tegen de bron getoetst was.**
   100 regels, binnen de €10-cap), dus de urgentie is laag, en of het z'n geld waard is valt
   alleen te zeggen ná een paar echte armaturenboeken. Herijken zodra die er zijn; `parseFailed`
   en `suggested` in de `ai_vangnet_run`-payload leveren het bewijs vanzelf.
+
+**Vijf punten die na week 1 op Timo's tafel liggen** (geen ervan blokkeert week 2, alle vijf
+worden duurder naarmate ze langer wachten):
+
+1. **De akkoord-poort werkt niet op een gedeelde `main`.** "Stop vóór de push" beschermt niets
+   als `git push` élke commit meestuurt: een andere sessie deployt jouw ongepushte werk zodra
+   zij pusht. Deze week twee keer gebeurd. Drie opties: sessies pushen nooit (sprintmaster
+   pusht) · branches + PR · de poort schrappen en commit = deploy expliciet maken. **De huidige
+   situatie is de enige die niet verdedigbaar is** — hij wékt de indruk van een poort die er
+   niet is.
+2. **Er is nog géén enkel echt merk benaderd** — 1 relatie-rij op 430 merken. Dit is het énige
+   open punt in het weekdoel, en het heeft **doorlooptijd** (een merk moet antwoorden), dus het
+   kan niet in een sprintitem worden weggewerkt. Hoe langer het wacht, hoe later week 2 kan
+   verifiëren dat het pad ook met échte merkdata werkt.
+3. **"Intre"** — genoemd op 20 jul, staat niet in de brands-tabel. Wat is het, en is dit het
+   merk om als eerste te benaderen?
+4. **De hoofdbalk loopt over op 375px** (Settings, Brand portal, Admin buiten beeld) — sinds
+   1.3 erger, want dat scherm is nu hoofdingang.
+5. **`getAllBrandCompleteness` duurt 3–4,6 s warm** op datzelfde hoofdingang-scherm.
+
+**Opruimen: het testmerk `ZZTEST QA-14` staat in productie** (3 producten, 2 prijsregels,
+prijslijst verlopen → onzichtbaar in álle zoekresultaten). Bewust laten staan: het is het
+bewijsmateriaal onder 1.4 en het is onzichtbaar, dus het vervuilt niets. Weghalen mag zodra
+het weekdoel is afgetekend — `scripts/testmerk-1-4.ts` documenteert wat er staat.
 
 ---
 
@@ -581,8 +657,33 @@ niet kapot. Kandidaat voor week 2-bufferuren; meten vóór optimaliseren.
 - *Given* de hoofdnavigatie, *when* een Brink-gebruiker "Merken" kiest, *then* opent het merkrelatie-overzicht (status, prijslijst-indicator, mini-scorecard) met kruislink naar de disclosure-tiers (toestemmings-as ≠ compleetheids-as).
 - *Given* het overzicht, *when* gefilterd op "moet nog een mail" (status + `lastContactAt`), *then* toont de lijst precies de merken zonder recent contact — de outreach-werklijst.
 
-**1.4 — End-to-end verificatie met één echt merk** (~1 u)
+**1.4 — End-to-end verificatie** ✅ **AF (20 jul, commit `fde77f6`)** — via een testmerk, niet een echt merk
 - *Given* één merk (via Eduard of zelf-ingevuld), *when* de hele loop draait (template kopiëren → ingevuld terug → upload → voorstel → goedkeuren), *then* is de nieuwe data zichtbaar in **scorecard én catalogus** (de 0007-kolommen tellen aantoonbaar mee) met volledig audit-spoor in events.
+
+*Onafhankelijk geverifieerd door de sprintmaster tegen de live DB (20 jul, ná de rapportage):*
+- **De 0007-kolommen tellen aantoonbaar mee.** De fixture had een vooraf vastgelegd ongelijk
+  vulpatroon; gemeten kwam het exact uit: 3/3 (sdcm, ean, datasheet, dim_protocol) · 2/3 (ugr,
+  efficacy, supplier_page) · 1/3 (ik_rating, install_manual) · 0/3 (photometry, declaration).
+  Dat patroon kán niet ontstaan als de scorecard kolommen groepsgewijs leest. Sterker nog:
+  DB-breed staat `sdcm` op 3 en `ugr` op 2 over **211.314 producten** — élke niet-nulwaarde in
+  die kolommen komt van dit ene testmerk. Er is geen achtergrondruis om je in te vergissen.
+- **Catalogus — de helft die de Flos-check niet bewees.** 0001 en 0002 stonden in
+  `visible_products`, **0003 niet**: zelfde merk, zelfde moment, zelfde prijslijst, enige
+  verschil is de prijs. De negatieve controle zit dus binnen het merk, niet ernaast.
+- **Events.** De volledige keten 14:24:07 → 14:47:29. `price_list_created` en
+  `price_lines_upserted` staan elk op n=1 met allereerste tijdstip vandaag — **het prijzenpad
+  had in productie nog nóóit gedraaid.** Attributie klopt: 15+13+10 = 38 = de "38 new" uit het
+  voorstelscherm.
+- **Regel 3 live.** Ná het verlopen: zichtbaar 2 → 0, terwijl producten (3), prijsregels (2,
+  zelfde bedragen, som 333,33), `valid_from`, `replaced_at` (NULL) en het archief (0) allemaal
+  onveranderd bleven. Controlegroep 210.117 onaangeroerd. Elke alternatieve verklaring dan
+  "de prijslijst verliep" is daarmee uitgesloten.
+- Commit is puur additief (4 bestanden, 540 regels erbij, 0 eraf); de vier verificatiebestanden
+  zijn sinds 1.3 (`3b5d53e`) niet aangeraakt. `tsc` schoon, 70 testfiles / 748 tests groen.
+
+**Weekdoel "de merkgegevens stromen binnen" is daarmee gehaald** — met één eerlijke asterisk:
+de keten is bewezen op een testmerk. Er is nog **geen enkel echt merk benaderd**. Die
+verificatie staat in de week 2-buffer en heeft doorlooptijd nodig (zie Openstaand).
 
 **Risico's & plan B:** voorstel-diff complexer dan gedacht → conflictregel ligt vast, slimmer merge-gedrag = ná augustus · geen echt ingevulde template op tijd → 1.4 met zelf-ingevulde template, echte-merk-verificatie naar week 2-buffer.
 
