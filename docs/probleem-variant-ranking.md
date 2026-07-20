@@ -91,4 +91,62 @@ bestaande statussen-semantiek te breken. Meetbaar tegen de vier testcases
 (`scripts/eval-testset.ts`), met als concrete lat: **staan Jayden's vier artikelen na de fix in
 de kandidatenlijst, en op welke rang?**
 
-Nulmeting om tegen af te zetten: alle vier staan nu **buiten de top-50** (Lr301 op 106).
+Nulmeting om tegen af te zetten: **2 van de 4 staan al in de top-3** (zie correctie hieronder).
+
+---
+
+## ⚠️ Correctie op dit document (20 jul, ná de plan-fase)
+
+Twee cijfers hierboven waren fout. Beide kwamen uit een handmatige SQL-reproductie van
+`fetchCandidates` door de sprintmaster, niet uit het echte codepad via `scripts/eval-testset.ts`.
+
+1. **"Alle vier buiten de top-50" klopt niet meer.** Sinds `38ef337` staan **Lw001 en Lw002 op
+   rang 3**. Twee van de vier waren dus al opgelost vóór dit probleemdoc geschreven werd.
+2. **"Lr301 op rang 106" is te optimistisch.** Bij `limit=300` staat het artikel er nog steeds
+   niet in; de werkelijke rang ligt voorbij 300.
+
+**Waarom dat verschil ertoe doet — het herdefinieert het probleem.** Kijk naar wat de twee
+groepen onderscheidt:
+
+- **Lw001 vs Lw002** verschillen in **600 vs 900 mm en 13,1 vs 19,7 W** → `max_wattage` is
+  gevuld → de ranking werkt al.
+- **Lr301 vs Lr303** verschillen in **niets anders dan de optiek** (39° vs 57°) → `beam_angle`
+  is **0 van 131** gevuld → de ranking heeft niets om op te sturen.
+
+Waar het onderscheidende signaal in een gevulde kolom zit, werkt het systeem al. Waar het
+alleen als tekst-token in de naam staat, faalt het. **Dit is dus een dataprobleem met een
+ranking-symptoom, niet andersom.**
+
+Het signaal ís aanwezig, alleen niet als data: XAL's optiekcodes in de productnaam
+(`FL` ≈ 39°, `WF` ≈ 57°, 38/24 van de 131) mappen exact op wat het boek vraagt. Boek en
+catalogus zijn het eens — ze spreken een andere taal en niemand vertaalt.
+
+### Twee gevolgen voor de meetlat
+
+**"Top-1 == Jayden's exacte artikelcode" is een foute KPI.** Geverifieerd:
+`L360048-2413537F` en `L360048-2413538F` hebben een **identieke naam, kelvin, wattage én prijs
+(€349)**; `color_1` is leeg. Jayden koos 37F, maar 38F was even correct — de regelset zegt zelf
+"bij gelijke prijs mag Brink cosmetische varianten zelf kiezen". De juiste lat is: **staat de
+equivalentieklasse (naam + prijs identiek) op rang 1–2.**
+
+**`provable` blijft leeg, ook na de volledige fix.** Lr301 vraagt lumen 2810 en beam 39°; die
+blijven onbekend. Er komt hier geen groen uit — beloof het niet. Wat verbetert is de rang en
+het aantal onbekende velden per kandidaat.
+
+### Wat er nog meer boven tafel kwam (geverifieerd)
+
+- **De verrijkingspijplijn bestaat compleet en is nooit gepubliceerd.** `lib/repo/enrichment.ts`
+  (parser → steekproef → publiceren → hermatch) met UI op `/data/enrichment`; 3 runs aangemaakt,
+  **0 producten met `tier2_source`**. Over de hele catalogus valt uit de namen te winnen:
+  **+37.211 CRI** (nu 0 gevuld), +71.469 wattage, +15.145 kelvin, +8.224 beam. Voor XAL alleen:
+  **11.379 producten met CRI in de naam maar een lege `cri`-kolom**.
+- **De producttekst van Lr301 is vervuild:** ~90 tokens inclusief de complete paginakop
+  ("Blad 1 van 4 · Referentie Locatie Montagewijze Vorm Fabricaat …"). Lr303's tekst is schoon.
+  Een importbug die tot in de matcher doorlekt.
+- **Tokenweging is een reëel probleem, maar elders:** `WALL` komt **16.959×** voor, `STRETTA`
+  **36×** — en `matchCount` weegt ze gelijk. Voor Raadhuis inmiddels niet meer bindend; wel
+  relevant voor KvK/TNO.
+
+*Les voor de sprintmaster: dit is de vijfde keer deze week dat een eigen meting sneuvelde op een
+handmatige reproductie in plaats van het echte codepad. Meet voortaan met `eval-testset.ts`,
+niet met een nagebouwde query.*
