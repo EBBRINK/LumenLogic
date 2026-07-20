@@ -12,7 +12,9 @@
 //   • Regel 2: geen prijzen — het model krijgt geen catalogus-context en geen tools
 //     behalve het verplichte lever_regels-afleverkanaal; de prompt verbiedt prijzen.
 //   • Regel 5: elke gelezen pagina (ocr_page_done), elke afgekapte poging
-//     (ocr_page_truncated) en elke fout (ocr_page_failed) wordt gelogd in events. Skip-events (geen key / budget) logt de AANROEPER
+//     (ocr_page_truncated), elke stilzwijgend opgevangen timeout op de eerste
+//     poging (ocr_page_timeout, 17 jul) en elke fout (ocr_page_failed) wordt
+//     gelogd in events. Skip-events (geen key / budget) logt de AANROEPER
 //     (bouwstap 4) — daarvoor geeft deze module heldere {skipped: …}-vormen terug.
 //
 // Plafond (B4, hard): OCR_MAX_EUR_PER_RUN per boek, bovenop het maandbudget (L-06).
@@ -339,10 +341,23 @@ function toBase64(bytes: Uint8Array): string {
 // alleen bij een client-/netwerkfout; kapotte model-output → gewoon 0 regels.
 export type OcrAttempt = {
   maxTokens: number;
+  // "timeout" is geen echte Anthropic-stop_reason — een intern signaal (zie
+  // isTimeoutError) dat de EERSTE poging op CALL_TIMEOUT_MS liep vóór er een
+  // antwoord was.
   stopReason: string | null;
   inputTokens: number;
   outputTokens: number;
 };
+
+// Live-check 17 jul (Raadhuis, dossier ae0eead9/run daf7c660): een dichte
+// leesroute-batch liep tegen CALL_TIMEOUT_MS aan (toen 30 s); de SDK gooit dan
+// `APIConnectionTimeoutError` met precies deze boodschap ("Request timed out.").
+// Berichttoets i.p.v. instanceof: de SDK-klasse importeren zou de dynamische
+// "alleen laden als er een key is"-opzet van createAnthropicOcrClient breken,
+// en mock-clients in tests gooien toch een kale Error met dezelfde tekst.
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && /timed out/i.test(err.message);
+}
 
 export async function leverRegelsMetRetry(opts: {
   client: OcrClient;
@@ -363,23 +378,42 @@ export async function leverRegelsMetRetry(opts: {
 }> {
   const attempts: OcrAttempt[] = [];
   const parsed: OcrRegel[][] = [];
-  const attempt = async (maxTokens: number): Promise<string | null> => {
-    const res = await opts.client.createMessage({
-      model: OCR_MODEL,
-      max_tokens: maxTokens,
-      system: opts.system,
-      tools: opts.tools,
-      tool_choice: { type: "tool", name: TOOL_NAME },
-      messages: opts.messages,
-    });
-    attempts.push({
-      maxTokens,
-      stopReason: res.stop_reason,
-      inputTokens: res.usage.input_tokens,
-      outputTokens: res.usage.output_tokens,
-    });
-    parsed.push(parseLeverRegels(res.content));
-    return res.stop_reason;
+  // vangTimeout: alleen de EERSTE poging vangt een timeout op en meldt dat terug
+  // als retry-trigger (zie hieronder). De tweede poging (retry, ongeacht of hij
+  // door afkapping of door een timeout getriggerd werd) vangt niets meer —
+  // timet die óók uit, dan gooit hij door naar de aanroeper (ocrPage/
+  // leesrouteEenheid), die het als een echte fout logt (ocr_page_failed/
+  // leesroute_batch_failed) en de reservering laat staan. Zo blijft een
+  // aanhoudende storing zichtbaar en hervatbaar i.p.v. stil als "0 regels,
+  // klaar" geboekt — dat zou de pagina/tegel voorgoed als gedaan markeren
+  // zonder dat er ooit een antwoord kwam.
+  const attempt = async (
+    maxTokens: number,
+    vangTimeout: boolean,
+  ): Promise<string | null> => {
+    try {
+      const res = await opts.client.createMessage({
+        model: OCR_MODEL,
+        max_tokens: maxTokens,
+        system: opts.system,
+        tools: opts.tools,
+        tool_choice: { type: "tool", name: TOOL_NAME },
+        messages: opts.messages,
+      });
+      attempts.push({
+        maxTokens,
+        stopReason: res.stop_reason,
+        inputTokens: res.usage.input_tokens,
+        outputTokens: res.usage.output_tokens,
+      });
+      parsed.push(parseLeverRegels(res.content));
+      return res.stop_reason;
+    } catch (err) {
+      if (!vangTimeout || !isTimeoutError(err)) throw err;
+      attempts.push({ maxTokens, stopReason: "timeout", inputTokens: 0, outputTokens: 0 });
+      parsed.push([]);
+      return "timeout";
+    }
   };
 
   // O3-tripwire-retry. Bij een non-streaming respons die midden in een
@@ -387,12 +421,13 @@ export async function leverRegelsMetRetry(opts: {
   // (de respons-JSON moet geldig blijven) — parseLeverRegels levert dan vrijwel
   // zeker []. Reken dus nooit op partiële regels (Dordrecht-empirie 16 jul:
   // stop_reason max_tokens → stil 0/18). Maximaal twee calls, hard; de
-  // retry-trigger is uitsluitend stop_reason === "max_tokens" — een leeg antwoord
-  // met stop_reason "tool_use"/"end_turn" is legitiem blanco en mag nooit een
-  // tweede betaalde call veroorzaken.
-  const stop1 = await attempt(opts.maxTokensEerste);
-  if (stop1 === "max_tokens") {
-    await attempt(opts.maxTokensRetry);
+  // retry-trigger is stop_reason === "max_tokens" ÓF een timeout op de eerste
+  // poging (17 jul: CALL_TIMEOUT_MS was te krap voor een dichte batch) — een
+  // leeg antwoord met stop_reason "tool_use"/"end_turn" is legitiem blanco en
+  // mag nooit een tweede betaalde call veroorzaken.
+  const stop1 = await attempt(opts.maxTokensEerste, true);
+  if (stop1 === "max_tokens" || stop1 === "timeout") {
+    await attempt(opts.maxTokensRetry, false);
   }
 
   const best = parsed.reduce((a, b) => (b.length > a.length ? b : a));
@@ -617,6 +652,24 @@ export async function ocrPage(
           maxTokens: a.maxTokens,
           outputTokens: a.outputTokens,
           final: i === attempts.length - 1,
+        },
+      });
+    }
+
+    // Regel 5: was de eerste poging een timeout (17 jul, CALL_TIMEOUT_MS)? Dan
+    // is er stilzwijgend een retry gedaan (leverRegelsMetRetry) — dat hoort
+    // zichtbaar te zijn. Alleen attempts[0] kan hier "timeout" zijn: een
+    // timeout op de tweede poging gooit door naar het catch-blok hieronder.
+    if (attempts[0]?.stopReason === "timeout") {
+      await logEvent(db, {
+        entity: "import_run",
+        entityId: opts.importRunId,
+        action: "ocr_page_timeout",
+        actor: opts.actor ?? OCR_ACTOR,
+        payload: {
+          page: opts.pageNumber,
+          tile: tileNr,
+          maxTokens: attempts[0].maxTokens,
         },
       });
     }

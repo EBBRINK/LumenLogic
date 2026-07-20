@@ -999,3 +999,21 @@ relatieformulier, Excel-template-download en bericht-klaarzetten.
 - **exceljs** toegevoegd als dependency (echte .xlsx-template) — met Timo's akkoord.
 - **`brand_template_downloaded`-event** heeft `entityId` null (download is niet aan één
   merk gebonden bij de generieke template).
+_2026-07-17 (live-check-fix, Raadhuis): `leesroute_batch_failed` — "Request timed out."
+op dossier ae0eead9/run daf7c660 (batches pagina 1+4). Oorzaak: `CALL_TIMEOUT_MS`
+(`lib/ai/shared.ts`) stond op 30 s; een dichte A3-leesroute-batch had ~61 s nodig
+(2×30 s bevestigt de tijdlijn) — de SDK gooit dan `APIConnectionTimeoutError`
+("Request timed out."), buiten het bereik van de bestaande O3-tripwire (die alleen op
+`stop_reason === "max_tokens"` retryt). Fix: `CALL_TIMEOUT_MS` → 120 s, én
+`leverRegelsMetRetry` (`lib/ai/ocr.ts`) vangt een timeout op de EERSTE poging op als
+extra retry-trigger naast afkapping — alleen de eerste poging; timet de retry óók uit
+(of om een andere reden), dan gooit hij door zoals voorheen (`{failed}`, reservering
+blijft staan, hervatbaar). Nieuwe events `ocr_page_timeout`/`leesroute_batch_timeout`
+maken een stil-opgevangen timeout zichtbaar zonder de bestaande "truncated"-naam te
+misbruiken voor een andere faalklasse. Unit-tests (ocr.test.ts + leesroute.test.ts):
+timeout→retry-succes, timeout→retry-timeout (blijft failed), timeout ná een echte
+afkapping (blijft failed — alleen de eerste poging is beschermd), en een regressie-
+anker dat een bericht met alleen het woord "timeout" (niet de letterlijke SDK-tekst
+"timed out") geen retry triggert. `bunx tsc --noEmit` schoon, volledige suite groen
+(722/1 skip), meetscript-dry-run (Raadhuis, geen `--ai`) groen. Klein gehouden: alleen
+`lib/ai/shared.ts` + `lib/ai/ocr.ts` + `lib/ai/leesroute.ts` + hun tests.

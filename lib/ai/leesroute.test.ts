@@ -438,6 +438,95 @@ test("afkapping: één retry op het batch-retryplafond — kosten som, events kl
   expect((await eventsByAction(db, "leesroute_batch_failed")).length).toBe(0);
 });
 
+// ── Timeout op de eerste poging (17 jul, live-check Raadhuis) ───────────────
+// Dossier ae0eead9, run daf7c660: batches op pagina 1 en 4 gaven
+// leesroute_batch_failed met "Request timed out." — CALL_TIMEOUT_MS (toen 30 s)
+// was te krap voor een dichte batch (~61 s nodig). Fix: 120 s + de eerste
+// poging vangt een timeout op als extra retry-trigger (spiegelt lib/ai/ocr.ts).
+test("timeout op de eerste poging → retry slaagt: leesroute_batch_timeout-event, geen {failed}", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([
+    new Error("Request timed out."),
+    toolResponse([
+      { armatuurcode: "Lp301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lp301", pagina: 1 },
+    ]),
+  ]);
+
+  const result = await leesrouteBatch(db, {
+    importRunId: run.id,
+    pages: [{ pageNumber: 1, text: "tekst 1" }],
+    client,
+    actor: ACTOR,
+  });
+
+  if (!isLeesrouteBatchSuccess(result)) throw new Error("verwachtte succes");
+  expect(result.regels.map((r) => r.armatuurcode)).toEqual(["Lp301"]);
+  expect(result.truncated).toBe(0); // een timeout is geen afkapping (O3)
+  expect(calls.length).toBe(2);
+  expect(calls[0].max_tokens).toBe(MAX_TOKENS_PER_BATCH);
+  expect(calls[1].max_tokens).toBe(MAX_TOKENS_BATCH_RETRY);
+
+  // De timeout-poging droeg 0 tokens — kosten zijn dus exact die van de
+  // geslaagde tweede call: USAGE_COST.
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].purpose).toBe("leesroute");
+  expect(rows[0].costEur).toBe(USAGE_COST);
+
+  const timeoutEvents = await eventsByAction(db, "leesroute_batch_timeout");
+  expect(timeoutEvents.length).toBe(1);
+  expect(timeoutEvents[0].entityId).toBe(run.id);
+  expect(timeoutEvents[0].actor).toBe(ACTOR);
+  expect(timeoutEvents[0].payload).toEqual({
+    paginas: [1, 1],
+    maxTokens: MAX_TOKENS_PER_BATCH,
+  });
+
+  const done = await eventsByAction(db, "leesroute_batch_done");
+  expect(done.length).toBe(1);
+  expect(done[0].payload).toMatchObject({ regels: 1, truncated: 0, attempts: 2 });
+  expect((await eventsByAction(db, "leesroute_batch_truncated")).length).toBe(0);
+  expect((await eventsByAction(db, "leesroute_batch_failed")).length).toBe(0);
+});
+
+test("timeout op de eerste poging, retry timet óók uit → {failed} zoals voorheen (geen escalatie, geen derde poging)", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([
+    new Error("Request timed out."),
+    new Error("Request timed out."),
+  ]);
+
+  const result = await leesrouteBatch(db, {
+    importRunId: run.id,
+    pages: [
+      { pageNumber: 1, text: "tekst 1" },
+      { pageNumber: 2, text: "tekst 2" },
+    ],
+    client,
+    actor: ACTOR,
+  });
+
+  // De TWEEDE poging vangt geen timeout meer op — dit blijft {failed}, precies
+  // zoals een aanhoudende storing vóór deze fix ook al deed. Geen per-pagina-
+  // escalatie: die triggert alleen op een echte (max_tokens-)afkapping van de
+  // laatste poging, en die is hier nooit gehaald (de call wierp een fout).
+  if (isLeesrouteBatchSuccess(result) || !("failed" in result)) {
+    throw new Error("verwachtte {failed}");
+  }
+  expect(result.failed).toBe("Request timed out.");
+  expect(calls.length).toBe(2);
+
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].costEur).toBe(LEESROUTE_RESERVE_EUR.toFixed(4));
+
+  expect((await eventsByAction(db, "leesroute_batch_failed")).length).toBe(1);
+  expect((await eventsByAction(db, "leesroute_batch_timeout")).length).toBe(0);
+  expect((await eventsByAction(db, "leesroute_batch_done")).length).toBe(0);
+});
+
 test("dubbele afkap op 2 pagina's → per-pagina-escalatie op de paginabudgetten, aggregatie en events per stap", async () => {
   const db = await createTestDb();
   const run = await seedRun(db);

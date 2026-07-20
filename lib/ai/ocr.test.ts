@@ -377,6 +377,180 @@ test("pure laag: readPageWithVision levert attempts-metadata en gesommeerde usag
   });
 });
 
+// ── Timeout op de eerste poging (17 jul, live-check Raadhuis) ───────────────
+// CALL_TIMEOUT_MS was 30 s; een dichte batch had ~61 s nodig en de SDK gooide
+// `APIConnectionTimeoutError` ("Request timed out."). Fix: CALL_TIMEOUT_MS naar
+// 120 s (lib/ai/shared.ts) én de eerste poging vangt een timeout op als extra
+// retry-trigger naast max_tokens — alleen de eerste poging, nooit de tweede.
+test("timeout op de eerste poging → retry slaagt: event + succes, geen {failed}", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const regels = [
+    { armatuurcode: "Lr301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lr301" },
+  ];
+  const { client, calls } = mockClient([
+    new Error("Request timed out."),
+    toolResponse(regels),
+  ]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 1,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+    actor: ACTOR,
+  });
+
+  if (!isOcrPageSuccess(result)) throw new Error("verwachtte succes");
+  expect(result.regels.map((r) => r.armatuurcode)).toEqual(["Lr301"]);
+  // De timeout-poging droeg 0 tokens — kosten zijn dus exact die van de tweede
+  // (geslaagde) call: (2000 × €1 + 300 × €5) / 1M = €0,0035 = USAGE_COST.
+  expect(result.inputTokens).toBe(USAGE.input_tokens);
+  expect(result.outputTokens).toBe(USAGE.output_tokens);
+  expect(result.truncated).toBe(0); // een timeout telt niet als afkapping (O3)
+  expect(calls.length).toBe(2);
+  expect(calls[0].max_tokens).toBe(MAX_TOKENS_PER_PAGE);
+  expect(calls[1].max_tokens).toBe(MAX_TOKENS_RETRY);
+
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].costEur).toBe(USAGE_COST);
+
+  const timeoutEvents = await eventsByAction(db, "ocr_page_timeout");
+  expect(timeoutEvents.length).toBe(1);
+  expect(timeoutEvents[0].entityId).toBe(run.id);
+  expect(timeoutEvents[0].actor).toBe(ACTOR);
+  expect(timeoutEvents[0].payload).toEqual({
+    page: 1,
+    tile: 0,
+    maxTokens: MAX_TOKENS_PER_PAGE,
+  });
+
+  const done = await eventsByAction(db, "ocr_page_done");
+  expect(done.length).toBe(1);
+  expect(done[0].payload).toMatchObject({ regels: 1, truncated: 0, attempts: 2 });
+  // Geen afkapping gebeurd — de truncated-event-loop slaat de timeout-poging over.
+  expect((await eventsByAction(db, "ocr_page_truncated")).length).toBe(0);
+  expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(0);
+});
+
+test("timeout op de eerste poging, retry timet óók uit → {failed} zoals voorheen (geen derde poging)", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([
+    new Error("Request timed out."),
+    new Error("Request timed out."),
+  ]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 2,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+  });
+
+  // De TWEEDE poging vangt geen timeout meer op (vangTimeout alleen op de
+  // eerste) — dus dit blijft {failed}, net als een aanhoudende storing altijd
+  // deed. Reservering blijft staan, de beeldrij/tegel kan later hervat worden.
+  expect(result).toEqual({ failed: "Request timed out." });
+  expect(calls.length).toBe(2);
+
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].costEur).toBe(OCR_RESERVE_EUR.toFixed(4));
+
+  expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(1);
+  // Geen "timeout"-event: dat event bewijst een geslaagde stille retry, en die
+  // is hier niet gebeurd (de aanroeper zag alleen de uiteindelijke fout).
+  expect((await eventsByAction(db, "ocr_page_timeout")).length).toBe(0);
+  expect((await eventsByAction(db, "ocr_page_done")).length).toBe(0);
+});
+
+test("timeout op de TWEEDE poging (na een echte afkapping) → {failed}, geen stille swallow", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  // Eerste poging kapt legitiem af (max_tokens) → trigger de bestaande retry;
+  // de retry zelf timet nu uit. Alleen de EERSTE poging mag een timeout vangen,
+  // dus dit moet doorgooien naar {failed}, ongeacht waarom de retry getriggerd werd.
+  const { client } = mockClient([
+    truncatedResponse(),
+    new Error("Request timed out."),
+  ]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 3,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+  });
+
+  expect(result).toEqual({ failed: "Request timed out." });
+  expect((await eventsByAction(db, "ocr_page_failed")).length).toBe(1);
+  expect((await eventsByAction(db, "ocr_page_timeout")).length).toBe(0);
+});
+
+test("pure laag: timeout op de eerste poging staat als 'timeout' in de attempts-metadata", async () => {
+  const { client, calls } = mockClient([
+    new Error("Request timed out."),
+    toolResponse([
+      { armatuurcode: "Lp301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lp301" },
+    ]),
+  ]);
+
+  const result = await readPageWithVision({
+    client,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    pageNumber: 5,
+  });
+
+  expect(calls.length).toBe(2);
+  expect(result.attempts).toEqual([
+    {
+      maxTokens: MAX_TOKENS_PER_PAGE,
+      stopReason: "timeout",
+      inputTokens: 0,
+      outputTokens: 0,
+    },
+    {
+      maxTokens: MAX_TOKENS_RETRY,
+      stopReason: "tool_use",
+      inputTokens: USAGE.input_tokens,
+      outputTokens: USAGE.output_tokens,
+    },
+  ]);
+  expect(result.usage).toEqual({
+    inputTokens: USAGE.input_tokens,
+    outputTokens: USAGE.output_tokens,
+  });
+  expect(result.truncated).toBe(0);
+  expect(result.regels.map((r) => r.armatuurcode)).toEqual(["Lp301"]);
+});
+
+test("een bericht met alleen het woord 'timeout' (niet de exacte SDK-tekst) triggert geen retry", async () => {
+  // Regressie-anker voor de bestaande "client-fout"-test hierboven: isTimeoutError
+  // toetst specifiek op 'timed out' (de letterlijke Anthropic-SDK-boodschap), niet
+  // op elk bericht met "timeout" erin — anders zou dit een ANDERE, generieke
+  // netwerkfout ongewenst gaan verdragen als was het een tripwire-timeout.
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([new Error("timeout na 30s")]);
+
+  const result = await ocrPage(db, {
+    importRunId: run.id,
+    pageNumber: 6,
+    imageBytes: IMAGE,
+    mime: "image/jpeg",
+    client,
+  });
+
+  expect(result).toEqual({ failed: "timeout na 30s" });
+  expect(calls.length).toBe(1); // geen retry — dit is geen herkende timeout
+});
+
 // ── Defensieve parser ────────────────────────────────────────────────────────
 test("kapotte tool-output: 0 regels, nooit een crash", async () => {
   // Directe parser-varianten.

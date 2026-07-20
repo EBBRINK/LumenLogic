@@ -14,8 +14,10 @@
 //     behalve het verplichte lever_regels-afleverkanaal; de (gedeelde) promptkern
 //     verbiedt prijzen.
 //   • Regel 5: elke gelezen batch (leesroute_batch_done), elke afgekapte poging
-//     (leesroute_batch_truncated) en elke fout (leesroute_batch_failed) wordt gelogd
-//     in events. Skip-events (geen key / budget) logt de AANROEPER — precies zoals
+//     (leesroute_batch_truncated), elke stilzwijgend opgevangen timeout op de
+//     eerste poging (leesroute_batch_timeout, 17 jul — CALL_TIMEOUT_MS was te
+//     krap voor een dichte batch) en elke fout (leesroute_batch_failed) wordt
+//     gelogd in events. Skip-events (geen key / budget) logt de AANROEPER — precies zoals
 //     bij de OCR-route (lib/ai/ocr.ts): de aanroeper weet of het een run-start of
 //     een losse batch is; deze module geeft daarvoor heldere {skipped: …}-vormen
 //     terug.
@@ -346,6 +348,20 @@ async function leesrouteEenheid(
           outputTokens: a.outputTokens,
           final: i === attempts.length - 1,
         },
+      });
+    }
+
+    // Regel 5: was de eerste poging een timeout (17 jul, CALL_TIMEOUT_MS)? Dan
+    // is er stilzwijgend een retry gedaan (leverRegelsMetRetry) — dat hoort
+    // zichtbaar te zijn. Alleen attempts[0] kan hier "timeout" zijn: een
+    // timeout op de tweede poging gooit door naar het catch-blok hieronder.
+    if (attempts[0]?.stopReason === "timeout") {
+      await logEvent(db, {
+        entity: "import_run",
+        entityId: opts.importRunId,
+        action: "leesroute_batch_timeout",
+        actor: opts.actor,
+        payload: { paginas, maxTokens: attempts[0].maxTokens },
       });
     }
 
