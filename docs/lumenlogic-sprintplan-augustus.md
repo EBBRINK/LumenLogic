@@ -434,9 +434,42 @@ draaiden op een bestáánd product en zagen het niet. Dezelfde foute conditie za
 vroege prijslijst-poort. Op één plek gerepareerd; de regressietest faalt aantoonbaar zonder
 de fix.
 
-⬜ **Open — kan alleen Timo:** handmatige verificatie in de live app, inclusief de
-**Google-Sheets-export-check** uit 1.1 (de meest waarschijnlijke bron van een
-format-verrassing; er is nog nooit tegen een écht merk-Excel getest).
+✅ **AFGEROND 20 jul — live geverifieerd op productie, door Timo zelf uitgevoerd.**
+Merk **Flos** (3 producten), bestand `lumenlogic-1.2-live-check-v2.xlsx`.
+Voorstel-scherm: `2 new · 0 changed · 1 conflict · 63 unchanged · 1 new product · 0 price lines`.
+Timo vinkte alléén het nieuwe testartikel aan en liet het conflict uit.
+
+**Onafhankelijk nagemeten in de live DB door de sprintmaster:**
+
+| Wat | Uitkomst |
+|---|---|
+| `TEST-1.2-CHECK-DELETE-ME` | aangemaakt · `name_en` + `kelvin 3000` · **0 prijsregels** · **`visible_products` = false** |
+| `F1077009` Bellhop Glass C2 | `category_path` intact · `kelvin` leeg · **onaangeraakt** |
+| Events | alle vier gelogd: `template_upload_staged` (11:28) → `apply_started` → `product_created_from_template` → `apply_finished` (11:30) |
+
+**Wat hiermee live bewezen is, niet alleen in tests:**
+- **De Google-Sheets-rondgang overleeft de validator** — werkblad behouden, 66 kolommen
+  herkend. De format-verrassing die de check moest vinden: Sheets maakt van `845.00` een
+  `845`. De normalisatie canonicaliseert beide → **unchanged, 0 price lines**. Zonder die
+  normalisatie had elke prijs na een Sheets-rondgang als *changed* gemeld — precies de ruis
+  die het voorstel-scherm onbruikbaar maakt.
+- **De conflictregel werkt op echte data.** Lege cel + gevulde DB → clear-voorstel, default
+  uit, bestaande categorie behouden. Niet geënsceneerd: het viel vanzelf uit echte Flos-data.
+- **De veilige kant van ijzeren regel 3**: een product zonder prijs is meteen onzichtbaar.
+
+⬜ **Opruimen (open):** `TEST-1.2-CHECK-DELETE-ME` staat nog bij Flos in productie. Onzichtbaar
+via `visible_products`, dus onschadelijk — **niet forceren als FK's het blokkeren** (zelfde
+afweging als testdossier `49c6340e`). Op de week 4-checklist vóór de overdracht.
+
+**Dit is nadrukkelijk nog géén 1.4.** Het bestand is door de sprintmaster-keten zelf gevuld,
+niet door een merk, en het testartikel staat niet in de catalogus (geen prijs = onzichtbaar).
+1.4 eist "de nieuwe data zichtbaar in **scorecard én catalogus**" met een écht merk. De
+motor is bewezen; het merk-deel niet.
+
+**Meegekomen bewijs voor de `measure`-opvolgtaak:** de scorecard toont bij SDCM, Efficacy,
+UGR, alle `url_*` en alle `cut-out_*` de tekst *"not measurable yet (field doesn't exist in
+the data model yet)"* — terwijl die kolommen sinds 0007 wél bestaan. **Het scherm zegt iets
+onwaars tegen Brink, live in productie.** Zie de opvolgtaak hieronder.
 
 **Restrisico (uit HANDOVER):** het micro-venster binnen de apply blijft open — gevolg van de
 neon-http-beperking, bewust geaccepteerd, zelfde patroon als de eerdere race-risico's.
