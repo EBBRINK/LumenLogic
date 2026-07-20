@@ -188,17 +188,23 @@ test("compleetheid: verwachte ratio's op deels gevulde producten", async () => {
   expect(c.filledByField[PRICE_FIELD_KEY]).toBe(2); // beide op de geldige lijst
 
   const byKey = Object.fromEntries(c.buckets.map((b) => [b.bucket.key, b.score]));
-  // Bucket 1 (must meetbaar: supplier_article_code, name, category_path):
-  // sac 2/2, name 2/2, category 1/2 → gemiddelde (1 + 1 + 0.5) / 3.
-  expect(byKey.basis_identiteit.must.ratio).toBeCloseTo(2.5 / 3, 5);
-  expect(byKey.basis_identiteit.must.filled).toBe(2); // sac + name overal gevuld
+  // Bucket 1 (must meetbaar: supplier_article_code, name_en, category_path):
+  // sac 2/2 =1, name_en 0/2 =0, category 1/2 =0.5 → gemiddelde 0.5.
+  // ⚠️ Vóór 1.3-A stond hier 2.5/3: `name_en` mat toen products.name, dat de seed
+  // altijd zet. Nu meet het products.name_en — leeg, want geen enkel merk heeft
+  // Engelse namen aangeleverd. Die instorting IS de reparatie; niet "repareren"
+  // door de seed alsnog nameEn te laten vullen.
+  expect(byKey.basis_identiteit.must.ratio).toBeCloseTo(0.5, 5);
+  expect(byKey.basis_identiteit.must.filled).toBe(1); // alleen sac overal gevuld
   // Bucket 2: prijs = enige meetbare must → ratio 1.
   expect(byKey.commercie.must.ratio).toBe(1);
-  // Bucket 6 fotometrie (meetbaar: kelvin, lumen, cri, beam_angle):
-  // kelvin 2/2 =1, cri 1/2 =0.5, lumen 0, beam 0 → gemiddelde 0.375.
-  expect(byKey.fotometrie.wanna.ratio).toBeCloseTo(0.375, 5);
-  // Bucket 9 documentatie: niets meetbaar in v1.
-  expect(byKey.documentatie_links.measurableTotal).toBe(0);
+  // Bucket 6 fotometrie: sinds 1.3-A 8 meetbare wanna-velden (kelvin, lumen_output,
+  // cri, beam_angle, sdcm, efficacy, ugr, lifetime_rating).
+  // kelvin 2/2 =1, cri 1/2 =0.5, de rest 0 → gemiddelde 1.5/8 = 0.1875.
+  expect(byKey.fotometrie.wanna.ratio).toBeCloseTo(0.1875, 5);
+  // Bucket 9 documentatie: alle vijf url_*-kolommen zijn nu meetbaar (waren 0).
+  expect(byKey.documentatie_links.measurableTotal).toBe(5);
+  expect(byKey.documentatie_links.wanna.ratio).toBe(0); // en allemaal nog leeg
 });
 
 test("regel 2: het prijsbedrag wijzigen verandert de compleetheid niet", async () => {

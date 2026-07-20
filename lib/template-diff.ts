@@ -5,11 +5,13 @@
 //
 // SCHRIJF-MAPPING, NIET measure.column. docs/sprint1-2-briefing.md wijst
 // field-catalog `measure.column` aan als "de brug van catalog-key naar DB-kolom". Dat is
-// onjuist en gemeld: `measure` is de SCORECARD-MEET-brug en is verouderd t.o.v. migratie 0007
-// (die kolommen aanlegde voor vrijwel élk catalogusveld — sdcm, ean_code, family, …, terwijl
-// measure ze nog op kind:"none" heeft staan). Erger: `name_en` heeft measure: col("name"),
-// dus wie de briefing letterlijk volgt schrijft de Engelse merknaam over products.name heen.
-// Daarom staat de schrijf-mapping hieronder expliciet. Zie docs/plan-1-2-retourpad.md besluit 3.
+// onjuist en gemeld: `measure` is de SCORECARD-MEET-brug — hij beantwoordt "welke kolom
+// tel ik om dekking te bepalen", niet "welke kolom mag een merk overschrijven".
+// Sinds sprint 1.3-A loopt `measure` weer gelijk met migratie 0007 (en meet `name_en`
+// netjes products.name_en), maar dát maakt de twee mappings nog niet inwisselbaar:
+// lezen om te méten is een ander besluit dan schrijven op gezag van een merk, en niet
+// elk meetbaar veld is een veld dat het retour-pad mag wegschrijven. Ze blijven daarom
+// bewust gescheiden. Zie docs/plan-1-2-retourpad.md besluit 3.
 //
 // AANWEZIGHEID DRAAGT BETEKENIS — de belangrijkste regel van dit bestand. `GelezenRij.velden`
 // is Record<catalogKey, string> waarbij `!("cri" in velden)` betekent "kolom ontbrak in het

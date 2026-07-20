@@ -2,10 +2,13 @@
 // Geen mailverzending — de tekst gaat via een readonly-textarea + kopieerknop.
 //
 // Lek-preventie (reviewer-eis): de tekst benoemt UITSLUITEND niet-🔒-informatie.
-// Dat is hier structureel geborgd: de dekkingscijfers komen uit bucketScore, die alleen
-// meetbare velden telt — en álle internalOnly-velden zijn kind "none" (zie de assert in
-// lib/field-catalog.test.ts). Veldnamen zelf komen nooit in de tekst; alleen
-// bucketlabels en percentages. De negatieve test hieronder toetst het alsnog expliciet.
+// Let op: sinds sprint 1.3-A zijn vier 🔒-velden (stock, stock_reserved, show_on_web,
+// show_price_on_web) wél meetbaar, dus "álle internalOnly-velden zijn kind none" is
+// niet langer waar. De borging is smaller maar nog steeds hard:
+//   1. dekking() gebruikt alléén must + wanna, en élk meetbaar 🔒-veld staat op nice —
+//      geborgd door de invariant-test in lib/brand-message.test.ts;
+//   2. de tekst emitteert nooit veldnamen, alleen bucketlabels en percentages.
+// De negatieve test hieronder toetst het eindresultaat alsnog expliciet.
 import type { BucketScore } from "@/lib/field-catalog";
 import type { CatalogBucket } from "@/lib/field-catalog";
 import type { PriceListIndicator } from "@/lib/repo/brand-relations";

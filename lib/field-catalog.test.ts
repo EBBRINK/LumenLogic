@@ -68,15 +68,57 @@ test("meetbare velden: elke measure.column bestaat als échte drizzle-kolom", ()
   const byKey = new Map(
     FIELD_CATALOG.flatMap((b) => b.fields).map((f) => [f.key, f]),
   );
-  expect(byKey.get("name_en")?.measure).toEqual({ kind: "column", column: "name" });
-  expect(byKey.get("description_en")?.measure).toEqual({ kind: "column", column: "description" });
+  // De Engelse velden meten hun EIGEN kolom — niet de NL-hoofdkolom (1.3-A).
+  expect(byKey.get("name_en")?.measure).toEqual({ kind: "column", column: "name_en" });
+  expect(byKey.get("description_en")?.measure).toEqual({ kind: "column", column: "description_en" });
   expect(byKey.get("dimmable")?.measure).toEqual({ kind: "column", column: "dimmable" });
-  expect(byKey.get("dim_protocol")?.measure).toEqual({ kind: "none" });
+  expect(byKey.get("dim_protocol")?.measure).toEqual({ kind: "column", column: "dim_protocol" });
   expect(byKey.get("category")?.measure).toEqual({ kind: "column", column: "category_path" });
   expect(byKey.get("list_price_excl_vat")?.measure).toEqual({ kind: "price" });
-  // Bucket 9 is v1 volledig grijs.
+  // Bucket 9 is sinds 1.3-A volledig meetbaar (0007 legde de url_*-kolommen aan).
   const bucket9 = FIELD_CATALOG.find((b) => b.order === 9)!;
-  for (const f of bucket9.fields) expect(f.measure.kind).toBe("none");
+  for (const f of bucket9.fields) {
+    expect(f.measure, `bucket 9 veld ${f.key}`).toEqual({
+      kind: "column",
+      column: f.key,
+    });
+  }
+});
+
+// De converse van de test hierboven. Die toetst één richting — "elke measure.column
+// bestaat" — en dáárom kon `name_en: col("name")` jarenlang meelopen: `name` bestáát.
+// Deze test toetst de andere richting: bestaat er een products-kolom met exact de
+// veld-key als naam, dan MOET het veld die kolom ook meten. Zo dwingt de volgende
+// migratie zichzelf af i.p.v. stil te blijven liggen (sprint 1.3-A).
+test("REGRESSIE: bestaat products.<key>, dan meet het veld die kolom ook écht", () => {
+  const realColumns = new Set(
+    Object.values(getTableColumns(products)).map((c) => c.name),
+  );
+  const overtredingen: string[] = [];
+  for (const bucket of FIELD_CATALOG) {
+    for (const f of bucket.fields) {
+      if (!realColumns.has(f.key)) continue;
+      const verwacht = { kind: "column", column: f.key };
+      if (JSON.stringify(f.measure) !== JSON.stringify(verwacht)) {
+        overtredingen.push(
+          `${f.key}: products.${f.key} bestaat, maar measure = ${JSON.stringify(f.measure)}`,
+        );
+      }
+    }
+  }
+  // Alles ineens, zodat één run élke gemiste kolom laat zien i.p.v. de eerste.
+  expect(overtredingen).toEqual([]);
+});
+
+test("de 'niet meetbaar'-verzameling is exact twee velden, en die hebben géén kolom", () => {
+  const realColumns = new Set(
+    Object.values(getTableColumns(products)).map((c) => c.name),
+  );
+  const none = FIELD_CATALOG.flatMap((b) => b.fields)
+    .filter((f) => f.measure.kind === "none")
+    .map((f) => f.key);
+  expect(none).toEqual(["purchase_price_excl_vat", "brand_discount"]);
+  for (const key of none) expect(realColumns.has(key), `kolom ${key}`).toBe(false);
 });
 
 test("bucketScore: 0 producten → ratio 0, niets 'filled'", () => {
@@ -98,14 +140,16 @@ test("bucketScore: alles gevuld → must-ratio exact 1 (= donkergroen in de UI)"
 });
 
 test("bucketScore: alleen nice gevuld → must/wanna 0, nice 1; deels gevuld = exacte dekking", () => {
-  const bucket = FIELD_CATALOG.find((b) => b.key === "afmetingen")!; // 4 wanna-kolommen, nice onmeetbaar
+  const bucket = FIELD_CATALOG.find((b) => b.key === "afmetingen")!; // 4 wanna- + 4 nice-kolommen
   const uiterlijk = FIELD_CATALOG.find((b) => b.key === "uiterlijk")!;
-  // uiterlijk: color_1/material_1 (wanna, meetbaar), color_2/material_2 (nice, onmeetbaar)
+  // uiterlijk: color_1/material_1 (wanna), color_2/material_2 (nice) — sinds 1.3-A
+  // zijn alle vier meetbaar, dus nice telt nu wél mee en er is niets grijs meer.
   const score = bucketScore(uiterlijk, { color_2: 10, material_2: 10 }, 10);
   expect(score.must.total).toBe(0);
   expect(score.wanna.ratio).toBe(0);
-  expect(score.nice.total).toBe(0); // nice-velden hier onmeetbaar → tellen niet mee
-  expect(score.unmeasurable).toBe(2);
+  expect(score.nice.total).toBe(2);
+  expect(score.nice.ratio).toBe(1);
+  expect(score.unmeasurable).toBe(0);
   // Geen 90%-knip: 5 van 10 gevuld op één van vier velden = exact 0,125.
   const partial = bucketScore(bucket, { height_cm: 5 }, 10);
   expect(partial.wanna.ratio).toBeCloseTo(5 / 10 / 4, 10);

@@ -237,11 +237,13 @@ test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden 
   await expect
     .element(page.getByTitle(/CRI: 50% of products/))
     .toBeInTheDocument();
-  // Niet-meetbaar veld: EAN-code (kind none) grijs met uitleg.
+  // Niet-meetbaar veld: sinds 1.3-A zijn dat er nog exact twee — de commercie-🔒's
+  // zonder products-kolom. EAN-code stond hier vóór 1.3-A en is nu wél meetbaar.
   await expect
-    .element(page.getByTitle(/EAN code: not measurable yet/))
+    .element(page.getByTitle(/Purchase price excl\. VAT: not measurable yet/))
     .toBeInTheDocument();
-  // Bucket 9 volledig niet meetbaar.
+  expect(page.getByTitle(/EAN code: not measurable yet/).query()).toBeNull();
+  // Bucket 9 is nu volledig meetbaar, maar staat er nog steeds.
   await expect
     .element(page.getByText("9. Documentation / links"))
     .toBeInTheDocument();

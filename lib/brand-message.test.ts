@@ -2,6 +2,8 @@
 // geen prijslijst / verlopen lijst / alles compleet / geen contactpersoon — plus de
 // kernwaarborg dat geen enkel 🔒-veld (key of label) ooit in de tekst voorkomt.
 import { expect, test } from "vitest";
+import { getTableColumns } from "drizzle-orm";
+import { products } from "@/db/schema";
 import { bucketScore, FIELD_CATALOG } from "@/lib/field-catalog";
 import { buildBrandMessage, type BrandMessageInput } from "./brand-message";
 
@@ -32,8 +34,11 @@ const basis: BrandMessageInput = {
   productCount: 30,
   priceListIndicator: "aanwezig_geldig",
   priceListValidUntil: "2026-12-31",
-  // Alles gevuld behálve fotometrie (grotendeels leeg) en uiterlijk (half):
-  // fotometrie is dan aantoonbaar de laagste-dekking-bucket.
+  // Alles gevuld behálve fotometrie (vrijwel leeg) en uiterlijk (half). Sinds 1.3-A
+  // meten sdcm/efficacy/ugr/lifetime_rating écht mee, dus die moeten hier óók leeg
+  // staan — anders zou fotometrie (0,51) hóger scoren dan uiterlijk (0,50) en zou de
+  // Photometrics-assert hieronder alleen nog toevallig slagen. Nu is fotometrie
+  // aantoonbaar de laagste: must/wanna-dekking 0,0125 tegen 0,50 voor uiterlijk.
   buckets: maakBuckets(
     {
       ...allesGevuld(30),
@@ -41,6 +46,10 @@ const basis: BrandMessageInput = {
       lumen_output: 0,
       cri: 0,
       beam_angle: 0,
+      sdcm: 0,
+      efficacy: 0,
+      ugr: 0,
+      lifetime_rating: 0,
       color_1: 15,
       material_1: 15,
     },
@@ -80,6 +89,22 @@ test("verlopen lijst → verlopen + NL-datum; verloopt binnenkort → tijdig-nie
   });
   expect(binnenkort).toContain("expires soon");
   expect(binnenkort).toContain("1 August 2026");
+});
+
+// De invariant waarop de lek-preventie in brand-message.ts leunt sinds 1.3-A.
+// Vier 🔒-velden (stock, …) zijn nu meetbaar; dekking() leest alleen must+wanna, dus
+// een meetbaar 🔒-veld mag nooit op must/wanna staan. Wordt dat ooit veranderd, dan
+// gaan interne cijfers meewegen in een tekst die naar het mérk gaat.
+test("INVARIANT: elk 🔒-veld is niveau 'nice' of heeft géén products-kolom", () => {
+  const realColumns = new Set(
+    Object.values(getTableColumns(products)).map((c) => c.name),
+  );
+  const overtredingen = FIELD_CATALOG.flatMap((b) => b.fields)
+    .filter((f) => f.internalOnly)
+    .filter((f) => f.measure.kind !== "none" || realColumns.has(f.key))
+    .filter((f) => f.niveau !== "nice")
+    .map((f) => `${f.key} (${f.niveau}, measure ${f.measure.kind})`);
+  expect(overtredingen).toEqual([]);
 });
 
 test("laagste-dekking-buckets in gewone taal, met productaantal en percentage", () => {
