@@ -1199,3 +1199,37 @@ kandidaat voor de parser-hygiënelijst. **Testflakiness**: drie volle suite-runs
 flakten elk op een andere dark-mode-screenshottest (screens/data-screens/merk/
 pdf-upload) die in isolatie —óók met de wijzigingen gestasht— groen is;
 omgevingsflakiness browser-mode onder volle belasting, geen regressie._
+
+_2026-07-20 (variant-ranking **stap 0: nulmeting**, geen code gewijzigd): `eval-testset.ts
+--case=raadhuis` op rev `091241d`, limit 50 én 300. Uitkomst: `provable` leeg op alle vier
+(Lr301 0/19, Lr303 0/31, Lw001 0/10, Lw002 0/19) — de belofte "hier komt geen groen uit"
+staat. **De rang is limietafhankelijk**: Lw001 staat op 1 bij limit 50 en op 3 bij limit 300;
+noteer voortaan `rang@limit`, een kale rang is betekenisloos. Drie eerdere claims sneuvelden,
+alle drie read-only nagemeten: (a) de HANDOVER-regel hierboven "rang >50 op alle vier" klopt
+niet — Lw001/Lw002 staan op 1 resp. 3; (b) hun top-3 is drie keer dezelfde
+equivalentieklasse (`STRETTA 600 …37H/38H/32H`, identieke naam), dus tegen de herziene
+meetlat zijn die twee **al klaar** en voortaan regressie-anker; (c) het probleemdoc's "131
+SASSO-varianten delen de topscore" klopt niet — de SASSO's halen de lijst niet eens. Jayden's
+artikel bestaat onder exact de boeknaam (`SASSO PRO 100 FL ADJ DALI 27W HO … 3000K`) maar
+scoort `matchCount=6` tegen `INS 100 … CRI90 HIGH LUMEN DALI …` met **9**: de winnaar wint op
+generieke tokens uit de vervuilde producttekst (`CRI` 13.407 XAL-producten, `LED` 22.621,
+`3000K` 10.607), het juiste product draagt de onderscheidende (`SASSO` 4.846, `PRO` 1.323).
+**Hefboommeting** (A = echt codepad, B–H = SQL-simulaties, XAL-only — richting, geen bewijs;
+rang van `L360048-2413537F`): huidig **448** → schone tekst **105** → +spec-tiebreak **21** →
++beam uit optiekcode **8** → +dim-term **4**. Daaruit vier bijstellingen, vastgelegd als
+correctiesectie in `docs/goal-variant-ranking.md`: (1) **stap 1 geeft nul rangwinst** —
+verrijking vult kolommen, niet namen, dus `matchCount` beweegt niet; het is een
+beoordelingsstap, niet de ">50% van de winst"-hefboom; (2) **stap 4 vóór stap 2 is schadelijk**
+— idf zonder schone tekst maakt het slechter (448 → **504**), want dan wegen juist
+paginakop-tokens (`Gefacetteerde`, `pasring`, `SDCM`) het zwaarst en wint een `PENDANT SHEET
+METAL CLIP`; (3) stap 3 mist een **`dimmable`-term** (boek eist DALI-2; 62 van de 131 SASSO PRO
+100 hebben de kolom gevuld) — zonder term staan vier niet-dimbare varianten vóór Jayden's
+artikel; (4) de **watt-emmers scheiden 26,5 W niet van 27 W** (beide binnen 10% → zelfde +2,
+daarna beslist het alfabet) — dat houdt de equivalentieklasse op 3–4; los op met een continue
+`abs(max_wattage − gevraagd)`-tiebreak ná de emmers, NULL laatst. **Herziene volgorde: 2 → 3 →
+5 → 1 → 4 → 6**; stapinhoud en alle *Doet NIET*-regels ongewijzigd. Nog open: `--assert-nulmeting`
+toetst het 16 jul-ijkpunt en is **nu al rood** (verwacht raadhuis `merk-fout 31` /
+`{blauw:30, paars:1}`, gemeten `merk-bestaand 14` / `fout 0` /
+`{open:13, blauw:10, geel:5, rood:2, paars:1}`) — herijken in de stap 2-commit, mét motivering,
+niet stilzwijgend. Stap 1 schrijft naar de **productie-DB** (dev draait op prod-Neon): afspraak
+met Timo is poort-eerst-repareren, reviewrijen tonen, publiceren pas na expliciet akkoord._
