@@ -178,8 +178,8 @@ was de zwakte een aanname die niet tegen de bron getoetst was.**
 
 ### Openstaand — géén besluit (bewust)
 
-- **Wie wordt beheerder?** Aanname: Eduard, die vervolgens anderen toegang geeft. **Moet door
-  Eduard zélf bevestigd worden** — Timo's aanname is geen toezegging. Harde voorwaarde vóór week 4.
+- ~~**Wie wordt beheerder?**~~ ✅ **Beslist 20 jul: Eduard wordt beheerder** en geeft anderen
+  toegang. Was een aanname, nu bevestigd door Timo. Harde voorwaarde vóór week 4 is daarmee ingevuld.
 - **Waar dient het vangnet voor in tender?** (uit 0.1b) Een regel is rood/open **omdat** de
   matcher het exacte product niet vond; in tender mag het vangnet **alleen datzelfde exacte
   product** suggereren. Het zoekt daar dus naar wat al bewezen afwezig is — **`suggested: 0` is
