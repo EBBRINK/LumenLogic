@@ -22,7 +22,8 @@ Items marked ⚖️ have no XIS term — my judgment call; easy to change global
 | Data | Data | /data | /data |
 | Analytics | Analytics | /analytics | /analytics |
 | Instellingen | Settings | /instellingen | /settings |
-| Merk (portal) | Brand | /merk | /brand |
+| Merkrelaties | Brand relations | /data/merkrelaties | /data/brand-relations |
+| Merk (portal) | Brand portal | /merk | /brand |
 | Admin | Admin | /admin | /admin |
 
 ### Sub-routes

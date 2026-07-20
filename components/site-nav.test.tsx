@@ -1,7 +1,7 @@
-// Hoofdnavigatie (sprint 1.3-B): "Brands" → /data/brand-relations als hoofdingang naast
+// Hoofdnavigatie (sprint 1.3-B): "Brand relations" → /data/brand-relations als hoofdingang naast
 // het merkportaal ("Brand portal" → /brand). De actieve sectie wordt centraal bepaald
 // (longest-prefix-wint), anders lichten op /data/brand-relations zowel "Data" als
-// "Brands" op. Pure resolver-tests + screenshots licht/donker × mobiel/desktop.
+// "Brand relations" op. Pure resolver-tests + screenshots licht/donker × mobiel/desktop.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -38,12 +38,12 @@ test("actieve sectie: bestaand gedrag blijft intact", () => {
   expect(activeNavHref("/branding")).toBeNull();
 });
 
-test("navigatie-items: Brands staat tussen Catalog en Data, labels zijn uniek", () => {
+test("navigatie-items: Brand relations staat tussen Catalog en Data, labels zijn uniek", () => {
   const labels = NAV_ITEMS.map((i) => i.label);
-  expect(labels.indexOf("Brands")).toBe(labels.indexOf("Catalog") + 1);
-  expect(labels.indexOf("Brands")).toBe(labels.indexOf("Data") - 1);
+  expect(labels.indexOf("Brand relations")).toBe(labels.indexOf("Catalog") + 1);
+  expect(labels.indexOf("Brand relations")).toBe(labels.indexOf("Data") - 1);
   expect(new Set(labels).size).toBe(labels.length);
-  expect(NAV_ITEMS.find((i) => i.label === "Brands")?.href).toBe(
+  expect(NAV_ITEMS.find((i) => i.label === "Brand relations")?.href).toBe(
     "/data/brand-relations",
   );
   expect(NAV_ITEMS.find((i) => i.label === "Brand portal")?.href).toBe("/brand");
@@ -70,7 +70,7 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(nav);
       await expect
-        .element(page.getByRole("link", { name: "Brands" }))
+        .element(page.getByRole("link", { name: "Brand relations" }))
         .toBeInTheDocument();
       await expect
         .element(page.getByRole("link", { name: "Brand portal" }))
@@ -82,10 +82,10 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("gerenderde balk markeert alleen Brands op /data/brand-relations", async () => {
+test("gerenderde balk markeert alleen Brand relations op /data/brand-relations", async () => {
   await renderServer(nav);
   await expect
-    .element(page.getByRole("link", { name: "Brands" }))
+    .element(page.getByRole("link", { name: "Brand relations" }))
     .toHaveAttribute("aria-current", "page");
   expect(
     page.getByRole("link", { name: "Data", exact: true }).element(),

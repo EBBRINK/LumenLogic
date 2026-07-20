@@ -480,9 +480,9 @@ claim is nu de smallere wáre invariant mét test), en de header van `lib/templa
 noemde `measure` "verouderd" met `name_en` als voorbeeld. `SCHRIJF_MAPPING` blijft de
 schrijf-brug, bewust gescheiden van de meet-brug.
 
-### Deel B — "Brands" in de hoofdnavigatie
+### Deel B — "Brand relations" in de hoofdnavigatie
 
-Nieuw item **Brands** → `/data/brand-relations` (intern merkenbeheer), ná Catalog en vóór
+Nieuw item **Brand relations** → `/data/brand-relations` (intern merkenbeheer), ná Catalog en vóór
 Data. Het bestaande **Brand** heet nu **Brand portal** (`/brand`, wat een mérk ziet). Route
 ongewijzigd, geen redirects, de kaart onder `/data` blijft. Overzicht, scorecard,
 kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de nav.
@@ -494,7 +494,7 @@ kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de n
   nieuwe `NavBar` beslist de actieve sectie één keer centraal.
   `components/site-nav.tsx` blijft de sessiepoort.
 - **Bug meegefixt:** `NavLink` bepaalde "actief" per link met een losse prefix-match, dus op
-  `/data/brand-relations` lichtten zowel "Data" als "Brands" op. Nu wint de langste prefix.
+  `/data/brand-relations` lichtten zowel "Data" als "Brand relations" op. Nu wint de langste prefix.
 
 ### Aannames en besluiten
 
@@ -511,11 +511,12 @@ kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de n
 
 ### Open punten / restrisico's
 
-- ⚠️ **Naamgeving botst met de glossary.** `docs/i18n-glossary-xis.md:144` legt Merkrelaties
-  vast als **"Brand relations"**; de briefing koos **"Brands"**. Ik heb de briefing gevolgd
-  (nieuwer besluit, 20 jul) maar de glossary is niet bijgewerkt — die staat nog op "Brand"
-  voor het navigatielabel. **Keuze aan Timo:** "Brands" houden en de glossary bijwerken, of
-  naar "Brand relations". Eén regel wijzigen in `components/nav-items.ts`.
+- ✅ **Naamgeving: glossary wint van de briefing.** De briefing koos "Brands", maar
+  `docs/i18n-glossary-xis.md` legde Merkrelaties al vast als **"Brand relations"**. Dat
+  conflict is gemeld in plaats van stil opgelost; **besluit Timo (20 jul): "Brand
+  relations"**, ook omdat het duidelijker scheelt van "Brand portal". De glossary is
+  bijgewerkt: de navigatierij stond nog op "Brand" en heeft nu zowel Merkrelaties als het
+  hernoemde Merkportaal.
 - ⚠️ **De balk loopt over op 375px.** Na "Anal…" vallen Settings, Brand portal en Admin
   buiten beeld. Niet nieuw — zeven items pasten al niet in een `flex`-rij zonder wrap
   (~390px nodig tegen ~290px beschikbaar) — maar B maakt het één item erger. Een echte
