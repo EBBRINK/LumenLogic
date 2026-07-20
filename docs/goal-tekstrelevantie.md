@@ -2,7 +2,52 @@
 
 > Synthese van twee plan-agents (20 jul 2026), beide gemeten via het echte codepad.
 > Vervangt stap 3, 4 en 5 van `docs/goal-variant-ranking.md`. Probleem:
-> `docs/probleem-tekstrelevantie.md`. **Nog niet gebouwd** — er staat één besluit open.
+> `docs/probleem-tekstrelevantie.md`.
+
+## ✅ Gebouwd (20 jul) — de tekstrelevantie-term
+
+Agent 2's basis, met de poort-beslissing en agent 1's vangnetten. In `lib/matching/engine.ts`
+(`fetchCandidates`) + nieuw `lib/matching/textscore.ts`. De `list`-toekenning en `judgeCandidate`
+onaangeraakt; geen prijs; `WHERE`/recall byte-identiek.
+
+- **Positiegewogen tekstscore** (`tokenWeight(i) = 1/(1+i/2)`): token 0 (de typeaanduiding, want
+  het merk is al afgesneden) weegt 1,0, de spec-proza-staart licht. Dit repareert de PRIMAIRE
+  sleutel — de kern die een tiebreak niet kon.
+- **Gecombineerde sleutel** `weightedMatch + 0,15·specScore`, met `specScore` NULL-neutraal en
+  spiegelend aan de tolerantie-oordelen (groen +1 / geel +0,5 / rood −1 / leeg 0). Daarna een
+  continue watt-afstand-tiebreak (NULL achteraan).
+- **Drievoudige poort**: alleen als de regel `brand.length > 0` **én** `hasAnyRequestedSpec` **én**
+  tokens draagt. Zonder specs → byte-identiek aan vandaag (inv2/inv7b-garantie, besluit Timo).
+  Zonder merk → óók terug naar vandaag: gemeten anders trok de spec-score op een merkloze
+  placeholder (Ls002, "Te bepalen door meubelmaker") een outdoor-light als GROEN omhoog — een
+  regressie die tijdens het bouwen is gevonden en met de merk-poort gedicht.
+- **Totale orde** al gedekt door de sluittermen `asc(articleCode), asc(id)` (commit `53608de`).
+
+**Gemeten resultaat (echt codepad, 3 identieke runs, stabiel):**
+
+| regel | VOOR | NA | eq-klasse |
+|---|---|---|---|
+| Lr301 → `…2413537F` | 2676 | **3** | 3 |
+| Lr303 → `…2412537W` | 2023 | **7** | 7 |
+| Lw001 / Lw002 (ankers) | eq 1 | eq 1 | **1** (ongewijzigd) |
+
+**Eerlijk over wat er NIET gehaald is** — en het is één oorzaak: `beam_angle` is leeg in de
+catalogus, dus Lr301 (FL/39°) en Lr303 (WF/57°) krijgen **dezelfde top-1** (`SASSO PRO 100 ME
+ADJ DALI 27W`). Het meetlat-criterium "verschillende topkandidaten" en "eq-klasse op 1–2" is dus
+**niet** gehaald door deze stap alleen — die hangt aan de optiekcode→beam-verrijking (hieronder),
+precies zoals voorspeld. Wat wél binnen is: de juiste familie staat nu bovenaan in plaats van op
+rang 2676, en dat is de voorwaarde waar al het andere op wachtte.
+
+**Blast-radius geverifieerd** tegen main (stash-vergelijking): raadhuis wijzigt op precies één
+regel — Lr301 geel→open, en dat is eerlijker (de juiste familie staat er nu, met onbekende
+cri/ip/lumen/beam → `provable` blijft leeg zoals beloofd, geen valse tolerantie-match meer op een
+verkeerd product). tno, kvk en dordrecht **byte-identiek** aan main. `bun vitest run` 754 groen,
+`tsc` schoon.
+
+**Direct volgende stap (afgesproken): de optiekcode→beam-verrijking**, zodat FL/WF gaan scheiden.
+Gecureerde tabel (`FL`→39, `WF`→57, `ME`→25, `SP`→15) door de verrijkingspoort met bron
+`'optic-code'` en eigen `tier2_source`-label — NIET hardgecodeerd in de matcher. De beam-term in
+`specScore` is al bedraad en NULL-neutraal; zodra de kolom gevuld is, gaat hij vanzelf meewegen.
 
 ## Waar beide agents onafhankelijk op uitkwamen
 

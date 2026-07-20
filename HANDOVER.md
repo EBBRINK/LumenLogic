@@ -1370,3 +1370,38 @@ houden hun garantie ongewijzigd. Agent 1's kop-poort daarmee afgekeurd in zijn h
 één PDF en agent 2's coëfficiënten zijn gevoelig (`α=0,05` → Lr303 rang 9; `α=0,30` → Lw001
 rang 3) — `eval-testset.ts` over de héle testset vóór merge, met als eis dat de andere 27
 raadhuis-regels en kvk/tno ongewijzigd of beter zijn._
+
+_2026-07-20 (variant-ranking **GEBOUWD: de tekstrelevantie-term**, agent 2's basis): in
+`lib/matching/engine.ts` (`fetchCandidates`) + nieuw `lib/matching/textscore.ts`. **Positiegewogen
+tekstscore** (`tokenWeight(i)=1/(1+i/2)`: token 0 = de typeaanduiding, want het merk is al
+afgesneden, weegt 1,0; de proza-staart licht) repareert de PRIMAIRE sorteersleutel — de kern die
+een tiebreak niet kon. **Gecombineerde sleutel** `weightedMatch + 0,15·specScore`, specScore
+NULL-neutraal en spiegelend aan de tolerantie-oordelen (groen +1 / geel +0,5 / rood −1 / leeg 0),
+plus een continue watt-afstand-tiebreak (NULL achteraan). **Drievoudige poort**: alleen bij
+`brand.length>0` **én** `hasAnyRequestedSpec` **én** tokens — anders byte-identiek aan vandaag.
+Twee subtiliteiten die stil konden slopen en gefixt zijn: (1) tokengewicht/coëfficiënt als
+decimale literal via `sql.raw`, niet als bound-param — een untyped param in een CASE met `else 0`
+laat Postgres integer gokken en dan faalt de coërcie van 0,667/2,7 ("invalid input syntax for type
+integer"); (2) de **merk-poort** is geen kosmetiek maar een regressiefix: zonder merk trok de
+spec-score op de merkloze placeholder-regel Ls002 ("Te bepalen door meubelmaker", enige eis
+dimmable=DALI) een outdoor up/down-light als GROEN omhoog — gevonden tijdens het bouwen via de
+volledige eval, gedicht door de merk-eis in de poort (agent 1 had dit voorspeld: Ls004→"EHBO").
+**Gemeten (echt codepad, 3 identieke runs, stabiel):** Lr301 2676→**3**, Lr303 2023→**7**,
+Lw001/Lw002 ankers eq-klasse **1** ongewijzigd. **Eerlijk over de meetlat die NIET gehaald is,
+één oorzaak:** `beam_angle` is leeg, dus Lr301 (FL/39°) en Lr303 (WF/57°) krijgen dezelfde top-1
+(`SASSO PRO 100 ME ADJ DALI 27W`) — "verschillende topkandidaten" en "eq-klasse 1–2" hangen aan de
+optiekcode→beam-verrijking (volgende stap), precies zoals voorspeld. Wat wél binnen is: de juiste
+familie staat bovenaan i.p.v. rang 2676 — de voorwaarde waar al het andere op wachtte.
+**Blast-radius geverifieerd tegen main** (git stash-vergelijking, niet beredeneerd): raadhuis
+wijzigt op precies één regel — Lr301 geel→open, en dat is eerlijker (juiste familie present, maar
+cri/ip/lumen/beam onbekend → `provable` blijft leeg zoals beloofd; geen valse tolerantie-match op
+een verkeerd product meer). tno/kvk/dordrecht **byte-identiek** aan main (Ls002's groen is
+pre-existing en brandless — de merk-poort maakt merkloze regels byte-identiek). Vangrails: geen
+prijs, `list`-toekenning + `judgeCandidate` onaangeraakt, `WHERE`/recall byte-identiek,
+inv2/inv7b groen. Tests: `lib/matching/textscore.test.ts` (puur) + twee engine-tests (type-product
+verslaat generiek-token-rijk lokproduct; merkloze poort gebruikt oude ordening). `bun vitest run`
+**754 groen** / 71 bestanden, `tsc` schoon. **Nog niet gepusht** (besluit W4 — alleen de
+sprintmaster pusht met expliciete SHA). Commit staat lokaal klaar. **Volgende stap, afgesproken:**
+optiekcode→beam door de verrijkingspoort (bron `'optic-code'`, eigen `tier2_source`), NIET
+hardgecodeerd; de beam-term in `specScore` is al bedraad en gaat vanzelf meewegen zodra de kolom
+gevuld is._

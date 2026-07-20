@@ -31,10 +31,12 @@ import {
   hasYellow,
   judgeCandidate,
   normalizeSku,
+  parseIp,
   worstVerdict,
   type DeliveredSpecs,
   type RequestedSpecs,
 } from "./tolerances";
+import { tokenWeight } from "./textscore";
 
 export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars";
 
@@ -253,6 +255,60 @@ async function resolveBrand(
   };
 }
 
+// Gewicht van de spec-bijdrage aan de gecombineerde primaire sorteersleutel. Bewust klein: de
+// positiegewogen tekstscore (textscore.ts) bepaalt de FAMILIE (token 0 weegt 1,0 en houdt de
+// echte SASSO's boven een generiek-token-rijk vreemd product); de specScore mag alleen bínnen
+// die familie herordenen — een kandidaat die de typeaanduiding mist, mag nooit door een
+// spec-bonus omhoogklimmen. Gemeten op de vier Raadhuis-regels; ijkbaar in de test.
+const SPEC_COEFF = 0.15;
+
+// Per-veld spec-score als één NULL-neutrale SQL-uitdrukking, uitsluitend over de GEVRAAGDE
+// velden. Spiegelt de tolerantie-oordelen (tolerances.ts) zodat ranking en beoordeling niet
+// tegenspreken: groen +1, geel +0,5, rood −1, en NULL (kolom leeg) altijd 0 — geen-data mag
+// een product nooit omlaag duwen (besluit 4). Kolommen die vandaag vrijwel leeg zijn (cri,
+// beam_angle) dragen nu dus ~niets bij, maar zijn correct bedraad voor zodra verrijking ze
+// vult. Geen prijs, geen merk. Retourneert null als er geen enkel gevraagd veld is.
+function specScoreSql(specs: RequestedSpecs): ReturnType<typeof sql> | null {
+  const terms: ReturnType<typeof sql>[] = [];
+  const c = visibleProducts;
+
+  if (specs.kelvin != null) {
+    terms.push(sql`(case when ${c.kelvin} is null then 0 when ${c.kelvin} = ${specs.kelvin} then 1 else -1 end)`);
+  }
+  if (specs.cri != null) {
+    terms.push(sql`(case when ${c.cri} is null then 0 when ${c.cri} >= ${specs.cri} then 1 else -1 end)`);
+  }
+  const reqIp = specs.ip ? parseIp(specs.ip) : null;
+  if (reqIp != null) {
+    // ip_value is tekst ("IP20"/"44"); eerste twee cijfers = de IP-waarde (parseIp-semantiek).
+    terms.push(sql`(case when ${c.ipValue} is null then 0 when substring(${c.ipValue} from '(\\d{2})')::int >= ${reqIp} then 1 else -1 end)`);
+  }
+  if (specs.watt != null) {
+    const w = specs.watt;
+    // Drempels als decimale literal (sql.raw): lumen_output/max_wattage kunnen integer-kolommen
+    // zijn, en dan zou een fractionele bound-param (2,7) door Postgres naar integer gecoërceerd
+    // worden en falen ("invalid input syntax for type integer: 2.7").
+    terms.push(sql`(case when ${c.maxWattage} is null then 0 when abs(${c.maxWattage} - ${w}) <= ${sql.raw((w * 0.1).toString())} then 1 when abs(${c.maxWattage} - ${w}) <= ${sql.raw((w * 0.4).toString())} then 0.5 else -1 end)`);
+  }
+  if (specs.lumen != null) {
+    const l = specs.lumen;
+    terms.push(sql`(case when ${c.lumenOutput} is null then 0 when abs(${c.lumenOutput} - ${l}) <= ${sql.raw((l * 0.15).toString())} then 1 when abs(${c.lumenOutput} - ${l}) <= ${sql.raw((l * 0.4).toString())} then 0.5 else -1 end)`);
+  }
+  if (specs.beamAngle != null) {
+    const b = specs.beamAngle;
+    terms.push(sql`(case when ${c.beamAngle} is null then 0 when abs(${c.beamAngle} - ${b}) <= 10 then 1 when abs(${c.beamAngle} - ${b}) <= 25 then 0.5 else -1 end)`);
+  }
+  if (specs.dimmable) {
+    // judgeDimmable: genormaliseerd, tweezijdige bevatting = groen (+1), ander protocol = geel
+    // (+0,5), leeg = onbekend (0). Nooit rood.
+    const nd = specs.dimmable.toLowerCase().replace(/[^a-z0-9]/g, "");
+    terms.push(sql`(case when ${c.dimmable} is null then 0 when regexp_replace(lower(${c.dimmable}), '[^a-z0-9]', '', 'g') like ${"%" + nd + "%"} or ${nd} like '%' || regexp_replace(lower(${c.dimmable}), '[^a-z0-9]', '', 'g') || '%' then 1 else 0.5 end)`);
+  }
+
+  if (terms.length === 0) return null;
+  return sql`(${sql.join(terms, sql` + `)})`;
+}
+
 // Kandidaten ophalen: exact-op-SKU eerst, anders fuzzy binnen merk (C-03/C-04).
 async function fetchCandidates(
   db: AppDb,
@@ -295,7 +351,13 @@ async function fetchCandidates(
     );
   }
   const tokens = productText.split(/\s+/).filter((t) => t.length >= 2);
+  // Ongewogen telling: blijft de sorteersleutel voor de spec-loze route (poort hieronder) en
+  // byte-identiek aan vandaag — de garantie waarop inv2/inv7b leunen. `matchCount` wordt ook nog
+  // in de SELECT teruggegeven; die kolom houdt zijn oude betekenis.
   let matchCount = sql<number>`0`;
+  // Positiegewogen som (textscore.ts): vroege tokens = de typeaanduiding en wegen zwaar, de
+  // spec-proza-staart licht. Dit is de tekstscore van de spec-bewuste route.
+  let weightedMatch = sql<number>`0`;
   if (tokens.length > 0) {
     conditions.push(
       or(...tokens.map((t) => ilike(visibleProducts.name, `%${t}%`))),
@@ -304,6 +366,16 @@ async function fetchCandidates(
       tokens.map(
         (t) =>
           sql`(case when ${visibleProducts.name} ilike ${"%" + t + "%"} then 1 else 0 end)`,
+      ),
+      sql` + `,
+    )})`;
+    weightedMatch = sql<number>`(${sql.join(
+      tokens.map(
+        // Gewicht als decimale literal (sql.raw), niet als bound param: een untyped param in een
+        // CASE met `else 0` laat Postgres het resultaattype op integer gokken en dan faalt de
+        // coërcie van 0,667 op "invalid input syntax for type integer".
+        (t, i) =>
+          sql`(case when ${visibleProducts.name} ilike ${"%" + t + "%"} then ${sql.raw(tokenWeight(i).toFixed(6))} else 0 end)`,
       ),
       sql` + `,
     )})`;
@@ -317,27 +389,65 @@ async function fetchCandidates(
     ? sql<number>`(case when ${visibleProducts.name} ilike ${productText + "%"} then 1 else 0 end)`
     : sql<number>`0`;
 
-  // Regel 2: #tokens, prefix, similariteit, naam. Nooit prijs.
-  // De constante-nul termen (geen tokens/producttekst) worden overgeslagen: een
-  // constante sorteert toch niets én zou als kaal `ORDER BY 0` een positionele
-  // verwijzing zijn (Postgres-fout). Semantisch identiek aan de oude volgorde.
+  // Poort (besluit Timo, docs/goal-tekstrelevantie.md): de spec-bewuste ordening geldt UITSLUITEND
+  // als de regel gevraagde specs draagt. Zonder specs (of zonder tokens) is de query byte-identiek
+  // aan vandaag — dat is de garantie waarmee inv2/inv7b overeind blijven (die draaien met specs:{}).
   //
-  // Sluittermen (artikelcode, dan id): `name` is GEEN totale orde — productnamen
-  // zijn niet uniek. De 131 SASSO PRO 100-varianten en de drie STRETTA 600-rijen
-  // hebben byte-identieke namen, en binnen zo'n gelijke sorteersleutel mag Postgres
-  // teruggeven wat het queryplan uitkomt: dezelfde regel gaf over drie identieke
-  // runs rang 1, 1 en 3. Dat maakte elke rangmeting op exacte artikelcode ±2
-  // onbetrouwbaar (en kostte twee plan-agents tijd). article_code is niet uniek
-  // (alleen brand_id+supplier_article_code is dat), dus id sluit de rij af — pas
-  // dan is de orde aantoonbaar totaal. Beide zijn prijs-blind; ijzeren regel 2
-  // blijft ongemoeid.
-  const orderTerms = [
-    ...(tokens.length > 0 ? [desc(matchCount)] : []),
-    ...(productText.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+  // Óók een merk vereist. Zonder merk is er geen betrouwbare kandidatenset: de spec-score zou dan
+  // over de héle catalogus een willekeurig spec-matchend product omhoog trekken. Gemeten: de
+  // merkloze placeholder-regel Ls002 ("Te bepalen door meubelmaker", enige eis dimmable=DALI)
+  // kreeg zo een outdoor up/down-light als GROEN — een misleidende groen die de brandloze
+  // productText (rommeltokens) niet kon tegenhouden. De positiegewogen tekstscore leunt bovendien
+  // op de kolomvolgorde ná het merk; zonder merk klopt die aanname niet. Merkloze regels vallen
+  // dus terug op de ordening van vandaag.
+  const specScore =
+    brand.length > 0 && tokens.length > 0 && hasAnyRequestedSpec(req.specs)
+      ? specScoreSql(req.specs)
+      : null;
+
+  // Regel 2: nooit prijs. De constante-nul termen (geen tokens/producttekst) worden overgeslagen:
+  // een constante sorteert toch niets én zou als kaal `ORDER BY 0` een positionele verwijzing zijn
+  // (Postgres-fout).
+  //
+  // Sluittermen (artikelcode, dan id): `name` is GEEN totale orde — productnamen zijn niet uniek.
+  // De 131 SASSO PRO 100-varianten en de drie STRETTA 600-rijen hebben byte-identieke namen, en
+  // binnen zo'n gelijke sorteersleutel mag Postgres teruggeven wat het queryplan uitkomt: dezelfde
+  // regel gaf over drie identieke runs rang 1, 1 en 3. article_code is niet uniek (alleen
+  // brand_id+supplier_article_code is dat), dus id sluit de rij af — pas dan is de orde aantoonbaar
+  // totaal. Beide zijn prijs-blind; ijzeren regel 2 blijft ongemoeid.
+  const tailTerms = [
     asc(visibleProducts.name),
     asc(visibleProducts.articleCode),
     asc(visibleProducts.id),
   ];
+  let orderTerms;
+  if (specScore != null) {
+    // Gecombineerde primaire sleutel: tekstscore + kleine spec-bijdrage. Een strikte tiebreak
+    // (tekst → spec) is bewezen ontoereikend — hij herordent alleen bínnen een gelijke tekstscore
+    // en haalt een verlies daarop nooit in (Lr303 verloor de tekstsleutel met 0,125 terwijl hij
+    // op specs vóórlag). De som lost dat op zonder de familie te verliezen (SPEC_COEFF klein).
+    // Daarna een continue watt-afstand: de emmers scheiden 26,5 W niet van 27 W (beide binnen 10%),
+    // de afstand wel — NULL achteraan (grote coalesce), zodat geen-data nooit vooraan komt.
+    const combined = sql<number>`(${weightedMatch} + ${sql.raw(SPEC_COEFF.toString())} * ${specScore})`;
+    const wattDist =
+      req.specs.watt != null
+        ? [asc(sql`coalesce(abs(${visibleProducts.maxWattage} - ${req.specs.watt}), 1e9)`)]
+        : [];
+    orderTerms = [
+      desc(combined),
+      ...wattDist,
+      desc(prefixBonus),
+      desc(score),
+      ...tailTerms,
+    ];
+  } else {
+    // Spec-loze route: exact de ordening van vandaag (byte-identiek — inv2/inv7b-garantie).
+    orderTerms = [
+      ...(tokens.length > 0 ? [desc(matchCount)] : []),
+      ...(productText.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+      ...tailTerms,
+    ];
+  }
   return db
     .select({ ...SELECTION, score, matchCount })
     .from(visibleProducts)

@@ -714,3 +714,82 @@ test("grens: merk + één getoetste spec (kelvin exact) blijft groen", async () 
   expect(out.status).toBe("groen");
   expect(out.provable.length).toBeGreaterThan(0);
 });
+
+// ── Tekstrelevantie (docs/goal-tekstrelevantie.md): de typeaanduiding wint ─────
+// De kern van de fix: bij een spec-dragende regel telt de positiegewogen tekstscore,
+// niet de kale token-telling. Het lokproduct matcht MÉÉR generieke tokens (CRI, 90,
+// reflector, LED, 3000K) en zou op de oude ordening bovenaan staan; het juiste product
+// draagt de onderscheidende typeaanduiding (SASSO PRO) vooraan en hoort te winnen.
+test("tekstrelevantie: type-product verslaat generiek-token-rijk lokproduct", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO PRO 100 FL ADJ DALI 27W HO cob LED 3000K 220-240V",
+    articleCode: "SASSO-FL-37F",
+    kelvin: 3000,
+    maxWattage: 27,
+    dimmable: "DALI",
+    price: "349.00",
+  });
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "INS 100 1171 CRI90 HIGH LUMEN DALI INCL.REFLECTOR 27,5W LED 3000K 220-240V",
+    articleCode: "INS-DECOY",
+    kelvin: 3000,
+    maxWattage: 27.5,
+    dimmable: "DALI",
+    price: "300.00",
+  });
+  // Vervuilde producttekst zoals het boek 'm levert: typeaanduiding vooraan, daarna
+  // spec-proza dat het lokproduct óók matcht. Het lokproduct heeft een hógere kale
+  // token-telling (CRI, 90, reflector, 3000K, LED, DALI, 100, 27) dan het juiste (SASSO,
+  // PRO, 100, 27, LED, 3000K, DALI) — precies het geval dat op main faalde.
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "SASSO PRO 100 IP20 LED 2810 lm 27 W reflector 3000K CRI 90 DALI Dimbaar",
+      specs: {
+        kelvin: 3000, watt: 27, dimmable: "DALI", cri: 90,
+        ip: "IP20", lumen: 2810, beamAngle: 39,
+      },
+    }),
+  );
+  const codes = [...out.provable, ...out.incomplete].map((c) => c.articleCode);
+  const sasso = codes.indexOf("SASSO-FL-37F");
+  const decoy = codes.indexOf("INS-DECOY");
+  expect(sasso).toBeGreaterThanOrEqual(0);
+  expect(decoy).toBeGreaterThanOrEqual(0);
+  expect(sasso).toBeLessThan(decoy);
+});
+
+// Poort: zonder merk grijpt de spec-bewuste ordening NIET in — dan is er geen
+// betrouwbare kandidatenset en zou de spec-score een willekeurig spec-matchend product
+// omhoogtrekken (gemeten: de merkloze placeholder Ls002 kreeg zo een outdoor-light als
+// groen). De regel valt terug op de kale token-ordening, waarin het lokproduct wint.
+test("poort: merkloze regel gebruikt de oude ordening (geen spec-boost)", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO PRO 100 FL ADJ DALI 27W HO cob LED 3000K 220-240V",
+    articleCode: "SASSO-FL-37F",
+    kelvin: 3000, maxWattage: 27, dimmable: "DALI",
+  });
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "INS 100 1171 CRI90 HIGH LUMEN DALI INCL.REFLECTOR 27,5W LED 3000K 220-240V",
+    articleCode: "INS-DECOY",
+    kelvin: 3000, maxWattage: 27.5, dimmable: "DALI",
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: null, // ← geen merk: poort dicht
+      productText: "SASSO PRO 100 IP20 LED 2810 lm 27 W reflector 3000K CRI 90 DALI Dimbaar",
+      specs: { kelvin: 3000, watt: 27, dimmable: "DALI", cri: 90, ip: "IP20", lumen: 2810, beamAngle: 39 },
+    }),
+  );
+  const codes = [...out.provable, ...out.incomplete].map((c) => c.articleCode);
+  // Kale token-telling: het lokproduct matcht meer tokens en staat dus vóór het type-product.
+  expect(codes.indexOf("INS-DECOY")).toBeLessThan(codes.indexOf("SASSO-FL-37F"));
+});
