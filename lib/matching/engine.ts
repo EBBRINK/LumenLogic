@@ -95,7 +95,10 @@ function looksNonLighting(text: string | null): boolean {
 // (leeg = geen tegenspraak). Precies dezelfde velden als judgeCandidate toetst —
 // blijft dit false, dan kan geen enkele kandidaat ooit iets anders dan een lege
 // deviations-lijst krijgen.
-function hasAnyRequestedSpec(specs: RequestedSpecs): boolean {
+// Geëxporteerd sinds de gat-A-fix (20 jul): lib/repo/ocr.ts (upgradeOcrLine) heeft
+// dezelfde toets nodig voor stillValid — één waarheid over de veldenlijst, zelfde
+// patroon als SELECTION/toDelivered hierboven.
+export function hasAnyRequestedSpec(specs: RequestedSpecs): boolean {
   return (
     specs.kelvin != null ||
     specs.cri != null ||
@@ -427,6 +430,25 @@ export async function evaluateSpecLine(
   }
 
   // Stap 5 — alle kandidaten toetsen tegen de tolerantietabel.
+  //
+  // Gat A ("vacuous green mét merk", live-check 20 jul, dossier ae0eead9): zonder
+  // één toetsbare req_*-spec is er niets aan te tonen — het merk is bij
+  // fetchCandidates een ZOEKFILTER, geen getoetste eis. Een kandidaat van het
+  // juiste merk bewijst alleen dat het merk klopt, niet dat het product
+  // gelijkwaardig is (vier XAL-regels stonden zo groen met montagerails als
+  // "Provably compliant"). Daarom: specloos → élke kandidaat hooguit lijst 2
+  // ("mogelijk — data onvolledig"), en de regel zakt via de bestaande
+  // incomplete-tak naar 'open' (mens kiest met reden). Bewijs dat geel/groen
+  // dan onbereikbaar is: judgeCandidate pusht uitsluitend onder gevulde-req-
+  // veld-guards (exact de velden van hasAnyRequestedSpec), dus deviations
+  // blijft [] voor elke kandidaat — anyGreen leest alleen provable (leeg) en
+  // anyYellow vereist een gele deviation die niet kan bestaan; B3 auto-door
+  // (pickUnambiguousYellow) vereist status geel én hasYellow — beide dood.
+  // NB sku: specRequestFromLine zet sku vandaag altijd null (dood pad). Wordt
+  // dat pad ooit geactiveerd, dan mag een exacte 3a-SKU-hit als "aantoonbaar"
+  // gelden (de SKU is zelf de meest specifieke eis) — dan hoort hier een
+  // sku-uitzondering bij.
+  const specless = !hasAnyRequestedSpec(req.specs);
   const scored: ScoredCandidate[] = rows.map((r, i) => {
     const deviations = judgeCandidate(req.specs, toDelivered(r));
     const red = hasRed(deviations);
@@ -436,7 +458,7 @@ export async function evaluateSpecLine(
     // horen in geen van beide "voldoet"-lijsten, maar we tonen ze niet weg (ze bepalen
     // hooguit de rode status van de regel als er niets beters is).
     const list: "aantoonbaar" | "onvolledig" =
-      !red && !unknown ? "aantoonbaar" : "onvolledig";
+      !specless && !red && !unknown ? "aantoonbaar" : "onvolledig";
     return {
       productId: String(r.id),
       name: String(r.name ?? ""),
@@ -491,6 +513,11 @@ export async function evaluateSpecLine(
 
   return {
     status,
+    // Gat A: benoem wáárom een specloze regel open blijft (NB: outcome.reason
+    // wordt nog niet per regel gepersisteerd — opvolgpunt 2.5, commit 2c29fa8).
+    ...(specless
+      ? { reason: "merk gevraagd maar geen toetsbare specs — niets aantoonbaar" }
+      : {}),
     provable: provable.map(strip),
     incomplete: incomplete.map(strip),
     topDeviations: top ? top.deviations : [],

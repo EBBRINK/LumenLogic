@@ -1038,3 +1038,26 @@ schoon, volledige suite groen (725/1 skip). **Lf902 in productie gehermatcht**
 naar open verschuiven (zelfde profiel) — nog niet gehermatcht, op verzoek van Timo
 kan dat alsnog. `outcome.reason` wordt nergens per regel gepersisteerd (alleen gebruikt
 voor de blauw-wachtrij) — pre-existing gat, niet aangepakt in deze fix.
+_2026-07-20 (live-check-fix, **gat A: vacuous green mét merk**): vervolg op c2121a3 —
+de vier XAL-regels in dossier ae0eead9 stonden groen ("Provably compliant" met
+montagerails en 2700K-varianten) terwijl alle req_*-velden null waren: mét merk glipte
+een specloze regel door stap 1b, kreeg deviations=[] per kandidaat en dus vacuous
+groen. Fix in `lib/matching/engine.ts` stap 5: bij nul toetsbare specs is élke
+kandidaat hooguit **lijst 2** ("mogelijk — data onvolledig") — het merk is bij
+fetchCandidates een zoekfilter, geen getoetste eis — en de regel zakt via de bestaande
+incomplete-tak naar **open** met reason "merk gevraagd maar geen toetsbare specs —
+niets aantoonbaar". Bewijs in comment dat geel/groen/auto-door dan onbereikbaar zijn
+(judgeCandidate pusht alleen onder gevulde-req-veld-guards). `hasAnyRequestedSpec`
+geëxporteerd; zelfde guard in `upgradeOcrLine`'s stillValid (verdediging-in-de-diepte:
+via de rijkste-wint-poort is dat pad vandaag alleen met ≥1 spec bereikbaar). Bewust
+omgedraaide testverwachting: de c2121a3-test "merk-only blijft WEL groen" pinde de
+non-goal vast die de live-check weerlegde; inv2/inv7b toetsen de prijs-invariant nu op
+lijst 2 (zelfde invariant, eerlijke lijst). Acceptatietest: groen 9→5 + open 4
+(Lp302/Ls001/Lp401/Ls010 — boekregels zonder toetsbare spec), vangnet checked 4→8
+(open doet mee — bestaand open-gedrag), estimate-totalen ongewijzigd (geen van de
+geflipte regels had een match). Volle suite 726 groen; nulmeting-assert intact (het
+ijkpunt bevat geen groen). **Live hermatch dossier ae0eead9** (actor
+system:fix-vacuous-green-A): de vier XAL-regels groen→open, kandidaten als lijst 2;
+0 regels groen-zonder-eis over; eindstand {paars:1, blauw:27, rood:8, open:6}.
+Zichtbaar keten-effect (bedoeld): open-regels vallen buiten offerte/estimate-totalen
+tot een mens kiest, en het vangnet checkt ze voortaan (budgetpoort blijft de rem)._

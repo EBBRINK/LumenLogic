@@ -77,17 +77,20 @@ test("inv2: goedkoper product komt niet vóór duurder puur door prijs", async (
     price: "310.00",
   });
 
-  // Geen spec-eisen → beide voldoen aantoonbaar (leeg oordeel = groen).
+  // Geen spec-eisen → niets aantoonbaar (gat A, 20 jul): beide kandidaten zijn
+  // lijst 2 en de regel is open. De prijs-invariant zelf (regel 2) blijft exact
+  // toetsbaar op de volgorde van lijst 2 — daar gaat deze test over.
   const out = await evaluateSpecLine(
     db,
     req({ brandText: "XAL", productText: "SASSO 100", specs: {} }),
   );
-  expect(out.status).toBe("groen");
-  expect(out.provable.length).toBe(2);
+  expect(out.status).toBe("open");
+  expect(out.provable.length).toBe(0);
+  expect(out.incomplete.length).toBe(2);
   // Het DUURSTE armatuur staat bovenaan (prefix-bonus), niet het goedkope accessoire.
-  expect(out.provable[0].name).toContain("SASSO 100 SQ SP CEIL");
-  expect(Number(out.provable[0].grossPrice)).toBeGreaterThan(
-    Number(out.provable[1].grossPrice),
+  expect(out.incomplete[0].name).toContain("SASSO 100 SQ SP CEIL");
+  expect(Number(out.incomplete[0].grossPrice)).toBeGreaterThan(
+    Number(out.incomplete[1].grossPrice),
   );
 });
 
@@ -250,15 +253,17 @@ test("inv7b: prijs speelt geen rol — dezelfde catalogus met omgewisselde prijz
   const expensiveSasso = await buildAndRun("310.00", "16.00");
   const cheapSasso = await buildAndRun("16.00", "310.00");
 
-  // status identiek
+  // status identiek (sinds gat A, 20 jul: 'open' — specloos is nooit aantoonbaar;
+  // de prijs-invariant toetst nu op lijst 2, waar deze kandidaten thuishoren)
   expect(expensiveSasso.status).toBe(cheapSasso.status);
+  expect(expensiveSasso.status).toBe("open");
   // kandidaatvolgorde identiek op naam (product-id's verschillen per db)
-  expect(expensiveSasso.provable.map((c) => c.name)).toEqual(
-    cheapSasso.provable.map((c) => c.name),
+  expect(expensiveSasso.incomplete.map((c) => c.name)).toEqual(
+    cheapSasso.incomplete.map((c) => c.name),
   );
   // en het armatuur staat in beide gevallen bovenaan, los van of het duur of goedkoop is
-  expect(expensiveSasso.provable[0].name).toContain("SASSO 100 SQ SP CEIL");
-  expect(cheapSasso.provable[0].name).toContain("SASSO 100 SQ SP CEIL");
+  expect(expensiveSasso.incomplete[0].name).toContain("SASSO 100 SQ SP CEIL");
+  expect(cheapSasso.incomplete[0].name).toContain("SASSO 100 SQ SP CEIL");
 });
 
 // ── PAARS: niet-verlichting ───────────────────────────────────────────────────
@@ -636,8 +641,11 @@ test("stap 3: wél merk maar geen producttekst → kandidaten binnen merk, geen 
   await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
   await seedBrandProduct(db, { brand: "Flos", name: "Bellhop" });
   const out = await evaluateSpecLine(db, req({ brandText: "XAL" }));
-  // geen specs gevraagd → kandidaat is aantoonbaar (niets te toetsen = niets rood
-  // of onbekend); de kern van deze test is: geen ORDER BY-crash en merk-scoping.
+  // Sinds gat A (20 jul): geen specs gevraagd → niets aantoonbaar, dus de
+  // kandidaat staat in lijst 2 en de regel is open. De kern van deze test
+  // blijft: geen ORDER BY-crash en merk-scoping (Bellhop hoort er niet in).
+  expect(out.status).toBe("open");
+  expect(out.provable).toHaveLength(0);
   const namen = [...out.provable, ...out.incomplete].map((c) => c.name);
   expect(namen).toContain("SASSO 100");
   expect(namen).not.toContain("Bellhop");
@@ -674,9 +682,35 @@ test('vacuous green: geen merk + geen specs, mét kandidaten gevonden → open, 
   expect(out.incomplete).toHaveLength(0);
 });
 
-test("vacuous green: merk-only (géén specs) blijft WEL groen — merk is daar een echte eis", async () => {
+// Gat A (live-check 20 jul, dossier ae0eead9, vier XAL-regels): deze test pinde
+// eerder de non-goal van c2121a3 vast ("merk-only blijft WEL groen"). De live-
+// check weerlegde die aanname: het merk is bij fetchCandidates een ZOEKFILTER,
+// geen getoetste eis — een kandidaat van het juiste merk bewijst alleen dat het
+// merk klopt, niet dat het product gelijkwaardig is. Vier XAL-regels stonden zo
+// groen met montagerails (token-match op "WALL") als "Provably compliant" —
+// dezelfde vacuous truth als Lf902, alleen met een geslaagde merkfilter ervoor.
+// Nieuw contract: specloos → kandidaten hooguit lijst 2, status open; de
+// kandidaten blijven zichtbaar (niets stilzwijgend weg — de reviewer kiest).
+test("vacuous green: merk-only (géén specs) → open met lijst 2-kandidaten, nooit groen", async () => {
   const db = await createTestDb();
   await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
   const out = await evaluateSpecLine(db, req({ brandText: "XAL" }));
+  expect(out.status).toBe("open");
+  expect(out.reason).toMatch(/geen toetsbare specs/);
+  expect(out.provable).toHaveLength(0);
+  expect(out.incomplete.length).toBeGreaterThan(0);
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+// Grensbewaking: mét minstens één toetsbare spec verandert er NIETS — een merk
+// + kelvin-match blijft gewoon groen (spiegel van de stap 1b-grens in c2121a3).
+test("grens: merk + één getoetste spec (kelvin exact) blijft groen", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100", kelvin: 3000 });
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { kelvin: 3000 } }),
+  );
   expect(out.status).toBe("groen");
+  expect(out.provable.length).toBeGreaterThan(0);
 });

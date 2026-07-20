@@ -31,7 +31,11 @@ import {
 } from "@/db/schema";
 import { isOcrPageSuccess, ocrPage, type OcrClient, type OcrRegel } from "@/lib/ai/ocr";
 import { parseProductName } from "@/lib/enrichment/parser";
-import { SELECTION as PRODUCT_SELECTION, toDelivered } from "@/lib/matching/engine";
+import {
+  hasAnyRequestedSpec,
+  SELECTION as PRODUCT_SELECTION,
+  toDelivered,
+} from "@/lib/matching/engine";
 import { hasRed, hasUnknown, judgeCandidate, worstVerdict } from "@/lib/matching/tolerances";
 import { MARKDOWN_CAP, splitBrandType } from "@/lib/pdf/armaturenboek";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
@@ -321,7 +325,16 @@ async function upgradeOcrLine(
       .limit(1);
     if (productRow) {
       const deviations = judgeCandidate(req.specs, toDelivered(productRow));
-      stillValid = !hasRed(deviations) && !hasUnknown(deviations);
+      // Gat A (20 jul, "vacuous green"): zonder één toetsbare req_*-spec is
+      // deviations=[] en zou !hasRed && !hasUnknown vacuous true zijn — de oude
+      // match bleef dan hangen en de regel werd hieronder zelfs hard "groen"
+      // gezet, op nul bewijs. Zelfde regel als evaluateSpecLine stap 5: geen
+      // getoetste eis → niets aantoonbaar → loskoppelen; de status blijft wat
+      // runMatcher er net van maakte ('open' bij kandidaten, mens kiest).
+      stillValid =
+        hasAnyRequestedSpec(req.specs) &&
+        !hasRed(deviations) &&
+        !hasUnknown(deviations);
       if (stillValid) {
         // CodeRabbit (PR #4, Major, ronde 1): runMatcher hierboven kende de regel
         // zonet nog zijn eigen (top-8-beperkte) status/deviations toe — die kan
