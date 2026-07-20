@@ -248,10 +248,28 @@ worden duurder naarmate ze langer wachten):
 
 1. **De akkoord-poort werkt niet op een gedeelde `main`.** "Stop vóór de push" beschermt niets
    als `git push` élke commit meestuurt: een andere sessie deployt jouw ongepushte werk zodra
-   zij pusht. Deze week twee keer gebeurd. Drie opties: sessies pushen nooit (sprintmaster
+   zij pusht. Deze week **drie keer** gebeurd. Drie opties: sessies pushen nooit (sprintmaster
    pusht) · branches + PR · de poort schrappen en commit = deploy expliciet maken. **De huidige
    situatie is de enige die niet verdedigbaar is** — hij wékt de indruk van een poort die er
    niet is.
+
+   **De derde keer was de akkoord-poort zélf (20 jul), en dat maakt het punt beslissend.**
+   De sprintmaster toonde Timo `git log origin/main..HEAD` — exact twee commits, alleen docs
+   plus één script — en kreeg akkoord op precies die twee. In het gat tussen dat akkoord en
+   de push commit de parallelle sessie `e1af9df` op dezelfde lokale `main`. De push stuurde
+   **drie** commits. Timo's akkoord dekte er twee.
+
+   Dit is geen slordigheid die met beter opletten weggaat. De sprintmaster deed vlak vóór de
+   push nog een `git fetch` — maar keek daarbij naar `origin/main` (was die verschoven?) en
+   niet naar de eigen lokale `main`, die intussen door een ándere sessie was opgeschoven.
+   **Wat je toont en wat je pusht zijn op een gedeelde branch twee verschillende dingen, en
+   het venster ertussen is niet te sluiten door zorgvuldigheid.** Schade hier nul (`e1af9df`
+   is 2 docs-bestanden, 198 regels erbij, 0 eraf, geen app-code), maar dat was geluk, geen
+   ontwerp: dezelfde race met een schema-migratie of een matcher-wijziging erin was een
+   ongevraagde productie-deploy van ongereviewd werk geweest.
+
+   **Directe mitigatie tot er een besluit is:** push een expliciete SHA in plaats van de
+   branch — `git push origin <sha>:main` stuurt exact wat is goedgekeurd en niets erachter.
 2. **Er is nog géén enkel echt merk benaderd** — 1 relatie-rij op 430 merken. Dit is het énige
    open punt in het weekdoel, en het heeft **doorlooptijd** (een merk moet antwoorden), dus het
    kan niet in een sprintitem worden weggewerkt. Hoe langer het wacht, hoe later week 2 kan
