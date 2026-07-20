@@ -412,7 +412,8 @@ probleemanalyse `docs/probleem-1-2-retourpad.md`, besluiten `docs/plan-1-2-retou
 
 ### Open punten / restrisico's
 
-- **`field-catalog.ts` `measure` is verouderd** t.o.v. migratie 0007: tientallen velden staan
+- ✅ **Opgelost in 1.3-A (20 jul)** — zie §Sprint 1.3 hieronder. ~~**`field-catalog.ts`
+  `measure` is verouderd**~~ t.o.v. migratie 0007: tientallen velden staan
   op `kind: "none"` terwijl hun products-kolom bestaat, en `name_en` wijst naar
   `products.name`. `measure` is een scorecard-MEET-brug, geen schrijf-brug — de briefing zei
   van wel. 1.2 gebruikt daarom een eigen `SCHRIJF_MAPPING`. Het repareren van `measure` raakt
@@ -426,6 +427,109 @@ probleemanalyse `docs/probleem-1-2-retourpad.md`, besluiten `docs/plan-1-2-retou
   kwestie, geen codefix. Relevant bij matchen op `supplier_article_code`.
 - **Nog niet handmatig tegen een écht merk-Excel getest** (Google-Sheets-export-check uit 1.1)
   — dat kan pas na deploy.
+
+## Sprint 1.3 — Merkenbeheer als hoofdingang (+ measure-reparatie) — af 20 jul 2026
+
+Twee besluiten, twee commits. Briefing `docs/sprint1-3-briefing.md`.
+A = `3b5d53e`, B = `b93bccf`.
+
+### Deel A — `measure` gelijkgetrokken met migratie 0007
+
+45 velden stonden op `measure: NONE` ("nog niet meetbaar") terwijl `products.<key>` sinds
+0007 bestaat, en `name_en`/`description_en` maten de buurkolom (`name`/`description`). De
+scorecard toonde daardoor "Product name (English) 100%" op grond van de Nederlandse naam,
+en "bestaat nog niet in het datamodel" over kolommen die er wél waren.
+
+- `lib/field-catalog.ts` — 47 `measure`-regels gerepareerd. De catalogus-key bleek voor
+  alle 45 exact de kolomnaam; per veld getoetst tegen `getTableColumns(products)`, niet
+  aangenomen. **Geen migratie.**
+- Ongewijzigd en bewust zo: `list_price_excl_vat` blijft `{kind:"price"}` (EXISTS op een
+  geldige lijst, nooit het bedrag — ijzeren regel 2); `purchase_price_excl_vat` en
+  `brand_discount` blijven `NONE` want zij hebben géén kolom; `category` blijft
+  `col("category_path")`. Géén `inExcel`/`internalOnly`/`niveau`/`matcher` aangeraakt —
+  dat zou het merk-Excel en daarmee 1.1/1.2 breken. `excelColumns()` leest `measure` niet,
+  dus het template is byte-identiek.
+
+**De scorecard is hierdoor gekelderd, en dat is de bedoeling** (besluit Timo, 20 jul).
+Gemeten op de productiedatabase (211.311 producten; `name_en` 1 rij gevuld,
+`description_en`/`sdcm`/`ean_code` 0) voor merk **Flos** (4 producten):
+
+| | vóór A | ná A |
+|---|---|---|
+| meetbare velden | 25 | **70** |
+| grijs "niet meetbaar" | 47 | **2** |
+| bucket 1 must | 83,3% (2/3) | **58,3% (1/3)** |
+| bucket 1 meetbaar/grijs | 4 / 4 | **8 / 0** |
+| bucket 9 (documentatie) | 0 meetbaar, 5 grijs | **5 meetbaar, 0 grijs** |
+| `name_en` gevuld | 4/4 (mat `name`) | **1/4 (meet `name_en`)** |
+
+Geen verzachting ingebouwd: geen drempels, geen uitgezonderde buckets, geen "tel alleen
+velden met data".
+
+**De belangrijkste toevoeging is de converse-test.** De bestaande test toetste alleen
+"elke `measure.column` bestaat als kolom" — die bleef vijf weken groen terwijl 45 velden
+fout stonden, en liet `name_en → col("name")` door omdat `name` nu eenmaal een echte kolom
+is. De nieuwe test toetst de andere kant: bestaat `products.<key>`, dan MOET het veld die
+kolom meten. Violations worden verzameld en in één keer gerapporteerd. Geverifieerd door
+beide bugvormen opnieuw te introduceren — de test noemde alle drie bij naam.
+
+Meegenomen omdat A ze onwaar maakte: `lib/brand-message.ts` documenteerde lek-preventie met
+"álle internalOnly-velden zijn kind none" (klopt niet meer nu `stock` c.s. meetbaar zijn —
+er lekt niets, want `dekking()` leest alleen must+wanna en die vier zijn `nice`, maar de
+claim is nu de smallere wáre invariant mét test), en de header van `lib/template-diff.ts`
+noemde `measure` "verouderd" met `name_en` als voorbeeld. `SCHRIJF_MAPPING` blijft de
+schrijf-brug, bewust gescheiden van de meet-brug.
+
+### Deel B — "Brands" in de hoofdnavigatie
+
+Nieuw item **Brands** → `/data/brand-relations` (intern merkenbeheer), ná Catalog en vóór
+Data. Het bestaande **Brand** heet nu **Brand portal** (`/brand`, wat een mérk ziet). Route
+ongewijzigd, geen redirects, de kaart onder `/data` blijft. Overzicht, scorecard,
+kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de nav.
+
+- `components/nav-items.ts` (nieuw) — items + `activeNavHref`, een pure module zonder
+  `"use client"`/`getSession`. Nodig, niet cosmetisch: exports van een client-module worden
+  client-references en zijn in de RSC-testomgeving niet aanroepbaar.
+- `components/nav-link.tsx` — `NavLink` krijgt `active` als prop (+ `aria-current`);
+  nieuwe `NavBar` beslist de actieve sectie één keer centraal.
+  `components/site-nav.tsx` blijft de sessiepoort.
+- **Bug meegefixt:** `NavLink` bepaalde "actief" per link met een losse prefix-match, dus op
+  `/data/brand-relations` lichtten zowel "Data" als "Brands" op. Nu wint de langste prefix.
+
+### Aannames en besluiten
+
+- **Boolean `false` telt als gevuld.** De filled-count is `count(*) filter (where <kolom> is
+  not null)`, dus een merk dat "nee" antwoordt op `emergency`/`light_source_included` heeft
+  het veld geleverd. Dat was al zo voor `directionable`; niet nieuw, wel nu op 4 velden meer.
+- **Ijzeren regel 2 blijft intact.** Geen prijs-BEDRAG werd meetbaar: `list_price_excl_vat`
+  meet alleen bestaan-op-een-geldige-lijst, `purchase_price_excl_vat`/`brand_discount`
+  blijven `NONE`. `show_price_on_web` is een weergavevlag, geen bedrag. De scorecard is geen
+  ranking-input.
+- **Geen nieuwe events.** A verandert alleen hoe bestaande data gemeten wordt, B is
+  navigatie. Bewust benoemd zodat het geen vergeten checkbox lijkt (regel 5 blijft gelden
+  voor zoeken/matchen/offreren).
+
+### Open punten / restrisico's
+
+- ⚠️ **Naamgeving botst met de glossary.** `docs/i18n-glossary-xis.md:144` legt Merkrelaties
+  vast als **"Brand relations"**; de briefing koos **"Brands"**. Ik heb de briefing gevolgd
+  (nieuwer besluit, 20 jul) maar de glossary is niet bijgewerkt — die staat nog op "Brand"
+  voor het navigatielabel. **Keuze aan Timo:** "Brands" houden en de glossary bijwerken, of
+  naar "Brand relations". Eén regel wijzigen in `components/nav-items.ts`.
+- ⚠️ **De balk loopt over op 375px.** Na "Anal…" vallen Settings, Brand portal en Admin
+  buiten beeld. Niet nieuw — zeven items pasten al niet in een `flex`-rij zonder wrap
+  (~390px nodig tegen ~290px beschikbaar) — maar B maakt het één item erger. Een echte
+  oplossing (`overflow-x-auto`, overloopmenu of drawer) is een ontwerpbesluit en viel buiten
+  1.3. **Bewust gemeld, niet stilzwijgend geredesigned.**
+- **Overzichtsquery is zwaarder geworden.** `getAllBrandCompleteness` doet nu 69 in plaats
+  van 24 `count(*) filter`-aggregaties in één group-by over ~211k producten, zonder `WHERE`.
+  Het zijn `IS NOT NULL`-tests op rijen die er toch al zijn (geen extra I/O), en de
+  correlated `EXISTS` op prijzen was al de kostendrijver — maar `/data/brand-relations` is
+  door B wél een hoofdingang geworden. **Nog niet onder productielast gemeten.**
+- **`measure` en `SCHRIJF_MAPPING` lijken nu bijna identiek** (69 vs 66 regels) en de
+  verleiding om ze te "unificeren" wordt groot. Niet doen: de één is snake_case DB-namen
+  voor SQL, de ander camelCase Drizzle-properties voor schrijven, en `category` mapt in
+  beide anders. Meten ≠ een merk toestaan te overschrijven.
 
 ## ✅ Ongecommit werk zonder eigenaar — opgelost 16 jul 2026
 
