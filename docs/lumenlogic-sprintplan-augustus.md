@@ -517,7 +517,67 @@ neon-http-beperking, bewust geaccepteerd, zelfde patroon als de eerdere race-ris
 - Conflictregel (vooraf vastgelegd): bestaand veld wint, tenzij expliciet aangevinkt.
 - ⚠️ **Hier hoort het aansluiten van `price-archive`**: `archivePriceList`/`replacePriceList` in `lib/repo/price-archive.ts` bestaan en zijn getest, maar worden **nergens aangeroepen** — oude prijsregels worden nu niet gearchiveerd. Beoogde stroom: `docs/plan-datamodel-productspecs.md` §"Prijslijst-historie".
 
-**1.3 — Merkenbeheer als hoofdingang** (~4 u)
+**1.3 — Merkenbeheer als hoofdingang** (~4 u) — ✅ **AFGEROND 20 jul, live geverifieerd.**
+Briefing: `docs/sprint1-3-briefing.md`. Commits `3b5d53e` (deel A: measure) · `b93bccf`
+(deel B: nav) · `486ddf3` (HANDOVER) · `9785889` (navlabel → glossary-term) — alle vier op
+`origin/main` en gedeployed.
+
+**Onafhankelijk geverifieerd door de sprintmaster:** het meetscript dat op 16 jul **45**
+mismatches vond (`measure: NONE` terwijl `products.<key>` bestaat) geeft nu **"GEEN —
+schoon"** · tests groen · navlabels kloppen in `components/nav-items.ts`.
+
+**Deel A — de scorecard liegt niet meer.** Gemeten op Flos tegen de productie-DB:
+meetbare velden **25 → 70**, grijs **47 → 2**, bucket-1 must **83,3% → 58,3%**
+(`name_en` 4/4 → 1/4 — `products.name_en` heeft 1 gevulde rij van 211.311). Precies de
+instorting die besloten was; geen verzachting ingebouwd.
+**De kern is de converse-test**: de oude test toetste alleen "elke `measure.column` bestaat
+als kolom" en bleef vijf weken groen terwijl 45 velden fout stonden — `name_en → col("name")`
+glipte erdoor omdat `name` nu eenmaal een echte kolom is. De nieuwe toetst de andere kant:
+bestaat `products.<key>`, dan móét het veld die kolom meten. De bouwsessie introduceerde beide
+bugvormen opnieuw en de test noemde alle drie bij naam.
+
+**Deel B** — "Brand relations" tussen Catalog en Data; bestaand "Brand" → "Brand portal".
+Label volgt `docs/i18n-glossary-xis.md:144` (besluit Timo 20 jul; de briefing zei "Brands" —
+de bouwsessie signaleerde het conflict i.p.v. het stil op te lossen).
+
+**Vier afwijkingen van de briefing, alle gemeld i.p.v. stil opgelost:** geen extra fable-agent
+(de veld→kolom-afbeelding bleek triviaal — alle 45 exact key↔kolomnaam) · deel A maakte de
+gedocumenteerde lek-preventie-invariant in `lib/brand-message.ts` onwaar (er lekt niets;
+`dekking()` leest alleen must+wanna en de vier interne velden zijn `nice` — claim vervangen
+door de smallere wáre invariant, mét test) · **deel B was géén pure navigatie-ingreep**:
+`nav-link.tsx` matchte per link op prefix, dus op `/data/brand-relations` lichtten Data én het
+nieuwe item op; meegefixt met longest-prefix-wint · de DoD vroeg nav-screenshottests alsof
+die bestonden — er was geen enkele test voor `SiteNav`/`NavLink`; nieuw gebouwd.
+
+### Twee structurele vondsten uit 1.3 — beide vragen een besluit
+
+**1. ⚠️ Het akkoord-vóór-productie werkt niet op een gedeelde `main`.** Tijdens 1.3 pushte de
+leesroute-sessie twee keer en nam daarbij ongevraagd 1.3's commits mee naar productie
+(`66fd418` droeg deel A, `8e3a5c9` deel B + HANDOVER). Beide stonden live vóórdat de
+bouwsessie iets kon vragen. Dit is **geen fout van een sessie** maar een eigenschap van git:
+`push` stuurt élke commit op de branch, niet alleen de jouwe. "Stop vóór de push" is dus alleen
+een rem als er precies één pusher is. **Tweede keer deze week** (1.2 had hetzelfde).
+*Beide keren zonder schade — de veiligheid kwam van tests + verificatie vóór de commit, niet
+van de poort.* Drie opties: (a) sessies committen wel, pushen nooit; Timo pusht — simpel, maar
+Timo wordt de flessenhals · (b) sessies op branches + PR — botst met "kleine commits op main"
+uit `CLAUDE.md` · (c) de poort schrappen en expliciet maken dat **commit = deploy**, dus
+verifiëren vóór de commit. **Het slechtste is de huidige stand: een poort waar iedereen op
+vertrouwt en die niet werkt.** Weegt zwaarder vanaf week 3 (externe accounts) en week 4
+(overdracht). ⏳ Besluit Timo.
+
+**2. ⚠️ De hoofdbalk loopt over op 375px.** Na "Anal…" vallen Settings, Brand portal en Admin
+buiten beeld. **Niet nieuw** — zeven items pasten al niet (~390px nodig tegen ~290px
+beschikbaar) — maar 1.3 maakt het één item erger, en dat op het moment dat het merkenscherm
+hoofdingang wordt. Bewust gemeld en niet stilzwijgend geredesigned: `overflow-x-auto`,
+overloopmenu of drawer is een ontwerpbesluit. ⏳ Besluit Timo. *(Kandidaat voor week 2,
+"bijschaven op uiterlijk en gebruiksgemak".)*
+
+**Meegekomen risico, door de sprintmaster gemeten:** `getAllBrandCompleteness` doet na deel A
+**69 aggregaties i.p.v. 24** over ~211k rijen zonder `WHERE`. Gemeten tegen de productie-DB:
+**3,0 s en 4,6 s** warm (31 merken met producten). Traag voor een scherm dat nu hoofdingang is,
+niet kapot. Kandidaat voor week 2-bufferuren; meten vóór optimaliseren.
+
+*Oorspronkelijke acceptatiecriteria:*
 - *Given* de hoofdnavigatie, *when* een Brink-gebruiker "Merken" kiest, *then* opent het merkrelatie-overzicht (status, prijslijst-indicator, mini-scorecard) met kruislink naar de disclosure-tiers (toestemmings-as ≠ compleetheids-as).
 - *Given* het overzicht, *when* gefilterd op "moet nog een mail" (status + `lastContactAt`), *then* toont de lijst precies de merken zonder recent contact — de outreach-werklijst.
 
