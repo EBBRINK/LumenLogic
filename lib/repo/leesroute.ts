@@ -32,10 +32,11 @@ import {
   type LeesroutePagina,
 } from "@/lib/ai/leesroute";
 import type { OcrClient } from "@/lib/ai/ocr";
+import { verrijkRegelsMetSegment } from "@/lib/pdf/rijsegmenten";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { getImportRun } from "./imports";
-import { verwerkGelezenRegels } from "./ocr";
+import { regelToSpecLine, specRichness, verwerkGelezenRegels } from "./ocr";
 
 export type RecordLeesrouteImportResult = {
   run: typeof importRuns.$inferSelect;
@@ -122,6 +123,8 @@ export async function recordLeesrouteImport(
   let batches = 0;
   let truncated = 0;
   let costEur = 0;
+  let segmentRegels = 0;
+  let segmentVerrijkt = 0;
   let gestopt: RecordLeesrouteImportResult["gestopt"] = null;
 
   for (let i = 0; i < paginas.length; i += LEESROUTE_BATCH_PAGES) {
@@ -157,11 +160,37 @@ export async function recordLeesrouteImport(
     truncated += result.truncated;
     costEur += result.costEur;
 
-    // (e) Persisteren via exact de OCR-lus; de pagina komt per regel uit het
+    // (e-1) Gat B (20 jul): deterministische segment-verrijking. Het model kapt
+    // ruwe_tekst soms af vóór de spec-sectie (de vier XAL-regels van dossier
+    // ae0eead9 verloren zo al hun specs); de server heeft de volledige
+    // paginatekst, dus snijden we per regel het échte rijsegment uit (model-
+    // codes als ankers, lib/pdf/rijsegmenten.ts) en geeft regelToSpecLine dat
+    // als extra parse-input mee. We voeden de VOLLEDIGE paginalijst, niet
+    // alleen de batch: de paginaOnbekend-fallback kan een regel aan een andere
+    // pagina toewijzen dan de batchgrens.
+    const verrijkt = verrijkRegelsMetSegment(
+      result.regels.map((r) => ({ ...r, page: r.pagina })),
+      paginas,
+    );
+    // Teller voor het audit-event (regel 5): hoeveel regels kregen een segment
+    // én werden er aantoonbaar rijker van (specRichness mét vs. zónder segment).
+    for (const r of verrijkt) {
+      if (!r.segmentTekst) continue;
+      segmentRegels++;
+      const zonder = specRichness(
+        regelToSpecLine(r, r.page, run.id, input.brandNames),
+      );
+      const met = specRichness(
+        regelToSpecLine(r, r.page, run.id, input.brandNames, r.segmentTekst),
+      );
+      if (met > zonder) segmentVerrijkt++;
+    }
+
+    // (e-2) Persisteren via exact de OCR-lus; de pagina komt per regel uit het
     // verplichte pagina-veld van het tekst-toolschema.
     const verwerkt = await verwerkGelezenRegels(db, {
       run: snapshot,
-      regels: result.regels.map((r) => ({ ...r, page: r.pagina })),
+      regels: verrijkt,
       brandNames: input.brandNames,
       actor: input.actor,
     });
@@ -169,6 +198,18 @@ export async function recordLeesrouteImport(
     duplicates += verwerkt.duplicates;
     upgraded += verwerkt.upgraded;
     snapshot = { ...snapshot, rows: verwerkt.rows, counts: verwerkt.counts };
+  }
+
+  // Audit (regel 5): één run-event als de segment-verrijking iets deed — licht,
+  // geen event per regel; het batch-event zelf blijft van lib/ai/leesroute.ts.
+  if (segmentRegels > 0) {
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: run.id,
+      action: "leesroute_segmenten_verrijkt",
+      actor: input.actor,
+      payload: { regelsMetSegment: segmentRegels, regelsVerrijkt: segmentVerrijkt },
+    });
   }
 
   // (f) Totalen. GEEN triggerVangnet hier (B8, zie kop-commentaar): elke

@@ -79,6 +79,7 @@ import {
   GRONDWAARHEID,
   type GrondwaarheidCase,
 } from "./eval/grondwaarheid";
+import { verrijkRegelsMetSegment } from "@/lib/pdf/rijsegmenten";
 import { planPageTiles } from "@/lib/pdf/tiles";
 import { openPdf, renderTileToJpeg } from "./eval/raster";
 
@@ -546,9 +547,18 @@ async function leesrouteCase(
         `truncated=${truncated} kosten=€${costEur.toFixed(4)}\n`,
     );
 
-    for (const regel of regels) {
+    // Gat B: dezelfde deterministische segment-verrijking als productie
+    // (recordLeesrouteImport) — de meting moet meten wat productie doet.
+    const verrijkteRegels = verrijkRegelsMetSegment(regels, paginas);
+    for (const regel of verrijkteRegels) {
       // "eval" als runId-placeholder — de regel gaat nooit naar de DB.
-      const line = regelToSpecLine(regel, regel.pagina, "eval", brandNames);
+      const line = regelToSpecLine(
+        regel,
+        regel.pagina,
+        "eval",
+        brandNames,
+        regel.segmentTekst,
+      );
       const huidige = beste.get(regel.armatuurcode);
       if (!huidige || specRichness(line) > specRichness(huidige.line)) {
         // O6: quantity mergen (zie de OCR-tak) — nooit een gelezen aantal kwijt.

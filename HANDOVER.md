@@ -1061,3 +1061,36 @@ system:fix-vacuous-green-A): de vier XAL-regels groen→open, kandidaten als lij
 0 regels groen-zonder-eis over; eindstand {paars:1, blauw:27, rood:8, open:6}.
 Zichtbaar keten-effect (bedoeld): open-regels vallen buiten offerte/estimate-totalen
 tot een mens kiest, en het vangnet checkt ze voortaan (budgetpoort blijft de rem)._
+_2026-07-20 (live-check-fix, **gat B: de boek-specs landen op de regel**): de vier
+XAL-regels van dossier ae0eead9 hadden alle req_*-velden null terwijl de brontekst de
+specs letterlijk noemt. Oorzaak empirisch: het model kapt `ruwe_tekst` inconsistent af
+vóór de spec-sectie (Lr301 stopte bij "112x106mm (ØxH)"; de Trilux-rij Ls004 was
+volledig en had wél specs) — en `parseProductName` parseert het volledige rijsegment
+perfect (27W/3000K/CRI90/IP20/39°/2810lm/DALI, incl. "13,1 W" met komma). Fix:
+**deterministische segment-verrijking** (`lib/pdf/rijsegmenten.ts`, puur): de door het
+model geleverde codes zijn segmentatie-ankers in de server-side paginatekst; het échte
+rijsegment gaat ACHTERAAN de parse-input van `regelToSpecLine` (parseProductName is
+eerste-match-wint — modeltekst wint, segment vult alleen lege velden; geen
+verzin-risico, zelfde laagafspraak als besluit 8: LLM leest codes, deterministiek leest
+cijfers). Randgevallen gedekt: rijkste-parse-wint bij meermaals voorkomende codes,
+langste-code-wint bij suffixen (Lr001 vs Lr001B), gelijmde codes via preferente (niet
+verplichte) rechtergrens, gemiste tussencode = geaccepteerd opslok-gedrag (B7-review
+vangt het). Aanroep in `recordLeesrouteImport` (+ event `leesroute_segmenten_verrijkt`
+met tellers) én in het meetscript (pariteit). Toolschema-route bewust verworpen: zeven
+extra output-velden per regel vergroten precies de max_tokens-druk die het afkappen
+veroorzaakte, en erven de gedocumenteerde run-variantie. **Backfill**
+(`scripts/backfill-leesroute-segmenten.ts`, runId-arg, idempotent — 2e run 0): run
+8e85421e bijgevuld, 30+ regels kregen specs uit het opgeslagen rawMarkdown, elk met
+event `leesroute_specs_backfilled` + hermatch. **Acceptatie**: Lr301/Lr303 dragen
+3000K/CRI90/IP20/27W/2810lm/39°|57° → eerlijk ROOD (de 2700K-SASSO's falen op
+kelvin-exact); Lw001/Lw002 dragen 3000K/CRI90/IP44/13,1W|19,7W → open, rails als
+"data onvolledig", nooit "aantoonbaar". Bonus-signaal: Jayden's vier artikelen staan
+óók na de fix niet in de top-50 (rang >50 op alle vier) — bevestigt dat variant-ranking
+op specs een eigen probleemdoc blijft (specs filteren de kandidatenquery niet, ze
+beoordelen alleen). **Bijvangst, niet gefixt**: parseProductName leest een enkel
+artikelnummer als spec (BEGA "24786W" → watt 24786 op Lr304; "304°"-achtige
+beam-uitschieters) — pre-existing parserlimiet, alleen zichtbaar op blauwe regels;
+kandidaat voor de parser-hygiënelijst. **Testflakiness**: drie volle suite-runs
+flakten elk op een andere dark-mode-screenshottest (screens/data-screens/merk/
+pdf-upload) die in isolatie —óók met de wijzigingen gestasht— groen is;
+omgevingsflakiness browser-mode onder volle belasting, geen regressie._

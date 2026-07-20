@@ -287,3 +287,101 @@ test("geen key en geen client → gestopt no_key + skip-event; run met markdown 
   expect(skipped.length).toBe(1);
   expect(skipped[0].payload).toEqual({ reden: "no_key" });
 });
+
+// ── Gat B (20 jul): deterministische segment-verrijking ──────────────────────
+// Het model kapt ruwe_tekst soms af vóór de spec-sectie (live: de vier
+// XAL-regels van dossier ae0eead9 verloren zo al hun specs). De repo-laag
+// snijdt daarom per regel het échte rijsegment uit de server-side paginatekst
+// (model-codes als ankers, lib/pdf/rijsegmenten.ts) en geeft dat als extra
+// parse-input mee — deterministisch, geen verzin-risico.
+test("gat B: afgekapte ruwe_tekst + volledige paginatekst → req_*-velden gevuld + audit-event", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+
+  const paginaTekst =
+    "Lr301 Raadzaal Inbouw Downlight XAL SASSO PRO 100 112x106mm (ØxH) " +
+    "IP20 / - LED 2810 lm 104 lm/W 27 W Middelbreed stralend (39°) " +
+    "3000K CRI ≥ 90 DALI-2 Dimbaar";
+  const { client } = mockClient([
+    toolResponse([
+      {
+        armatuurcode: "Lr301",
+        merk: "XAL",
+        type: "SASSO PRO 100",
+        // Exact het live-gedrag: afgekapt vóór de spec-sectie.
+        ruwe_tekst:
+          "Lr301 Raadzaal Inbouw Downlight XAL SASSO PRO 100 112x106mm (ØxH)",
+        pagina: 1,
+      },
+    ]),
+  ]);
+
+  const result = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "raadhuis.pdf",
+    pages: [paginaTekst],
+    markdown: `## Page 1\n\n${paginaTekst}`,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 0, totaal: 1 },
+    client,
+    actor: ACTOR,
+  });
+  expect(result.created).toBe(1);
+
+  const [line] = await runLines(db, result.run.id);
+  // De specs komen uit het rijsegment — de afgekapte ruwe_tekst had ze niet.
+  expect(line.reqKelvin).toBe(3000);
+  expect(line.reqCri).toBe(90);
+  expect(line.reqIp).toBe("IP20");
+  expect(Number(line.reqWatt)).toBe(27);
+  expect(line.reqLumen).toBe(2810);
+  expect(Number(line.reqBeamAngle)).toBe(39);
+  expect(line.reqDimmable).toBe("DALI");
+  // En dus toetst de matcher échte eisen: de deviations zijn niet leeg (het
+  // gesede product draagt alleen kelvin, dus de regel is eerlijk 'open' door
+  // onvolledige prodúctdata — wezenlijk anders dan het vacuous-open van gat A,
+  // dat géén enkele toetsing had).
+  expect((line.deviations ?? []).length).toBeGreaterThan(0);
+  expect(
+    (line.deviations ?? []).some((d) => d.field === "kelvin" && d.verdict === "groen"),
+  ).toBe(true);
+
+  // Audit (regel 5): één run-event met de tellers.
+  const verrijktEvents = await eventsByAction(db, "leesroute_segmenten_verrijkt");
+  expect(verrijktEvents).toHaveLength(1);
+  expect(verrijktEvents[0].payload).toMatchObject({
+    regelsMetSegment: 1,
+    regelsVerrijkt: 1,
+  });
+});
+
+test("gat B: paginatekst zonder de code (of vision-achtig pad zonder segment) → gedrag ongewijzigd, geen event", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { client } = mockClient([
+    toolResponse([
+      {
+        armatuurcode: "Lr999",
+        merk: "XAL",
+        type: "SASSO 100",
+        ruwe_tekst: "Lr999 XAL SASSO 100",
+        pagina: 1,
+      },
+    ]),
+  ]);
+  const result = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "boek.pdf",
+    // De pagina noemt de code nérgens — het anker vindt niets.
+    pages: ["Alleen proza over verlichting, zonder codes."],
+    markdown: "## Page 1\n\nAlleen proza.",
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "geen_regels", bekendeMerken: 0, totaal: 0 },
+    client,
+    actor: ACTOR,
+  });
+  expect(result.created).toBe(1);
+  const [line] = await runLines(db, result.run.id);
+  expect(line.reqKelvin).toBeNull(); // niets bijgevuld — en niets verzonnen
+  expect(await eventsByAction(db, "leesroute_segmenten_verrijkt")).toHaveLength(0);
+});

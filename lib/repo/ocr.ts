@@ -402,7 +402,9 @@ export async function verwerkGelezenRegels(
   db: AppDb,
   opts: {
     run: typeof importRuns.$inferSelect;
-    regels: (OcrRegel & { page: number })[];
+    // segmentTekst (gat B): optioneel, alleen op de tekst-leesroute — het
+    // deterministisch uitgesneden rijsegment gaat mee naar regelToSpecLine.
+    regels: (OcrRegel & { page: number; segmentTekst?: string })[];
     brandNames: string[];
     actor?: string;
   },
@@ -434,7 +436,13 @@ export async function verwerkGelezenRegels(
   let upgraded = 0;
 
   for (const regel of opts.regels) {
-    const line = regelToSpecLine(regel, regel.page, run.id, brandNames);
+    const line = regelToSpecLine(
+      regel,
+      regel.page,
+      run.id,
+      brandNames,
+      regel.segmentTekst,
+    );
     const baseRow: ImportRow = {
       fixtureCode: regel.armatuurcode,
       quantity: line.quantity ?? null,
@@ -691,6 +699,14 @@ export function regelToSpecLine(
   page: number,
   runId: string,
   brandNames: string[],
+  // Gat B (20 jul): het deterministisch uitgesneden rijsegment uit de
+  // server-side paginatekst (lib/pdf/rijsegmenten.ts) — alleen op de
+  // TEKST-leesroute beschikbaar; vision en het oude tekstpad geven hem niet
+  // mee (gedrag daar byte-identiek). Hij wordt ACHTERAAN de parse-input
+  // geplakt: parseProductName is eerste-match-wint per veld, dus wat het
+  // model wél leverde (ruweTekst/type) wint, en het segment vult alleen de
+  // velden bij die door een afgekapte ruwe_tekst leeg bleven.
+  segmentTekst?: string | null,
 ): SpecLineInput {
   let brand = regel.merk;
   let type = regel.type;
@@ -706,9 +722,12 @@ export function regelToSpecLine(
   // Specs komen vaak alleen in de langere ruweTekst voor ("Vermogen: 17,9 W.
   // Kleurtemperatuur: 3000 K. CRI: ≥ 90."), niet in het korte type-veld ("SASSO
   // 100") — zie docs/probleem-ocr-toc-verdringt-specs.md, Besluit fase 2, item C.
-  // We parsen daarom over ruweTekst + type samen; komt type ook al in ruweTekst
-  // voor, dan matcht de parser gewoon twee keer op dezelfde eenheid — onschadelijk.
-  const parseInput = [regel.ruweTekst, type].filter(Boolean).join(" ");
+  // We parsen daarom over ruweTekst + type samen (+ sinds gat B het rijsegment
+  // achteraan); komt type ook al in ruweTekst voor, dan matcht de parser gewoon
+  // twee keer op dezelfde eenheid — onschadelijk.
+  const parseInput = [regel.ruweTekst, type, segmentTekst]
+    .filter(Boolean)
+    .join(" ");
   const specs = parseInput ? parseProductName(parseInput) : {};
   return {
     fixtureCode: regel.armatuurcode,
