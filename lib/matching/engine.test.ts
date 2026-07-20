@@ -605,12 +605,27 @@ test("b3: regel met alleen rood-kandidaten → rood, geen unambiguousYellow", as
 // ── Stap 3 (AI-leesroute): regels met alléén een code zijn nu bereikbaar ──────
 // De leesroute kan een regel leveren zonder merk én zonder producttekst (bv. een
 // KvK-conceptpagina met een kale code). Vóór de poort in fetchCandidates crashte
-// dat op `ORDER BY 0` (constante sorteertermen als positionele verwijzing); nu is
-// het antwoord: geen zoeksignaal → geen kandidaten → rood (mens/review beslist).
-test("stap 3: geen merk, geen producttekst, geen specs → rood zonder crash", async () => {
+// dat op `ORDER BY 0` (constante sorteertermen als positionele verwijzing).
+// Geen merk + geen specs wordt sinds de vacuous-green-fix (17 jul) al hiervóór
+// afgevangen door de stap 1b-guard hieronder (status "open"); fetchCandidates
+// wordt in dít scenario dus niet eens meer aangeroepen.
+test("stap 3: geen merk, geen producttekst, geen specs → open (stap 1b), geen crash", async () => {
   const db = await createTestDb();
   await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
   const out = await evaluateSpecLine(db, req({}));
+  expect(out.status).toBe("open");
+  expect(out.provable).toHaveLength(0);
+  expect(out.incomplete).toHaveLength(0);
+});
+
+// De ORDER BY-0-guard in fetchCandidates zelf blijft nodig voor een ANDER
+// scenario: wél een toetsbare spec (dus stap 1b slaat niet aan), maar geen merk
+// en geen producttekst om op te zoeken — fetchCandidates moet dan nog steeds
+// zonder crash [] teruggeven (→ rood, geen kandidaten).
+test("wél een gevraagde spec maar geen merk/producttekst om op te zoeken → rood zonder crash", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
+  const out = await evaluateSpecLine(db, req({ specs: { kelvin: 3000 } }));
   expect(out.status).toBe("rood");
   expect(out.provable).toHaveLength(0);
   expect(out.incomplete).toHaveLength(0);
@@ -626,4 +641,42 @@ test("stap 3: wél merk maar geen producttekst → kandidaten binnen merk, geen 
   const namen = [...out.provable, ...out.incomplete].map((c) => c.name);
   expect(namen).toContain("SASSO 100");
   expect(namen).not.toContain("Bellhop");
+});
+
+// ── "Vacuous green" (live-check 17 jul, dossier ae0eead9, regel Lf902) ───────
+// Zonder merk en zonder één toetsbare spec is de eis leeg; tegen een lege eis
+// "voldoet" elke kandidaat triviaal (judgeCandidate levert deviations=[], en
+// worstVerdict([]) === "groen"). Live: Lf902 (merk null, alle req_*-velden null,
+// productText "Vloer armatuur nabij taakgebieden...") kreeg zo 8 accessoires als
+// "Provably compliant" — puur omdat de generieke woorden "vloer"/"armatuur"
+// toevallig 8 producten fuzzy raakten. Lw003/Lw101 in hetzelfde boek hebben
+// exact hetzelfde profiel (merk null, specs leeg) maar hun producttekst
+// ("Maatwerk wandarmatuur") raakte toevallig NIETS → 0 kandidaten → rood via
+// stap 4. Dat "rood" was dus zelf toeval van de fuzzy-zoektocht, geen doordacht
+// oordeel — de stap 1b-guard behandelt alle vier nu gelijk: open, nooit groen.
+test('vacuous green: geen merk + geen specs, mét kandidaten gevonden → open, nooit groen (Lf902)', async () => {
+  const db = await createTestDb();
+  // Zelfde soort accessoire als de live-check: matcht fuzzy op "armatuur", geen
+  // van de gevraagde specs bestaat (er wordt er ook geen gevraagd).
+  await seedBrandProduct(db, { brand: "Generiek", name: "Vloer armatuur grondpen" });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      productText:
+        "Vloer armatuur nabij taakgebieden voor verhoogde verlichtingssterkte en gelijkmatigheid",
+    }),
+  );
+  expect(out.status).toBe("open");
+  expect(out.reason).toMatch(/te weinig gevraagd/);
+  // De "Provably compliant"-lijst mag NOOIT de vondst van de fuzzy-zoektocht
+  // tonen als bewijs van gelijkwaardigheid — er was niets te bewijzen.
+  expect(out.provable).toHaveLength(0);
+  expect(out.incomplete).toHaveLength(0);
+});
+
+test("vacuous green: merk-only (géén specs) blijft WEL groen — merk is daar een echte eis", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100" });
+  const out = await evaluateSpecLine(db, req({ brandText: "XAL" }));
+  expect(out.status).toBe("groen");
 });

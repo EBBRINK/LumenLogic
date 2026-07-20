@@ -1017,3 +1017,24 @@ anker dat een bericht met alleen het woord "timeout" (niet de letterlijke SDK-te
 "timed out") geen retry triggert. `bunx tsc --noEmit` schoon, volledige suite groen
 (722/1 skip), meetscript-dry-run (Raadhuis, geen `--ai`) groen. Klein gehouden: alleen
 `lib/ai/shared.ts` + `lib/ai/ocr.ts` + `lib/ai/leesroute.ts` + hun tests.
+_2026-07-17 (live-check-fix, "vacuous green"): dossier ae0eead9 (ZZ-TEST Raadhuis),
+regel Lf902 (`18a8e22b…`) stond groen met 8 accessoires als "Provably compliant" —
+zonder merk én zonder één toetsbare `req_*`-spec. Oorzaak: `judgeCandidate` (specs, …)
+levert `deviations=[]` als er niets gevraagd is; `worstVerdict([])` valt terug op
+`"groen"` (leeg = geen tegenspraak) — een lege eis "voldoet" triviaal aan alles. **De
+lek zit in stap 5**, niet in de kandidatenzoektocht: live-onderzoek (read-only) toont
+dat `Lw003`/`Lw101` in hetzelfde boek exact hetzelfde profiel hebben (merk `null`, alle
+specs `null`) maar toevallig 0 fuzzy-kandidaten vonden ("Maatwerk wandarmatuur" matcht
+niets) → rood via stap 4 — dat "rood" was dus zelf toeval van de zoektocht, geen
+oordeel. Fix in `lib/matching/engine.ts`: nieuwe stap 1b — merk leeg ÉN geen enkele
+toetsbare spec → status `open` met reden "te weinig gevraagd om gelijkwaardigheid aan
+te tonen", vóór er zelfs naar kandidaten gezocht wordt. Merk-only regels (geen specs,
+wél een merk) blijven ongemoeid — daar is het merk zelf de eis (expliciete non-goal,
+bewaakt met een eigen test). Twee nieuwe tests + twee bestaande tests bijgewerkt
+(bewuste statuswijziging, met motivering in de test-comments). `bunx tsc --noEmit`
+schoon, volledige suite groen (725/1 skip). **Lf902 in productie gehermatcht**
+(`runMatcher`, actor `system:fix-vacuous-green`): groen → open bevestigd. Bijvangst
+(niet gefixt, buiten scope): `Lw003`/`Lw101` in dit dossier zouden bij hermatch óók
+naar open verschuiven (zelfde profiel) — nog niet gehermatcht, op verzoek van Timo
+kan dat alsnog. `outcome.reason` wordt nergens per regel gepersisteerd (alleen gebruikt
+voor de blauw-wachtrij) — pre-existing gat, niet aangepakt in deze fix.

@@ -4,6 +4,8 @@
 //
 // De boom (functioneel ontwerp §4.3):
 //   1. verlichting? nee → PAARS
+//   1b. geen merk én geen enkele toetsbare spec? → OPEN, nooit groen (17 jul:
+//       een lege eis "voldoet" anders triviaal aan alles — "vacuous truth")
 //   2. merk in catalogus? nee → BLAUW (+ inlaadwachtrij)
 //      "in catalogus" = ≥1 productrij in de basistabel (O5); gecureerde aliassen
 //      (brand_aliases) resolven boek-woorden naar het canonieke merk
@@ -85,6 +87,27 @@ function looksNonLighting(text: string | null): boolean {
   if (!text) return false;
   const t = text.toLowerCase();
   return NON_LIGHTING.some((w) => new RegExp(`\\b${w}\\b`).test(t));
+}
+
+// Live-check 17 jul ("vacuous green"): judgeCandidate (tolerances.ts) pusht alleen
+// een deviation voor een GEVULD req-veld; zijn ze allemaal leeg, dan is
+// deviations=[] voor élke kandidaat, en worstVerdict([]) valt terug op "groen"
+// (leeg = geen tegenspraak). Precies dezelfde velden als judgeCandidate toetst —
+// blijft dit false, dan kan geen enkele kandidaat ooit iets anders dan een lege
+// deviations-lijst krijgen.
+function hasAnyRequestedSpec(specs: RequestedSpecs): boolean {
+  return (
+    specs.kelvin != null ||
+    specs.cri != null ||
+    !!specs.ip ||
+    specs.watt != null ||
+    specs.lumen != null ||
+    specs.beamAngle != null ||
+    specs.sizeCm != null ||
+    !!specs.shape ||
+    !!specs.color ||
+    !!specs.dimmable
+  );
 }
 
 export function brandKeyOf(brand: string): string {
@@ -327,12 +350,32 @@ export async function evaluateSpecLine(
     };
   }
 
+  const brand = (req.brandText ?? "").trim();
+
+  // Stap 1b — genoeg gevraagd om gelijkwaardigheid te kunnen aantonen? Zonder merk
+  // én zonder één toetsbare req_*-spec heeft stap 5 niets om te toetsen: elke
+  // kandidaat krijgt dan een lege deviations-lijst, en worstVerdict([]) levert
+  // "groen" op (leeg = geen tegenspraak) — een lege eis "voldoet" triviaal aan
+  // alles ("vacuous truth"). Live-check 17 jul: Lf902 (geen merk, geen enkele
+  // req_*-spec) kreeg zo 8 willekeurige accessoires als "Provably compliant".
+  // Merk blijft een ECHTE eis (fetchCandidates dwingt hem af, ook zonder specs) —
+  // dus dit raakt uitsluitend de combinatie merk=leeg + specs=leeg; een regel met
+  // alléén een merk blijft ongemoeid.
+  if (brand.length === 0 && !hasAnyRequestedSpec(req.specs)) {
+    return {
+      status: "open",
+      reason: "te weinig gevraagd om gelijkwaardigheid aan te tonen (geen merk, geen specs)",
+      provable: [],
+      incomplete: [],
+      topDeviations: [],
+    };
+  }
+
   // Stap 2 — merk in catalogus? (BLAUW) "In catalogus" = merk mét producten in de
   // basistabel (zie resolveBrand). brandKey is bij een resolve de CANONIEKE key
   // (brandKeyOf(canonicalName)): de inlaadwachtrij moet het merk dragen dat wij écht
   // zouden inladen ('mycreations'), niet het boek-woord ('signify'); zonder resolve
   // blijft het de eigen key.
-  const brand = (req.brandText ?? "").trim();
   const resolved = brand.length > 0 ? await resolveBrand(db, brand) : null;
   if (resolved && !resolved.hasProducts) {
     return {
