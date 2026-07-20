@@ -1332,3 +1332,41 @@ plan-fase** als één ingreep op de tekstrelevantie; stap 2 (opruiming, herziene
 sessie en vijfde keer deze week:** elke rangmeting begint bij `parseSpecLinesFromPages` op het
 echte PDF, nooit bij een string in een script — beide keren zag de nagebouwde meting er
 plausibel uit en wees hij de verkeerde kant op._
+
+_2026-07-20 (variant-ranking **plan-fase tekstrelevantie + totale-orde-bugfix**): twee
+plan-agents op de ontwerpvraag "hoe weeg je de typeaanduiding zwaarder dan de spec-proza",
+beide verplicht gemeten via het echte codepad. Synthese in `docs/goal-tekstrelevantie.md`,
+probleem in `docs/probleem-tekstrelevantie.md`. **Vier convergenties**, onafhankelijk: (1) de
+primaire sleutel moet gerepareerd, een tiebreak kán het niet — bij Lr303 verliest het juiste
+artikel de tekstsleutel met **0,125** (token `27` matcht `27W`, niet `26,5W`) terwijl het op
+specs +2 vóórligt; dat haalt geen tiebreak in, op geen enkele epsilon (bevestigt `dc961fd`);
+(2) de vroege tokens zíjn de typeaanduiding, want `splitBrandType` snijdt het merk eraf —
+beide voorstellen zijn dezelfde gedachte in twee hardheden (harde kop vs continu
+positiegewicht); (3) de optiekcode `FL`/`WF` is onmisbaar (Lr301 en Lr303 verschillen in niets
+anders) én de tabel is **handwerk, niet af te leiden**: `beam_angle` is op 4% van de XAL-rijen
+gevuld en de enige groepen die er zijn spreken zichzelf tegen (`ME` én `SP` staan op 30°);
+(4) ⚠️ **de ordening was geen totale orde.** Gemeten: `asc(name)` als laatste sorteerterm,
+namen niet uniek (131 SASSO PRO 100-varianten en 3 STRETTA 600-rijen byte-identiek), dus
+Postgres mocht binnen een gelijke sleutel teruggeven wat het queryplan uitkwam — Lw001 gaf
+over drie identieke runs rang **1, 1, 3**. Daarmee droeg **elke rangmeting op exacte
+artikelcode in dit dossier ±2 ruis**, inclusief de mijne; alleen de equivalentieklasse was
+stabiel (toevallig precies de gekozen meetlat, maar nu om de goede reden). **Gefixt in deze
+commit**: `asc(articleCode), asc(id)` als sluittermen in `fetchCandidates`. `article_code` is
+niet uniek (alleen `brand_id+supplier_article_code` is dat), dus `id` sluit de rij af — pas dan
+is de orde aantoonbaar totaal. Beide prijs-blind, ijzeren regel 2 ongemoeid. Geverifieerd: 3
+identieke runs geven nu identieke rang én identieke top-1 op alle vier de regels; Lw001/Lw002
+staan stabiel op 2 (equivalentieklasse 1–2, meetlat gehaald). `bun vitest run` 748 groen /
+70 bestanden, `bunx tsc --noEmit` schoon. **Gemeten resultaat van het voorstel zelf** (nog niet
+gebouwd): Lr301 2675 → eq-klasse 1, Lr303 2023 → eq-klasse 1, ankers ongewijzigd, én het echte
+criterium gehaald — Lr301 en Lr303 leveren **verschillende** topkandidaten (`SASSO PRO 100 FL
+ADJ DALI 27W` vs `… WF ADJ DALI 26,5W`). **Eerlijke negatieven, gemeten:** spec-tokens
+downwegen maakt het slechter (2675 → 9129); woordgrens-matching werkt qua rang (2675 → 40)
+maar kost 10× looptijd (4,5 s → 46 s, ook met genormaliseerde naam/afgeleide tabel 54 s) en is
+onbruikbaar; `typeHead` alléén scheidt Lr301/Lr303 niet. **Besluit Timo:** de vangrail "zonder
+gevraagde specs blijft de query byte-identiek" blijft **letterlijk** — poort op
+`hasAnyRequestedSpec`; specloze regels krijgen geen tekstrelevantie-verbetering, `inv2`/`inv7b`
+houden hun garantie ongewijzigd. Agent 1's kop-poort daarmee afgekeurd in zijn huidige vorm.
+**Nog niet gemeten en poort vóór merge:** beide voorstellen zijn afgeregeld op vier regels uit
+één PDF en agent 2's coëfficiënten zijn gevoelig (`α=0,05` → Lr303 rang 9; `α=0,30` → Lw001
+rang 3) — `eval-testset.ts` over de héle testset vóór merge, met als eis dat de andere 27
+raadhuis-regels en kvk/tno ongewijzigd of beter zijn._
