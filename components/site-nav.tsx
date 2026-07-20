@@ -1,38 +1,11 @@
-// De dunne hoofdbalk (functioneel ontwerp §2, navigatieprincipe 3): Dossiers ·
-// Catalogus · Data · Analytics · Instellingen. In V1 zien alle gebruikers alles;
-// rol-gestuurde versimpeling is H2. Rendert niets zonder sessie (o.a. op /login).
-import Link from "next/link";
+// Sessiepoort voor de hoofdbalk: rendert niets zonder sessie (o.a. op /login).
+// De balk zelf (items, actieve sectie) staat in ./nav-link — dat is een module zonder
+// getSession/server-only, zodat tests hem los kunnen importeren.
 import { getSession } from "@/lib/session";
-import { NavLink } from "./nav-link";
-
-const ITEMS = [
-  { href: "/projects", label: "Projects" },
-  { href: "/catalog", label: "Catalog" },
-  { href: "/data", label: "Data" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/settings", label: "Settings" },
-  { href: "/brand", label: "Brand" },
-  { href: "/admin", label: "Admin" },
-];
+import { NavBar } from "./nav-link";
 
 export async function SiteNav() {
   const session = await getSession();
   if (!session) return null;
-  return (
-    <header className="border-b">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6 px-6 py-3">
-        <Link href="/projects" className="text-sm font-semibold tracking-tight">
-          Lumen Logic
-        </Link>
-        <nav className="flex items-center gap-1 text-sm">
-          {ITEMS.map((it) => (
-            <NavLink key={it.href} href={it.href} label={it.label} />
-          ))}
-        </nav>
-        <span className="hidden text-xs text-muted-foreground sm:inline">
-          {session.user?.email}
-        </span>
-      </div>
-    </header>
-  );
+  return <NavBar email={session.user?.email} />;
 }
