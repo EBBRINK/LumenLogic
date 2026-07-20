@@ -321,10 +321,22 @@ async function fetchCandidates(
   // De constante-nul termen (geen tokens/producttekst) worden overgeslagen: een
   // constante sorteert toch niets én zou als kaal `ORDER BY 0` een positionele
   // verwijzing zijn (Postgres-fout). Semantisch identiek aan de oude volgorde.
+  //
+  // Sluittermen (artikelcode, dan id): `name` is GEEN totale orde — productnamen
+  // zijn niet uniek. De 131 SASSO PRO 100-varianten en de drie STRETTA 600-rijen
+  // hebben byte-identieke namen, en binnen zo'n gelijke sorteersleutel mag Postgres
+  // teruggeven wat het queryplan uitkomt: dezelfde regel gaf over drie identieke
+  // runs rang 1, 1 en 3. Dat maakte elke rangmeting op exacte artikelcode ±2
+  // onbetrouwbaar (en kostte twee plan-agents tijd). article_code is niet uniek
+  // (alleen brand_id+supplier_article_code is dat), dus id sluit de rij af — pas
+  // dan is de orde aantoonbaar totaal. Beide zijn prijs-blind; ijzeren regel 2
+  // blijft ongemoeid.
   const orderTerms = [
     ...(tokens.length > 0 ? [desc(matchCount)] : []),
     ...(productText.length > 0 ? [desc(prefixBonus), desc(score)] : []),
     asc(visibleProducts.name),
+    asc(visibleProducts.articleCode),
+    asc(visibleProducts.id),
   ];
   return db
     .select({ ...SELECTION, score, matchCount })

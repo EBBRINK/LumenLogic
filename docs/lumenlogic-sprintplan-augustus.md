@@ -95,6 +95,7 @@ Een item is pas "done" als **alles** hieronder waar is:
 | W1 | **Meldingen van de format-validatie zijn Engels**, niet Nederlands. De interne UI is Engels sinds de i18n-slag (PR #1) — nav "Projects/Catalog/Settings", `STATUS_LABEL` "Not approached", werklijst "No response (> 14 days)" | Consistent met het scherm waar de meldingen landen, met het Engelse merk-template en met de merken die in 4.B zelf uploaden. Geldt ook voor 1.2/1.3 |
 | W2 | **1.4 draait op een testmerk, niet op een echt merk** (Timo, 20 jul) | Het criterium eist "zichtbaar in de catalogus", en dat vereist een geldige prijs. Een prijs verzinnen op een echt merk is exact de fout van 20 jul. Op een testmerk is er geen waarheid om tegen te liegen. Prijs: het weekdoel is bewezen op een *geconstrueerd* merk — de echte-merk-verificatie blijft open |
 | W3 | **Uitschakelen gebeurt door de prijslijst te laten verlopen, niet met `DELETE`** (20 jul) | Demonstreert ijzeren regel 3 live in plaats van hem te omzeilen, en laat het audit-spoor heel — waardoor bewijsbaar is dat *het verlopen* het product onzichtbaar maakte en niets anders |
+| W4 | **Bouwsessies pushen nooit; alleen de sprintmaster pusht** (Timo, 20 jul) | Sluit het lek dat drie keer deze week toesloeg. Kleinste ingreep die écht werkt: branches + PR voegt meer ceremonie toe dan dit team nu draagt, en "poort schrappen" geeft het toezicht op dat 1.2 en 1.4 juist waardevol maakte. Sessies committen wél — de sprintmaster pusht met een expliciete SHA (`git push origin <sha>:main`), zodat er niets kan meeliften |
 
 **Fout van de sprintmaster, vastgelegd:** kaderpunt 4 van `docs/sprint1-1-briefing.md` schreef
 "meldingen in het Nederlands" voor. Dat was fout: de sprintmaster had de Engelse nav en
@@ -274,8 +275,26 @@ worden duurder naarmate ze langer wachten):
    open punt in het weekdoel, en het heeft **doorlooptijd** (een merk moet antwoorden), dus het
    kan niet in een sprintitem worden weggewerkt. Hoe langer het wacht, hoe later week 2 kan
    verifiëren dat het pad ook met échte merkdata werkt.
-3. **"Intre"** — genoemd op 20 jul, staat niet in de brands-tabel. Wat is het, en is dit het
-   merk om als eerste te benaderen?
+3. ~~**"Intre"**~~ ✅ **Gesloten 20 jul** — noch Timo noch de sprintmaster weet wat het is en
+   het staat niet in de brands-tabel. Geen actiepunt. De échte vraag eronder blijft wél staan:
+   **wélk merk benaderen we als eerste?** De data wijst zelf een kandidaat aan.
+
+   Gemeten over alle merken met 20–3.000 producten (20 jul): **`kelvin` is vrijwel leeg over de
+   hele catalogus.** Artemide heeft 360 van 1.699, Aromas 9 van 1.987, en álle andere merken in
+   de top-12 staan op **0**. Geldige prijzen zijn er wél overal. Dat is de kern van het
+   probleem in één cijfer: de commerciële laag is compleet, de technische laag waar de matcher
+   op draait is leeg — precies waarvoor het merk-retourpad bestaat.
+
+   **Advies: CLS als eerste.** Nederlands (Rotterdam), professioneel/architecturaal — dus
+   kelvin, UGR en IK-waarde bepalen daar écht de match, anders dan bij de decoratieve merken
+   in dezelfde lijst (Marset, Estiluz, &Tradition, It's About RoMi). 1.016 producten met 1.010
+   geldige prijzen en **0 kelvin**: het verschil vóór en ná is meteen zichtbaar. Nederlands
+   scheelt bovendien doorlooptijd, en dat is bij dit punt de schaarse factor.
+   Alternatief als CLS niet reageert: **TossB** (Belgisch, 2.934 producten, 2.928 prijzen, 0
+   kelvin) of **Serien Lighting** (Duits, 1.955/1.925, 0 kelvin).
+
+   Stand van de merkrelaties vandaag: **twee rijen** — Flos (`verwerkt`, uit de 1.2-check) en
+   het testmerk. Op 430 merken.
 4. **De hoofdbalk loopt over op 375px** (Settings, Brand portal, Admin buiten beeld) — sinds
    1.3 erger, want dat scherm is nu hoofdingang.
 5. **`getAllBrandCompleteness` duurt 3–4,6 s warm** op datzelfde hoofdingang-scherm.

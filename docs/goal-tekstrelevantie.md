@@ -85,9 +85,13 @@ expliciet de randvoorwaarde op eigen gezag te herinterpreteren. Terecht.
 
 Agent 2 poort wél op `hasAnyRequestedSpec` en voldoet dus letterlijk aan de randvoorwaarde.
 
-**Te beslissen door Timo:** blijft de randvoorwaarde letterlijk (poort op spec-aanwezigheid,
-en specloze regels krijgen geen tekstrelevantie-verbetering), of mag de tekstweging ook zonder
-gevraagde specs aan — met een nieuwe, expliciet vastgelegde invariant in plaats van de oude?
+**Besluit Timo (20 jul): de randvoorwaarde blijft letterlijk.** De poort staat op
+`hasAnyRequestedSpec`, zoals agent 2. Gevolg, bewust aanvaard: een regel **zonder** gevraagde
+specs krijgt geen tekstrelevantie-verbetering en blijft ranken zoals vandaag. De garantie onder
+`inv2`/`inv7b` blijft daarmee ongewijzigd van kracht en hoeft niet geherformuleerd te worden —
+een vangrail herschrijven om een meting te laten slagen is precies wat dit dossier al twee keer
+de verkeerde kant op heeft gestuurd. Agent 1's kop-poort is hiermee afgekeurd in zijn huidige
+vorm.
 
 ## Aanbeveling
 
