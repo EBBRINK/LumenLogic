@@ -284,6 +284,43 @@ herontwerp vraagt en geen ruimere regex. Gecorrigeerd: Raadhuis 31 · KvK 20 · 
 
 ---
 
+### "Groen is groen" — afgedwongen 20 jul (commits `872597b` + `38ef337`)
+
+Uit de live-check van het Raadhuis-boek: vier XAL-regels stonden op **groen** ("voldoet
+aantoonbaar") terwijl ze montagerails (VITA WALL RAIL) en 2700K/14,5W-varianten als kandidaat
+toonden waar 3000K/27W gevraagd was. Oorzaak: álle `req_*` waren `null` → geen eis → geen
+afwijking → `worstVerdict([]) === "groen"`. Twee gekoppelde gaten, beide gedicht:
+
+- **Gat A — vacuous green mét merk.** De eerdere fix (`c2121a3`) dekte alleen merkloze regels;
+  mét merk maar zonder toetsbare spec glipte een regel er doorheen. Nu: zonder één getoetste
+  eis is groen **onbereikbaar**, ook met bekend merk — kandidaten blijven zichtbaar als lijst 2
+  ("mogelijk — data onvolledig"), status `open`, de mens kiest. Zelfde guard in `upgradeOcrLine`.
+- **Gat B — de boek-specs landden niet op de regel.** Het lek zat in door het model **afgekapte
+  `ruwe_tekst`**: de leesroute leverde "Lr301 … SASSO PRO 100 112x106mm" en stopte vóór de
+  spec-sectie, ondanks de "full row text"-instructie. Fix (`lib/pdf/rijsegmenten.ts`): het échte
+  rijsegment wordt deterministisch uit de **server-side paginatekst** gesneden (model-codes als
+  ankers) en `parseProductName` leest daar de specs uit — geen verzin-risico, want de bron is
+  onze eigen tekstlaag. Bestaande run gebackfilld (30+ regels, met events).
+
+**Geverifieerd op dossier `ae0eead9` (sprintmaster, onafhankelijk):** 0 regels groen-zonder-eis;
+eindstand blauw 27 · rood 10 · open 4 · paars 1 · **groen 0**. De vier XAL-regels dragen nu exact
+de bron: 3000K · CRI 90 · IP20/IP44 · 27W/13,1W/19,7W · 39°/57°/180°. Lr301/Lr303 werden daardoor
+eerlijk **rood** — kelvin-exact ontmaskert de 2700K-catalogusvarianten. Dat is de invariant die
+werkt, geen regressie.
+
+**Meetscript-delta:** KvK van groen 28–39 → **open 49**; Raadhuis 0× groen; alle vier cases vrij
+van vacuous groen.
+
+⚠️ **Gevolg voor de verwachting:** de app is nu *eerlijk*, maar daarmee ook *leeg* — er staat
+niets meer op groen, dus een estimate blijft €0,00 tot een mens kiest. Dat is bedoeld gedrag.
+Wat het wél oplevert wordt pas zichtbaar na **variant-ranking op specs**: Jayden's vier artikelen
+zitten mét kloppende specs in de catalogus maar staan ook ná deze fix **niet in de top-50**,
+omdat specs de kandidaten wél beoordelen maar de zoekquery niet filteren. Dat is het volgende,
+eigen probleemdoc — bewust niet meegefixt.
+
+**Bijvangst genoteerd:** `parseProductName` leest een BEGA-artikelnummer ("24786W") als wattage —
+pre-existing parserlimiet, alleen zichtbaar op blauwe regels.
+
 ## Vastgestelde technische feiten (niet opnieuw ter discussie stellen)
 
 - **Elke push naar `main` deployt automatisch naar productie** (geverifieerd 17 jul:
