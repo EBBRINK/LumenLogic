@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { BrandLifecycle } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -23,10 +24,23 @@ const TOGGLE_FIELDS = [
 export type BrandTierRow = {
   id: string;
   name: string;
+  // Optioneel, en dat is opzet: components/admin/admin.test.tsx bouwt deze rijen ook en
+  // hoort niet te breken op een veld dat het scherm alleen maar extra toont. Ontbreekt
+  // lifecycle, dan geldt de norm ('actief') en verschijnt er dus geen badge.
+  brandCode?: string | null;
+  lifecycle?: BrandLifecycle;
   disclosureTier: "tier1" | "tier2" | "tier3";
   productCount: number;
   // per-veld-override: field → visible. Ontbreekt een veld, dan geldt de tier-basis.
   overrides: Record<string, boolean>;
+};
+
+// De levensfase staat als BADGE in de naamkolom, niet als kolom en niet als tweede select
+// (plan §1): de rij draagt al een tier-select en loopt op 375px over. 'actief' is de norm
+// en krijgt dus géén badge — alleen de afwijking is nieuws.
+const LIFECYCLE_BADGE: Partial<Record<BrandLifecycle, string>> = {
+  slapend: "Dormant",
+  bestaat_niet_meer: "No longer exists",
 };
 
 const TIER_LABEL: Record<BrandTierRow["disclosureTier"], string> = {
@@ -73,7 +87,26 @@ export function BrandsTierBlock({
             <TableBody>
               {brands.map((b) => (
                 <TableRow key={b.id}>
-                  <TableCell className="font-medium">{b.name}</TableCell>
+                  <TableCell className="font-medium">
+                    {/* Gewone <a>, geen next/link — precedent brand-relations-table.tsx:
+                        de RSC-testbrug struikelt over de client-referentie van Link. */}
+                    <a
+                      href={`/admin/brands/${b.id}`}
+                      className="hover:underline"
+                    >
+                      {b.name}
+                    </a>
+                    {LIFECYCLE_BADGE[b.lifecycle ?? "actief"] && (
+                      <Badge variant="outline" className="ml-2 align-middle">
+                        {LIFECYCLE_BADGE[b.lifecycle ?? "actief"]}
+                      </Badge>
+                    )}
+                    {b.brandCode && (
+                      <span className="block text-xs text-muted-foreground tabular-nums">
+                        {b.brandCode}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {b.productCount}
                   </TableCell>

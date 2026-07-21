@@ -1448,3 +1448,55 @@ is momenteel rood door hún WIP (`brands-tier-block.tsx`, "client reference expo
 server") — geverifieerd door alleen hún drie admin-bestanden te stashen: dan 9/9 groen met mijn werk
 intact. Mijn commit raakt hun bestanden niet aan. Verder: `pdf-upload.test.tsx` is flaky onder
 volledige parallelle suite-belasting (slaagt geïsoleerd, mét én zonder mijn wijzigingen)._
+
+## Sprint 1.5 — merkbeheer in het systeem zelf (21 jul)
+
+Merken konden alleen bestaan als de bronimport ze bracht. Nu kan de binnendienst via
+`/admin/brands` een merk aanmaken, bewerken, de levensfase zetten en (als er niets aan hangt)
+verwijderen. Migratie `0013_merk_levensfase.sql`, puur additief.
+
+**De 437 bestaande merkrijen zijn niet aangeraakt (besluit G2), en dat is gemeten**, niet
+aangenomen: fingerprint over id, naam, code, slug, land, tier, omschrijving, website en
+`updated_at` van alle rijen, vóór de migratie én na de volledige DoD-run —
+`437 rijen, md5 f4deb1efbea17090df1ff94d4b667cff`, identiek. `ADD COLUMN … NOT NULL DEFAULT` is
+in PG11+ metadata-only, dus er is geen enkele UPDATE gedraaid.
+⚠️ De brands-tabel telt inmiddels 438 rijen: `ZZTEST QA-15` is van een parallelle sessie, niet
+van mij. Sluit die rij uit en de hash klopt exact.
+
+**Levensfase = drie waarden**, niet twee: `actief | slapend | bestaat_niet_meer`. In de 18
+geannoteerde merknamen staan twee verschillende zinnen. `Itre (niet meer gebruiken)` is een
+besluit van Brink (→ `slapend`); `Tronconi (BESTAAT NIET MEER)` en `Luxit (Is failliet)` zijn
+uitspraken over de wereld (→ `bestaat_niet_meer`). Met alleen een tweede waarde zou Timo bij die
+eerste drie een onwaarheid moeten vastleggen en zou de annotatie in de naam blijven staan — dan
+lost G1 die rijen niet op. Géén `failliet` (dat is een reden, hoort in `description_nl`).
+
+**Twee fouten in de sprintbriefing, gevonden door tegen de bron te meten:**
+1. De briefing noemt `categories` en `organizations` als tabellen met een FK naar `brands`. Geen
+   van beide heeft die. De regelnummers waren één tabel verschoven. Wél blokkerend en níét
+   genoemd: **`price_lists`**. Volledige lijst uit `information_schema` staat in
+   `docs/sprint1-5-fase1-probleem.md`.
+2. De briefing gaat ervan uit dat 405 merken vrij verwijderbaar zijn. **Dat zijn er nul.** De
+   import geeft élk merk precies één prijslijst (437 lijsten over 437 merken), ook merken zonder
+   één product. Bij 405 merken is die lege lijst de énige blocker. DoD 3 is daarom alleen te
+   demonstreren op een merk dat in dezelfde sessie is aangemaakt; DoD 4 is het normale geval.
+   Daarom noemt het scherm de prijslijst bij naam mét het aantal prijsregels — "1 price list —
+   Brutoprijslijst Tronconi (0 price rows)" — anders leest "1 prijslijst" bij een leeg merk als
+   een fout.
+
+**Bewust niet gedaan / open eindes:**
+- **Opvolger-verwijzing** ("Murano Due = Leucos geworden", 5 merken). Timo heeft die vraag gehad
+  en niet gekozen. `bestaat_niet_meer` dekt de status, niet de bestemming. Vergt een
+  self-reference-migratie en raakt de matcher. **Opvolgtaak.**
+- **`slug` beweegt niet mee bij hernoemen.** Slug is niet uniek, is nergens een route (die gaan
+  op `brandId`) en heeft buiten de import één lezer. Stil laten verschuiven wijzigt een waarde
+  die niemand ziet. Bewuste keuze.
+- **N+1 in `app/admin/brands/page.tsx`**: `listBrandFieldOverrides` draait één query per merk,
+  over 437 merken. Bestond al vóór 1.5, niet gerepareerd (melden, niet meenemen). Eén `IN`-query
+  zou het oplossen. **Opvolgtaak.**
+- **`components/data/brand-message.test.tsx` is flaky** onder volledige suite-belasting (de
+  10s-`waitFor` op "Copied"); geïsoleerd 6/6 groen, en mijn diff raakt `components/data/` niet.
+- **`BrandTierRow.brandCode` en `.lifecycle` zijn optioneel gemaakt** zodat de bestaande fixtures
+  in `components/admin/admin.test.tsx` niet hoefden te wijzigen (die vier PNG's blijven geldig).
+  Wil je ze verplicht: twee fixture-regels daar.
+- **Milieu-informatie per merk** is buiten scope gehouden, maar het formulier zet zijn tekstvelden
+  in een `FIELDS`-array — een veld erbij is één regel.

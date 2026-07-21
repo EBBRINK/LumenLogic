@@ -6,13 +6,14 @@
 //
 // Zelfde patroon als de andere repo's: db geïnjecteerd, disclosure-schrijfacties hergebruikt
 // uit lib/repo/disclosure.ts zodat de gating-contract op één plek leeft.
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql, type SQL } from "drizzle-orm";
 import {
   brandUploads,
   brands,
   memberships,
   organizations,
   products,
+  type BrandLifecycle,
 } from "@/db/schema";
 import type { AppDb } from "./db";
 import {
@@ -26,27 +27,59 @@ import { TEMPLATE_UPLOAD_KIND } from "./template-return";
 export type BrandWithTier = {
   id: string;
   name: string;
+  brandCode: string | null;
+  lifecycle: BrandLifecycle;
   disclosureTier: DisclosureTier;
   productCount: number;
 };
 
 // Alle merken met hun disclosure-tier + aantal producten (§3.16 merkenoverzicht). Left join
 // zodat een merk zonder producten (net ingeladen, blauw) óók telt — nul is een eerlijk getal.
-export async function listBrandsWithTier(db: AppDb): Promise<BrandWithTier[]> {
+//
+// 1.5: brandCode en lifecycle komen additief mee in dezelfde select (nul extra queries), en
+// opts filtert server-side voor de filterbalk — G1's klacht is juist dat je op de status niet
+// kunt filteren, dus een levensfase zónder filter lost niets op. Zonder opts is het gedrag
+// exact als voorheen, zodat geen bestaande aanroeper breekt.
+export async function listBrandsWithTier(
+  db: AppDb,
+  opts?: { q?: string; lifecycle?: BrandLifecycle },
+): Promise<BrandWithTier[]> {
+  const filters: SQL[] = [];
+  const q = opts?.q?.trim();
+  if (q) {
+    // Naam OF merkcode, hoofdletterongevoelig: je zoekt het merk zoals je het kent.
+    const like = `%${q}%`;
+    filters.push(
+      sql`(${brands.name} ilike ${like} or (${brands.brandCode} is not null and ${brands.brandCode} ilike ${like}))`,
+    );
+  }
+  if (opts?.lifecycle) filters.push(eq(brands.lifecycle, opts.lifecycle));
+
   const rows = await db
     .select({
       id: brands.id,
       name: brands.name,
+      brandCode: brands.brandCode,
+      lifecycle: brands.lifecycle,
       disclosureTier: brands.disclosureTier,
       productCount: sql<number>`count(${products.id})`.mapWith(Number),
     })
     .from(brands)
     .leftJoin(products, eq(products.brandId, brands.id))
-    .groupBy(brands.id, brands.name, brands.disclosureTier)
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .groupBy(
+      brands.id,
+      brands.name,
+      brands.brandCode,
+      brands.lifecycle,
+      brands.disclosureTier,
+    )
     .orderBy(asc(brands.name));
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
+    brandCode: r.brandCode,
+    lifecycle: r.lifecycle as BrandLifecycle,
     disclosureTier: r.disclosureTier as DisclosureTier,
     productCount: r.productCount,
   }));

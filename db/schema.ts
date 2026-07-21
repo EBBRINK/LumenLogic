@@ -154,6 +154,22 @@ export const brandRelationStatus = pgEnum("brand_relation_status", [
   "afgewezen",
 ]);
 
+// Levensfase van een merk (sprint 1.5, G1). De status zat tot nu toe in de naamtekst
+// ("Tronconi (BESTAAT NIET MEER)") — daar kun je niet op filteren en de matcher leest die
+// haakjes mee als merknaam. Drie waarden, want in die namen staan twee verschillende zinnen:
+// 'slapend' is een besluit van Brink ("niet meer gebruiken"), 'bestaat_niet_meer' een feit
+// over de wereld ("failliet", "= Leucos geworden"). Met alleen een tweede waarde zou het
+// eerste geval als onwaarheid moeten worden vastgelegd. Géén 'failliet' — dat is een reden,
+// geen fase, en hoort in description_nl. Géén opvolger-verwijzing: zonder die kolom is
+// "samengevoegd" betekenisloos, en die kolom is expliciet buiten scope.
+export const brandLifecycle = pgEnum("brand_lifecycle", [
+  "actief",
+  "slapend",
+  "bestaat_niet_meer",
+]);
+
+export type BrandLifecycle = (typeof brandLifecycle.enumValues)[number];
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -184,6 +200,8 @@ export const brands = pgTable("brands", {
   slug: text("slug").notNull(), // afgeleid van naam; niet uniek (naam-collisies mogelijk)
   country: text("country"),
   disclosureTier: disclosureTier("disclosure_tier").notNull().default("tier1"),
+  // Levensfase (1.5): kolomdefault, géén backfill op de 437 bestaande rijen (G2).
+  lifecycle: brandLifecycle("lifecycle").notNull().default("actief"),
   descriptionNl: text("description_nl"),
   warranty: text("warranty"),
   rating: text("rating"),
