@@ -1,4 +1,4 @@
-# Sprint 1.7 — milieudata: de afstand tot Brink, en het recept voor Stefan
+# Sprint 1.7 — milieudata: de afstand tot Brink Licht
 
 *Zelfvoorzienende briefing. Je hoeft geen enkele eerdere sessie gelezen te hebben.*
 
@@ -95,26 +95,14 @@ query.
 **5. Sluit het testmerk uit bij tellingen.** `ZZTEST QA-15` is van de sprintmaster; de bronimport
 telt 437 merken, inclusief testmerk 438.
 
-## Het recept voor Stefan — een deliverable, geen bijzaak
+## Het recept voor Stefan verhuist naar 1.8
 
-Schrijf `docs/milieuvelden-toevoegen.md`: hoe je een milieuveld toevoegt zonder ons.
+De eerste versie van deze briefing liet 1.7 een handleiding schrijven waarmee Stefan zelf velden
+kan toevoegen. **Dat is geschrapt** (Timo, 21 jul): hij wil dat Stefan het systeem niet uit hoeft,
+dus er komt een scherm om velden toe te voegen — sprint 1.8.
 
-Stefan begint over ongeveer een maand (rond 21 augustus 2026) en baseert een groot deel van zijn
-studiecasus op de milieuberekeningen. Het document moet hem zelfstandig maken. Minimaal:
-
-- **Een productveld toevoegen** — welke regel in `lib/field-catalog.ts`, welke kolom in
-  `db/schema.ts`, welke migratie, en wat er daarna vanzelf gebeurt (template, scorecard,
-  retour-pad). Schrijf het als stappen die hij kan volgen, met één echt voorbeeld dat werkt.
-- **Wat het verschil is tussen een productveld en een merkveld**, en waarom de afstand tot Brink
-  het tweede is.
-- **De drie niveaus** (`must` / `wanna` / `nice`) en wat de keuze betekent voor de scorecard.
-- **Waarom een veld dat niet in de veldcatalogus staat, nooit aan merken gevraagd wordt** — dat
-  is de valkuil die zijn data waardeloos zou maken.
-- **Dat de 437 bestaande merken niet aangeraakt worden** en hoe hij dat zelf controleert.
-
-Toets het document aan één criterium: *kan iemand die dit project niet kent er een werkend veld
-mee toevoegen?* Doe dat niet op gevoel — **voeg zelf een veld toe door alleen je eigen recept te
-volgen**, en beschrijf waar je struikelde.
+Een recept dat uitlegt hoe je een regel code toevoegt, is dan binnen twee weken achterhaald.
+Het recept hoort dus bij het scherm, en wordt in 1.8 geschreven. **Schrijf hier geen handleiding.**
 
 ## Definition of Done
 
@@ -124,8 +112,6 @@ volgen**, en beschrijf waar je struikelde.
 3. Elke wijziging logt een event (ijzeren regel 5), net als de andere merkacties uit 1.5.
 4. **De 437 bronimport-merken zijn ongewijzigd** — fingerprint vóór en ná, identiek.
 5. Het adres van Brink Licht staat op één plek in de code, niet hardgecodeerd op meerdere.
-6. `docs/milieuvelden-toevoegen.md` bestaat, en jij hebt er zelf een veld mee toegevoegd om te
-   bewijzen dat het klopt.
 7. White-box RSC-test met screenshots (light/dark × mobile/desktop). Bekijk de PNG's zelf.
 8. `bunx tsc --noEmit` schoon en `bun vitest run` groen.
 
@@ -135,7 +121,7 @@ volgen**, en beschrijf waar je struikelde.
 |---|---|---|
 | **1. Probleem** | het lichtere model | Verifieer zelf tegen de live database dat de drie velden bestaan, in het template staan en leeg zijn. Neem mijn getallen niet over — er zijn nu vijf briefingfouten van de sprintmaster gevangen door bouwsessies. Nog geen code |
 | **2. Plan** | **het scherpste model, twee agents parallel** | De interessante vragen: hoe je locatie + afstand modelleert zonder een half adresboek te bouwen, waar het Brink-adres woont, en hoe het recept eruitziet zodat het over een maand nog klopt. Laat ze botsen |
-| **3. Bouwen** | het lichtere model, één agent | Twee kolommen, een formulierblok, een event en een document. Twee agents zouden elkaar hier in de weg zitten |
+| **3. Bouwen** | het lichtere model, één agent | Twee kolommen, een formulierblok en een event. Klein en samenhangend; twee agents zouden elkaar in de weg zitten |
 
 ## Harde grenzen
 

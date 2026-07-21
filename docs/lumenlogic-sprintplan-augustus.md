@@ -893,7 +893,7 @@ gevolg.
 (`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet
 meer doet wat het commentaar belooft, is precies hoe `field-catalog.measure` vijf weken achterliep.
 
-**1.7 — Milieudata: de afstand tot Brink, en het recept voor Stefan** (~2 u) · briefing: `docs/sprint1-7-briefing.md`
+**1.7 — Milieudata: de afstand tot Brink Licht** (~1,5 u) · briefing: `docs/sprint1-7-briefing.md`
 - *Given* het merkbeheerscherm, *when* je bij een merk de fabriekslocatie en de afstand tot Brink
   Licht invult, *then* staat dat onder een eigen milieukopje, is het gelogd, en zijn de 437
   bronimport-merken ongewijzigd.
@@ -927,6 +927,40 @@ op de milieuberekeningen. Het recept is daarom een deliverable met een eigen toe
 voegt zélf een veld toe door alleen het eigen recept te volgen.
 
 Brink Licht: **Veldzigt 30A, 3454 PW Utrecht** — op één plek in de code vastleggen.
+
+**Het recept voor Stefan is uit 1.7 gehaald** en verhuisd naar 1.8, zie hieronder.
+
+**1.8 — Velden toevoegen zonder de app te verlaten** (~6–8 u) · briefing: `docs/sprint1-8-briefing.md`
+- *Given* de app, *when* Stefan een milieuveld toevoegt zonder code, *then* staat het in het
+  eerstvolgende merk-Excel, telt het mee in de scorecard, overleeft een waarde het hele retour-pad
+  — en kan de matcher er niet bij.
+
+**Besluit G17 (Timo, 21 jul) — draait G16 om.** G16 was: uitbreiden via de veldcatalogus met een
+recept in de docs. Timo wil dat **Stefan het systeem niet uit hoeft**. De reden is legitiem: een
+handleiding maakt hem afhankelijk van iemand die code kan lezen, en dat was precies wat we wilden
+voorkomen. Gevolg: het recept schrijven we mét het scherm, niet ervoor — een handleiding over het
+toevoegen van een regel code zou binnen twee weken achterhaald zijn.
+
+**Volgorde vastgelegd (Timo):** *"we wachten tot 1.6 klaar is, dan kijken we hoe ze het gebouwd
+hebben en dan bouwen we daar weer tegenaan."* 1.8 start dus pas ná 1.6 en voegt zich naar het
+model dat 1.6 achterlaat.
+
+*Waarom dit 6–8 u is en geen middag:* **dertien bestanden lezen de veldcatalogus**, `db/schema.ts`
+incluis. Het werk zit niet in het formulier maar erin dat elk van die lezers een tweede soort veld
+moet begrijpen. **Verboden weg:** de app zijn eigen schema laten aanpassen (`ALTER TABLE` vanuit
+een knop) — dev en prod zijn één database, dus een typefout is meteen een kolom in productie en
+de migraties lopen uit de pas. **Gekozen weg:** definities in een eigen tabel, waarden in JSONB;
+dat patroon bestaat al (`products.tier2_source`).
+
+*Harde eis:* een zelf toegevoegd veld mag de **matcher nooit** bereiken, en de bouwsessie moet
+aantonen dát het onmogelijk is — niet dat het niet gebeurt.
+
+*Twee vallen die in de briefing staan:* het Excel matcht kolommen op **labeltekst**, dus een eigen
+veld dat "EAN code" heet maakt het bestand dubbelzinnig · en `measure` is de brug die in juli al
+eens vijf weken achterliep, waardoor de scorecard te laag rapporteerde — een tweede soort veld
+verdubbelt dat risico.
+
+
 
 **Technische schuld (bufferuren, ~5 u):** Drizzle-snapshot-gat vanaf 0004 bijwerken (timebox 2 u; anders gedocumenteerd naar het runbook).
 
