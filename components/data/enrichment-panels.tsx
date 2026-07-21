@@ -165,6 +165,9 @@ export function SampleReview({
 }) {
   const published = status !== "steekproef";
   const foutCount = items.filter((i) => i.sampleVerdict === "fout").length;
+  // De steekproefpoort (publishRun weigert bij een onbeoordeelde rij): laat het hier zien
+  // in plaats van de gebruiker tegen een servererror aan te laten lopen.
+  const openCount = items.filter((i) => i.sampleVerdict == null).length;
   return (
     <div className="space-y-4">
       {items.length === 0 ? (
@@ -247,9 +250,11 @@ export function SampleReview({
       {!published && (
         <div className="flex items-center justify-between gap-3 border-t pt-4">
           <p className="text-xs text-muted-foreground">
-            {foutCount > 0
-              ? `${foutCount} item(s) marked incorrect — they won't be applied.`
-              : "Publishing fills the empty match fields and re-matches this brand's blue lines."}
+            {openCount > 0
+              ? `${openCount} sample row(s) still need a verdict before you can publish.`
+              : foutCount > 0
+                ? `${foutCount} item(s) marked incorrect — they won't be applied.`
+                : "Publishing fills the empty match fields and re-matches this brand's blue lines."}
           </p>
           <div className="flex items-center gap-2">
             <form action={rejectAction}>
@@ -260,7 +265,7 @@ export function SampleReview({
             </form>
             <form action={publishAction}>
               <input type="hidden" name="runId" value={runId} />
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" disabled={openCount > 0}>
                 Publish
               </Button>
             </form>

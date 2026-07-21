@@ -1405,3 +1405,46 @@ sprintmaster pusht met expliciete SHA). Commit staat lokaal klaar. **Volgende st
 optiekcode→beam door de verrijkingspoort (bron `'optic-code'`, eigen `tier2_source`), NIET
 hardgecodeerd; de beam-term in `specScore` is al bedraad en gaat vanzelf meewegen zodra de kolom
 gevuld is._
+
+_2026-07-21 (**steekproefpoort gerepareerd + optiekcode→beam gepubliceerd**): twee dingen, in
+die volgorde. **(1) De poort, want die bestond alleen op papier.** `inSampleAt(i) = i % 3 === 0`
+gaf voor XAL ~4.500 reviewrijen én publiceren paste ongereviewde items gewoon toe (alleen een
+expliciete `'fout'` blokkeerde één item). Nu: `pickSampleIndices` — begrensd op 100, gestratificeerd
+over distinct naamvormen (`nameShape`: cijferreeksen → `#`), en `assertSampleReviewed` laat
+`publishRun` weigeren zolang één rij zonder oordeel staat. De UI toont dat en zet de knop uit.
+⚠️ **Val die ik zelf maakte en de voorvertoning ving:** de eerste versie pakte de eerste 100
+strata alfabetisch → de steekproef liep van ANDRO tot INS en toonde SASSO nooit. Nu worden de
+plekken gelijkmatig over álle vormen verdeeld (bij XAL: 187 vormen → ANDRO…VARO, mét SASSO).
+Een test dekt dit af; let op dat testdata dáárvoor in LETTERS moet verschillen, niet in cijfers
+(nameShape maakt van elke cijferreeks een `#` — mijn eerste testopzet had daardoor 1 stratum).
+**(2) De gecureerde tabel** in `lib/enrichment/optic-code.ts`, bron `'optic-code'`, via dezelfde
+pijplijn (`startOpticCodeRun`) — dus mét steekproef, herkomststempel per veld en nooit-overschrijven.
+Woordgrens-matching (`FL` niet in `FLEX`/`REFLECTOR`, `SP` niet in `SUSP`), zwijgen bij >1 code.
+**Besluit Timo: alleen FL+WF gepubliceerd.** De meting bracht een scherpere tegenspraak boven water
+dan gedacht: van de XAL-rijen mét beam_angle staan ME (48×) én SP (48×) allebei op exact 30,00° —
+die data onderscheidt ME dus niet van SP en oogt als generieke default, terwijl onze tabel 25/15
+zegt. FL/WF hadden nul gevulde rijen. `CONFIRMED_CODES = ["FL","WF"]`; ME/SP staan wél in de tabel
+als vastgelegde kennis maar worden niet voorgesteld tot het 1.2-retourpad ze bevestigt (één regel).
+**Gepubliceerd naar productie na expliciet akkoord**: run `3989/3989` toegepast, 0 overschrijvingen.
+`L360048-2413537F` beam=39 en `L360048-2412537W` beam=57, beide met `tier2_source
+{"beamAngle":"optic-code"}`.
+**Resultaat: Lr301 staat nu op rang 1** (was 3). **Maar de acceptatie "Lr301 en Lr303 verschillende
+top-1" is NIET gehaald** — beide geven `…2413537F`. Oorzaak exact gemeten, geen aanname:
+FL-tekstscore 2,5644 vs WF 2,4394; het hele verschil (0,1250) komt van één token, `"27"` op positie
+14 — de WATTAGE. WF wint op spec met 0,0750 (beam exact 57 vs 18° mis → geel), dus netto blijft FL
+0,0500 vóór. **Dit is dubbeltelling in de tekstrelevantie-term van commit `3d5d69e`, niet in de
+verrijking:** de tekstscore beloont het lettelijk voorkomen van `27` in de naam, terwijl `specScore`
+watt al mét tolerantie beoordeelt (FL 27W exact, WF 26,5W binnen 10% — allebei groen). De ruwe
+tekstmatch wint van de tolerante spec-match. **Voorgestelde fix (niet gebouwd, wacht op besluit):**
+spec-waarde-tokens uitsluiten van de positiegewogen tekstscore zodra de spec-bewuste route actief
+is — de tekstscore hoort het TYPE te identificeren (SASSO PRO ADJ), niet de getallen te
+herbeoordelen. Let op: NIET alle cijfertokens uitsluiten — `100` in "SASSO PRO 100" is juist
+type-identificerend; alleen tokens die een gevraagde spec-waarde zijn (of een eenheid dragen).
+Vergt een volledige herverificatie tegen main, vandaar het besluitmoment.
+⚠️ **Parallelle sessie in dezelfde working tree**: `app/admin/brands/*`, `components/admin/brand*`,
+`lib/repo/{admin,brands}.ts`, `db/schema.ts`, `db/test-db.ts`, migratie `0013_merk_levensfase.sql`
+en `docs/sprint1-5-*` zijn NIET van mij en zijn ongecommit gelaten. `components/admin/admin.test.tsx`
+is momenteel rood door hún WIP (`brands-tier-block.tsx`, "client reference export 't' called on
+server") — geverifieerd door alleen hún drie admin-bestanden te stashen: dan 9/9 groen met mijn werk
+intact. Mijn commit raakt hun bestanden niet aan. Verder: `pdf-upload.test.tsx` is flaky onder
+volledige parallelle suite-belasting (slaagt geïsoleerd, mét én zonder mijn wijzigingen)._

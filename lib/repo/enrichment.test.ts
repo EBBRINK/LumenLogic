@@ -26,10 +26,13 @@ import {
   listBrandLoadQueue,
   listEnrichmentRuns,
   markBrandLoaded,
+  nameShape,
+  pickSampleIndices,
   publishRun,
   rejectRun,
   setSampleVerdict,
   startEnrichmentRun,
+  startOpticCodeRun,
 } from "@/lib/repo/enrichment";
 
 // Een merk met specs-in-de-naam maar lege matchvelden — precies waar verrijking voor is.
@@ -126,6 +129,9 @@ test("een 'fout' beoordeeld steekproef-item wordt NIET toegepast", async () => {
   const { brandId } = await seedBrandWithBareProducts(db);
   const run = await startEnrichmentRun(db, brandId);
 
+  // De hele steekproef krijgt een oordeel (de poort eist dat sinds 20 jul), waarvan er
+  // precies één 'fout' is — daar gaat deze test over.
+  await approveWholeSample(db, run.id);
   const sample = await getSampleItems(db, run.id);
   const target = sample[0];
   await setSampleVerdict(db, target.id, "fout");
@@ -298,4 +304,142 @@ test("markBrandLoaded hermatcht óók regels met een alias-boek-woord (Intraligh
     .from(specLines)
     .where(eq(specLines.id, line.id));
   expect(afterRow.status).not.toBe("blauw");
+});
+
+// ── De gerepareerde steekproefpoort (20 jul) ─────────────────────────────────
+
+test("steekproef is begrensd: 1000 items leveren nooit meer dan 100 reviewrijen", () => {
+  // Vóór de reparatie: index % 3 → ~333 rijen (en op de echte XAL-run ~4.500).
+  const items = Array.from({ length: 1000 }, (_, i) => ({
+    productName: `SASSO ${i} FL 27W`,
+    field: "beamAngle",
+  }));
+  expect(pickSampleIndices(items).size).toBe(100);
+});
+
+test("steekproef is gestratificeerd: elke naamvorm komt aan de beurt vóór een tweede rij", () => {
+  // Eén vorm met 500 rijen, drie zeldzame vormen met elk 1. Een %3-steekproef zou de
+  // zeldzame vormen bijna zeker missen; de gestratificeerde moet ze alle drie pakken.
+  const items = [
+    ...Array.from({ length: 500 }, (_, i) => ({
+      productName: `SASSO ${i} FL 27W`,
+      field: "beamAngle",
+    })),
+    { productName: "ANDRO 160 LENS RD WF CRI80", field: "beamAngle" },
+    { productName: "BO 32 1L SP INTRACK", field: "beamAngle" },
+    { productName: "ARY ADJ ME SUSP ROD", field: "beamAngle" },
+  ];
+  const chosen = pickSampleIndices(items);
+  expect(chosen.has(500)).toBe(true);
+  expect(chosen.has(501)).toBe(true);
+  expect(chosen.has(502)).toBe(true);
+});
+
+test("steekproef is deterministisch: dezelfde invoer geeft dezelfde rijen", () => {
+  const items = Array.from({ length: 300 }, (_, i) => ({
+    productName: `TYPE ${i % 7} FL ${i}W`,
+    field: "beamAngle",
+  }));
+  expect([...pickSampleIndices(items)].sort()).toEqual(
+    [...pickSampleIndices(items)].sort(),
+  );
+});
+
+test("nameShape groepeert varianten van hetzelfde patroon", () => {
+  expect(nameShape("SASSO 100 FL 27W")).toBe(nameShape("SASSO 60 FL 9W"));
+  expect(nameShape("SASSO 100 FL 27W")).not.toBe(nameShape("ANDRO 160 WF"));
+});
+
+test("poort met tanden: publiceren weigert zolang de steekproef ongereviewd is", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+  const run = await startEnrichmentRun(db, brandId);
+
+  // Vóór de reparatie publiceerde dit gewoon; ongereviewde items liftten mee.
+  await expect(publishRun(db, run.id)).rejects.toThrow(/niet volledig beoordeeld/);
+
+  // en er is niets toegepast — de producten zijn onaangeroerd
+  const items = await db
+    .select()
+    .from(enrichmentItems)
+    .where(eq(enrichmentItems.runId, run.id));
+  expect(items.every((i) => !i.applied)).toBe(true);
+
+  // ná volledige review mag het wél
+  await approveWholeSample(db, run.id);
+  const { applied } = await publishRun(db, run.id);
+  expect(applied).toBeGreaterThan(0);
+});
+
+// ── Gecureerde optiekcode → beam_angle ───────────────────────────────────────
+
+test("optiekcode-run vult beam_angle met herkomst 'optic-code'", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO PRO 100 FL ADJ DALI 27W cob LED 3000K 220-240V",
+  });
+  await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "SASSO PRO 100 WF ADJ DALI 26,5W cob LED 3000K 220-240V",
+  });
+
+  const run = await startOpticCodeRun(db, brandId, "tester");
+  for (const it of await getSampleItems(db, run.id)) {
+    expect(it.source).toBe("optic-code");
+    expect(it.field).toBe("beamAngle");
+    await setSampleVerdict(db, it.id, "goed");
+  }
+  await publishRun(db, run.id);
+
+  const prods = await db.select().from(products).where(eq(products.brandId, brandId));
+  const fl = prods.find((p) => p.name.includes(" FL "))!;
+  const wf = prods.find((p) => p.name.includes(" WF "))!;
+  expect(Number(fl.beamAngle)).toBe(39);
+  expect(Number(wf.beamAngle)).toBe(57);
+  // Herkomst zichtbaar (H-09): gecureerd, niet geparsed.
+  expect(fl.tier2Source).toMatchObject({ beamAngle: "optic-code" });
+});
+
+test("optiekcode-run overschrijft een bestaande beam_angle NOOIT", async () => {
+  const db = await createTestDb();
+  // Echte data wint altijd van de gecureerde tabel — verrijking vult uitsluitend lege
+  // kolommen. (Zelfde mechanisme dat de 96 ME/SP-rijen met hun bestaande 30° beschermt.)
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD FL CRI90 ADJ S-RECS 15,2W cob LED 3000K",
+    beamAngle: 30,
+  });
+
+  const run = await startOpticCodeRun(db, brandId);
+  for (const it of await getSampleItems(db, run.id)) {
+    await setSampleVerdict(db, it.id, "goed");
+  }
+  await publishRun(db, run.id);
+
+  const [prod] = await db.select().from(products).where(eq(products.brandId, brandId));
+  expect(Number(prod.beamAngle)).toBe(30); // niet 39
+  expect(prod.tier2Source ?? {}).not.toMatchObject({ beamAngle: "optic-code" });
+});
+
+test("steekproef overspant de hele catalogus, niet alleen de alfabetische kop", () => {
+  // 400 distinct naamvormen, 100 plekken. De eerste versie pakte vorm 0..99 (ANDRO→INS bij
+  // XAL) en liet SASSO ongezien. De steekproef moet over het hele bereik spreiden.
+  // Let op: de vormen moeten in LETTERS verschillen — nameShape maakt van elke cijferreeks
+  // een '#', dus "TYPE001"/"TYPE002" zouden juist één en dezelfde vorm zijn.
+  const naam = (n: number) =>
+    String.fromCharCode(
+      97 + Math.floor(n / 676) % 26,
+      97 + Math.floor(n / 26) % 26,
+      97 + (n % 26),
+    );
+  const items = Array.from({ length: 400 }, (_, i) => ({
+    productName: `${naam(i)} FL 27W`,
+    field: "beamAngle",
+  }));
+  const chosen = [...pickSampleIndices(items)].sort((a, b) => a - b);
+  expect(chosen.length).toBe(100);
+  expect(chosen[0]).toBeLessThan(10); // begin gedekt
+  expect(chosen[chosen.length - 1]).toBeGreaterThan(390); // én het einde
 });

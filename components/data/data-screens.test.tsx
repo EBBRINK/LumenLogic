@@ -171,7 +171,11 @@ test("dekkingsmeter toont het percentage en de telling", async () => {
     .toBeInTheDocument();
 });
 
-test("steekproef toont publiceren + fout-waarschuwing", async () => {
+// De steekproefpoort (20 jul): zolang één rij geen oordeel heeft weigert publishRun, dus de
+// UI zegt dat en zet de knop uit — beter dan de gebruiker tegen een servererror laten lopen.
+// sampleItems bevat bewust één onbeoordeelde rij (i2) én één 'fout' (i3); de openstaande
+// review wint, want die blokkeert.
+test("steekproef met onbeoordeelde rij: publiceren geblokkeerd", async () => {
   await renderServer(
     <Screen>
       <SampleReview
@@ -184,7 +188,33 @@ test("steekproef toont publiceren + fout-waarschuwing", async () => {
       />
     </Screen>,
   );
-  await expect.element(page.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+  await expect
+    .element(page.getByText(/1 sample row\(s\) still need a verdict/))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Publish" }))
+    .toBeDisabled();
+});
+
+test("steekproef volledig beoordeeld: publiceren mag, mét fout-waarschuwing", async () => {
+  const beoordeeld: SampleItem[] = sampleItems.map((it) =>
+    it.sampleVerdict == null ? { ...it, sampleVerdict: "goed" as const } : it,
+  );
+  await renderServer(
+    <Screen>
+      <SampleReview
+        runId="r2"
+        status="steekproef"
+        items={beoordeeld}
+        verdictAction={noopAction}
+        publishAction={noopAction}
+        rejectAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("button", { name: "Publish" }))
+    .toBeEnabled();
   await expect
     .element(page.getByText(/1 item\(s\) marked incorrect/))
     .toBeInTheDocument();

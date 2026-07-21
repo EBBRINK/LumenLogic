@@ -49,6 +49,32 @@ Gecureerde tabel (`FL`→39, `WF`→57, `ME`→25, `SP`→15) door de verrijking
 `'optic-code'` en eigen `tier2_source`-label — NIET hardgecodeerd in de matcher. De beam-term in
 `specScore` is al bedraad en NULL-neutraal; zodra de kolom gevuld is, gaat hij vanzelf meewegen.
 
+## ✅ Gebouwd (20 jul) — de steekproefpoort + optiekcode→beam
+
+**Eerst de poort, want die bestond alleen op papier.** `inSampleAt(i) = i % 3 === 0` leverde voor
+XAL ~4.500 reviewrijen (niemand controleert dat), en publiceren paste ongereviewde items gewoon
+toe — alleen een expliciete `'fout'` blokkeerde één enkel item. Twee reparaties in
+`lib/repo/enrichment.ts`:
+
+- **`pickSampleIndices`** — begrensd op 100 rijen, gestratificeerd over distinct naamvormen
+  (`nameShape`: cijferreeksen → `#`). Bij méér vormen dan plekken worden de plekken gelijkmatig
+  over álle vormen verdeeld; de eerste versie pakte de eerste 100 alfabetisch en liet daardoor
+  precies SASSO ongezien (gevonden in de voorvertoning, niet in een test).
+- **`assertSampleReviewed`** — `publishRun` weigert zolang één steekproefrij zonder oordeel staat.
+  De UI toont dat en zet de publiceerknop uit i.p.v. tegen een servererror aan te lopen.
+
+**Daarna de tabel.** `lib/enrichment/optic-code.ts`, bron `'optic-code'`, via dezelfde pijplijn
+(`startOpticCodeRun`) — dus met steekproef, herkomststempel per veld en de "nooit overschrijven"-
+regel. Woordgrens-matching (`FL` mag niet matchen in `FLEX`/`REFLECTOR`, `SP` niet in `SUSP`) en
+zwijgen bij meer dan één code.
+
+**Besluit Timo: alleen FL en WF gepubliceerd.** De meting bracht een tegenspraak boven water die
+scherper is dan gedacht: van de XAL-rijen mét beam_angle staan ME (48×) én SP (48×) allebei op
+exact **30,00°** — die data onderscheidt ME dus niet van SP en oogt als generieke default, terwijl
+onze tabel 25 en 15 zegt. FL/WF hebben nul gevulde rijen: geen tegenspraak, alleen een gat, en
+precies wat Lr301/Lr303 scheidt. `CONFIRMED_CODES = ["FL","WF"]`; ME/SP staan wél in de tabel als
+vastgelegde kennis maar worden niet voorgesteld tot het 1.2-retourpad ze bevestigt (één regel).
+
 ## Waar beide agents onafhankelijk op uitkwamen
 
 **1. De primaire sleutel moet gerepareerd, een tiebreak kan het niet.** Agent 2 formuleert het

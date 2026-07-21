@@ -22,6 +22,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   or,
   sql,
 } from "drizzle-orm";
@@ -41,6 +42,7 @@ import { logEvent } from "./events";
 import { runMatcher } from "./matching";
 import { brandKeyOf } from "@/lib/matching/engine";
 import { FIELDS, parseProductName } from "@/lib/enrichment/parser";
+import { OPTIC_SOURCE, opticBeamAngle } from "@/lib/enrichment/optic-code";
 
 // De parser-veldnamen komen 1-op-1 overeen met de kolomnamen in products (db/schema.ts),
 // dus een geparste key kan rechtstreeks als drizzle-set-sleutel dienen. Alleen de coërcie
@@ -52,11 +54,99 @@ const INTEGER_FIELDS = new Set(["kelvin", "cri", "lumenOutput"]);
 // die we niet zomaar overschrijven.
 const REMATCHABLE = ["blauw", "open"] as const;
 
-// Steekproef ~1 op 3 (~30%), deterministisch op de invoegvolgorde zodat de UI en de test
-// reproduceerbaar zijn. Index 0 valt altijd in de steekproef → bij ≥1 item is er altijd
-// minstens één te controleren regel.
-function inSampleAt(index: number): boolean {
-  return index % 3 === 0;
+// ── De steekproefpoort (gerepareerd 20 jul) ──────────────────────────────────
+// Vóór deze reparatie was de steekproef `index % 3 === 0`: ~30% van álles, wat voor XAL
+// ~4.500 reviewrijen betekende. Niemand controleert 4.500 rijen, dus de "menselijke poort"
+// werd in de praktijk doorgeklikt — erger dan geen poort, want hij wekt vertrouwen dat er
+// niet is. Twee dingen zijn daarom veranderd:
+//
+//   1. BEGRENSD + GESTRATIFICEERD (hieronder): maximaal SAMPLE_MAX rijen, verdeeld over
+//      distinct naamvormen in plaats van over de invoegvolgorde. 100 rijen die elk een ánder
+//      naampatroon tonen vangen een systematische parserfout veel eerder dan 4.500 rijen die
+//      voor 90% dezelfde vorm hebben.
+//   2. ECHT BINDEND (assertSampleReviewed, gebruikt door publishRun): publiceren mag pas als
+//      de héle steekproef een oordeel heeft. Voorheen blokkeerde alleen een expliciete 'fout'
+//      één enkel item en publiceerde de rest — inclusief alle ongereviewde — gewoon mee.
+const SAMPLE_MAX = 100;
+
+// De "vorm" van een productnaam: cijferreeksen → '#', kleinletters, witruimte genormaliseerd.
+// "SASSO 100 FL 27W" en "SASSO 60 FL 9W" krijgen zo dezelfde vorm en vallen in één stratum,
+// terwijl "ANDRO 160 LENS RD WF" een eigen stratum is. Zo koopt de steekproef breedte in
+// naampatronen in plaats van in aantal.
+export function nameShape(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\d+(?:[.,]\d+)?/g, "#")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Kies de te reviewen indices: gestratificeerd (round-robin over de strata, zodat elk
+// naampatroon aan de beurt komt vóór een patroon een tweede rij krijgt) en begrensd op
+// SAMPLE_MAX. Volledig deterministisch — gesorteerde strata, gesorteerde indices — zodat de
+// UI, de test en een herhaalde run dezelfde rijen opleveren.
+export function pickSampleIndices(
+  items: { productName: string; field: string }[],
+  max: number = SAMPLE_MAX,
+): Set<number> {
+  const strata = new Map<string, number[]>();
+  items.forEach((it, i) => {
+    const key = `${it.field}|${nameShape(it.productName)}`;
+    const list = strata.get(key);
+    if (list) list.push(i);
+    else strata.set(key, [i]);
+  });
+  const keys = [...strata.keys()].sort();
+  const chosen = new Set<number>();
+
+  if (keys.length >= max) {
+    // Méér naamvormen dan reviewplekken. Dan NIET simpelweg de eerste `max` vormen pakken:
+    // die zijn alfabetisch geordend, dus de steekproef zou bij XAL van ANDRO tot INS lopen en
+    // alles daarna (inclusief SASSO — precies de familie waar het om draait) nooit tonen.
+    // Verdeel de plekken gelijkmatig over álle vormen, zodat de steekproef de hele catalogus
+    // overspant. Deterministisch: dezelfde invoer → dezelfde vormen.
+    for (let s = 0; s < max; s++) {
+      chosen.add(strata.get(keys[Math.floor((s * keys.length) / max)])![0]);
+    }
+    return chosen;
+  }
+
+  // Minder vormen dan plekken: round-robin — ronde 0 pakt de eerste rij van elk stratum,
+  // ronde 1 de tweede, enz. Zo krijgt elke vorm er één vóór een vorm er twee krijgt.
+  for (let round = 0; chosen.size < Math.min(max, items.length); round++) {
+    let progressed = false;
+    for (const k of keys) {
+      if (chosen.size >= max) break;
+      const idx = strata.get(k)![round];
+      if (idx === undefined) continue;
+      chosen.add(idx);
+      progressed = true;
+    }
+    if (!progressed) break; // alle strata uitgeput
+  }
+  return chosen;
+}
+
+// De poort met tanden: elke steekproefrij moet een menselijk oordeel dragen vóór publicatie.
+// Gooit met een telling, zodat de UI kan zeggen hoeveel er nog openstaan.
+async function assertSampleReviewed(db: AppDb, runId: string): Promise<void> {
+  const [{ open }] = await db
+    .select({ open: sql<number>`count(*)` })
+    .from(enrichmentItems)
+    .where(
+      and(
+        eq(enrichmentItems.runId, runId),
+        eq(enrichmentItems.inSample, true),
+        isNull(enrichmentItems.sampleVerdict),
+      ),
+    );
+  const n = Number(open);
+  if (n > 0) {
+    throw new Error(
+      `steekproef nog niet volledig beoordeeld: ${n} rij(en) zonder oordeel. ` +
+        `Publiceren kan pas als elke steekproefrij 'goed' of 'fout' is.`,
+    );
+  }
 }
 
 // Value-string (zoals opgeslagen in enrichment_items.value) → kolomwaarde voor products.
@@ -124,43 +214,107 @@ export async function startEnrichmentRun(
     }
   }
 
-  const sampleCount = parsed.filter((_, i) => inSampleAt(i)).length;
+  return createRun(db, brand, prods.length, parsed, "parsed-from-name", actor);
+}
+
+// ── Start: gecureerde optiekcode → beam_angle voor één merk ──────────────────
+// Zelfde pijplijn, andere bron. De waarden komen NIET uit de naam maar uit een handmatige
+// vertaaltabel (lib/enrichment/optic-code.ts), en dragen daarom source 'optic-code' — zodat
+// products.tier2_source per veld laat zien dat deze graden gecureerd zijn, niet geparsed.
+// Stelt alleen voor; publishRun past pas toe, en alleen op LEGE beam_angle-kolommen.
+export async function startOpticCodeRun(
+  db: AppDb,
+  brandId: string,
+  actor?: string,
+): Promise<EnrichmentRun> {
+  const [brand] = await db
+    .select({ id: brands.id, name: brands.name })
+    .from(brands)
+    .where(eq(brands.id, brandId))
+    .limit(1);
+  if (!brand) throw new Error(`brand ${brandId} not found`);
+
+  const prods = await db
+    .select({ id: products.id, name: products.name })
+    .from(products)
+    .where(eq(products.brandId, brandId))
+    .orderBy(asc(products.name));
+
+  const proposals: Proposal[] = [];
+  for (const p of prods) {
+    const angle = opticBeamAngle(p.name);
+    if (angle === undefined) continue;
+    proposals.push({
+      productId: p.id,
+      productName: p.name,
+      field: "beamAngle",
+      value: String(angle),
+    });
+  }
+
+  return createRun(db, brand, prods.length, proposals, OPTIC_SOURCE, actor);
+}
+
+type Proposal = {
+  productId: string;
+  productName: string;
+  field: string;
+  value: string;
+};
+
+// Gedeelde run-aanmaak voor beide bronnen: run-rij + items + gestratificeerde steekproef +
+// event. Eén plek waar de steekproefpoort wordt toegepast, zodat een nieuwe bron hem niet
+// per ongeluk kan omzeilen.
+async function createRun(
+  db: AppDb,
+  brand: { id: string; name: string },
+  productCount: number,
+  proposals: Proposal[],
+  source: string,
+  actor?: string,
+): Promise<EnrichmentRun> {
+  const sampleIdx = pickSampleIndices(proposals);
 
   const [run] = await db
     .insert(enrichmentRuns)
     .values({
-      brandId,
+      brandId: brand.id,
       brandName: brand.name,
       status: "steekproef",
       counts: {
-        producten: prods.length,
-        geparsed: parsed.length,
-        steekproef: sampleCount,
+        producten: productCount,
+        geparsed: proposals.length,
+        steekproef: sampleIdx.size,
       },
       actor: actor ?? null,
     })
     .returning();
 
-  if (parsed.length > 0) {
+  if (proposals.length > 0) {
     await db.insert(enrichmentItems).values(
-      parsed.map((it, i) => ({
+      proposals.map((it, i) => ({
         runId: run.id,
         productId: it.productId,
         productName: it.productName,
         field: it.field,
         value: it.value,
-        source: "parsed-from-name",
-        inSample: inSampleAt(i),
+        source,
+        inSample: sampleIdx.has(i),
       })),
     );
   }
 
   await logEvent(db, {
     entity: "brand",
-    entityId: brandId,
+    entityId: brand.id,
     action: "enrichment_started",
     actor,
-    payload: { runId: run.id, parsed: parsed.length, sample: sampleCount },
+    payload: {
+      runId: run.id,
+      source,
+      parsed: proposals.length,
+      sample: sampleIdx.size,
+    },
   });
 
   return run;
@@ -227,6 +381,11 @@ export async function publishRun(
     // idempotent: al gepubliceerd/afgewezen → niets opnieuw toepassen
     return { run, applied: 0, rematched: 0 };
   }
+
+  // De poort met tanden (20 jul): geen publicatie zolang er steekproefrijen zonder oordeel
+  // zijn. Voorheen publiceerden ongereviewde items gewoon mee en blokkeerde alleen een
+  // expliciete 'fout' één enkel item — de menselijke controle bestond dus alleen op papier.
+  await assertSampleReviewed(db, runId);
 
   const items = await db
     .select()
