@@ -1441,6 +1441,20 @@ is — de tekstscore hoort het TYPE te identificeren (SASSO PRO ADJ), niet de ge
 herbeoordelen. Let op: NIET alle cijfertokens uitsluiten — `100` in "SASSO PRO 100" is juist
 type-identificerend; alleen tokens die een gevraagde spec-waarde zijn (of een eenheid dragen).
 Vergt een volledige herverificatie tegen main, vandaar het besluitmoment.
+⚠️ **Gevolg dat een besluit vraagt — de stopgap produceert nu GROEN.** Volledige testset na
+publicatie: raadhuis `rang≤50` **4/4** (was 2/4), top-1 1/4, statusverdeling terug op de
+oorspronkelijke nulmeting (`open:13 blauw:10 geel:5 rood:2 paars:1`). Maar **tno springt van
+`groen:1` naar `groen:5`**: Lr302, Lr303, Lr304 en Lr305 zijn nu *aantoonbaar voldoet* (lijst 1).
+Hun oordeel luidt telkens `beamAngle requested 51/56, delivered 57 → groen` + `dimmable DALI →
+groen`, en die 57 komt uit ónze onbevestigde optiekcode-tabel. Formeel klopt het (de
+tolerantietabel zegt ≤10° = groen, en er is ≥1 getoetst veld, dus "groen is groen" is niet
+geschonden), en de herkomst is traceerbaar via `tier2_source`. Maar GROEN betekent in dit systeem
+"aantoonbaar", en die bewering rust hier op een stopgap die XAL nog niet bevestigd heeft. Optie
+als dat te ver gaat: een veld met `tier2_source = 'optic-code'` wél lijst 2 (mogelijk) laten
+dragen maar géén lijst 1 (aantoonbaar), tot het retourpad bevestigt — dat vergt
+herkomst-bewust oordelen in `judgeCandidate`, een nieuw mechanisme. Bewust niet eigenhandig
+gebouwd; dit is een semantisch besluit, geen technisch.
+
 ⚠️ **Parallelle sessie in dezelfde working tree**: `app/admin/brands/*`, `components/admin/brand*`,
 `lib/repo/{admin,brands}.ts`, `db/schema.ts`, `db/test-db.ts`, migratie `0013_merk_levensfase.sql`
 en `docs/sprint1-5-*` zijn NIET van mij en zijn ongecommit gelaten. `components/admin/admin.test.tsx`
