@@ -950,7 +950,65 @@ eraan dat de vier meetbare 🔒-velden toevallig allemaal op `nice` staan — kr
 `priceListIndicator(validUntil)` zonder `today` op de merkpagina · `max(valid_until)` als "de"
 prijslijst in `listBrandRelations`.
 
-**1.7 — Milieudata: de afstand tot Brink Licht** (~1,5 u) · briefing: `docs/sprint1-7-briefing.md`
+**1.7 — Milieudata: de afstand tot Brink Licht** ✅ **AF (21 jul, commits `740cb97` t/m `7d68fdc`)**
+
+*Onafhankelijk geverifieerd door de sprintmaster tegen de live database:*
+- **436 merken aangemaakt op 2 juli** (de bronimport), plus `ZZTEST QA-14` (20 jul) en
+  `ZZTEST QA-15` (21 jul). Geen van de 436 draagt een milieuveld — `factory_location` en
+  `factory_distance_km` zijn daar **0 keer** gevuld.
+- **Beide CHECK-constraints staan in de database**, niet alleen in de code:
+  `factory_distance_km IS NULL OR > 0` en `km IS NULL OR factory_location IS NOT NULL`. Die
+  tweede maakt besluit G14 een schemaregel in plaats van een afspraak — hij bindt daarmee ook
+  een toekomstig 4.B-schrijfpad.
+- **Het Brink-adres staat exact één keer in de code**: `lib/brink.ts:6`. DoD 5 gehaald.
+- **Het event draagt from/to-waarden**, niet alleen veldnamen:
+  `brand_environment_changed {from:{km:null,location:null} → to:{km:980,location:"Bovezzo, Italië"}}`.
+  Dat is de juiste keuze voor precies dit veld — de briefing legt vast dat een merk er belang bij
+  heeft laag te schatten, en "iemand wijzigde de afstand" zonder de oude waarde is geen audittrail.
+- `tsc` schoon; 872 tests groen op de tweede run.
+
+**Mijn zesde briefingfout, en de eerste die ik zélf had geverifieerd.** De briefing sprak van
+**437 bronimport-merken**. Het zijn er **436**: de 437e was `ZZTEST QA-14`, mijn eigen testmerk uit
+1.4. Erger dan een telfout — ik heb dat getal bij de verificatie van 1.5 nagemeten en afgetekend.
+De *invariant* die 1.5 bewees blijft geldig (die 437 rijen zijn inderdaad niet gewijzigd); alleen
+het **label** klopte niet. Gevolg voor later: wie 437 als basislijn gebruikt neemt een testmerk mee,
+en zodra QA-14 ooit wordt opgeruimd breekt de fingerprint en lijkt dat op dataverlies.
+**Vanaf nu is de basislijn 436, afgebakend op `created_at::date = '2026-07-02'`, niet op een
+totaaltelling.**
+
+**G16 is bewust niet gevolgd, en terecht.** De briefing wilde het veld registreren in
+`lib/field-catalog.ts`. Dat is inhoudelijk verkeerd: die catalogus meet **productkolommen** en
+beschrijft wat we in het **merk-Excel vrágen**. Dit is een merkveld dat Brink zelf invult. Beide
+planners kwamen daar onafhankelijk op uit. G16 blijft gelden voor productvelden (sprint 1.8), niet
+voor merkvelden.
+
+*Twee botsingen die de sessie beslecht heeft:* geen derde kolom `factory_distance_basis` — een
+verhuizing maakt álle afstanden tegelijk verdacht, dus een stempel per rij lost niets op wat het
+event met actor en tijdstip niet al draagt · de milieuvelden ook op het **aanmaak**scherm, tonen
+én schrijven, want een formulier dat een veld toont en de invoer stil weggooit is precies het
+faalpatroon dat dit project al een keer gekost heeft.
+
+*De sessie corrigeerde haar eigen bouwagent:* die meldde dat de screenshots correct renderden;
+bij eigen inspectie stond de legend "Environment" even dicht op het eerste label als een label op
+zijn eigen invoerveld, waardoor het als twee gestapelde labels las in plaats van als het eigen
+kopje dat Timo vroeg. Zelf gerepareerd (`9e3882e`).
+
+*Opvolgtaken:* `deleteBrand` kan `{ok:true}` melden zonder DELETE en zonder event bij een race ·
+`updateBrand` laat een edit op een verwijderd merk als geslaagd ogen · de 1.5-fingerprint is niet
+reproduceerbaar omdat die sessie alleen de veldnamen vastlegde en niet de SQL — de letterlijke
+query ligt nu vast in `docs/sprint1-7-fase1-probleem.md`.
+
+*Testdata in productie:* `ZZTEST QA-15` draagt nu `Bovezzo, Italië / 980 km`. Bewust, buiten de
+fingerprint.
+
+**Flake gepromoveerd tot opvolgtaak.** `components/data/brand-message.test.tsx` (de
+clipboard-`waitFor`) is nu in **drie** opeenvolgende sessies onder volle suite-belasting
+omgevallen: 1.5, 1.6 en 1.7. Geïsoleerd is hij 6/6 groen in 1,9 s; in de volle suite kost hij
+**36 s met twee retries** vóór hij faalt. Dat is geen ruis meer maar een test die de suite duur en
+onbetrouwbaar maakt — en die daardoor echte regressies kan maskeren. (1.7 schreef hem toe aan
+`pdf-upload.test.tsx`; dat klopte niet, het is `brand-message.test.tsx`.)
+
+ · briefing: `docs/sprint1-7-briefing.md`
 - *Given* het merkbeheerscherm, *when* je bij een merk de fabriekslocatie en de afstand tot Brink
   Licht invult, *then* staat dat onder een eigen milieukopje, is het gelogd, en zijn de 437
   bronimport-merken ongewijzigd.
