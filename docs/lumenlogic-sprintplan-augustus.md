@@ -269,8 +269,31 @@ worden duurder naarmate ze langer wachten):
    ontwerp: dezelfde race met een schema-migratie of een matcher-wijziging erin was een
    ongevraagde productie-deploy van ongereviewd werk geweest.
 
-   **Directe mitigatie tot er een besluit is:** push een expliciete SHA in plaats van de
-   branch — `git push origin <sha>:main` stuurt exact wat is goedgekeurd en niets erachter.
+   **⚠️ De mitigatie die hier eerst stond, was fout — en faalde binnen een dag.** Ik schreef op
+   20 jul: "push een expliciete SHA, dan gaat er niets mee". Op 21 jul deed ik dat en stuurde
+   `git push origin <sha>:main` **vier** commits in plaats van één. **Git stuurt altijd alle
+   voorouders mee.** Een SHA-push sluit alleen commits ná die van jou uit, nooit die eronder —
+   en juist die eronder zijn van de parallelle sessies. Daardoor gingen sprint 1.5 (inclusief
+   migratie `0013_merk_levensfase.sql`) en het optiekcode-werk van de leesroute-sessie
+   ongevraagd naar productie, midden in hun bouwfase.
+
+   **Dat maakt dit de vierde keer, en de tweede keer op de poort zelf.** De eerste faalde op een
+   race die niet te sluiten was; deze faalde op een mitigatie die technisch niet kón werken.
+   Beide keren geloofde de sprintmaster dat de poort dicht was. **Een poort waarvan de bewaker
+   ten onrechte denkt dat hij dicht is, is gevaarlijker dan een open poort.**
+
+   **Wat wél werkt, zolang er geen structureel besluit is:**
+   ```
+   git fetch origin
+   git checkout -b push-tmp origin/main
+   git cherry-pick <goedgekeurde-sha>
+   git push origin push-tmp:main
+   ```
+   Dat zet uitsluitend de goedgekeurde wijziging bovenop `origin/main`; werk van andere sessies
+   blijft liggen tot het zelf wordt goedgekeurd. Alternatief: laat de goedkeuring uitdrukkelijk
+   `git log origin/main..HEAD` in z'n geheel dekken — dus ook wat anderen eronder hebben gezet —
+   en wacht als dat niet mag. **Besluit W4 (alleen de sprintmaster pusht) lost dit niet op**: de
+   sprintmaster pushte hier zelf, en dat was precies het probleem.
 2. **Er is nog géén enkel echt merk benaderd** — 1 relatie-rij op 430 merken. Dit is het énige
    open punt in het weekdoel, en het heeft **doorlooptijd** (een merk moet antwoorden), dus het
    kan niet in een sprintitem worden weggewerkt. Hoe langer het wacht, hoe later week 2 kan
