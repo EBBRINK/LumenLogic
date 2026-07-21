@@ -22,3 +22,55 @@
 export function tokenWeight(index: number): number {
   return 1 / (1 + index / 2);
 }
+
+// ── Dubbeltelling: welk token is al door specScore beoordeeld? ───────────────
+// (docs/goal-wattage-dubbeltelling.md) De producttekst van een boekregel bevat het spec-proza
+// waaruit de req_*-velden zijn geparsed. Stond de wattage als "27 W" in de tekst, dan beloonde
+// de tekstscore élk product met "27" in de naam — terwijl specScore de wattage al mét tolerantie
+// beoordeelt (27 W exact én 26,5 W binnen 10 % zijn allebei groen). Hetzelfde feit telde zo twee
+// keer, en de bottere van de twee metingen won.
+//
+// De grens is HERKOMST, niet vorm: een stuk tekst waaruit wij een req_*-veld hebben afgeleid is
+// overgedragen aan specScore. Alles waar geen req_*-veld op steunt — inclusief kale getallen als
+// "100" in "SASSO PRO 100" — blijft volledig tekst, mét zijn positiegewicht.
+
+// Token mét karakterpositie. Reproduceert exact de tokenlijst van fetchCandidates
+// (`split(/\s+/).filter(t => t.length >= 2)`): \S+ levert dezelfde reeks op, en de
+// lengtefilter gebeurt vóór het indexeren omdat de INDEX het gewicht bepaalt.
+export type PositionedToken = { text: string; start: number; end: number };
+
+export function tokenizeWithSpans(text: string): PositionedToken[] {
+  const out: PositionedToken[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0].length >= 2) {
+      out.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+    }
+  }
+  return out;
+}
+
+// Posities 0 en 1 worden NOOIT onderdrukt. splitBrandType snijdt het merk eraf, dus daar staat
+// de typeaanduiding — en die is heilig (de hele rangfix van goal-tekstrelevantie.md leunt erop).
+// Concreet gevaar: Bega's "24786W" (Lr304) leest parseWatt als 24786 watt terwijl het een
+// typenummer is. Alle spec-tokens van Lr301/Lr303 staan op positie ≥9, dus dit kost de
+// acceptatie niets.
+export const MIN_SUPPRESS_INDEX = 2;
+
+// Overlapt dit token een spec-span van een veld dat DEZE regel vraagt? Zo ja: welke velden.
+// Leeg = gewoon tekst, volle gewicht.
+export function suppressedFieldsFor(
+  token: PositionedToken,
+  index: number,
+  spans: { field: string; start: number; end: number }[],
+  requestedFields: ReadonlySet<string>,
+): string[] {
+  if (index < MIN_SUPPRESS_INDEX) return [];
+  const hit = new Set<string>();
+  for (const s of spans) {
+    if (!requestedFields.has(s.field)) continue;
+    if (token.start < s.end && s.start < token.end) hit.add(s.field); // overlap
+  }
+  return [...hit];
+}

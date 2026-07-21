@@ -34,6 +34,21 @@ export const FIELDS = [
   "dimmable",
 ] as const;
 
+// ── De veld-patronen, als ÉÉN waarheid ──────────────────────────────────────
+// Benoemd (in plaats van inline) sinds de dubbeltelling-fix van 21 jul: behalve de parser
+// hieronder gebruikt ook `specSpans()` deze patronen, en de matcher leunt erop dat beide exact
+// hetzelfde herkennen. Twee regexsets over hetzelfde feit = twee waarheden die uit elkaar
+// kunnen lopen. Zie docs/goal-wattage-dubbeltelling.md.
+const WATT_RE = /(\d+(?:[.,]\d+)?)\s*(?:watt|w)\b/i;
+const KELVIN_RE = /(\d{3,5})\s*K(?:elvin)?\b/i;
+const CRI_RE = /\b(?:CRI|Ra)\s*:?\s*(?:≥|>=|>)?\s*(\d{2,3})/i;
+const IP_RE = /\bIP\s*:?\s*(\d{2})\b/i;
+const BEAM_RE = /(\d{1,3})\s*(?:°|deg\b|graden\b)/i;
+const LUMEN_RE = /(\d{2,6})\s*(?:lm|lumen)\b/i;
+// Dimbaarheid kent geen capture-groep maar wel een herkenbare span; de losse tests in
+// parseDimmable blijven leidend voor de WAARDE, dit patroon alleen voor de span.
+const DIMMABLE_SPAN_RE = /\b(?:DALI|TRIAC|PHASE|[01]\s*-\s*10\s*V|DIM(?:MABLE)?)\b/i;
+
 // Eerste capture-groep van de eerste match, of null.
 function firstCapture(name: string, re: RegExp): string | null {
   const m = re.exec(name);
@@ -48,7 +63,7 @@ function toNumber(raw: string): number {
 // Vermogen: getal (komma/punt-decimaal) direct gevolgd door W of Watt. "17,9W" → 17.9,
 // "24 W" → 24, "12.5Watt" → 12.5. Alleen positieve waarden.
 function parseWatt(name: string): number | undefined {
-  const raw = firstCapture(name, /(\d+(?:[.,]\d+)?)\s*(?:watt|w)\b/i);
+  const raw = firstCapture(name, WATT_RE);
   if (raw == null) return undefined;
   const w = toNumber(raw);
   return w > 0 ? w : undefined;
@@ -58,7 +73,7 @@ function parseWatt(name: string): number | undefined {
 // 2000–8000 K telt; daarbuiten (bv. een toevallige "9000K" of "1500K") wordt genegeerd —
 // beter niets dan een verkeerde kelvin.
 function parseKelvin(name: string): number | undefined {
-  const raw = firstCapture(name, /(\d{3,5})\s*K(?:elvin)?\b/i);
+  const raw = firstCapture(name, KELVIN_RE);
   if (raw == null) return undefined;
   const k = parseInt(raw, 10);
   return k >= 2000 && k <= 8000 ? k : undefined;
@@ -69,10 +84,7 @@ function parseKelvin(name: string): number | undefined {
 // armaturenboeken zetten vaak een ":" tussen het label en de waarde ("CRI: ≥90").
 // Alleen 0–100 (index kan niet hoger).
 function parseCri(name: string): number | undefined {
-  const raw = firstCapture(
-    name,
-    /\b(?:CRI|Ra)\s*:?\s*(?:≥|>=|>)?\s*(\d{2,3})/i,
-  );
+  const raw = firstCapture(name, CRI_RE);
   if (raw == null) return undefined;
   const cri = parseInt(raw, 10);
   return cri > 0 && cri <= 100 ? cri : undefined;
@@ -81,13 +93,13 @@ function parseCri(name: string): number | undefined {
 // IP-klasse: "IP20", "IP 44", "IP65", "IP: 44", "IP:44" → genormaliseerd "IP44"
 // (uppercase, geen spatie). Zelfde OCR-dubbele-punt-scenario als bij CRI.
 function parseIpValue(name: string): string | undefined {
-  const raw = firstCapture(name, /\bIP\s*:?\s*(\d{2})\b/i);
+  const raw = firstCapture(name, IP_RE);
   return raw == null ? undefined : `IP${raw}`;
 }
 
 // Bundelhoek: "36deg", "36°", "24 graden" → getal. Alleen 1–360°.
 function parseBeamAngle(name: string): number | undefined {
-  const raw = firstCapture(name, /(\d{1,3})\s*(?:°|deg\b|graden\b)/i);
+  const raw = firstCapture(name, BEAM_RE);
   if (raw == null) return undefined;
   const a = parseInt(raw, 10);
   return a > 0 && a <= 360 ? a : undefined;
@@ -97,7 +109,7 @@ function parseBeamAngle(name: string): number | undefined {
 // de "1500" in "SASSO ... 1500 ...") is dubbelzinnig — dat kan net zo goed een maat/type
 // zijn — dus dat parsen we bewust NIET als lumen. "800lm" → 800, "1200 lumen" → 1200.
 function parseLumen(name: string): number | undefined {
-  const raw = firstCapture(name, /(\d{2,6})\s*(?:lm|lumen)\b/i);
+  const raw = firstCapture(name, LUMEN_RE);
   if (raw == null) return undefined;
   const lm = parseInt(raw, 10);
   return lm > 0 ? lm : undefined;
@@ -134,6 +146,51 @@ export function parseProductName(name: string): ParsedSpecs {
   set(out, "beamAngle", parseBeamAngle(name));
   set(out, "lumenOutput", parseLumen(name));
   set(out, "dimmable", parseDimmable(name));
+  return out;
+}
+
+// ── Spec-spans: wélke karakters brachten een veld voort ─────────────────────
+// Voor de dubbeltelling-fix (docs/goal-wattage-dubbeltelling.md). De matcher moet weten of een
+// producttekst-token de bron is van een gevraagde spec: dan beoordeelt specScore dat feit al
+// mét tolerantie en mag de ruwe tekstscore het niet nóg eens belonen.
+//
+// Waarom dit hier woont en niet in de matcher: de req_*-velden op een spec-regel zijn geparsed
+// uit exact dezelfde producttekst, door parseProductName (lib/pdf/armaturenboek.ts:131). De
+// vraag "welke karakters hebben deze waarde voortgebracht" is dus al door DEZE module
+// beantwoord. Een tweede regexset in de matcher zou daarvan kunnen afwijken.
+//
+// Verschil met parseProductName: die neemt per veld de EERSTE match (dat is de waarde); hier
+// worden álle voorkomens gerapporteerd, want elk voorkomen is hetzelfde feit en telt dus even
+// hard dubbel. Herkenning is daarmee net zo conservatief als de parser: eenheid of label
+// verplicht. "L90" matcht CRI_RE niet (geen CRI/Ra-label) en is dus géén span — precies de
+// valse positief die een naïeve getal-gelijkheid wél zou pakken.
+export type SpecSpan = {
+  field: (typeof FIELDS)[number];
+  start: number;
+  end: number;
+};
+
+const SPAN_PATTERNS: [(typeof FIELDS)[number], RegExp][] = [
+  ["maxWattage", WATT_RE],
+  ["kelvin", KELVIN_RE],
+  ["cri", CRI_RE],
+  ["ipValue", IP_RE],
+  ["beamAngle", BEAM_RE],
+  ["lumenOutput", LUMEN_RE],
+  ["dimmable", DIMMABLE_SPAN_RE],
+];
+
+export function specSpans(text: string): SpecSpan[] {
+  if (!text) return [];
+  const out: SpecSpan[] = [];
+  for (const [field, re] of SPAN_PATTERNS) {
+    const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = g.exec(text)) !== null) {
+      out.push({ field, start: m.index, end: m.index + m[0].length });
+      if (m[0].length === 0) g.lastIndex++; // nooit vastlopen op een lege match
+    }
+  }
   return out;
 }
 

@@ -24,6 +24,7 @@
 import { and, asc, desc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
 import { brandAliases, brands, products, visibleProducts } from "@/db/schema";
 import type { MatchDeviation } from "@/db/schema";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { AppDb } from "@/lib/repo/db";
 import {
   hasRed,
@@ -36,7 +37,12 @@ import {
   type DeliveredSpecs,
   type RequestedSpecs,
 } from "./tolerances";
-import { tokenWeight } from "./textscore";
+import {
+  suppressedFieldsFor,
+  tokenizeWithSpans,
+  tokenWeight,
+} from "./textscore";
+import { specSpans } from "@/lib/enrichment/parser";
 
 export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars";
 
@@ -189,6 +195,34 @@ export const SELECTION = {
 // NB: 'parsed-from-name' staat hier bewust NIET in — die waarde stáát letterlijk in de
 // productnaam van de fabrikant en is dus wél herleidbaar tot de bron.
 const UNCONFIRMED_TIER2_SOURCES = new Set(["optic-code"]);
+
+// Parser-veldnaam → productkolom, voor de dubbeltelling-poort in fetchCandidates. De
+// parser-namen (lib/enrichment/parser.ts, FIELDS) zijn 1-op-1 de kolomnamen; deze map maakt
+// dat expliciet én verbindt ze met de drizzle-kolomrefs.
+const PARSER_FIELD_COLUMNS: Record<string, AnyPgColumn> = {
+  kelvin: visibleProducts.kelvin,
+  cri: visibleProducts.cri,
+  ipValue: visibleProducts.ipValue,
+  maxWattage: visibleProducts.maxWattage,
+  lumenOutput: visibleProducts.lumenOutput,
+  beamAngle: visibleProducts.beamAngle,
+  dimmable: visibleProducts.dimmable,
+};
+
+// Welke PARSER-velden vraagt deze regel? (RequestedSpecs gebruikt andere namen dan de parser:
+// watt→maxWattage, ip→ipValue, lumen→lumenOutput.) Alleen gevraagde velden kunnen dubbel tellen:
+// staat `specs.watt` op null, dan beoordeelt specScore de wattage niet en is "27" gewoon tekst.
+function requestedParserFields(specs: RequestedSpecs): ReadonlySet<string> {
+  const out = new Set<string>();
+  if (specs.kelvin != null) out.add("kelvin");
+  if (specs.cri != null) out.add("cri");
+  if (specs.ip) out.add("ipValue");
+  if (specs.watt != null) out.add("maxWattage");
+  if (specs.lumen != null) out.add("lumenOutput");
+  if (specs.beamAngle != null) out.add("beamAngle");
+  if (specs.dimmable) out.add("dimmable");
+  return out;
+}
 
 // Van een getoetst veld (de `field` in een MatchDeviation, zie judgeCandidate) naar de
 // productkolom(men) waar die waarde vandaan komt — want tier2_source is per KOLOM
@@ -418,14 +452,37 @@ async function fetchCandidates(
       ),
       sql` + `,
     )})`;
+    // Dubbeltelling-poort (docs/goal-wattage-dubbeltelling.md): een token dat de BRON is van een
+    // gevraagde spec is al aan specScore overgedragen en mag hier niet nóg eens meetellen. De
+    // spans komen uit parseProductName's eigen patronen (lib/enrichment/parser.ts) — dezelfde
+    // parser die deze req_*-velden uit deze producttekst heeft gehaald, dus één waarheid.
+    //
+    // NULL-conditioneel per kandidaat, en dat is wat de ingreep klein houdt: specScore is
+    // NULL-neutraal (besluit 4), dus waar de productkolom leeg is oordeelt hij níét — en dan is
+    // het tekst-token het enige bewijs dat er is en blijft het gewoon tellen. Alleen waar de
+    // kolom gevuld is (en specScore het feit dus mét tolerantie beoordeelt) zwijgt de tekst.
+    // Overlapt een token meerdere velden, dan telt het alleen mee als álle betrokken kolommen
+    // NULL zijn.
+    const spans = specSpans(productText);
+    const requestedFields = requestedParserFields(req.specs);
+    const positioned = tokenizeWithSpans(productText);
     weightedMatch = sql<number>`(${sql.join(
-      tokens.map(
+      positioned.map((tok, i) => {
         // Gewicht als decimale literal (sql.raw), niet als bound param: een untyped param in een
         // CASE met `else 0` laat Postgres het resultaattype op integer gokken en dan faalt de
         // coërcie van 0,667 op "invalid input syntax for type integer".
-        (t, i) =>
-          sql`(case when ${visibleProducts.name} ilike ${"%" + t + "%"} then ${sql.raw(tokenWeight(i).toFixed(6))} else 0 end)`,
-      ),
+        const w = sql.raw(tokenWeight(i).toFixed(6));
+        const like = ilike(visibleProducts.name, `%${tok.text}%`);
+        const fields = suppressedFieldsFor(tok, i, spans, requestedFields);
+        if (fields.length === 0) {
+          return sql`(case when ${like} then ${w} else 0 end)`;
+        }
+        const allNull = sql.join(
+          fields.map((f) => sql`${PARSER_FIELD_COLUMNS[f]} is null`),
+          sql` and `,
+        );
+        return sql`(case when (${allNull}) and ${like} then ${w} else 0 end)`;
+      }),
       sql` + `,
     )})`;
   } else if (productText.length > 0) {

@@ -199,6 +199,11 @@ type RegelResultaat = {
   rang: number | string | null;
   autoKeuze: boolean | null; // B3: unambiguousYellow matcht Jayden
   top1: boolean | null; // informatief: provable[0] ?? incomplete[0] matcht
+  // Identiteit van de gekozen topkandidaat (artikelcode). `top1` is enkel een boolean
+  // tegen de grondwaarheid; om bij een vóór/ná-vergelijking te kunnen zien of een
+  // wisseling een verbetering of een regressie is, moet je weten WIE er nu bovenaan
+  // staat — ook op regels zonder Jayden-mapping. Read-only meetveld.
+  top1Code: string | null;
 };
 
 // Tripwire-metadata per gerasteriseerde pagina (--ai): wat de vision-call deed
@@ -694,6 +699,8 @@ async function meetCase(
     let rang: RegelResultaat["rang"] = null;
     let autoKeuze: boolean | null = null;
     let top1: boolean | null = null;
+    const topKandidaat = outcome.provable[0] ?? outcome.incomplete[0];
+    const top1Code = topKandidaat?.articleCode ?? null;
     const mapping = c.keuze[code];
     if (mapping) {
       keuze.gemapt++;
@@ -729,6 +736,7 @@ async function meetCase(
       rang,
       autoKeuze,
       top1,
+      top1Code,
     });
 
     const dt = ((performance.now() - tLine) / 1000).toFixed(1);
@@ -753,6 +761,7 @@ async function meetCase(
       rang: null,
       autoKeuze: null,
       top1: null,
+      top1Code: null,
     });
   }
   const alleSpook = lines

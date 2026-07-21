@@ -1535,6 +1535,49 @@ geen optic-code, dus terecht ongemoeid. Raadhuis, kvk en dordrecht **byte-identi
 open+lijst 2, bevestigde bron (`parsed-from-name`) → groen, en een onbevestigde kolom die niemand
 toetst blokkeert niets._
 
+_2026-07-21 (**dubbeltelling-fix — de laatste test van variant-ranking is GEHAALD**): docs in
+`docs/probleem-wattage-dubbeltelling.md` + `docs/goal-wattage-dubbeltelling.md`.
+**Het probleem:** de positiegewogen tekstscore beloonde het letterlijk voorkomen van een
+spec-waarde in de productnaam, terwijl `specScore` datzelfde veld al mét tolerantie beoordeelt.
+Gemeten op Lr303: FL-tekstscore 2,5644 vs WF 2,4394 — het hele verschil (0,1250) is één token,
+`"27"` op positie 14, de wattage; WF won op spec met 0,0750 (beam exact 57 vs 18° mis), dus netto
+bleef FL 0,0500 vóór. Hetzelfde getal telde twee keer, en de bottere meting won. **Het geldt niet
+alleen voor watt:** Lr301/Lr303 dragen elk zes zulke tokens (lumen, watt, beam, kelvin, cri×2).
+**De fix (herkomst, niet vorm):** een stuk tekst waaruit wíj een `req_*`-veld hebben afgeleid is
+overgedragen aan `specScore` en mag door de tekstscore niet nóg eens ruw beoordeeld worden. De
+spans komen uit **`parseProductName`'s eigen patronen** (nieuwe export `specSpans` in
+`lib/enrichment/parser.ts`) — beslissend detail dat ik heb nagetrokken: `armaturenboek.ts:131`
+doet `parseProductName(type)` waarna `type` als `productText` op de regel landt, dus de
+`req_*`-velden zijn geparsed uit exact de tekst die de tekstscore tokeniseert. Eén waarheid; een
+tweede regexset in de matcher zou ervan kunnen afwijken. Meteen daarmee opgelost: `L90`
+(levensduur) matcht `CRI_RE` niet en wordt dus niet als CRI=90 onderdrukt — de valse positief die
+naïeve getal-gelijkheid wél zou pakken. Drie beschermingen: (a) **NULL-conditioneel per kandidaat**
+— is de productkolom leeg dan oordeelt `specScore` niet (besluit 4) en blijft het tekst-token
+gewoon tellen; alleen waar de kolom gevuld is zwijgt de tekst; (b) **posities 0–1 nooit
+onderdrukt** (Bega's `24786W` is een typenummer dat `parseWatt` als 24786 watt leest); (c) alleen
+in `weightedMatch`, dus de spec-loze route en de `WHERE`/recall blijven byte-identiek —
+`inv2`/`inv7b` groen zonder extra werk.
+**ACCEPTATIE GEHAALD:** Lr301 → `L360048-2413537F` (FL), Lr303 → `L360048-2412537W` (WF) —
+**verschillende top-1**. Lr303 sprong van rang 3 naar **rang 1**; raadhuis top-1 1/4 → **2/4**.
+Beide topkandidaten hebben nu `beamAngle: groen (exact)`, en de 0,5 W verschil wordt correct als
+tolerantie afgehandeld in plaats van als tekst-mismatch.
+**Blast radius, vóór/ná via `--json` op dezelfde base: precies TWEE regels gewijzigd in de hele
+testset.** Lr303 (de acceptatie) en Lr301 (`open → geel`). kvk, tno en dordrecht **byte-identiek**;
+raadhuis `rang≤50` blijft 4/4; tno blijft `groen:1` (gat B intact); `provable` blijft 0 op beide
+doelregels (gat A/B intact); auto-keuze blijft 0/4 vóór én ná (`pickUnambiguousYellow` vuurt niet,
+want de kandidaten dragen onbekenden). Lr301's `open → geel` is dus informatief, geen
+auto-acceptatie, en de top-1 blijft ongewijzigd en correct.
+⚠️ **De in fase 1 voorspelde ~11 omslagen zijn NIET uitgekomen** — precies zoals het probleemdoc
+waarschuwde dat die voorspelling onbetrouwbaar was (de replica modelleert de tiebreaks niet en
+miste 9 van 13 volgordes). Dat is de bevestiging dat "meten, niet voorspellen" hier de juiste
+regel was; de NULL-conditie + index-guard hielden de ingreep chirurgisch.
+`bun vitest run` **878 groen / 76 bestanden**, `tsc` schoon. Zes nieuwe pure tests in
+`textscore.test.ts` (o.a. `"100"` in SASSO PRO 100 blijft altijd staan, `L90` niet onderdrukt,
+positie 0–1 onaantastbaar, en `tokenizeWithSpans` reproduceert exact de tokenlijst van
+`fetchCandidates`). `scripts/eval-testset.ts` kreeg één read-only meetveld `top1Code` — zonder de
+identiteit van de gekozen kandidaat is "verbetering of regressie?" op ongemapte regels niet in te
+vullen._
+
 ⚠️ **Parallelle sessie in dezelfde working tree**: `app/admin/brands/*`, `components/admin/brand*`,
 `lib/repo/{admin,brands}.ts`, `db/schema.ts`, `db/test-db.ts`, migratie `0013_merk_levensfase.sql`
 en `docs/sprint1-5-*` zijn NIET van mij en zijn ongecommit gelaten. `components/admin/admin.test.tsx`
