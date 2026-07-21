@@ -823,7 +823,7 @@ zich correct aan "stop vóór de push"; de sprintmaster niet.
 `components/data/brand-message.test.tsx` is flaky onder volle suite-belasting · de
 opvolger-verwijzing voor de 5 "opgegaan in"-merken.
 
-**1.6 — Compleetheid meet aanlevering, niet geldigheid** (~1 u) · briefing: `docs/sprint1-6-briefing.md`
+**1.6 — De scorecard vertelt de waarheid over merkdata** (~4 u) · briefing: `docs/sprint1-6-briefing.md`
 - *Given* een merk met een verlopen prijslijst, *when* je de scorecard bekijkt, *then* toont de
   prijsbalk wat het merk heeft aangeleverd — terwijl de catalogus onveranderd leeg blijft.
 
@@ -860,6 +860,34 @@ bedrag (regel 2). **De catalogus is de uitzondering:** daar verdwijnt het merk v
 `visible_products`, dus er is geen rij om een waarschuwing aan te hangen — juist waar iemand het
 effect merkt, kun je het niet uitleggen. Dat is een eigen ontwerpvraag die regel 3 raakt:
 opvolgtaak, niet bouwen. Hierdoor groeit 1.6 van ~1 u naar ~2 u.
+
+**Besluiten G9–G12 (Timo, 21 jul) — de scorecard zelf.** Timo vroeg om een percentage per
+categorie en onderaan een percentage per MUST / WANNA / NICE. De grill maakte de opdracht
+scherper: **categorie 1 t/m 10 gaan uitsluitend over wat we in het Excel-template hebben
+gevraagd** (G9) — *"ik wil ook dat 1 tot en met 10 eigenlijk alleen maar gaat over de informatie
+die we daadwerkelijk in het Excel-sheet hebben gevraagd"*. De zes interne velden verhuizen naar
+een eigen **"11. Internal"** (G10, niet verbergen — Timo wil ze zien, alleen niet meegewogen),
+de totalen gaan over 1 t/m 10 (G11), en de weging is **per veld** (G12).
+
+*Gemeten:* 72 velden, waarvan **66 in het template** en 6 erbuiten — en dat zijn exact de zes
+`internalOnly`-velden, alle zes in Commercial. `excelColumns()` geeft eveneens 66, dus die
+functie kan de bron zijn en "wat we vragen" en "wat we scoren" kunnen niet uit elkaar lopen.
+
+*Twee gevolgen:* na de verhuizing zijn **alle 66 velden meetbaar** — de twee grijze "not
+measurable"-velden waren allebei intern, dus dat randgeval verdwijnt uit 1 t/m 10. En
+**Commercial gaat van 7 naar 1 veld**, wat G12 noodzakelijk maakt: bij categoriegewogen totalen
+zou één prijs invullen evenveel opleveren als elf lichtmetingen.
+
+*Geen extra databasevraag nodig:* `bucketScore()` (`lib/field-catalog.ts:270`) berekent per
+categorie al `must`/`wanna`/`nice` met een dekkingsratio, en de component krijgt dat binnen —
+hij gebruikt het nu alleen om te bepalen of de balk donkergroen mag zijn. Dit is aggregatie en
+weergave, geen rekenwerk erbij.
+
+**1.6 draagt nu drie delen** (A: de meting, B: de verloop-waarschuwing, C: de scorecard) en
+groeit naar ~4 u. Ze zitten alle drie op hetzelfde scherm en dezelfde component; los uitvoeren
+zou drie keer over `brand-scorecard.tsx` betekenen met een bewegende basislijn. **Volgorde: C
+vóór A vóór B** — C verandert welke velden meetellen, A verandert één cijfer, B verklaart het
+gevolg.
 
 **Val voor de bouwsessie:** het commentaar dat de oude meting beschrijft staat op **drie** plekken
 (`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet

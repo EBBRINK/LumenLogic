@@ -1,4 +1,4 @@
-# Sprint 1.6 — compleetheid meet aanlevering, niet geldigheid
+# Sprint 1.6 — de scorecard vertelt de waarheid over merkdata
 
 *Zelfvoorzienende briefing. Je hoeft geen enkele eerdere sessie gelezen te hebben.*
 
@@ -110,6 +110,69 @@ plaats van 0% rood. Raak dat niet aan — 405 merken hangen ervan af.
 is. Je maakt de query niet zwaarder (je haalt een JOIN-voorwaarde weg), maar **meet het even** en
 meld het als het wél trager wordt.
 
+## Derde helft: de scorecard zelf (besluiten G9–G12, Timo 21 jul)
+
+Timo wil per categorie een percentage, en onderaan een percentage per MUST / WANNA / NICE.
+Tijdens de grill werd de opdracht scherper dan dat.
+
+**G9 — categorie 1 t/m 10 gaan uitsluitend over wat we in het Excel-template hebben gevraagd.**
+Timo's woorden: *"ik wil ook dat 1 tot en met 10 eigenlijk alleen maar gaat over de informatie
+die we daadwerkelijk in het Excel-sheet hebben gevraagd."* Een scorecard die meet wat het merk
+aanleverde, mag het merk niet aanrekenen dat het ónze voorraadstand niet invulde.
+
+**G10 — de zes interne velden verhuizen naar een eigen categorie "11. Internal".** Niet
+verbergen: Timo wil ze kunnen zien, alleen niet meegewogen. *"Al die andere dingen mogen bij
+internal staan."*
+
+**G11 — de totalen onderaan gaan over 1 t/m 10, niet over 11.**
+
+**G12 — de weging is per veld, niet per categorie.** Elk veld telt even zwaar. Dit is niet
+vrijblijvend: Commercial houdt na de verhuizing **één** veld over, terwijl Photometrics en
+Electrical er elk elf hebben. Zou je categorieën even zwaar wegen, dan levert één prijs invullen
+evenveel op als elf lichtmetingen.
+
+### Gemeten uitgangspunt (21 jul, zelf nagerekend — verifieer opnieuw)
+
+| | |
+|---|---|
+| Velden totaal | **72** |
+| Waarvan in het Excel-template (`inExcel`) | **66** |
+| Niet in het template | **6** — en dat zijn exact de zes `internalOnly`-velden |
+| `excelColumns().length` | **66** — identiek |
+
+Alle zes zitten in **2. Commercial**: Purchase price excl. VAT, Brand discount, Stock, Stock
+reserved, Show on web, Show price on web.
+
+**Twee gevolgen die het werk makkelijker maken:**
+1. **Na de verhuizing zijn alle 66 velden meetbaar.** De twee grijze "not measurable"-velden
+   waren allebei intern. Het hele randgeval "100% betekent 100% van de helft" verdwijnt uit
+   1 t/m 10 — je hoeft er dus geen weergave voor te verzinnen. In "11. Internal" blijft het wél
+   bestaan; daar zijn 2 van de 6 onmeetbaar.
+2. **Commercial gaat van 7 naar 1 veld.** Alle andere categorieën blijven ongewijzigd (8, 8, 4,
+   6, 11, 11, 8, 5, 4 velden — alle 100% in Excel en 100% meetbaar).
+
+### Hoe je het bouwt
+
+**Gebruik `excelColumns()` als bron, niet een eigen lijst.** Die functie bouwt het merk-Excel
+(`lib/excel-template.ts:31`). Voedt hij ook de scorecard, dan zijn "wat we vragen" en "wat we
+scoren" per constructie dezelfde verzameling en kunnen ze nooit uit elkaar lopen. Een tweede
+lijst met veldnamen is precies hoe `field-catalog.measure` vijf weken achterliep op het schema.
+
+**Het rekenwerk bestaat al.** `bucketScore()` (`lib/field-catalog.ts:270`) geeft per categorie
+`must`, `wanna` en `nice` terug, elk met `{ filled, total, ratio }`, waarbij `ratio` de
+gemiddelde dekking over de velden van dat niveau is. De component krijgt dat al binnen en
+gebruikt het nu alleen om te bepalen of de balk donkergroen mag zijn
+(`components/data/brand-scorecard.tsx:57`). **Er is geen extra databasevraag nodig** — dit is
+aggregatie en weergave.
+
+Wat er bij moet:
+- **Percentage per categorie** — veldgewogen over de meetbare velden van die categorie, dezelfde
+  rekenwijze als `bucketScore` per niveau al hanteert. Ga niet het gemiddelde van de drie
+  niveau-ratio's nemen: dat is categoriegewogen door de achterdeur en botst met G12.
+- **Drie totalen onderaan** — per niveau de gemiddelde dekking over álle velden van dat niveau
+  in categorie 1 t/m 10.
+- Reken de totalen uit **naast** `bucketScore`, niet erin: die functie hoort bij één bucket.
+
 ## Definition of Done
 
 Meet met echte cijfers, niet met een redenering:
@@ -122,6 +185,15 @@ Meet met echte cijfers, niet met een redenering:
 3. **Een merk met een gelde prijslijst verandert niet.** Regressiecheck: bij een merk waar de
    lijst gewoon geldig is, blijft het cijfer identiek.
 4. **De drie commentaarplekken kloppen weer** (zie val 2).
+4c. **De zes interne velden staan onder "11. Internal"** en nergens anders; Commercial toont nog
+   precies één veld. Categorie 1 t/m 10 telt samen 66 velden, gelijk aan `excelColumns().length`
+   — laat die twee getallen naast elkaar zien.
+4d. **Percentage per categorie en de drie totalen kloppen met de hand na.** Neem `ZZTEST QA-15`
+   (3 producten, ongelijk gevuld: EAN 3/3, UGR 2/3, IK 1/3, prijs 2/3) en reken één categorie en
+   één niveau met de hand uit. Komt het cijfer niet overeen, dan is de weging fout — niet de
+   afronding.
+4e. **De totalen veranderen niet als je een intern veld vult.** Zet bij één product `stock` en
+   controleer dat MUST/WANNA/NICE gelijk blijven (G11).
 4b. **De waarschuwing staat op de merkpagina en op `/admin/brands`**, komt uit één gedeelde
    component, noemt de einddatum, zegt "verlenging" en toont geen bedrag. Bij een merk met een
    geldige lijst is hij afwezig — laat beide gevallen op een screenshot zien.
@@ -137,7 +209,11 @@ Meet met echte cijfers, niet met een redenering:
 |---|---|---|
 | **1. Probleem** | het lichtere model | Reproduceer het zelf tegen de live database: zoek een merk met verlopen prijslijst en laat met een query zien dat de prijzen er wél zijn terwijl de meting 0 teruggeeft. Nog geen code |
 | **2. Plan** | **het scherpste model, twee agents parallel** | Twee onafhankelijke plannen. De interessante vraag is niet *of* de voorwaarde weg moet, maar of de scorecard daarnaast iets moet tónen over verlopen prijzen — of dat de bestaande badge dat al afdekt. Laat ze botsen |
-| **3. Bouwen** | het lichtere model, één agent | De wijziging is één SQL-fragment plus commentaar plus tests. Twee agents zouden elkaar hier in de weg zitten |
+| **3. Bouwen** | het lichtere model, **twee agents** | Agent 1: de meting — het SQL-fragment (deel A), de drie commentaarplekken, de `excelColumns()`-afbakening en de aggregatie voor categorie- en niveaupercentages (deel C, rekenkant). Agent 2: de weergave — `brand-scorecard.tsx`, de nieuwe categorie "11. Internal", de waarschuwingscomponent (deel B) en de screenshots. Ze delen de vorm van het aggregatie-resultaat: **leg die vóór de start vast**, anders bouwt agent 2 tegen een type dat nog verandert |
+
+**Volgorde binnen de bouwfase:** eerst C (de afbakening verandert welke velden meetellen), dan A
+(de prijsmeting verandert één cijfer), dan B (de waarschuwing verklaart het gevolg). Andersom
+meet je deel A tegen een noemer die daarna alsnog verschuift.
 
 ## Harde grenzen
 
