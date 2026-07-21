@@ -174,7 +174,56 @@ export const SELECTION = {
   diameterCm: visibleProducts.diameterCm,
   grossPrice: visibleProducts.grossPrice,
   currency: visibleProducts.currency,
+  // Herkomst per verrijkt veld (H-09). Nodig voor de onbevestigde-bron-poort hieronder:
+  // zonder deze kolom kan de lijst-indeling niet weten of een waarde uit echte
+  // fabrikantsdata komt of uit een eigen aanname.
+  tier2Source: visibleProducts.tier2Source,
 };
+
+// Verrijkingsbronnen die de FABRIKANT NIET BEVESTIGD heeft (besluit Timo, 21 jul).
+// 'optic-code' is onze eigen gecureerde vertaaltabel (lib/enrichment/optic-code.ts):
+// FL≈39° / WF≈57° is een aanname over XAL's optiekklassen, geen data ván XAL. Ze is
+// goed genoeg om mee te ZOEKEN en te ORDENEN, maar niet om "voldoet aantoonbaar" op te
+// beloven. Zodra het 1.2-retourpad een bron bevestigt, gaat hij hier weg (één regel) en
+// mogen zijn velden weer lijst 1 dragen.
+// NB: 'parsed-from-name' staat hier bewust NIET in — die waarde stáát letterlijk in de
+// productnaam van de fabrikant en is dus wél herleidbaar tot de bron.
+const UNCONFIRMED_TIER2_SOURCES = new Set(["optic-code"]);
+
+// Van een getoetst veld (de `field` in een MatchDeviation, zie judgeCandidate) naar de
+// productkolom(men) waar die waarde vandaan komt — want tier2_source is per KOLOM
+// gestempeld, en de deviation-namen wijken daarvan af (watt→max_wattage, ip→ip_value…).
+// Eén veld kan uit meerdere kolommen putten (sizeCm neemt de grootste beschikbare maat);
+// dan telt het al als onbevestigd zodra één van die kolommen dat is.
+const DEVIATION_FIELD_COLUMNS: Record<string, string[]> = {
+  kelvin: ["kelvin"],
+  cri: ["cri"],
+  ip: ["ipValue"],
+  watt: ["maxWattage"],
+  lumen: ["lumenOutput"],
+  beamAngle: ["beamAngle"],
+  sizeCm: ["heightCm", "widthCm", "lengthCm", "diameterCm"],
+  color: ["color1"],
+  dimmable: ["dimmable"],
+  shape: [], // geen kolom (vorm zit niet in products) — kan dus nooit onbevestigd zijn
+};
+
+// Ontleent één van de GETOETSTE velden van deze kandidaat zijn waarde aan een
+// onbevestigde bron? Alleen velden die judgeCandidate daadwerkelijk beoordeeld heeft
+// tellen mee: een onbevestigde kolom die niemand gevraagd heeft, zegt niets over deze
+// regel. Een veld dat "onbekend" opleverde telt evenmin — daar is niets ontleend.
+function usesUnconfirmedSource(
+  tier2Source: unknown,
+  deviations: MatchDeviation[],
+): boolean {
+  if (tier2Source == null || typeof tier2Source !== "object") return false;
+  const src = tier2Source as Record<string, string>;
+  return deviations.some((d) => {
+    if (d.verdict === "onbekend") return false;
+    const cols = DEVIATION_FIELD_COLUMNS[d.field] ?? [];
+    return cols.some((c) => UNCONFIRMED_TIER2_SOURCES.has(src[c]));
+  });
+}
 
 // Geëxporteerd (ocr.ts, upgradeOcrLine): een gericht product rechtstreeks tegen
 // specs toetsen, los van de kandidatenlijst/limiet van fetchCandidates hieronder
@@ -570,17 +619,32 @@ export async function evaluateSpecLine(
   // dat pad ooit geactiveerd, dan mag een exacte 3a-SKU-hit als "aantoonbaar"
   // gelden (de SKU is zelf de meest specifieke eis) — dan hoort hier een
   // sku-uitzondering bij.
+  // Gat B ("aantoonbaar op een aanname", besluit Timo 21 jul): dezelfde figuur als Gat A
+  // hierboven, maar dan over de HERKOMST van de waarde in plaats van over het bestaan van
+  // een eis. Sinds de optiekcode-verrijking dragen 3.989 XAL-producten een beam_angle die
+  // wíj hebben afgeleid (FL≈39°/WF≈57°), niet XAL. Gemeten gevolg: vier tno-regels
+  // (Lr302–Lr305) sprongen naar GROEN op "beamAngle requested 51, delivered 57 → groen".
+  // Formeel klopt dat — de tolerantietabel zegt ≤10° = groen — maar de regel belooft dan
+  // "voldoet aantoonbaar" op grond van onze eigen aanname. Daarom: een veld waarvan de
+  // waarde uit een onbevestigde bron komt gedraagt zich als ONBEKEND. De kandidaat zakt
+  // naar lijst 2 ("mogelijk — data onvolledig") en de regel valt via de bestaande
+  // incomplete-tak naar 'open' — nooit rood (er is niets tegengesproken) en nooit geel
+  // (er is geen gele deviation bijgekomen); de mens kiest met reden.
+  // Bewust NIET aangeraakt: de deviations zelf. De waarde matcht echt, en dat mag zichtbaar
+  // blijven; alleen de belofte "aantoonbaar" vervalt. En de RANKING blijft ongemoeid —
+  // dit zit ná fetchCandidates en verandert geen enkele sorteersleutel.
   const specless = !hasAnyRequestedSpec(req.specs);
   const scored: ScoredCandidate[] = rows.map((r, i) => {
     const deviations = judgeCandidate(req.specs, toDelivered(r));
     const red = hasRed(deviations);
     const unknown = hasUnknown(deviations);
+    const unconfirmed = usesUnconfirmedSource(r.tier2Source, deviations);
     // lijst 1 = alle gevraagde velden bekend én geen rood; lijst 2 = veld(en) onbekend
     // (maar geen verkeerde waarde — die sluit uit, C-08). Kandidaten met een rood veld
     // horen in geen van beide "voldoet"-lijsten, maar we tonen ze niet weg (ze bepalen
     // hooguit de rode status van de regel als er niets beters is).
     const list: "aantoonbaar" | "onvolledig" =
-      !specless && !red && !unknown ? "aantoonbaar" : "onvolledig";
+      !specless && !red && !unknown && !unconfirmed ? "aantoonbaar" : "onvolledig";
     return {
       productId: String(r.id),
       name: String(r.name ?? ""),

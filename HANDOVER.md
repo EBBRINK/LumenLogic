@@ -1455,6 +1455,28 @@ dragen maar géén lijst 1 (aantoonbaar), tot het retourpad bevestigt — dat ve
 herkomst-bewust oordelen in `judgeCandidate`, een nieuw mechanisme. Bewust niet eigenhandig
 gebouwd; dit is een semantisch besluit, geen technisch.
 
+_**→ BESLIST EN GEBOUWD (21 jul, gat B).** Besluit Timo: een verrijkt veld uit een ONBEVESTIGDE
+bron mag lijst 2 dragen ("mogelijk — data onvolledig"), nooit lijst 1 ("voldoet aantoonbaar").
+In `lib/matching/engine.ts`: `SELECTION` neemt nu `tier2Source` mee (staat al in de
+`visible_products`-view, geen migratie nodig); `UNCONFIRMED_TIER2_SOURCES = new Set(["optic-code"])`
+met de reden erbij; en in de scored-map zakt een kandidaat naar lijst 2 zodra één GETOETST veld
+zijn waarde aan zo'n bron ontleent — zelfde figuur als gat A, in dezelfde stijl uitgeschreven.
+Twee details die het gemakkelijk mis had kunnen gaan: (a) `tier2_source` is per KOLOM gestempeld
+terwijl de deviations ándere veldnamen dragen (`watt`→`max_wattage`, `ip`→`ip_value`), dus er is
+een expliciete `DEVIATION_FIELD_COLUMNS`-map — `sizeCm` put uit vier kolommen en telt al als
+onbevestigd zodra één daarvan dat is; (b) een deviation met verdict `onbekend` telt NIET mee — daar
+is niets ontleend. `'parsed-from-name'` staat bewust niet in de lijst: die waarde stáát letterlijk
+in de fabrikantsnaam. De deviations zelf blijven ongemoeid (de waarde matcht écht; alleen de
+belofte "aantoonbaar" vervalt) en de RANKING is niet aangeraakt — dit zit ná `fetchCandidates`.
+**Gemeten via het echte codepad, vóór/ná op dezelfde base:** tno `groen:5 → groen:1`, en die vier
+regels (Lr302/Lr303/Lr304/Lr305) staan nu `open` — niet rood (er is niets tegengesproken), niet
+geel (er is geen gele deviation bijgekomen). Ls002 blijft groen: dat is de merkloze DALI-regel,
+geen optic-code, dus terecht ongemoeid. Raadhuis, kvk en dordrecht **byte-identiek** (raadhuis
+`open:13 blauw:10 geel:5 rood:2 paars:1`, `rang≤50` 4/4, Lr301 nog steeds **rang 1, top-1:ja**).
+`bun vitest run` 808 groen / 74 bestanden, `tsc` schoon. Drie tests toegevoegd: onbevestigde bron →
+open+lijst 2, bevestigde bron (`parsed-from-name`) → groen, en een onbevestigde kolom die niemand
+toetst blokkeert niets._
+
 ⚠️ **Parallelle sessie in dezelfde working tree**: `app/admin/brands/*`, `components/admin/brand*`,
 `lib/repo/{admin,brands}.ts`, `db/schema.ts`, `db/test-db.ts`, migratie `0013_merk_levensfase.sql`
 en `docs/sprint1-5-*` zijn NIET van mij en zijn ongecommit gelaten. `components/admin/admin.test.tsx`

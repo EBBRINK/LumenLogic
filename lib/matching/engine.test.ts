@@ -13,7 +13,13 @@ import {
   addProductToBrand,
   type TestDb,
 } from "@/db/test-db";
-import { events, projectDossiers, specLines, brandLoadQueue } from "@/db/schema";
+import {
+  events,
+  projectDossiers,
+  products,
+  specLines,
+  brandLoadQueue,
+} from "@/db/schema";
 import {
   evaluateSpecLine,
   brandKeyOf,
@@ -792,4 +798,80 @@ test("poort: merkloze regel gebruikt de oude ordening (geen spec-boost)", async 
   const codes = [...out.provable, ...out.incomplete].map((c) => c.articleCode);
   // Kale token-telling: het lokproduct matcht meer tokens en staat dus vóór het type-product.
   expect(codes.indexOf("INS-DECOY")).toBeLessThan(codes.indexOf("SASSO-FL-37F"));
+});
+
+// ── Gat B: "aantoonbaar" mag nooit op een onbevestigde bron rusten ───────────
+// Besluit Timo 21 jul. Een verrijkt veld uit een bron die de fabrikant niet bevestigd
+// heeft (tier2_source 'optic-code') draagt wél lijst 2, nooit lijst 1.
+
+test("gat B: veld uit onbevestigde bron ('optic-code') → lijst 2, regel open i.p.v. groen", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57,
+    dimmable: "DALI",
+  });
+  // De beam komt uit ONZE tabel, niet uit XAL-data.
+  await db
+    .update(products)
+    .set({ tier2Source: { beamAngle: "optic-code" } })
+    .where(eq(products.name, "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K"));
+
+  // Exact de tno-vorm: beam 51 gevraagd, 57 geleverd (≤10 → groen) + DALI exact.
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { beamAngle: 51, dimmable: "DALI" } }),
+  );
+
+  expect(out.status).toBe("open"); // niet groen
+  expect(out.provable).toHaveLength(0); // niets aantoonbaar
+  expect(out.incomplete.length).toBeGreaterThan(0); // wél zichtbaar als "mogelijk"
+  expect(out.incomplete[0].list).toBe("onvolledig");
+  // en het is géén rood/geel: er is niets tegengesproken, alleen niet bevestigd
+  expect(out.status).not.toBe("rood");
+  expect(out.status).not.toBe("geel");
+});
+
+test("gat B: dezelfde kandidaat mét bevestigde herkomst haalt lijst 1 wél", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57,
+    dimmable: "DALI",
+  });
+  // 'parsed-from-name' staat letterlijk in de fabrikantsnaam → bevestigd genoeg.
+  await db
+    .update(products)
+    .set({ tier2Source: { beamAngle: "parsed-from-name" } })
+    .where(eq(products.name, "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K"));
+
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { beamAngle: 51, dimmable: "DALI" } }),
+  );
+  expect(out.status).toBe("groen");
+  expect(out.provable.length).toBeGreaterThan(0);
+});
+
+test("gat B: onbevestigde kolom die NIET getoetst wordt, blokkeert niets", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57,
+    kelvin: 3000,
+  });
+  await db
+    .update(products)
+    .set({ tier2Source: { beamAngle: "optic-code" } })
+    .where(eq(products.name, "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K"));
+
+  // Alleen kelvin gevraagd — de onbevestigde beam speelt hier geen rol.
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { kelvin: 3000 } }),
+  );
+  expect(out.status).toBe("groen");
 });
