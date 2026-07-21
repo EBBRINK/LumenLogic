@@ -243,8 +243,12 @@ export function BrandForm({
         </span>
       </label>
 
-      <fieldset className="flex flex-col gap-3 sm:col-span-2">
-        <legend className="text-sm font-medium">Environment</legend>
+      {/* Eigen kopje (Timo). De legend heeft eigen ruimte nodig: zonder mb-3 staat hij
+          even dicht op "Factory location" als een label op zijn eigen invoerveld, en dan
+          leest het als twee gestapelde labels in plaats van een sectie. mt-2 zet het blok
+          los van de lifecycle-hint erboven. */}
+      <fieldset className="mt-2 flex flex-col gap-3 sm:col-span-2">
+        <legend className="mb-3 font-medium">Environment</legend>
         <label className="flex flex-col gap-1 text-sm">
           <span>Factory location</span>
           <input
