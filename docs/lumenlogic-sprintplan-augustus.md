@@ -893,6 +893,41 @@ gevolg.
 (`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet
 meer doet wat het commentaar belooft, is precies hoe `field-catalog.measure` vijf weken achterliep.
 
+**1.7 — Milieudata: de afstand tot Brink, en het recept voor Stefan** (~2 u) · briefing: `docs/sprint1-7-briefing.md`
+- *Given* het merkbeheerscherm, *when* je bij een merk de fabriekslocatie en de afstand tot Brink
+  Licht invult, *then* staat dat onder een eigen milieukopje, is het gelogd, en zijn de 437
+  bronimport-merken ongewijzigd.
+
+**De grill haalde de scope met driekwart terug.** Timo vroeg om garantietermijn, energielabels en
+de afstand tot Brink. Gemeten: **drie van de vier bestaan al** en staan al in het merk-Excel —
+`warranty_months` en `country_of_origin` in categorie 10, `energy_label` in categorie 8. Timo:
+*"als het aan de Excel staat, is het goed. Dan had ik het gewoon net over het hoofd gezien."*
+
+**Het echte probleem is dat ze leeg zijn**, niet dat ze ontbreken: over 211.317 producten heeft
+`energy_label` er **0**, `warranty_months` **23**, `country_of_origin` **20**. Wij vragen ernaar
+en er komt niets terug. Dat is een outreach-probleem — 1.7 lost het niet op, en dat is opnieuw een
+argument voor de eerste echte merkbenadering.
+
+*Besluiten:* **G13** alleen de afstand is nieuw · **G14** sla kilometers **én** fabriekslocatie op
+(anders is het getal niet te controleren en klopt alles stil niet meer als Brink verhuist) ·
+**G15** het merk mag aanleveren, maar via review — *"wij drukken op ja of nee en dan gaat het
+live"*, wat exact het bestaande retour-pad is · **G16** uitbreiden via de veldcatalogus, met een
+recept in `docs/milieuvelden-toevoegen.md` voor Stefan.
+
+**Spanning die in de briefing staat:** G15 werkt vandaag voor productdata, maar er is **geen
+kanaal voor merkdata**. Het merk-Excel bestaat uit productrijen, en het merkportaal kan niets
+opslaan — geverifieerd: `app/brand/data/page.tsx` is puur inzage. Daarom vult Brink de
+fabriekslocatie in op basis van wat het merk per mail antwoordt; het invoerkanaal is 4.B.
+**Belangenconflict genoteerd:** de kilometers zijn de afstand tot óns adres, dus zodra dat
+meeweegt in een duurzaamheidsvergelijking heeft een merk belang bij laag schatten. De locatie is
+hun feit, de afstand onze berekening.
+
+**Stefan** (nieuwe stagiair, start rond 21 aug 2026) baseert een groot deel van zijn studiecasus
+op de milieuberekeningen. Het recept is daarom een deliverable met een eigen toets: de bouwsessie
+voegt zélf een veld toe door alleen het eigen recept te volgen.
+
+Brink Licht: **Veldzigt 30A, 3454 PW Utrecht** — op één plek in de code vastleggen.
+
 **Technische schuld (bufferuren, ~5 u):** Drizzle-snapshot-gat vanaf 0004 bijwerken (timebox 2 u; anders gedocumenteerd naar het runbook).
 
 ### Week 2 (27–31 jul) — alle losse dingen afwerken
