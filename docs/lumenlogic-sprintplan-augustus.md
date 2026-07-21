@@ -530,7 +530,27 @@ terugkeren als bouwklus.
 
 ### Week 1 (20–24 jul) — de merkgegevens stromen binnen
 
-**Klaar wanneer** (vault): één echt merk is van begin tot eind door de route gegaan.
+**Klaar wanneer** ~~(vault): één echt merk is van begin tot eind door de route gegaan.~~
+**Herzien 21 jul (besluit G18):** de route is end-to-end bewezen op een **testmerk**, met vier
+metingen — scorecard vóór/ná, catalogus-zichtbaarheid inclusief negatieve controle binnen
+hetzelfde merk, de volledige eventketen, en het verlopen van de prijslijst als uitschakelaar.
+**Dat is gehaald in 1.4** (20 jul).
+
+**Besluit G18 (Timo, 21 jul): geen enkel echt merk wordt nu benaderd.** Timo overlegt het eerst
+met Eduard. We testen intern; merken komen erop **pas wanneer Stefan ermee bezig is**.
+
+*Consequentie, expliciet vastgelegd zodat niemand er later van schrikt:* Stefan begint rond
+**21 augustus** en de einddemo is **17 augustus**. **Het hele traject tot en met de demo draait
+dus op testdata.** Concreet betekent dat: van 211.317 producten heeft er nul een energielabel,
+23 een garantietermijn en 20 een land van herkomst — en dat blijft zo. Elk sprintitem dat op
+échte merkdata leunt, leunt tot na de demo op `ZZTEST QA-14` en `QA-15`.
+
+*Waar dat direct op drukt:* **2.1a (interne analytics, ~8 u)** is het grootste blok van de sprint
+en put uit de eventlaag. Die telt vandaag enkele tientallen events, vrijwel allemaal van de twee
+testmerken. **2.2 (merk-demo-pagina)** had al "demo-seed met duidelijk gemarkeerde synthetische
+events" als plan B — dat plan B is met G18 het hoofdscenario geworden, voor beide items.
+Dat is geen blokkade, maar het moet in de briefings van week 2 staan als uitgangspunt in plaats
+van als terugvaloptie.
 **Harde voorwaarde:** migratie 0007 gecommit en op Neon — ✅ gehaald (0.2).
 
 **1.1 — Format-validatiemodule (herbruikbare motor)** (~5 u) — ✅ **AFGEROND 16 jul**
