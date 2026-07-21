@@ -777,6 +777,52 @@ de knop moet vóóraf tellen wat er hangt, niet de databasefout vertalen.
 opvolger-verwijzing voor de 5 "opgegaan in"-merken — die vraag is gesteld en niet gekozen, en
 vraagt een self-reference-migratie met raakvlak met de matcher. **Opvolgtaak, niet bouwen.**
 
+**1.5 — Merkbeheer in het systeem zelf** ✅ **AF (21 jul, commit `dc31cc1`)**
+
+*Onafhankelijk geverifieerd door de sprintmaster tegen de live database:*
+- **Migratie 0013 is puur additief** — `CREATE TYPE brand_lifecycle` + `ADD COLUMN ... DEFAULT
+  'actief'`. Geen backfill, geen index, geen unique constraint. In PG11+ is dat metadata-only,
+  dus geen table rewrite.
+- **De 437 bestaande merken zijn ongewijzigd.** Gemeten: 438 rijen totaal, waarvan 437 zonder het
+  testmerk `ZZTEST QA-15`; **alle 18 merken met een annotatie in de naam staan er nog woordelijk**
+  ("Alt Lucialternative = Leucos geworden", "Bernd Beisse (NIET MEER GEBRUIKEN)", …). Er is dus
+  niets opgeschoond — besluit G2 is gerespecteerd.
+- **Levensfase staat op `actief` bij alle 438** — precies wat een kolomdefault zonder backfill
+  hoort te geven.
+- `bunx tsc --noEmit` schoon; **74 testfiles, 805 tests groen** (de test die de bouwsessie als
+  flaky meldde, slaagde hier).
+
+*Enum met drie waarden, niet twee:* `slapend` = een besluit van Brink ("niet meer gebruiken",
+3 merken), `bestaat_niet_meer` = een uitspraak over de wereld (10 merken). Met twee waarden zou
+Timo bij drie merken een onwaarheid vastleggen.
+
+**Twee fouten in mijn briefing, gevonden door de bouwsessie en door mij bevestigd tegen
+`pg_constraint`:**
+1. **De foreign-key-lijst was fout.** Ik schreef dat `categories` en `organizations` naar
+   `brands` verwijzen — **die verwijzen er helemaal niet naar.** En ik liet `price_lists` weg,
+   dat wél blokkeert. De werkelijkheid: blokkeren = `products`, `price_lists`, `enrichment_runs`,
+   `leads`; cascade = `brand_aliases`, `brand_field_visibility`, `brand_relations`,
+   `brand_uploads`. Ik had regelnummers uit `db/schema.ts` geteld in plaats van het de database
+   te vragen — precies de fout die ik anderen aanraad te vermijden.
+2. **"405 merken zijn vrij verwijderbaar" was fout: het zijn er nul.** Gemeten: **elk merk heeft
+   precies één prijslijst — 438 van 438**, ook merken zonder enig product. Die lege lijst is bij
+   405 merken de énige blokkade. Dat verplaatst de blokkeer-melding van uitzondering naar
+   normaalgeval, en het is de reden dat het scherm de prijslijst bij naam mét het aantal
+   prijsregels noemt.
+
+**Daarmee is dit de vijfde keer** dat een aanname in een sprintmaster-briefing door de bouwsessie
+is gevangen in plaats van door de sprintmaster. Het patroon is elke keer hetzelfde: iets uit de
+broncode *gelezen* in plaats van het bij de bron *opgevraagd*.
+
+**⚠️ 1.5 stond al op productie vóórdat de sessie erom vroeg** — meegelift met de foute SHA-push
+van de sprintmaster op 21 jul (zie het openstaande punt over de akkoord-poort). De sessie hield
+zich correct aan "stop vóór de push"; de sprintmaster niet.
+
+*Opvolgtaken uit 1.5, bewust niet gerepareerd:* N+1 in `app/admin/brands/page.tsx`
+(`listBrandFieldOverrides` draait één query per merk over 437 merken — bestond al vóór 1.5) ·
+`components/data/brand-message.test.tsx` is flaky onder volle suite-belasting · de
+opvolger-verwijzing voor de 5 "opgegaan in"-merken.
+
 **1.6 — Compleetheid meet aanlevering, niet geldigheid** (~1 u) · briefing: `docs/sprint1-6-briefing.md`
 - *Given* een merk met een verlopen prijslijst, *when* je de scorecard bekijkt, *then* toont de
   prijsbalk wat het merk heeft aangeleverd — terwijl de catalogus onveranderd leeg blijft.
