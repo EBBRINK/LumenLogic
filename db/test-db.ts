@@ -20,6 +20,7 @@ import brandAliasesSql from "./migrations/0010_brand_aliases.sql?raw";
 import ocrTilesSql from "./migrations/0011_ocr_tiles.sql?raw";
 import aliasSeraxSql from "./migrations/0012_alias_serax.sql?raw";
 import levensfaseSql from "./migrations/0013_merk_levensfase.sql?raw";
+import milieuFabrieksafstandSql from "./migrations/0014_milieu_fabrieksafstand.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -43,6 +44,7 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(ocrTilesSql); // 0011: OCR A3-tiling — tile-kolom + unique(run, page, tile)
   await client.exec(aliasSeraxSql); // 0012: alias serax → Valerie Objects (seedt niets op een lege test-DB)
   await client.exec(levensfaseSql); // 0013: brands.lifecycle — kolomdefault, geen backfill
+  await client.exec(milieuFabrieksafstandSql); // 0014: factory_location/-distance_km — geen backfill
   return drizzle(client, { schema });
 }
 

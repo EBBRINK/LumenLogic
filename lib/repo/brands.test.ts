@@ -26,6 +26,8 @@ const BASIS: BrandInput = {
   website: null,
   descriptionNl: null,
   lifecycle: "actief",
+  factoryLocation: null,
+  factoryDistanceKm: null,
 };
 
 async function eventsFor(db: TestDb, brandId: string) {
@@ -112,6 +114,8 @@ test("createBrand: id + slug worden gegenereerd, lifecycle default 'actief', eve
     slug: "flos-soft-architectural",
     brandCode: "L028",
     lifecycle: "actief",
+    factoryLocation: null,
+    factoryDistanceKm: null,
     duplicateOf: [bestaand.id],
   });
 });
@@ -177,6 +181,109 @@ test("updateBrand met fase-wijziging geeft TWEE events; setBrandLifecycle logt a
   expect(evts[3].action).toBe("brand_lifecycle_changed");
   expect(evts[3].payload).toEqual({ from: "bestaat_niet_meer", to: "slapend" });
   expect((await getBrandForEdit(db, id))!.lifecycle).toBe("slapend");
+});
+
+test("milieuvelden: round-trip via createBrand/updateBrand, leeg blijft leeg (null, geen 0)", async () => {
+  const db = await createTestDb();
+  // Aanmaken zonder milieuvelden: leeg blijft leeg — null, niet 0 of "".
+  const { id } = await createBrand(db, { ...BASIS, name: "Zumtobel" }, "timo");
+  const versEmigd = await getBrandForEdit(db, id);
+  expect(versEmigd!.factoryLocation).toBeNull();
+  expect(versEmigd!.factoryDistanceKm).toBeNull();
+
+  // Invullen via updateBrand (het échte codepad): round-trip.
+  await updateBrand(
+    db,
+    id,
+    { ...BASIS, name: "Zumtobel", factoryLocation: "Dornbirn, Oostenrijk", factoryDistanceKm: 850 },
+    "timo",
+  );
+  const ingevuld = await getBrandForEdit(db, id);
+  expect(ingevuld!.factoryLocation).toBe("Dornbirn, Oostenrijk");
+  expect(ingevuld!.factoryDistanceKm).toBe(850);
+
+  // Weer leegmaken: terug naar null, niet naar 0 of "".
+  await updateBrand(
+    db,
+    id,
+    { ...BASIS, name: "Zumtobel", factoryLocation: null, factoryDistanceKm: null },
+    "timo",
+  );
+  const leeg = await getBrandForEdit(db, id);
+  expect(leeg!.factoryLocation).toBeNull();
+  expect(leeg!.factoryDistanceKm).toBeNull();
+});
+
+test("milieuvelden: eigen event brand_environment_changed met {from, to}, niet in payload.changed van brand_updated", async () => {
+  const db = await createTestDb();
+  const { id } = await createBrand(db, { ...BASIS, name: "iGuzzini" }, "timo");
+
+  // Naam én milieuvelden veranderen tegelijk: twee events, elk met zijn eigen inhoud.
+  await updateBrand(
+    db,
+    id,
+    {
+      ...BASIS,
+      name: "iGuzzini Illuminazione",
+      factoryLocation: "Recanati, Italië",
+      factoryDistanceKm: 1200,
+    },
+    "timo",
+  );
+
+  const evts = await eventsFor(db, id);
+  expect(evts.map((e) => e.action)).toEqual([
+    "brand_created",
+    "brand_updated",
+    "brand_environment_changed",
+  ]);
+  // De milieuvelden staan NIET in payload.changed — exact zoals lifecycle dat ook niet doet.
+  expect(evts[1].payload).toEqual({
+    changed: ["name"],
+    duplicateOf: [],
+  });
+  expect(evts[2].payload).toEqual({
+    from: { location: null, km: null },
+    to: { location: "Recanati, Italië", km: 1200 },
+  });
+
+  // Alleen de km wijzigen: opnieuw een eigen event, met de vorige waarden als from.
+  await updateBrand(
+    db,
+    id,
+    {
+      ...BASIS,
+      name: "iGuzzini Illuminazione",
+      factoryLocation: "Recanati, Italië",
+      factoryDistanceKm: 1250,
+    },
+    "timo",
+  );
+  const evts2 = await eventsFor(db, id);
+  expect(evts2.map((e) => e.action)).toEqual([
+    "brand_created",
+    "brand_updated",
+    "brand_environment_changed",
+    "brand_environment_changed",
+  ]);
+  expect(evts2[3].payload).toEqual({
+    from: { location: "Recanati, Italië", km: 1200 },
+    to: { location: "Recanati, Italië", km: 1250 },
+  });
+
+  // Niets gewijzigd: geen enkel event erbij, ook geen brand_updated.
+  await updateBrand(
+    db,
+    id,
+    {
+      ...BASIS,
+      name: "iGuzzini Illuminazione",
+      factoryLocation: "Recanati, Italië",
+      factoryDistanceKm: 1250,
+    },
+    "timo",
+  );
+  expect(await eventsFor(db, id)).toHaveLength(4);
 });
 
 test("getBrandDeleteImpact: een LEGE prijslijst blokkeert — mét naam en 0 prijsregels", async () => {

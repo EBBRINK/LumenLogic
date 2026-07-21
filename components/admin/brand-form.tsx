@@ -7,10 +7,14 @@
 // stuurt het formulier terug met een waarschuwing; zonder die regel is het scherm dan leeg
 // zodra JavaScript uit staat en typt de gebruiker alles opnieuw. Dat heeft een eigen test.
 //
-// De velden staan als DATA in FIELDS, niet als zes losse blokken JSX. Er komt later een
-// milieu-veld bij (Timo); dat moet één regel zijn, geen verbouwing.
+// De velden staan als DATA in FIELDS, niet als losse blokken JSX — dat blijft zo. De
+// eerdere aantekening hier beloofde dat het latere milieu-veld (Timo) "één regel" in
+// FIELDS zou worden; dat klopt niet (plan sprint 1.7). FIELDS kent geen secties, en Timo
+// wil een eigen kopje; bovendien is kilometers numeriek terwijl de renderer hardcoded
+// type="text" zet. Het milieublok staat daarom als eigen <fieldset>, buiten FIELDS.
 import { useActionState } from "react";
 import type { BrandLifecycle } from "@/db/schema";
+import { BRINK_ADDRESS } from "@/lib/brink";
 import type {
   BrandFormState,
   BrandFormValues,
@@ -30,6 +34,8 @@ export type BrandFormBrand = {
   website: string | null;
   descriptionNl: string | null;
   lifecycle: BrandLifecycle;
+  factoryLocation: string | null;
+  factoryDistanceKm: number | null;
 };
 
 export const LIFECYCLE_LABEL: Record<BrandLifecycle, string> = {
@@ -93,6 +99,11 @@ function emptyValues(brand?: BrandFormBrand): BrandFormValues {
     website: brand?.website ?? "",
     descriptionNl: brand?.descriptionNl ?? "",
     lifecycle: brand?.lifecycle ?? "actief",
+    factoryLocation: brand?.factoryLocation ?? "",
+    // KRITIEK (DoD 2): null moet "" opleveren, nooit "0" — 0 is gereserveerd voor "leeg
+    // werd per ongeluk ingevuld" (migratie 0014 staat een km van 0 niet eens toe).
+    factoryDistanceKm:
+      brand?.factoryDistanceKm != null ? String(brand.factoryDistanceKm) : "",
   };
 }
 
@@ -231,6 +242,40 @@ export function BrandForm({
           is only the phase.
         </span>
       </label>
+
+      <fieldset className="flex flex-col gap-3 sm:col-span-2">
+        <legend className="text-sm font-medium">Environment</legend>
+        <label className="flex flex-col gap-1 text-sm">
+          <span>Factory location</span>
+          <input
+            type="text"
+            name="factoryLocation"
+            defaultValue={value("factoryLocation")}
+            placeholder="e.g. Brescia, Italy"
+            aria-label="Factory location"
+            className={inputClass}
+          />
+          <span className="text-xs text-muted-foreground">
+            The brand&apos;s own statement of where it manufactures — not
+            verified by us.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-sm sm:max-w-xs">
+          <span>Distance to Brink (km)</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            name="factoryDistanceKm"
+            defaultValue={value("factoryDistanceKm")}
+            placeholder="e.g. 950"
+            aria-label="Distance to Brink (km)"
+            className={inputClass}
+          />
+          <span className="text-xs text-muted-foreground">
+            Our own measurement to {BRINK_ADDRESS} — not the brand&apos;s.
+          </span>
+        </label>
+      </fieldset>
 
       {state.status === "error" && (
         <p role="alert" className="text-sm text-destructive sm:col-span-2">

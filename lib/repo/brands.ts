@@ -35,6 +35,12 @@ export type BrandInput = {
   website: string | null;
   descriptionNl: string | null;
   lifecycle: BrandLifecycle;
+  // Milieuvelden (1.7): factoryLocation is het FEIT van het merk (eigen opgave);
+  // factoryDistanceKm is ONZE berekening tegen het Brink-adres (lib/brink.ts). Ze hebben
+  // een EIGEN event (brand_environment_changed) en staan daarom niet in CHANGED_FIELDS
+  // hieronder — zie de exhaustiveness-guard bij updateBrand.
+  factoryLocation: string | null;
+  factoryDistanceKm: number | null;
 };
 
 export type BrandDuplicate = {
@@ -137,6 +143,8 @@ export async function createBrand(
     website: input.website,
     descriptionNl: input.descriptionNl,
     lifecycle: input.lifecycle,
+    factoryLocation: input.factoryLocation,
+    factoryDistanceKm: input.factoryDistanceKm,
   });
   await logEvent(db, {
     entity: "brand",
@@ -148,6 +156,8 @@ export async function createBrand(
       slug,
       brandCode: input.brandCode,
       lifecycle: input.lifecycle,
+      factoryLocation: input.factoryLocation,
+      factoryDistanceKm: input.factoryDistanceKm,
       duplicateOf: opts?.duplicateOf ?? [],
     },
   });
@@ -168,6 +178,8 @@ export async function getBrandForEdit(
       website: brands.website,
       descriptionNl: brands.descriptionNl,
       lifecycle: brands.lifecycle,
+      factoryLocation: brands.factoryLocation,
+      factoryDistanceKm: brands.factoryDistanceKm,
     })
     .from(brands)
     .where(eq(brands.id, brandId))
@@ -175,14 +187,44 @@ export async function getBrandForEdit(
   return row ?? null;
 }
 
+// Veldnamen die bij een wijziging in payload.changed van brand_updated landen. lifecycle,
+// factoryLocation en factoryDistanceKm staan hier NIET in: die hebben een eigen event met
+// {from, to} — twee keer hetzelfde loggen maakt de tijdlijn onleesbaar.
+const CHANGED_FIELDS = [
+  "name",
+  "brandCode",
+  "country",
+  "website",
+  "descriptionNl",
+] as const;
+
+// Velden met een EIGEN event, bewust buiten CHANGED_FIELDS gehouden.
+type OwnEventField = "lifecycle" | "factoryLocation" | "factoryDistanceKm";
+
+// Exhaustiveness-guard: elk veld van BrandInput moet OF in CHANGED_FIELDS staan, OF hier
+// als OwnEventField genoemd zijn. Voeg je later een veld aan BrandInput toe zonder het in
+// een van beide te noemen, dan faalt deze regel bij `tsc --noEmit` in plaats van dat het
+// veld stil buiten élk event valt.
+type BrandInputFieldsCovered = keyof BrandInput extends
+  | (typeof CHANGED_FIELDS)[number]
+  | OwnEventField
+  ? true
+  : never;
+const brandInputFieldsCovered: BrandInputFieldsCovered = true;
+void brandInputFieldsCovered;
+
 // Bewerken raakt de SLUG NIET aan, ook niet als de naam verandert. Reden: slug is niet
 // uniek, is nergens een route (routes gaan op brandId) en heeft één lezer buiten de
 // import. Hem stil laten meeschuiven wijzigt een waarde die niemand ziet, met een
 // migratie-achtig risico dat niets oplevert.
 //
-// Kan TWEE events geven — brand_updated én brand_lifecycle_changed — als de fase
-// meeverandert. Bewust: "wie zette welk merk op vervallen" moet leesbaar zijn zonder
-// door veldlijsten te grepen.
+// Kan tot DRIE events geven — brand_updated, brand_lifecycle_changed en
+// brand_environment_changed — als die velden meeveranderen. Bewust: "wie zette welk merk
+// op vervallen" (en, sinds 1.7, "wie wijzigde de fabrieksafstand") moet leesbaar zijn
+// zonder door veldlijsten te grepen. Voor de milieuvelden weegt dat extra zwaar: de
+// kilometers zijn de afstand tot óns adres, en een merk heeft er belang bij die laag in
+// te schatten — "iemand heeft de afstand gewijzigd" zonder de oude waarde is dan geen
+// audittrail.
 export async function updateBrand(
   db: AppDb,
   brandId: string,
@@ -202,15 +244,14 @@ export async function updateBrand(
       website: input.website,
       descriptionNl: input.descriptionNl,
       lifecycle: input.lifecycle,
+      factoryLocation: input.factoryLocation,
+      factoryDistanceKm: input.factoryDistanceKm,
       updatedAt: new Date(),
     })
     .where(eq(brands.id, brandId));
 
-  // Alleen de veldnamen die écht wijzigden. lifecycle zit hier NIET in: die heeft een
-  // eigen event met {from, to} — twee keer hetzelfde loggen maakt de tijdlijn onleesbaar.
-  const changed = (
-    ["name", "brandCode", "country", "website", "descriptionNl"] as const
-  ).filter((k) => before[k] !== input[k]);
+  // Alleen de veldnamen die écht wijzigden.
+  const changed = CHANGED_FIELDS.filter((k) => before[k] !== input[k]);
 
   if (changed.length > 0) {
     await logEvent(db, {
@@ -228,6 +269,21 @@ export async function updateBrand(
       action: "brand_lifecycle_changed",
       actor,
       payload: { from: before.lifecycle, to: input.lifecycle },
+    });
+  }
+  if (
+    before.factoryLocation !== input.factoryLocation ||
+    before.factoryDistanceKm !== input.factoryDistanceKm
+  ) {
+    await logEvent(db, {
+      entity: "brand",
+      entityId: brandId,
+      action: "brand_environment_changed",
+      actor,
+      payload: {
+        from: { location: before.factoryLocation, km: before.factoryDistanceKm },
+        to: { location: input.factoryLocation, km: input.factoryDistanceKm },
+      },
     });
   }
 }

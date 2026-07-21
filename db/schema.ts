@@ -213,6 +213,11 @@ export const brands = pgTable("brands", {
   baseDiscountPct: numeric("base_discount_pct", { precision: 6, scale: 2 }),
   paymentTermDays: integer("payment_term_days"),
   deliveryTimeDays: integer("delivery_time_days"),
+  // Milieuvelden (1.7): factoryLocation is het FEIT van het merk (eigen opgave, vrije
+  // tekst); factoryDistanceKm is ONZE berekening tegen het Brink-adres (lib/brink.ts).
+  // Beide nullable zonder default — leeg blijft leeg, geen 0 (zie migratie 0014).
+  factoryLocation: text("factory_location"),
+  factoryDistanceKm: integer("factory_distance_km"),
   website: text("website"),
   ...timestamps,
 });

@@ -49,6 +49,9 @@ const brand = {
   website: "https://flos.com",
   descriptionNl: "Architecturale lijn van Flos.",
   lifecycle: "actief" as const,
+  // Onbekend milieuveld: null blijft null (geen 0, geen "onbekend").
+  factoryLocation: null,
+  factoryDistanceKm: null,
 };
 
 // De dubbelstand zoals createBrandAction hem teruggeeft: niets geschreven, twee
@@ -72,6 +75,8 @@ const duplicateState: BrandFormState = {
     website: "https://flos.com",
     descriptionNl: "Derde Flos-ingang, eigen prijslijst.",
     lifecycle: "actief",
+    factoryLocation: "Bovezzo, Italië",
+    factoryDistanceKm: "980",
   },
 };
 
@@ -335,6 +340,23 @@ test("dubbelcheck: de ingevulde waarden overleven de waarschuwing (werkt zonder 
   expect(
     document.querySelector<HTMLSelectElement>('select[name="lifecycle"]')?.value,
   ).toBe("actief");
+  // Milieuvelden overleven de dubbelwaarschuwing net zo goed als de rest.
+  expect(val("factoryLocation")).toBe("Bovezzo, Italië");
+  expect(val("factoryDistanceKm")).toBe("980");
+});
+
+test("merkformulier: het Environment-kopje rendert, en een leeg km-veld heeft waarde \"\", nooit \"0\"", async () => {
+  await renderServer(formScreen);
+  await expect.element(page.getByText("Environment")).toBeInTheDocument();
+  const km = document.querySelector<HTMLInputElement>(
+    'input[name="factoryDistanceKm"]',
+  );
+  expect(km).not.toBeNull();
+  expect(km?.value).toBe("");
+  expect(
+    document.querySelector<HTMLInputElement>('input[name="factoryLocation"]')
+      ?.value,
+  ).toBe("");
 });
 
 test("blokkade: geen verwijderknop, wél de levensfase-uitweg in hetzelfde blok", async () => {

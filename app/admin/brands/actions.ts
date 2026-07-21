@@ -37,6 +37,11 @@ export type BrandFormValues = {
   website: string;
   descriptionNl: string;
   lifecycle: BrandLifecycle;
+  // Milieuvelden (1.7): ruwe formulierstrings — km is hier nog geen getal, dat gebeurt
+  // pas in toInput(), zodat een ongeldige waarde als tekst kan terugreizen naar het
+  // formulier (het no-JS-contract).
+  factoryLocation: string;
+  factoryDistanceKm: string;
 };
 
 export type BrandFormState =
@@ -59,10 +64,15 @@ function readValues(formData: FormData): BrandFormValues {
     website: str("website"),
     descriptionNl: str("descriptionNl"),
     lifecycle: LIFECYCLES.includes(lifecycle) ? lifecycle : "actief",
+    factoryLocation: str("factoryLocation"),
+    factoryDistanceKm: str("factoryDistanceKm"),
   };
 }
 
-// Lege tekstvelden worden NULL, niet "": een leeg veld is geen waarde.
+// Lege tekstvelden worden NULL, niet "": een leeg veld is geen waarde. Dat geldt ook voor
+// de kilometers: een lege string wordt null, nooit 0 (0 zou "de fabriek staat in Utrecht"
+// betekenen — zie migratie 0014). validateEnvironment() heeft al gegarandeerd dat een
+// niet-lege waarde hier een geldig cijfer-alleen getal ≥ 1 is.
 function toInput(values: BrandFormValues): BrandInput {
   return {
     name: values.name,
@@ -71,7 +81,28 @@ function toInput(values: BrandFormValues): BrandInput {
     website: values.website || null,
     descriptionNl: values.descriptionNl || null,
     lifecycle: values.lifecycle,
+    factoryLocation: values.factoryLocation || null,
+    factoryDistanceKm: values.factoryDistanceKm
+      ? Number(values.factoryDistanceKm)
+      : null,
   };
+}
+
+// Vóór de duplicateGate: km is óf leeg, óf een geheel getal ≥ 1 (sub-kilometerprecisie is
+// schijnnauwkeurigheid, en 0 is gereserveerd voor "leeg" — zie migratie 0014). Km zonder
+// locatie levert een uitgelegde fout op: zonder locatie is de afstand niet te controleren.
+function validateEnvironment(values: BrandFormValues): string | null {
+  const km = values.factoryDistanceKm.trim();
+  if (km !== "" && !/^\d+$/.test(km)) {
+    return "Distance to Brink must be a whole number of kilometers, or left empty.";
+  }
+  if (km !== "" && Number(km) < 1) {
+    return "Distance to Brink must be at least 1 km, or left empty.";
+  }
+  if (km !== "" && !values.factoryLocation.trim()) {
+    return "A distance without a factory location can't be checked — add the location too.";
+  }
+  return null;
 }
 
 // Dubbelcheck-poort, gedeeld door create en update: match gevonden én de meegestuurde
@@ -110,6 +141,10 @@ export async function createBrandAction(
   if (!values.name) {
     return { status: "error", message: "Merknaam is verplicht.", values };
   }
+  const envError = validateEnvironment(values);
+  if (envError) {
+    return { status: "error", message: envError, values };
+  }
 
   const gate = await duplicateGate(values, formData);
   if (!gate.proceed) return gate.state;
@@ -138,6 +173,10 @@ export async function updateBrandAction(
   }
   if (!values.name) {
     return { status: "error", message: "Merknaam is verplicht.", values };
+  }
+  const envError = validateEnvironment(values);
+  if (envError) {
+    return { status: "error", message: envError, values };
   }
 
   // excludeId: bij bewerken is het merk zelf geen dubbele.
