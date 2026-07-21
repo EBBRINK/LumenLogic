@@ -22,6 +22,7 @@ import {
 import { createDossier } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
 import {
+  countFailedOcrPages,
   finishOcrRun,
   getOcrPageImage,
   getOcrRunProgress,
@@ -30,6 +31,7 @@ import {
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
+import { logEvent } from "@/lib/repo/events";
 import { decideReview } from "@/lib/repo/review";
 
 const ACTOR = "eduard@brinklicht.nl";
@@ -1732,4 +1734,61 @@ test("O6: armere lezing mét aantal backfillt alleen het aantal (event, geen her
     quantity: 124,
     page: 2,
   });
+});
+
+// ── Duurzame faaltelling (goal-liegende-import-melding §3) ──────────────────
+// De kaart meldt "N of M pages failed", maar die melding leeft in clientstate en
+// wordt door de navigatie weggevaagd. De importrun-pagina leidt hem daarom af
+// uit de ocr_page_failed-events — server-waarheid, en hij overleeft een refresh.
+test("countFailedOcrPages telt PAGINA's, niet tegels, en alleen van deze run", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const { run } = await startOcrRun(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pageCount: 3,
+    actor: ACTOR,
+  });
+  const { run: andereRun } = await startOcrRun(db, {
+    dossierId,
+    filename: "ander-boek.pdf",
+    pageCount: 1,
+    actor: ACTOR,
+  });
+
+  expect(await countFailedOcrPages(db, run.id)).toBe(0);
+
+  // Pagina 1 faalt op twee tegels, pagina 2 op één → 2 pagina's, niet 3 events.
+  for (const [page, tile] of [
+    [1, 3],
+    [1, 7],
+    [2, 0],
+  ] as const) {
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: run.id,
+      action: "ocr_page_failed",
+      actor: ACTOR,
+      payload: { page, tile, melding: "timeout" },
+    });
+  }
+  // Een fout op een ANDERE run mag hier niet meetellen.
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: andereRun.id,
+    action: "ocr_page_failed",
+    actor: ACTOR,
+    payload: { page: 1, tile: 0, melding: "timeout" },
+  });
+  // …en een ander soort event ook niet.
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: run.id,
+    action: "ocr_page_truncated",
+    actor: ACTOR,
+    payload: { page: 3, tile: 0 },
+  });
+
+  expect(await countFailedOcrPages(db, run.id)).toBe(2);
+  expect(await countFailedOcrPages(db, andereRun.id)).toBe(1);
 });

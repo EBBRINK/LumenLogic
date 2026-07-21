@@ -89,7 +89,21 @@ export default async function RegelsTab({
       )}
 
       {/* Stap 5: PDF-upload als eerste blok — de hoofdingang van een project. */}
+      {/*
+        key: na een geslaagde import redirect de action naar DEZELFDE route met
+        andere query-parameters. Zonder key blijft de kaart gemount en houdt hij
+        zijn clientstate — dat is precies hoe de "Import failed"-melding naast de
+        succesbanner bleef staan (docs/probleem-liegende-import-melding.md). Een
+        key uit de searchParams remount hem schoon zodra de import geland is.
+
+        ⚠️ Deze key mag UITSLUITEND van searchParams afhangen. revalidatePath()
+        vuurt bij élke OCR-tegel, dus deze pagina rendert tijdens een lopende run
+        voortdurend opnieuw. Een key die van dáta afhangt (regelaantal,
+        pendingOcr, updatedAt) remount de kaart middenin de OCR-lus en doodt een
+        betaalde run.
+      */}
       <PdfUploadCard
+        key={run ?? "idle"}
         dossierId={dossier.id}
         importAction={importArmaturenboekPagesAction}
         startOcrAction={startOcrImportAction}

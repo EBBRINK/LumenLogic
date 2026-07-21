@@ -30,3 +30,10 @@ heet. Kleine commits op main, regelmatig pushen — ⚠️ **elke push naar main
 naar productie** (geverifieerd 17 jul: deployment 3 s na push; er is géén aparte preview-stap).
 "Stop vóór een productie-deploy" betekent hier dus: stop vóór de push. Aannames en open eindes
 altijd in `HANDOVER.md`. Brondata in `data/` is read-only en staat niet in git.
+
+⚠️ **Await je een server action vanuit een client component?** Doe dat via `callAction()`
+uit `lib/next-action-result.ts`, nooit met een kale `await` in een `try/catch`. Een action
+die `redirect()` aanroept laat zijn client-promise **rejecten** met `NEXT_REDIRECT` — dat
+is Next' navigatiesignaal, geen fout — en `requireSession()` redirect altijd naar `/login`,
+dus dat kanaal draagt zowel succes als "je bent uitgelogd". Een lege `catch` maakt van elke
+geslaagde import een mislukking (dat is precies één keer gebeurd; zie `HANDOVER.md`).

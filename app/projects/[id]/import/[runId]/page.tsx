@@ -6,6 +6,7 @@ import { ImportMarkdown } from "@/components/dossier/import-markdown";
 import { ImportProposal } from "@/components/dossier/import-proposal";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
+import { countFailedOcrPages } from "@/lib/repo/ocr";
 import type { ImportRow } from "@/db/schema";
 import { requireSession } from "@/lib/session";
 import { cancelImportAction, confirmImportAction } from "../actions";
@@ -25,6 +26,14 @@ export default async function ImportRunPage({
   ]);
   // run moet bestaan én bij dit dossier horen (geen kruislekken tussen dossiers)
   if (!dossier || !run || run.dossierId !== id) notFound();
+
+  // goal-liegende-import-melding §3: de upload-kaart meldt "N of M pages failed"
+  // ook, maar die melding leeft in clientstate en wordt door de navigatie
+  // weggevaagd. Gefaalde pagina's zijn precies het feit waarop gehandeld moet
+  // worden, dus staan ze hier server-afgeleid en blijvend.
+  const failedPages =
+    run.source === "ocr" ? await countFailedOcrPages(db, run.id) : 0;
+  const ocrPageCount = (run.counts as Record<string, number> | null)?.pageCount;
 
   return (
     <>
@@ -68,6 +77,15 @@ export default async function ImportRunPage({
           This import proposal is already{" "}
           {run.status === "bevestigd" ? "confirmed" : "cancelled"}. Go back to this
           project's lines.
+        </p>
+      )}
+
+      {failedPages > 0 && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {failedPages} of {ocrPageCount ?? "?"} page
+          {failedPages === 1 ? "" : "s"} could not be read — those lines are
+          missing from this run. See the events log for the reason per page;
+          choosing the same PDF again re-reads only what is missing.
         </p>
       )}
 

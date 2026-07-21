@@ -6,6 +6,7 @@
 // client-side: de kaartlogica (extractie, busy, {error} → alert, de OCR-loop) is
 // dan volledig en eerlijk te testen; alleen de draad door de echte action-brug
 // blijft buiten schot.
+import { notFound, redirect } from "next/navigation";
 import {
   PdfUploadCard,
   type FinishOcrAction,
@@ -250,6 +251,174 @@ export function KaartMetOcrHangend() {
         doneTiles: [],
       })}
       ocrPageAction={() => new Promise(() => {})}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// ── Redirect-stubs (goal-liegende-import-melding) ────────────────────────────
+// DIT is wat de vorige stubs misten. Een server action die redirect() aanroept,
+// laat zijn client-promise niet resolven maar REJECTEN (server-action-reducer.js
+// 215-234). De oude stubs deden `async () => {}` — een nette resolve, precies het
+// enige geval dat Next nooit produceert. Daardoor bleef de suite groen terwijl
+// productie elke geslaagde import "Import failed" noemde.
+//
+// De fixture wordt gebouwd met Next' EIGEN redirect(), niet met een zelfgetypte
+// digest-string: dan is hij per constructie echt. lib/next-action-result.test.ts
+// pint dat vast tegen Next' eigen isRedirectError.
+
+export function nextRedirectError(href: string): Error {
+  try {
+    redirect(href, "push");
+  } catch (e) {
+    // De reducer zet handled=true vóór hij ermee rejectet.
+    (e as { handled?: boolean }).handled = true;
+    return e as Error;
+  }
+  throw new Error("redirect() gooide niet — fixture ongeldig");
+}
+
+function nextNotFoundError(): Error {
+  try {
+    notFound();
+  } catch (e) {
+    return e as Error;
+  }
+  throw new Error("notFound() gooide niet — fixture ongeldig");
+}
+
+// De echte productie-succesroute: de import slaagt en de action redirect naar de
+// eigen projectpagina met ?pdf=…&run=…. Vóór de fix toonde dit "Import failed".
+export function KaartMetRedirectendeImport() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={async () => {
+        throw nextRedirectError("/projects/d1?pdf=20&run=r1&route=leesroute");
+      }}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// Idem voor het OCR-pad: alle pagina's slagen, finishOcrAction redirect.
+export function KaartMetRedirectendeFinishOcr() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({ runId: "r1", resumed: false, doneTiles: [] })}
+      ocrPageAction={async () => {
+        await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {
+        throw nextRedirectError("/projects/d1?ocr=12&run=r1");
+      }}
+    />
+  );
+}
+
+// Gefaalde pagina's + redirectende finish. De telling "N of M pages failed" is
+// in productie nog NOOIT vertoond: hij stond achter de dode setDone().
+export function KaartMetOcrGefaaldePaginas() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({ runId: "r1", resumed: false, doneTiles: [] })}
+      ocrPageAction={async (form) => {
+        await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+        // pagina 1 en 2 mislukken, pagina 3 slaagt → "2 of 3 pages failed"
+        if (Number(form.get("page")) <= 2) return { failed: "vision-timeout" };
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {
+        throw nextRedirectError("/projects/d1?ocr=1&run=r1");
+      }}
+    />
+  );
+}
+
+// F3: sessie verlopen tijdens de run → requireSession() redirect naar /login.
+// Dat is óók een NEXT_REDIRECT, maar het is GEEN succes: er is niets afgesloten.
+export function KaartMetSessieRedirect() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({ runId: "r1", resumed: false, doneTiles: [] })}
+      ocrPageAction={async () => {
+        await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {
+        throw nextRedirectError("/login");
+      }}
+    />
+  );
+}
+
+// Redirect naar een onverwachte bestemming → default-deny: dit is geen succes.
+export function KaartMetOnverwachteBestemming() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={async () => {
+        throw nextRedirectError("/data/brands");
+      }}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// Negatieve controle: een échte netwerkfout moet zichtbaar blijven, mét oorzaak.
+export function KaartMetNetwerkfout() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={async () => {
+        throw new TypeError("Failed to fetch");
+      }}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// notFound()/forbidden() uit een action: GEEN navigatiesignaal voor ons — de
+// action weigerde, en dat moet de gebruiker zien in plaats van stilte.
+export function KaartMetNotFound() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={async () => {
+        throw nextNotFoundError();
+      }}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// Crash midden in de OCR-lus (bv. rasterisatie die omvalt): tot nu toe volledig
+// onzichtbaar achter de generieke "Import failed".
+export function KaartMetCrashInLoop() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({ runId: "r1", resumed: false, doneTiles: [] })}
+      ocrPageAction={async (form) => {
+        if (Number(form.get("page")) >= 2) throw new Error("canvas kapot");
+        return { created: 1, duplicates: 0 };
+      }}
       finishOcrAction={finishOcrOnverwacht}
     />
   );

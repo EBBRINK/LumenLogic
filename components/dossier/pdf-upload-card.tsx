@@ -16,9 +16,18 @@
 // redirect zelf, net als de gewone import). Hervatten (B5): een run die 'bezig'
 // bleef staan komt als pendingOcr binnen; zelfde bestand kiezen = verder waar hij
 // bleef (donePages worden overgeslagen).
-import { useState } from "react";
+//
+// Liegende-import-melding (docs/probleem-liegende-import-melding.md): een action
+// die redirect() doet, laat zijn client-promise REJECTEN — dat is Next'
+// navigatiesignaal, geen fout. Die rejection werd hier door een lege catch tot
+// "Import failed" verklaard, waardoor élke geslaagde import zich als mislukking
+// meldde. Alle action-aanroepen lopen daarom nu via callAction(), die op
+// BESTEMMING classificeert: alleen een redirect naar de eigen projectroute is
+// succes, /login is een verlopen sessie, en al het overige is een fout.
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { callAction, failureDetail } from "@/lib/next-action-result";
 import { IconUpload } from "./icons";
 
 // Client-side groottegrens: boven 100 MB laden we het bestand niet eens in het
@@ -26,6 +35,12 @@ import { IconUpload } from "./icons";
 // armaturenboeken (5–50 MB, veel foto's) blijven gewoon werken.
 const MAX_CLIENT_PDF_BYTES = 100 * 1024 * 1024;
 
+// NB de `void` in deze signatuur: die staat voor "de action gaf niets terug",
+// maar in ECHTE Next is dat succespad onbereikbaar — bij succes redirect de
+// action, en dan rejectet de promise met NEXT_REDIRECT in plaats van te
+// resolven. TypeScript kan dat niet uitdrukken; callAction() vangt beide vormen
+// op. (Een expliciet {ok:true}-contract i.p.v. redirect() is overwogen en
+// bewust niet gedaan — zie docs/goal-liegende-import-melding.md §1 en HANDOVER.)
 export type PdfPagesImportAction = (input: {
   dossierId: string;
   filename: string;
@@ -69,6 +84,29 @@ export interface PendingOcrRun {
 // laten liegen zodra de maten mengen. Resterend werk = tegels die nog moeten
 // (voor nog-niet-geplande pagina's schatten we het tegelgemiddelde van de al
 // geplande pagina's — lazy, geen upfront getPage-scan over 500 pagina's).
+type CardStatus =
+  | { kind: "idle" }
+  | { kind: "busy"; text: string }
+  | { kind: "handoff"; text: string }
+  | { kind: "error"; text: string };
+
+// Blijft de overdrachtstoestand langer dan dit staan, dan is er geen navigatie
+// gekomen en zeggen we dat eerlijk in plaats van eeuwig "opening…" te tonen.
+const HANDOFF_STUCK_MS = 10_000;
+
+function useHangingHandoff(active: boolean): boolean {
+  const [hanging, setHanging] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setHanging(false);
+      return;
+    }
+    const t = setTimeout(() => setHanging(true), HANDOFF_STUCK_MS);
+    return () => clearTimeout(t);
+  }, [active]);
+  return hanging;
+}
+
 function etaText(avgMsPerTile: number, tilesLeft: number): string {
   const seconds = Math.round((avgMsPerTile * tilesLeft) / 1000);
   if (seconds < 5) return "";
@@ -91,21 +129,62 @@ export function PdfUploadCard({
   finishOcrAction: FinishOcrAction;
   pendingOcr?: PendingOcrRun | null;
 }) {
-  // busy = voortgangstekst tijdens lezen/importeren/OCR; error = eerlijke foutmelding;
-  // done = blijvende klaar-melding ná de OCR-loop (de redirect van finishOcrAction
-  // navigeert normaliter meteen weg — dit is de eerlijke tussenstand tot die tijd).
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  // Eén toestand in plaats van drie losse vlaggen. Dat is niet cosmetisch: de
+  // gerapporteerde bug wás een groene succesbanner náást een rode foutregel, en
+  // met een union kunnen 'handoff' en 'error' per constructie niet samen op het
+  // scherm staan.
+  //
+  //  idle    — wachten op een bestand
+  //  busy    — bezig (lezen/importeren/OCR), tekst wisselt mee met de voortgang
+  //  handoff — uitkomst bekend én goed; Next navigeert, de kaart draagt over
+  //  error   — eerlijke foutmelding, kaart weer vrij voor een nieuwe poging
+  const [status, setStatus] = useState<CardStatus>({ kind: "idle" });
+  const busy = status.kind === "busy" ? status.text : null;
+  // Tijdens 'handoff' blijft het formulier op slot: de navigatie loopt nog en een
+  // tweede upload zou op het OCR-pad opnieuw geld kosten.
+  const locked = status.kind === "busy" || status.kind === "handoff";
+  const setBusy = (text: string | null) =>
+    setStatus((s) =>
+      text != null
+        ? { kind: "busy", text }
+        : // busy wissen mag een 'handoff'/'error' die al gezet is nooit overschrijven
+          s.kind === "busy"
+          ? { kind: "idle" }
+          : s,
+    );
+  const setError = (text: string) => setStatus({ kind: "error", text });
+  const setHandoff = (text: string) => setStatus({ kind: "handoff", text });
+
+  // Vangnet: normaliter vervangt de navigatie deze kaart binnen een seconde (de
+  // projectpagina geeft hem een key uit de searchParams, dus hij remount schoon).
+  // Blijft 'handoff' tóch staan, dan is de navigatie weggevallen — dat mag niet
+  // stil zijn, ook niet als de classificatie hierboven ernaast zat.
+  const hanging = useHangingHandoff(status.kind === "handoff");
 
   // ── De OCR-loop (beeld-PDF, 0 tekens tekstlaag) ────────────────────────────
   async function runOcrLoop(file: File, pageCount: number) {
     setBusy("No text layer found — starting OCR import…");
-    const start = await startOcrAction({
-      dossierId,
-      filename: file.name,
-      pageCount,
-    });
+    // startOcrAction redirect niet, maar requireSession() erin wél (naar /login) —
+    // daarom ook hier via callAction in plaats van een kale await.
+    const started = await callAction(
+      () => startOcrAction({ dossierId, filename: file.name, pageCount }),
+      { path: `/projects/${dossierId}` },
+    );
+    if (started.kind === "signedOut") {
+      setError(
+        "Your session expired — nothing was read or uploaded. Sign in again and choose the same PDF.",
+      );
+      return;
+    }
+    if (started.kind !== "value") {
+      setError(
+        started.kind === "failed"
+          ? `Could not start the OCR import (${failureDetail(started.error)}). Nothing was read or uploaded.`
+          : `Starting the OCR import ended on an unexpected page (${started.href}) — nothing was read or uploaded.`,
+      );
+      return;
+    }
+    const start = started.value;
     if ("error" in start) {
       // bv. geen API-key: eerlijke melding, er is niets gerenderd of geüpload.
       setError(start.error);
@@ -186,7 +265,28 @@ export function PdfUploadCard({
                 type: "image/jpeg",
               }),
             );
-            const result = await ocrPageAction(form);
+            // Ook hier kan requireSession() midden in een lange run de sessie
+            // afkappen; die redirect mag nooit als "pagina gelukt" gelden.
+            const sent = await callAction(() => ocrPageAction(form), {
+              path: `/projects/${dossierId}`,
+            });
+            if (sent.kind === "signedOut") {
+              const left = pageCount - pageNo + 1;
+              setError(
+                `Your session expired during the OCR run — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are saved; sign in again and choose the same PDF to resume.`,
+              );
+              return;
+            }
+            if (sent.kind !== "value") {
+              const left = pageCount - pageNo + 1;
+              setError(
+                sent.kind === "failed"
+                  ? `OCR stopped on page ${pageNo} (${failureDetail(sent.error)}) — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are saved; choose the same PDF to resume.`
+                  : `OCR stopped on page ${pageNo}: the request ended on an unexpected page (${sent.href}). The lines read so far are saved.`,
+              );
+              return;
+            }
+            const result = sent.value;
 
             if ("stopped" in result) {
               // Budget op (run staat serverside op 'gestopt') of key weggevallen:
@@ -222,14 +322,42 @@ export function PdfUploadCard({
       const form = new FormData();
       form.set("dossierId", dossierId);
       form.set("runId", start.runId);
-      const finished = await finishOcrAction(form);
-      if (finished && "error" in finished) {
-        setError(finished.error);
+      // finishOcrAction redirect bij succes naar ?ocr=…&run=… — de promise
+      // REJECT dan (zie de kop van dit bestand). Vóór deze fix belandde dat in de
+      // buitenste catch en meldde een geslaagde OCR-run zich als "Import failed";
+      // de afrondmelding hieronder was daardoor dode code op de deploy.
+      const finished = await callAction(() => finishOcrAction(form), {
+        path: `/projects/${dossierId}`,
+      });
+      if (finished.kind === "failed") {
+        // De gelezen regels stáán al op het project. "Opnieuw proberen" is hier
+        // schadelijke raad: hervatten kost niets extra, opnieuw beginnen wel.
+        setError(
+          `OCR finished reading, but closing the run failed (${failureDetail(finished.error)}). The pages that were read are saved — choose the same PDF again to resume; already-read pages cost nothing extra.`,
+        );
         return;
       }
-      // In echte Next redirect finishOcrAction zelf naar ?ocr=…&run=… — dit is de
-      // eerlijke tussenstand tot de navigatie (en de zichtbare uitkomst in tests).
-      setDone(
+      if (finished.kind === "signedOut") {
+        // Geen verzonnen faaltelling hier: requireSession() staat vóór alles in
+        // de action, dus de run is niet afgesloten en we weten de uitkomst niet.
+        setError(
+          "Your session expired before the OCR run could be closed. The pages that were read are saved — sign in again and choose the same PDF to resume; already-read pages cost nothing extra.",
+        );
+        return;
+      }
+      if (finished.kind === "divertedTo") {
+        setError(
+          `Finishing the OCR run ended on an unexpected page (${finished.href}) — the run was not confirmed. The pages that were read are saved; check the events log before retrying.`,
+        );
+        return;
+      }
+      if (finished.kind === "value" && finished.value && "error" in finished.value) {
+        setError(finished.value.error);
+        return;
+      }
+      // 'arrived' (productie: de redirect kwam waar hij hoorde) én 'value: void'
+      // (stub/geen-redirect) betekenen allebei: klaar.
+      setHandoff(
         failed > 0
           ? `OCR finished — ${failed} of ${pageCount} pages failed (see the events log); opening the results…`
           : "OCR finished — opening the results…",
@@ -242,8 +370,7 @@ export function PdfUploadCard({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
-    setDone(null);
+    setStatus({ kind: "idle" });
     const file = new FormData(e.currentTarget).get("pdf");
     if (!(file instanceof File) || file.size === 0) return;
     if (file.size > MAX_CLIENT_PDF_BYTES) {
@@ -273,15 +400,46 @@ export function PdfUploadCard({
         return;
       }
       setBusy(`PDF read — ${pages.length} pages, importing…`);
-      const result = await importAction({
-        dossierId,
-        filename: file.name,
-        pages,
-      });
-      if (result && "error" in result) setError(result.error);
-      // bij succes redirect de action zelf; deze component verdwijnt dan.
-    } catch {
-      setError("Import failed — please try again.");
+      // Bij succes redirect de action naar /projects/<id>?pdf=…&run=… en rejectet
+      // de promise met NEXT_REDIRECT. callAction() classificeert op bestemming;
+      // alles wat niet aantoonbaar op de eigen projectroute uitkomt, is een fout.
+      const result = await callAction(
+        () => importAction({ dossierId, filename: file.name, pages }),
+        { path: `/projects/${dossierId}` },
+      );
+      if (result.kind === "failed") {
+        setError(
+          `The import did not complete (${failureDetail(result.error)}). Check this project's events log to see whether lines were saved before retrying.`,
+        );
+        return;
+      }
+      if (result.kind === "signedOut") {
+        // requireSession() staat vóór elke schrijfactie — er is dus aantoonbaar
+        // niets geïmporteerd.
+        setError(
+          "Your session expired before anything was imported — nothing was saved. Sign in again and choose the same PDF.",
+        );
+        return;
+      }
+      if (result.kind === "divertedTo") {
+        setError(
+          `The import ended on an unexpected page (${result.href}) — nothing was confirmed. Check this project's events log before retrying.`,
+        );
+        return;
+      }
+      if (result.kind === "value" && result.value && "error" in result.value) {
+        setError(result.value.error);
+        return;
+      }
+      setHandoff("Import complete — opening the results…");
+    } catch (e) {
+      // Crash-net, geen vuilnisbak. Een redirect hoort al bij de aanroep zelf
+      // gevangen te zijn; wat hier landt is een échte fout (bv. de rasterisatie
+      // in runOcrLoop die omvalt) en die was tot nu toe onzichtbaar achter de
+      // generieke "Import failed".
+      setError(
+        `Something went wrong while processing this PDF (${failureDetail(e)}). Check this project's events log before retrying.`,
+      );
     } finally {
       setBusy(null);
     }
@@ -323,27 +481,29 @@ export function PdfUploadCard({
             name="pdf"
             accept="application/pdf"
             required
-            disabled={busy != null}
+            disabled={locked}
             aria-label="Choose luminaire schedule PDF"
             className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
           />
-          <Button type="submit" disabled={busy != null}>
+          <Button type="submit" disabled={locked}>
             {busy ?? idleLabel}
           </Button>
         </form>
-        {busy && (
+        {(status.kind === "busy" || status.kind === "handoff") && (
           <p role="status" className="mt-2 text-sm text-muted-foreground">
-            {busy}
+            {status.text}
+            {status.kind === "handoff" && hanging && (
+              <>
+                {" "}
+                Still opening the results — the import itself is done; reload the
+                page if this stays.
+              </>
+            )}
           </p>
         )}
-        {done && !busy && (
-          <p role="status" className="mt-2 text-sm text-muted-foreground">
-            {done}
-          </p>
-        )}
-        {error && (
+        {status.kind === "error" && (
           <p role="alert" className="mt-2 text-sm text-destructive">
-            {error}
+            {status.text}
           </p>
         )}
       </CardContent>

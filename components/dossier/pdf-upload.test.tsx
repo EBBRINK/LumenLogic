@@ -21,6 +21,16 @@ import {
   KaartMetOcrStartError,
   KaartMetOcrTegels,
   KaartMetTrageErrorAction,
+  // goal-liegende-import-melding: stubs die een REDIRECTENDE action nabootsen
+  // zoals Next hem werkelijk aflevert (reject, geen resolve).
+  KaartMetCrashInLoop,
+  KaartMetNetwerkfout,
+  KaartMetNotFound,
+  KaartMetOcrGefaaldePaginas,
+  KaartMetOnverwachteBestemming,
+  KaartMetRedirectendeFinishOcr,
+  KaartMetRedirectendeImport,
+  KaartMetSessieRedirect,
 } from "./pdf-upload-test-stubs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSpecLineForm } from "./add-spec-line-form";
@@ -398,10 +408,16 @@ test("beeld-PDF (0 tekst) → OCR-pad: voortgang per pagina zichtbaar, daarna af
   // Niet het gewone import-pad, geen onverwachte OCR-fouten.
   expect(document.body.textContent).not.toContain("GEWONE-IMPORT-ONVERWACHT");
   expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
-  // Kaart weer vrij voor een volgende upload.
+  // ⚠️ GEWIJZIGDE ASSERT (goal-liegende-import-melding) — bewust omgekeerd, niet
+  // afgezwakt. Deze test verwachtte hier een wéér vrije knop, omdat de kaart na
+  // een geslaagde OCR-run terugviel naar idle. Dat is precies de toestand die een
+  // tweede, betaalde OCR-run uitnodigt terwijl de navigatie nog loopt. De kaart
+  // blijft nu in 'handoff' op slot tot de projectpagina hem remount (key uit de
+  // searchParams). Bij een FOUT gaat hij wél weer van slot — dat toetsen de
+  // budget-stop- en fouttests hieronder onveranderd.
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
-    .toBeEnabled();
+    .toBeDisabled();
 });
 
 test("budget-stop halverwege → loop breekt af met melding hoeveel pagina's bleven liggen", async () => {
@@ -557,4 +573,217 @@ test("importrun toont brontekst (markdown) met downloadknop", async () => {
   await expect.element(page.getByText("## Pagina 1")).toBeInTheDocument();
   const link = container.querySelector('a[download]');
   expect(link?.getAttribute("href")).toBe("/projects/d1/import/r1/markdown");
+});
+
+// ── Redirect-terugkoppeling (goal-liegende-import-melding) ───────────────────
+// Regressietests voor de bug waarbij een GESLAAGDE import zich als mislukking
+// meldde: een action die redirect() doet laat zijn client-promise rejecten, en
+// een lege catch verklaarde dat tot "Import failed — please try again."
+//
+// De negatieve assert `not.toContain("Import failed")` is de kern van deze hele
+// fix. Verdwijnt hij ooit uit een succes-test, dan meet die test niets meer.
+
+// De kaart mag geen alert tonen. NB via container, niet page.getByRole("alert"):
+// Next' route-announcer is óók een alert (zie de test op regel 303).
+function geenAlert(container: Element) {
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+}
+
+test("geslaagde import (action redirect) → eerlijke overdracht, géén 'Import failed'", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetRedirectendeImport />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("Import failed");
+  geenAlert(container);
+  // Het formulier blijft op slot tot de navigatie de kaart vervangt — anders
+  // vuurt een ongeduldige gebruiker een tweede (betaalde) import af.
+  const input = container.querySelector('input[name="pdf"]') as HTMLInputElement;
+  expect(input.disabled).toBe(true);
+});
+
+test("geslaagde OCR-run (finish redirect) → afrondmelding i.p.v. 'Import failed'", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetRedirectendeFinishOcr />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeBeeldPdf(2));
+  await expect
+    .element(page.getByText("OCR finished — opening the results…"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("Import failed");
+  geenAlert(container);
+});
+
+test("OCR met gefaalde pagina's → de telling is eindelijk zichtbaar", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetOcrGefaaldePaginas />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeBeeldPdf(3));
+  // Deze regel stond vóór deze fix achter een setDone() die in productie nooit
+  // werd bereikt — de gebruiker kreeg alleen "Import failed" te zien.
+  await expect
+    .element(page.getByText(/OCR finished — 2 of 3 pages failed/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("Import failed");
+  geenAlert(container);
+});
+
+test("sessie verlopen (redirect naar /login) → sessie-melding, nooit 'finished'", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetSessieRedirect />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeBeeldPdf(2));
+  await expect
+    .element(page.getByText(/Your session expired/))
+    .toBeInTheDocument();
+  // /login is óók een NEXT_REDIRECT — maar géén succes. Er mag hier dus geen
+  // afrondmelding en al helemaal geen verzonnen faaltelling staan.
+  expect(document.body.textContent).not.toContain("OCR finished");
+  expect(document.body.textContent).not.toContain("pages failed");
+  expect(document.body.textContent).not.toContain("Import failed");
+  // Wél de eerlijke raad: hervatten kost niets extra, opnieuw uploaden wel.
+  await expect.element(page.getByText(/resume/)).toBeInTheDocument();
+});
+
+test("redirect naar een onverwachte bestemming → falen, niet stil (default-deny)", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetOnverwachteBestemming />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText(/unexpected page/))
+    .toBeInTheDocument();
+  // de bestemming staat erbij — een stille onbekende accepteren we niet meer
+  expect(container.textContent).toContain("/data/brands");
+  expect(document.body.textContent).not.toContain("Import complete");
+});
+
+test("notFound() uit een action blijft een zichtbare fout", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetNotFound />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText(/refused the request \(404\)/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("Import complete");
+});
+
+test("crash midden in de OCR-lus → zichtbare fout mét oorzaak", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetCrashInLoop />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeBeeldPdf(3));
+  await expect.element(page.getByText(/canvas kapot/)).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("Import complete");
+});
+
+// NEGATIEVE CONTROLE. Deze test moet vóór én ná de fix groen zijn: hij assert
+// alleen invarianten (er ís een fout zichtbaar, met oorzaak, en de kaart staat
+// niet in een succestoestand) en niet op de nieuwe formulering. Zou hij mee rood
+// worden, dan bewijst hij niets meer over het feit dat de fix niets heeft
+// dichtgeplakt.
+test("negatieve controle: een echte netwerkfout blijft zichtbaar", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetNetwerkfout />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await vi.waitFor(
+    () => {
+      const alert = container.querySelector('[role="alert"]');
+      if (!alert?.textContent?.trim()) throw new Error("nog geen foutmelding");
+    },
+    { timeout: 15_000, interval: 100 },
+  );
+  // geen succes-/voortgangstoestand blijven hangen
+  expect(container.querySelector('[role="status"]')).toBeNull();
+});
+
+// Dit deel is wél nieuw gedrag (en dus rood vóór de fix): de onderliggende
+// oorzaak moet mee de UI in. Zonder detail zijn een netwerkfout, een 500 en
+// "an unexpected response was received" niet van elkaar te onderscheiden en is
+// de melding weer een dooddoener.
+test("netwerkfout benoemt de oorzaak in plaats van een dooddoener", async () => {
+  const { container } = await renderServer(
+    <Screen>
+      <KaartMetNetwerkfout />
+    </Screen>,
+  );
+  await uploadEnVerstuur(FIXTURE_BOEK);
+  await expect
+    .element(page.getByText(/Failed to fetch/))
+    .toBeInTheDocument();
+  expect(container.textContent).not.toContain("please try again");
+});
+
+// ── Screenshots van de nieuwe toestanden ─────────────────────────────────────
+// Deze kunnen niet in de screens-lus hierboven: ze bestaan pas ná een upload.
+// De stubs rejecten wél maar navigeren niet (de testomgeving heeft geen router),
+// dus de toestand staat stil en de opname is stabiel.
+//
+// project-import-error is de eerste screenshot in dit project met een
+// text-destructive-alert erin — het donkere contrast van een foutmelding was
+// nooit eerder bekeken. Slagen en falen moeten naast elkaar te leggen zijn: dat
+// is het hele punt van deze fix.
+const interactieSchermen = {
+  "project-import-handoff": {
+    ui: <KaartMetRedirectendeImport />,
+    klaar: "Import complete — opening the results…",
+  },
+  "project-import-error": {
+    ui: <KaartMetNetwerkfout />,
+    klaar: /The import did not complete/,
+  },
+} as const;
+
+for (const [name, { ui, klaar }] of Object.entries(interactieSchermen)) {
+  for (const theme of ["light", "dark"] as const) {
+    for (const [device, viewport] of Object.entries(viewports)) {
+      test(`${name} (${theme}, ${device})`, async () => {
+        await page.viewport(viewport.width, viewport.height);
+        if (theme === "dark") document.documentElement.classList.add("dark");
+        await renderServer(<Screen>{ui}</Screen>);
+        await uploadEnVerstuur(FIXTURE_BOEK);
+        await expect.element(page.getByText(klaar)).toBeInTheDocument();
+        await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
+      });
+    }
+  }
+}
+
+// De faaltelling apart (het OCR-pad heeft een gegenereerde beeld-PDF nodig).
+// Eén opname, naar het model van de bestaande project-ocr-progress-test.
+test("project-ocr-done-failures (light, desktop)", async () => {
+  await page.viewport(1280, 800);
+  await renderServer(
+    <Screen>
+      <KaartMetOcrGefaaldePaginas />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeBeeldPdf(3));
+  await expect
+    .element(page.getByText(/OCR finished — 2 of 3 pages failed/))
+    .toBeInTheDocument();
+  await page.screenshot({
+    path: "./project-ocr-done-failures.light.desktop.test.png",
+  });
 });

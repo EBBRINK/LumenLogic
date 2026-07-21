@@ -1580,3 +1580,49 @@ veldgewogen (G12) náást `bucketScore()`, dat ongewijzigd bleef.
   (`data-scorecard-volledig.*.test.png`) — anders is de scorecard niet visueel te controleren.
 - **`components/data/brand-message.test.tsx` blijft flaky** onder volle suite-belasting (de
   10s-`waitFor` op "Copied"); al gemeld bij 1.5, opnieuw waargenomen, geïsoleerd groen.
+## Liegende import-melding (goal-liegende-import-melding, 21 jul)
+
+Een geslaagde PDF-import meldde zich als mislukking: bovenaan "20 spec lines imported",
+eronder in het rood "Import failed — please try again." Oorzaak, bewezen in de
+Next-bron (16.2.10, `server-action-reducer.js:215-234`): een server action die
+`redirect()` aanroept laat zijn **client-side promise REJECTEN** met een
+`NEXT_REDIRECT`-error — Next' navigatiesignaal, geen fout. De lege `catch` in
+`pdf-upload-card.tsx` verklaarde dat tot "Import failed". Omdat de redirect naar
+dezelfde route ging bleef de kaart gemount en bleef de rode regel staan.
+
+Aanpak: classificeren op **bestemming** (`lib/next-action-result.ts`), niet op "is het
+een redirect" — alleen een redirect naar de eigen projectroute is succes, `/login` is
+een verlopen sessie, en al het overige faalt (default-deny). Details en meetlat in
+`docs/probleem-liegende-import-melding.md` en `docs/goal-liegende-import-melding.md`.
+
+**Bewust niet gedaan / open eindes:**
+- **Het action-contract is NIET omgegooid.** Overwogen is om `redirect()` uit de twee
+  client-geawaite actions te halen en `{ok:true, …}` terug te laten geven, met
+  `router.push()` op de client. Afgewezen: `revalidatePath` + `redirect` zijn serverside
+  één transactieafsluiting waarvan de URL de drager is, het zou 2 van de 24 actions laten
+  afwijken, en het raakt `app/projects/actions.ts` (de vangrail van deze opdracht).
+  Beslissend: `requireSession()` redirect naar `/login`, dus `NEXT_REDIRECT` blijft óók
+  mét dat contract binnenkomen — de classificator is de ondergrens bij élk contract.
+  Als deze codebase ooit één gedeeld actie-resultaatcontract krijgt, is dát de juiste
+  vorm, en dan voor alle 24 tegelijk. **Opvolgtaak.**
+- **Het proptype liegt nog steeds.** `PdfPagesImportAction` heet
+  `Promise<{error: string} | void>`, maar dat `void`-succespad is in productie
+  onbereikbaar (bij succes rejectet de promise). TypeScript kan dat niet uitdrukken;
+  er staat nu een comment op de typedefinitie. Verdwijnt pas met de contractwijziging
+  hierboven. **Opvolgtaak.**
+- **`app/projects/[id]/page.tsx` geeft de upload-kaart een `key={run ?? "idle"}`.**
+  ⚠️ Die key mag UITSLUITEND van searchParams afhangen. `revalidatePath()` vuurt bij élke
+  OCR-tegel, dus de pagina rendert tijdens een lopende run voortdurend opnieuw; een key
+  die van dáta afhangt (regelaantal, `pendingOcr`, `updatedAt`) remount de kaart middenin
+  de OCR-lus en doodt een betaalde run. Staat als comment ter plekke.
+- **Eén bestaande assert is bewust omgekeerd**, niet afgezwakt: de happy-OCR-test
+  verwachtte na afloop een wéér vrije knop. De kaart blijft nu in 'handoff' op slot tot
+  de navigatie hem remount — anders nodigt een geslaagde run uit tot een tweede, betaalde
+  poging. Bij een FOUT gaat de kaart wél weer van slot (ongewijzigd getoetst).
+- **De 10s-anti-hang in de kaart** is een vangnet voor het geval de navigatie uitblijft
+  (de `key` kan dat niet detecteren: geen navigatie = geen nieuwe key). Het is het eerste
+  dat mag sneuvelen als iemand hier wil snoeien.
+- **Andere client-side action-aanroepen zijn nagelopen** en zitten niet in deze val: de
+  `catch`-blokken in `compare-tray.tsx` en `brand-message-block.tsx` omsluiten
+  localStorage resp. de clipboard-API, en alle overige redirectende actions lopen via
+  `<form action={…}>` of een server component.

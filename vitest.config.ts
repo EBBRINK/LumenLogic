@@ -31,7 +31,15 @@ export default defineConfig({
   // de browser-tests. Alleen vóór pdf-lib wijzen we tslib naar de ES-module-build —
   // andere pakketten (react-remove-scroll e.d.) houden hun eigen (geneste) tslib v2.
   // pako (CJS-dep van pdf-lib) moet wél door de optimizer voor een default-export.
-  optimizeDeps: { exclude: ["pdf-lib"], include: ["pako"] },
+  // next/dist/client/components/redirect-error: de anker-test in
+  // lib/next-action-result.test.ts toetst onze redirect-classificatie tegen Next'
+  // eigen isRedirectError. Zonder deze regel ontdekt Vite die deep import pas
+  // tijdens de run en herlaadt hij de test halverwege ("Vite unexpectedly
+  // reloaded a test").
+  optimizeDeps: {
+    exclude: ["pdf-lib"],
+    include: ["pako", "next/dist/client/components/redirect-error"],
+  },
   test: {
     // .claude/worktrees én .worktrees/ bevatten kopieën van de repo (parallelle
     // agents/branches) — die testbestanden horen niet bij deze run en zijn

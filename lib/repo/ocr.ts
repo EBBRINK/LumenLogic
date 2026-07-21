@@ -21,6 +21,7 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   brands,
+  events,
   importRuns,
   llmUsage,
   ocrPageImages,
@@ -887,6 +888,34 @@ export async function getOcrPageImage(
 // O4: pagesDone telt DISTINCT pagina's (een half-getegelde pagina telt als
 // gedaan zodra er één tegel staat — voortgangsindicatie, geen lock); tilesDone
 // telt alle beeldrijen. Bij hele-pagina-runs zijn beide gelijk.
+// Aantal pagina's van deze run waarvan minstens één tegel niet gelezen kon
+// worden. Afgeleid uit de ocr_page_failed-events (lib/ai/ocr.ts logt die per
+// mislukte tegel op entity 'import_run'), dus server-waarheid in plaats van een
+// client-bewering — en het overleeft een refresh.
+//
+// Waarom dit bestaat (goal-liegende-import-melding §3): de kaart meldt deze
+// telling ook, maar die melding leeft in clientstate en wordt door de navigatie
+// weggevaagd. Een gefaalde pagina is precies het feit waarop gehandeld moet
+// worden; die mag niet in een flits van een halve seconde verdwijnen.
+export async function countFailedOcrPages(
+  db: AppDb,
+  runId: string,
+): Promise<number> {
+  // distinct op de pagina, niet op de tegel: één A3-pagina is 12 tegels en
+  // "3 pagina's mislukt" is de eenheid die Timo kent.
+  const [row] = (await db
+    .select({ pages: sql<number>`count(distinct ${events.payload}->>'page')` })
+    .from(events)
+    .where(
+      and(
+        eq(events.entity, "import_run"),
+        eq(events.entityId, runId),
+        eq(events.action, "ocr_page_failed"),
+      ),
+    )) as { pages: number }[];
+  return Number(row?.pages ?? 0);
+}
+
 export async function getOcrRunProgress(db: AppDb, runId: string) {
   const run = await getImportRun(db, runId);
   if (!run) return null;
