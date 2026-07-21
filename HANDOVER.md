@@ -532,6 +532,64 @@ kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de n
   voor SQL, de ander camelCase Drizzle-properties voor schrijven, en `category` mapt in
   beide anders. Meten ≠ een merk toestaan te overschrijven.
 
+## Sprint 1.7 — Milieudata: de afstand tot Brink Licht — af 21 jul 2026
+
+Eén gegeven erbij op het merk: `brands.factory_location` (het feit van het mérk) en
+`brands.factory_distance_km` (ónze meting), onder een eigen kopje "Environment" op
+`/admin/brands`. Garantietermijn, energielabel en land van herkomst bestonden al op
+productniveau en zijn niet aangeraakt (G13).
+
+**Correctie op alle eerdere tellingen: het zijn 436 bronimport-merken, niet 437.** Naar
+aanmaakdag: 436 op 2 jul (de import), plus `ZZTEST QA-14` (20 jul) en `ZZTEST QA-15`
+(21 jul). Sprint 1.5 telde QA-14 mee als bronimport-merk. Commentaar en fixtures die nog
+"437" of "405 van de 437" zeggen zijn daarmee verouderd — cosmetisch, bewust niet
+opgeschoond. Meting in `docs/sprint1-7-fase1-probleem.md`.
+
+**De fingerprint-SQL ligt nu letterlijk vast** (zelfde doc). Sprint 1.5 legde alleen de
+véldnamen vast, waardoor de hash `f4deb1efbea17090df1ff94d4b667cff` niet reproduceerbaar
+is. De nieuwe nulmeting is `436 / 9e7695bf4b10ed555b27b5325d736c46` en was vóór én ná de
+migratie identiek.
+
+**Aannames en bewuste grenzen:**
+
+- **Geen geocoding, geen kaartdienst.** De kilometers worden ingetypt. Daarom ook geen
+  herrekenknop: die zou theater zijn.
+- **Geen `factory_distance_basis`-kolom.** Een verhuizing van Brink is een globale
+  gebeurtenis, geen per-rij-gebeurtenis: op dat moment zijn álle niet-lege afstanden
+  verdacht. De werklijst staat als query in `lib/brink.ts`, direct naast het adres dat je
+  dan wijzigt. Voor/ná de verhuizing is af te lezen uit het tijdstip van het event.
+- **Eigen event `brand_environment_changed` met `{from, to}`**, niet een naam erbij in
+  `payload.changed` van `brand_updated`. Reden: `changed` logt namen, geen waarden, en dit
+  is het enige veld met een gedocumenteerd belangenconflict (een merk heeft er belang bij
+  de afstand tot óns adres laag te schatten). Precedent: het lifecycle-event in dezelfde
+  functie, om dezelfde reden.
+- **G16 is hier niet gevolgd, bewust.** Uitbreiden zou via `lib/field-catalog.ts` gaan,
+  maar die catalogus meet productkolommen en beschrijft wat we in het merk-Excel vrágen.
+  Dit is een merkveld dat Brink zelf invult. Bovendien was field-catalog.ts een harde
+  grens (sprint 1.6 zat erin).
+- **Geen schrijfpad in het merkportaal** (dat is 4.B) en **geen handleiding voor Stefan**
+  (dat is 1.8). Geverifieerd: `app/brand/data/page.tsx` heeft nul `<form>` en nul server
+  actions — het invoerkanaal voor merkdata bestaat nog niet. De fabriekslocatie wordt door
+  Brink ingevuld op basis van wat het merk per mail antwoordt.
+
+**Testdata die in productie blijft staan:** `ZZTEST QA-15` heeft nu
+`factory_location = "Bovezzo, Italië"`, `factory_distance_km = 980` — gezet via
+`updateBrand()` om DoD 1 en 3 te bewijzen. Buiten de fingerprint.
+
+**Open eindes / gemeld maar niet gerepareerd:**
+
+- `deleteBrand` (`lib/repo/brands.ts`) kan `{ok:true}` melden zonder DELETE en zonder event
+  als het merk tussen de impact-check en `getBrandForEdit` verdwijnt.
+- `updateBrand` returnt stil bij een verdwenen merk, waarna `updateBrandAction`
+  `{status:"idle"}` geeft — een edit op een verwijderd merk oogt als geslaagd.
+- `components/dossier/pdf-upload.test.tsx:193` is **flaky onder volle suite-belasting**
+  ("Matcher did not succeed in time"): faalde in één volledige run, groen in isolatie (43
+  tests) en groen in een tweede volledige run (872 tests). Timing-gevoelig, niet gerelateerd
+  aan 1.7.
+- De comment in `components/admin/brand-form.tsx` beloofde dat een milieuveld "één regel"
+  in `FIELDS` zou zijn. Dat klopte niet — `FIELDS` kent geen secties en de renderer zet
+  hardcoded `type="text"`. Comment bijgewerkt, `FIELDS` ongemoeid.
+
 ## Sprint 1.4 — End-to-end via een testmerk — af 20 jul 2026
 
 Het weekdoel: bewijzen dat merkdata door de héle keten komt en **zichtbaar wordt in de
