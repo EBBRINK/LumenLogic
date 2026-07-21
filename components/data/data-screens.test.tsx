@@ -236,6 +236,25 @@ test("gepubliceerde run toont geen goed/fout-knoppen meer", async () => {
   expect(page.getByRole("button", { name: "Publish" }).query()).toBeNull();
 });
 
+// Sprint 1.6 (deel B): de "inline"-variant van PriceListExpiryNotice hoort bij de
+// bestaande verlopen-rij (pl1, Occhio) en nergens anders — dit scherm gaat over lijsten,
+// niet over merken, dus bewust geen banner of pil.
+test("prijslijsten: de verlopen rij draagt de gedeelde verloop-waarschuwing met einddatum", async () => {
+  await renderServer(
+    <Screen>
+      <PriceListStatusTable rows={priceLists} />
+    </Screen>,
+  );
+  // Eén regex die de hele waarschuwing-zin matcht — "01-06-2026" komt ook los voor in de
+  // "Valid until"-kolom, dus een losse datum-match zou ambigu zijn.
+  await expect
+    .element(
+      page.getByText(/Occhio delivered prices — the list expired on 01-06-2026/),
+    )
+    .toBeInTheDocument();
+  expect(page.getByText(/extension/i).all()).toHaveLength(1); // alleen pl1 is verlopen
+});
+
 test("evaluatie toont de laatste score en per-regel-diff", async () => {
   await renderServer(
     <Screen>

@@ -26,9 +26,11 @@ import { daysUntil } from "./enrichment";
 import {
   bucketScore,
   measurableFields,
+  scorecardAggregate,
   FIELD_CATALOG,
   type BucketScore,
   type CatalogBucket,
+  type ScorecardAggregate,
 } from "@/lib/field-catalog";
 
 // Prijslijst-indicator voor het overzicht. 'verloopt_binnenkort' volgt dezelfde
@@ -134,8 +136,12 @@ export async function listBrandRelations(
 // ── Compleetheids-aggregatie (stap 4) ────────────────────────────────────────
 // Eén SQL met count(*) filter (where <kolom> is not null) per meetbaar veld,
 // gegenereerd uit measurableFields(). Het prijs-veld (measure.kind "price") zit
-// daar bewust NIET in: dat meten we via EXISTS op prices ⨝ price_lists met
-// valid_until >= current_date — het BEDRAG wordt nooit gelezen (ijzeren regel 2).
+// daar bewust NIET in: dat meten we via een EXISTS op prices ⨝ price_lists —
+// sinds 1.6-A ZONDER de valid_until-voorwaarde. Compleetheid meet AANLEVERING,
+// niet geldigheid: een prijs op een verlopen lijst telt hier gewoon mee.
+// Zichtbaarheid is een aparte as en blijft onverkort bij visible_products
+// (ijzeren regel 3) — deze functie raakt die view niet. Het BEDRAG wordt nooit
+// gelezen (ijzeren regel 2).
 
 export const PRICE_FIELD_KEY = "list_price_excl_vat";
 
@@ -146,6 +152,8 @@ export type BrandCompleteness = {
   // Per veld-key: bij hoeveel producten het veld gevuld is (incl. het prijs-veld).
   filledByField: Record<string, number>;
   buckets: { bucket: CatalogBucket; score: BucketScore }[];
+  // Scorecard-aggregatie (1.6-C): categorie- en niveautotalen, veldgewogen (G12).
+  aggregate: ScorecardAggregate;
 };
 
 // Selectie-fragmenten, gedeeld door getBrandCompleteness en getAllBrandCompleteness
@@ -163,11 +171,13 @@ function completenessSelection(): Record<string, SQL<unknown>> {
     }
     selection[field.key] = sql`count(*) filter (where ${sql.raw(`"${column}"`)} is not null)`;
   }
-  // Prijs: EXISTS op een GELDIGE prijslijst — nooit het bedrag (regel 2).
+  // Prijs: EXISTS op prices ⨝ price_lists — sinds 1.6-A ongeacht valid_until (dit
+  // meet aanlevering, niet geldigheid; de join blijft staan, maar de datum wordt
+  // niet meer als filter gebruikt). Nooit het bedrag (regel 2).
   selection[PRICE_FIELD_KEY] = sql`count(*) filter (where exists (
     select 1 from ${prices} pr
     join ${priceLists} pl on pl.id = pr.price_list_id
-    where pr.product_id = ${sql.raw('"products"."id"')} and pl.valid_until >= current_date
+    where pr.product_id = ${sql.raw('"products"."id"')}
   ))`;
   return selection;
 }
@@ -195,6 +205,7 @@ function toCompleteness(
         bucket,
         score: bucketScore(bucket, filledByField, productCount),
       })),
+    aggregate: scorecardAggregate(filledByField, productCount),
   };
 }
 

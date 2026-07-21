@@ -12,6 +12,7 @@ import { BrandRelationForm } from "@/components/data/brand-relation-form";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { TemplateUploadCard } from "@/components/data/template-upload-card";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
+import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
 import { buildBrandMessage } from "@/lib/brand-message";
 import {
   getBrandCompleteness,
@@ -66,11 +67,12 @@ export default async function MerkrelatieDetailPage({
     .from(priceLists)
     .where(eq(priceLists.brandId, brandId));
   const validUntil = latestList?.validUntil ?? null;
+  const indicator = priceListIndicator(validUntil);
   const message = buildBrandMessage({
     brandName: row.name,
     contactName: row.contactName,
     productCount: completeness.productCount,
-    priceListIndicator: priceListIndicator(validUntil),
+    priceListIndicator: indicator,
     priceListValidUntil: validUntil,
     buckets: completeness.buckets,
   });
@@ -164,12 +166,17 @@ export default async function MerkrelatieDetailPage({
 
       <section>
         <h2 className="mb-3 font-medium">Completeness</h2>
-        <BrandScorecard
-          buckets={completeness.buckets}
-          filledByField={completeness.filledByField}
-          productCount={completeness.productCount}
-          hasProducts={completeness.hasProducts}
-        />
+        {indicator === "verlopen" && (
+          <div className="mb-4">
+            <PriceListExpiryNotice
+              indicator={indicator}
+              validUntil={validUntil}
+              variant="banner"
+              brandName={row.name}
+            />
+          </div>
+        )}
+        <BrandScorecard aggregate={completeness.aggregate} />
       </section>
     </main>
   );

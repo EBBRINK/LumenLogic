@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
 import { cn } from "@/lib/utils";
 
 export type PriceListRow = {
@@ -96,6 +97,22 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
                 >
                   {bucketLabel(r)}
                 </span>
+                {/* Sprint 1.6 (deel B): lichtste variant — dit scherm gaat over lijsten,
+                    niet over merken. Zelfde gedeelde component als de merkschermen, dus
+                    deze regel kan nooit uit de pas gaan lopen met de banner/badge. */}
+                {r.bucket === "verlopen" && (
+                  // whitespace-normal overschrijft TableCell's whitespace-nowrap
+                  // (components/ui/table.tsx) — anders overlapt de tekst de andere
+                  // kolommen in plaats van netjes af te breken.
+                  <div className="mt-1 max-w-xs whitespace-normal text-left">
+                    <PriceListExpiryNotice
+                      indicator="verlopen"
+                      validUntil={r.validUntil}
+                      variant="inline"
+                      brandName={r.brandName ?? undefined}
+                    />
+                  </div>
+                )}
               </TableCell>
             </TableRow>
           ))}

@@ -11,9 +11,20 @@
 //
 // Meetbaarheid: een veld telt alleen mee in de scorecard als het een bestaande
 // products-kolom heeft (measure.kind "column") of via de prijstabel meetbaar is
-// (kind "price" — een EXISTS op prices bij een GELDIGE prijslijst; het bedrag zelf wordt
-// nooit gebruikt, ijzeren regel 2). Alles zonder kolom is kind "none" = grijs
-// "nog niet meetbaar".
+// (kind "price" — een EXISTS op prices, ONGEACHT of de prijslijst nog geldig is; het
+// bedrag zelf wordt nooit gebruikt, ijzeren regel 2). Alles zonder kolom is kind
+// "none" = grijs "nog niet meetbaar".
+//
+// Sinds 1.6-A meet de scorecard AANLEVERING, niet geldigheid: een merk dat prijzen
+// leverde waarvan de lijst inmiddels verlopen is, zakte voorheen naar 0% en las als
+// "heeft ons nooit prijzen gegeven" — waarop je de verkeerde mail stuurt (je hebt een
+// verlenging nodig, geen aanlevering). Zichtbaarheid blijft een aparte as: verlopen =
+// onvindbaar, en dat wordt onverkort afgedwongen door visible_products (ijzeren regel
+// 3), niet hier.
+//
+// Scorecard-indeling (G9/G10): categorie 1 t/m 10 gaat uitsluitend over wat we in het
+// merk-Excel hebben gevraagd — afgeleid uit excelColumns() via templateBuckets(). De
+// 🔒-velden staan in bucket 11 "Internal": zichtbaar, nooit meegewogen.
 //
 // Sinds sprint 1.3-A loopt `measure` gelijk met migratie 0007: élk veld waarvan
 // products de gelijknamige kolom heeft, meet die kolom ook echt. Alleen
@@ -31,7 +42,7 @@ export type Compleetheidsniveau = "must" | "wanna" | "nice";
 
 export type FieldMeasure =
   | { kind: "column"; column: string } // bestaande products-kolom (db/schema.ts)
-  | { kind: "price" } // EXISTS op prices mét geldige prijslijst (nooit het bedrag)
+  | { kind: "price" } // EXISTS op prices, geldig of verlopen (nooit het bedrag)
   | { kind: "none" }; // nog niet meetbaar (grijs in de scorecard)
 
 export type CatalogField = {
@@ -88,15 +99,12 @@ export const FIELD_CATALOG: CatalogBucket[] = [
     labelEn: "Commercial",
     order: 2,
     fields: [
-      // Meetbaar via de prijstabel: bestaat er een prijs op een GELDIGE lijst? Het bedrag
-      // wordt nooit gelezen (regel 2) en "prijs ✓" kan niet naast "lijst verlopen" staan.
+      // Meetbaar via de prijstabel: is er ÜBERHAUPT een prijs aangeleverd? Sinds 1.6-A
+      // telt een prijs op een VERLOPEN lijst ook mee — compleetheid meet aanlevering,
+      // niet geldigheid (zie de kop van dit bestand). Het bedrag wordt nooit gelezen
+      // (regel 2). "Prijs ✓" kan hierdoor bewust náást "lijst verlopen" staan; dat
+      // verschil verklaart PriceListExpiryNotice op de merkschermen.
       { key: "list_price_excl_vat", labelNl: "Brutoprijs excl. btw", labelEn: "Gross list price excl. VAT", niveau: "must", ...extern, instructie: "Bruto adviesprijs excl. btw in euro, bv. 129,50.", instructionEn: "Gross recommended price excl. VAT in euros, e.g. 129.50.", measure: { kind: "price" } },
-      { key: "purchase_price_excl_vat", labelNl: "Inkoopprijs excl. btw", labelEn: "Purchase price excl. VAT", niveau: "wanna", ...intern, instructie: "Intern-commercieel — nooit in het merk-Excel.", instructionEn: "Internal commercial — never in the brand Excel.", measure: NONE },
-      { key: "brand_discount", labelNl: "Merk-korting", labelEn: "Brand discount", niveau: "wanna", ...intern, instructie: "Intern-commercieel — nooit in het merk-Excel.", instructionEn: "Internal commercial — never in the brand Excel.", measure: NONE },
-      { key: "stock", labelNl: "Voorraad", labelEn: "Stock", niveau: "nice", ...intern, instructie: "Intern — nooit in het merk-Excel.", instructionEn: "Internal — never in the brand Excel.", measure: col("stock") },
-      { key: "stock_reserved", labelNl: "Voorraad gereserveerd", labelEn: "Stock reserved", niveau: "nice", ...intern, instructie: "Intern — nooit in het merk-Excel.", instructionEn: "Internal — never in the brand Excel.", measure: col("stock_reserved") },
-      { key: "show_on_web", labelNl: "Tonen op web", labelEn: "Show on web", niveau: "nice", ...intern, instructie: "Interne webvlag — nooit in het merk-Excel.", instructionEn: "Internal web flag — never in the brand Excel.", measure: col("show_on_web") },
-      { key: "show_price_on_web", labelNl: "Prijs tonen op web", labelEn: "Show price on web", niveau: "nice", ...intern, instructie: "Interne webvlag — nooit in het merk-Excel.", instructionEn: "Internal web flag — never in the brand Excel.", measure: col("show_price_on_web") },
     ],
   },
   {
@@ -221,7 +229,34 @@ export const FIELD_CATALOG: CatalogBucket[] = [
       { key: "country_of_origin", labelNl: "Land van herkomst", labelEn: "Country of origin", niveau: "wanna", ...extern, instructie: "Productieland, bv. 'Nederland' of ISO-code 'NL'.", instructionEn: "Country of manufacture, e.g. 'Netherlands' or ISO code 'NL'.", measure: col("country_of_origin") },
     ],
   },
+  {
+    // Bucket 11 (besluit G10, 21 jul): de 🔒-velden die wij zelf bijhouden. Ze stonden
+    // tot 1.6 in 2. Commercie en drukten daar de score, terwijl we ze het merk nooit
+    // gevraagd hébben — een merk mag niet worden aangerekend dat het ónze voorraadstand
+    // niet invulde (G9). Ze worden getoond, niet meegewogen (G11).
+    //
+    // ⚠️ Deze bucket is per definitie het COMPLEMENT van excelColumns(): hij bevat
+    // uitsluitend velden met inExcel:false. Zet hier nooit een 📄-veld neer en geef een
+    // veld hier nooit inExcel:true — templateBuckets() zou het dan in categorie 1-10
+    // trekken en de noemer van de scorecard loopt uit de pas met het merk-Excel.
+    key: "intern",
+    labelNl: "Intern",
+    labelEn: "Internal",
+    order: 11,
+    fields: [
+      { key: "purchase_price_excl_vat", labelNl: "Inkoopprijs excl. btw", labelEn: "Purchase price excl. VAT", niveau: "wanna", ...intern, instructie: "Intern-commercieel — nooit in het merk-Excel.", instructionEn: "Internal commercial — never in the brand Excel.", measure: NONE },
+      { key: "brand_discount", labelNl: "Merk-korting", labelEn: "Brand discount", niveau: "wanna", ...intern, instructie: "Intern-commercieel — nooit in het merk-Excel.", instructionEn: "Internal commercial — never in the brand Excel.", measure: NONE },
+      { key: "stock", labelNl: "Voorraad", labelEn: "Stock", niveau: "nice", ...intern, instructie: "Intern — nooit in het merk-Excel.", instructionEn: "Internal — never in the brand Excel.", measure: col("stock") },
+      { key: "stock_reserved", labelNl: "Voorraad gereserveerd", labelEn: "Stock reserved", niveau: "nice", ...intern, instructie: "Intern — nooit in het merk-Excel.", instructionEn: "Internal — never in the brand Excel.", measure: col("stock_reserved") },
+      { key: "show_on_web", labelNl: "Tonen op web", labelEn: "Show on web", niveau: "nice", ...intern, instructie: "Interne webvlag — nooit in het merk-Excel.", instructionEn: "Internal web flag — never in the brand Excel.", measure: col("show_on_web") },
+      { key: "show_price_on_web", labelNl: "Prijs tonen op web", labelEn: "Show price on web", niveau: "nice", ...intern, instructie: "Interne webvlag — nooit in het merk-Excel.", instructionEn: "Internal web flag — never in the brand Excel.", measure: col("show_price_on_web") },
+    ],
+  },
 ];
+
+// De sleutel van bucket 11. Consumenten die "alles behalve intern" willen, gebruiken
+// templateBuckets() — niet deze constante en zeker geen `order <= 10`.
+export const INTERNAL_BUCKET_KEY = "intern";
 
 // ── Afgeleiden (pure functies) ───────────────────────────────────────────────
 
@@ -235,6 +270,24 @@ export function excelColumns(): { bucket: CatalogBucket; field: CatalogField }[]
         .filter((f) => f.inExcel && !f.internalOnly)
         .map((field) => ({ bucket, field })),
     );
+}
+
+// "Categorie 1 t/m 10" van de scorecard, afgeleid uit excelColumns() (besluit G9).
+// Dit IS de definitie: een categorie hoort erbij zolang hij Excel-kolommen levert.
+// Geen `order <= 10`-drempel en geen tweede veldenlijst — bucket 11 valt er vanzelf
+// buiten omdat hij nul 📄-velden heeft. Verhuist er ooit een veld, dan schuift de
+// noemer van de scorecard automatisch mee met het merk-Excel.
+export function templateBuckets(): { bucket: CatalogBucket; fields: CatalogField[] }[] {
+  const perBucket = new Map<string, { bucket: CatalogBucket; fields: CatalogField[] }>();
+  for (const { bucket, field } of excelColumns()) {
+    let entry = perBucket.get(bucket.key);
+    if (!entry) {
+      entry = { bucket, fields: [] };
+      perBucket.set(bucket.key, entry);
+    }
+    entry.fields.push(field);
+  }
+  return [...perBucket.values()];
 }
 
 // Alle velden die v1 kan meten via een bestaande products-kolom (kind "column").
@@ -293,5 +346,194 @@ export function bucketScore(
     nice: perNiveau("nice"),
     measurableTotal: measurable.length,
     unmeasurable: bucket.fields.length - measurable.length,
+  };
+}
+
+// ── Scorecard-aggregatie (besluiten G9-G12, 21 jul) ──────────────────────────
+// NAAST bucketScore, niet erin: bucketScore kent maar één bucket en kan de totalen
+// dus per definitie niet kennen. bucketScore blijft ongewijzigd de kleur van de
+// mini-scorecard en het merkbericht voeden.
+//
+// G12 — de weging is PER VELD, niet per categorie. Dat is geen detail: Commercie
+// houdt na de verhuizing één veld over en Fotometrie heeft er elf. Zou je de tien
+// categorie-ratio's middelen, dan levert één prijs invullen evenveel op als elf
+// lichtmetingen. Twee valkuilen die hieruit volgen:
+//   • het categoriepercentage is NIET het gemiddelde van must/wanna/nice — die drie
+//     zijn elk al genormaliseerd per niveau, middelen weegt ze opnieuw gelijk;
+//   • een niveautotaal is NIET het gemiddelde van tien categorie-ratio's.
+// Daarom draagt elk resultaat `coverageSum` en `measurableFields` naast `ratio`:
+// wie twee van deze optelt, telt die twéé op en middelt nooit de ratio's.
+
+/** Dekking van één veld binnen een categorie. */
+export type FieldCoverage = {
+  key: string;
+  labelEn: string;
+  niveau: Compleetheidsniveau;
+  internalOnly: boolean;
+  /** measure.kind !== "none" — false = grijs "not measurable yet" in de UI */
+  measurable: boolean;
+  /** aantal producten waarbij het veld gevuld is, geklemd op productCount */
+  filled: number;
+  /** filled / productCount. null ⇔ !measurable (zelfde conventie als brand-scorecard.tsx). */
+  ratio: number | null;
+};
+
+/** Veldgewogen dekking van één compleetheidsniveau over een veldverzameling. */
+export type NiveauTotaal = {
+  niveau: Compleetheidsniveau;
+  /** meetbare velden van dit niveau in de verzameling — de noemer */
+  measurableFields: number;
+  /** Σ (filled / productCount) over die velden — optel dit, niet `ratio` */
+  coverageSum: number;
+  /** coverageSum / measurableFields; 0 als measurableFields === 0 of productCount === 0 */
+  ratio: number;
+  /** velden die bij ÁLLE producten gevuld zijn (zelfde begrip als NiveauScore.filled) */
+  fullyFilledFields: number;
+};
+
+/** Eén categorie van de scorecard. Categorie 11 heeft inTotals === false (G11). */
+export type CategorieScore = {
+  bucketKey: string;
+  order: number;
+  labelEn: string;
+  /** true ⇔ de categorie levert Excel-kolommen, dus telt mee in `totals` */
+  inTotals: boolean;
+  /** in catalogusvolgorde; voor 1-10 exact de excelColumns()-velden van die bucket */
+  fields: FieldCoverage[];
+  measurableFields: number;
+  unmeasurableFields: number;
+  coverageSum: number;
+  /** coverageSum / measurableFields; 0 als measurableFields === 0 of productCount === 0 */
+  ratio: number;
+  perNiveau: Record<Compleetheidsniveau, NiveauTotaal>;
+};
+
+/** Volledig aggregatieresultaat voor de scorecard-weergave. */
+export type ScorecardAggregate = {
+  productCount: number;
+  hasProducts: boolean;
+  /** op `order`, inclusief categorie 11 */
+  categories: CategorieScore[];
+  /** UITSLUITEND over categorieën met inTotals === true (G11) */
+  totals: Record<Compleetheidsniveau, NiveauTotaal>;
+  /** = excelColumns().length — DoD 4c zet dit naast scoredFieldCount */
+  templateFieldCount: number;
+  /** Σ fields.length over de inTotals-categorieën; MOET templateFieldCount evenaren */
+  scoredFieldCount: number;
+};
+
+// Pure functie, geen db-import: `filledByField`/`productCount` komen al uit
+// completenessSelection() (brand-relations.ts) — dit is uitsluitend rekenwerk.
+export function scorecardAggregate(
+  filledByField: Record<string, number>,
+  productCount: number,
+): ScorecardAggregate {
+  const hasProducts = productCount > 0;
+
+  const fieldCoverage = (field: CatalogField): FieldCoverage => {
+    if (field.measure.kind === "none") {
+      return {
+        key: field.key,
+        labelEn: field.labelEn,
+        niveau: field.niveau,
+        internalOnly: field.internalOnly,
+        measurable: false,
+        filled: 0,
+        ratio: null,
+      };
+    }
+    const filled = Math.min(filledByField[field.key] ?? 0, productCount);
+    return {
+      key: field.key,
+      labelEn: field.labelEn,
+      niveau: field.niveau,
+      internalOnly: field.internalOnly,
+      measurable: true,
+      filled,
+      ratio: productCount > 0 ? filled / productCount : 0,
+    };
+  };
+
+  // Veldgewogen dekking van één niveau over een gegeven veldverzameling (G12): som
+  // van de individuele veld-ratio's, gedeeld door hun aantal — nooit het gemiddelde
+  // van al genormaliseerde deelratio's (categorie- of niveauratio's).
+  const niveauTotaal = (
+    niveau: Compleetheidsniveau,
+    fields: FieldCoverage[],
+  ): NiveauTotaal => {
+    const relevant = fields.filter((f) => f.niveau === niveau && f.measurable);
+    let coverageSum = 0;
+    let fullyFilledFields = 0;
+    for (const f of relevant) {
+      coverageSum += f.ratio ?? 0;
+      if (hasProducts && f.filled === productCount) fullyFilledFields++;
+    }
+    const measurableFieldsCount = relevant.length;
+    return {
+      niveau,
+      measurableFields: measurableFieldsCount,
+      coverageSum,
+      ratio: measurableFieldsCount === 0 ? 0 : coverageSum / measurableFieldsCount,
+      fullyFilledFields,
+    };
+  };
+
+  const categorieVan = (
+    bucket: CatalogBucket,
+    fields: CatalogField[],
+    inTotals: boolean,
+  ): CategorieScore => {
+    const fieldCoverages = fields.map(fieldCoverage);
+    const measurable = fieldCoverages.filter((f) => f.measurable);
+    const coverageSum = measurable.reduce((sum, f) => sum + (f.ratio ?? 0), 0);
+    const measurableCount = measurable.length;
+    return {
+      bucketKey: bucket.key,
+      order: bucket.order,
+      labelEn: bucket.labelEn,
+      inTotals,
+      fields: fieldCoverages,
+      measurableFields: measurableCount,
+      unmeasurableFields: fieldCoverages.length - measurableCount,
+      coverageSum,
+      ratio: measurableCount === 0 ? 0 : coverageSum / measurableCount,
+      perNiveau: {
+        must: niveauTotaal("must", fieldCoverages),
+        wanna: niveauTotaal("wanna", fieldCoverages),
+        nice: niveauTotaal("nice", fieldCoverages),
+      },
+    };
+  };
+
+  // Categorie 1-10: uit templateBuckets(), dus per constructie exact excelColumns().
+  const categories: CategorieScore[] = templateBuckets().map(({ bucket, fields }) =>
+    categorieVan(bucket, fields, true),
+  );
+
+  // Categorie 11: rechtstreeks uit FIELD_CATALOG, nooit meegeteld in totals (G11).
+  const internalBucket = FIELD_CATALOG.find((b) => b.key === INTERNAL_BUCKET_KEY)!;
+  categories.push(categorieVan(internalBucket, internalBucket.fields, false));
+  categories.sort((a, b) => a.order - b.order);
+
+  // Totalen (G11): uitsluitend over categorie 1-10 SAMEN — niet het gemiddelde van
+  // de tien categorie-ratio's (zie niveauTotaal hierboven).
+  const totalsFields = categories.filter((c) => c.inTotals).flatMap((c) => c.fields);
+  const totals: Record<Compleetheidsniveau, NiveauTotaal> = {
+    must: niveauTotaal("must", totalsFields),
+    wanna: niveauTotaal("wanna", totalsFields),
+    nice: niveauTotaal("nice", totalsFields),
+  };
+
+  const scoredFieldCount = categories
+    .filter((c) => c.inTotals)
+    .reduce((sum, c) => sum + c.fields.length, 0);
+
+  return {
+    productCount,
+    hasProducts,
+    categories,
+    totals,
+    templateFieldCount: excelColumns().length,
+    scoredFieldCount,
   };
 }

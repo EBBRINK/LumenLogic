@@ -12,6 +12,7 @@ import {
   brands,
   memberships,
   organizations,
+  priceLists,
   products,
   type BrandLifecycle,
 } from "@/db/schema";
@@ -31,6 +32,9 @@ export type BrandWithTier = {
   lifecycle: BrandLifecycle;
   disclosureTier: DisclosureTier;
   productCount: number;
+  // Sprint 1.6 (deel B): voedt de PriceListExpiryNotice-badge op dit scherm. Nieuwste
+  // prijslijst-einddatum, geldig of niet — dat onderscheid maakt priceListIndicator().
+  priceListValidUntil: string | null;
 };
 
 // Alle merken met hun disclosure-tier + aantal producten (§3.16 merkenoverzicht). Left join
@@ -55,6 +59,21 @@ export async function listBrandsWithTier(
   }
   if (opts?.lifecycle) filters.push(eq(brands.lifecycle, opts.lifecycle));
 
+  // Prijslijst-einddatum per merk, VOORAF geaggregeerd naar één rij per merk (max
+  // valid_until) — hetzelfde patroon als listBrandRelations in
+  // lib/repo/brand-relations.ts (~regel 80-87). ⚠️ Een kale join op price_lists zou hier
+  // fan-outen: deze query heeft al een leftJoin op products + groupBy voor productCount,
+  // en een tweede kale join vermenigvuldigt dat kruisproduct — productCount klopt dan
+  // stil niet meer. Zie de regressietest hieronder in admin.test.ts.
+  const latestPriceList = db
+    .select({
+      brandId: priceLists.brandId,
+      validUntil: sql<string>`max(${priceLists.validUntil})`.as("valid_until"),
+    })
+    .from(priceLists)
+    .groupBy(priceLists.brandId)
+    .as("latest_price_list");
+
   const rows = await db
     .select({
       id: brands.id,
@@ -63,9 +82,11 @@ export async function listBrandsWithTier(
       lifecycle: brands.lifecycle,
       disclosureTier: brands.disclosureTier,
       productCount: sql<number>`count(${products.id})`.mapWith(Number),
+      priceListValidUntil: latestPriceList.validUntil,
     })
     .from(brands)
     .leftJoin(products, eq(products.brandId, brands.id))
+    .leftJoin(latestPriceList, eq(latestPriceList.brandId, brands.id))
     .where(filters.length > 0 ? and(...filters) : undefined)
     .groupBy(
       brands.id,
@@ -73,6 +94,7 @@ export async function listBrandsWithTier(
       brands.brandCode,
       brands.lifecycle,
       brands.disclosureTier,
+      latestPriceList.validUntil,
     )
     .orderBy(asc(brands.name));
   return rows.map((r) => ({
@@ -82,6 +104,7 @@ export async function listBrandsWithTier(
     lifecycle: r.lifecycle as BrandLifecycle,
     disclosureTier: r.disclosureTier as DisclosureTier,
     productCount: r.productCount,
+    priceListValidUntil: r.priceListValidUntil ?? null,
   }));
 }
 

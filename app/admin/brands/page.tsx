@@ -51,6 +51,7 @@ export default async function AdminMerkenPage({
       lifecycle: b.lifecycle,
       disclosureTier: b.disclosureTier,
       productCount: b.productCount,
+      priceListValidUntil: b.priceListValidUntil,
       overrides: await listBrandFieldOverrides(db, b.id),
     })),
   );

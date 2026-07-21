@@ -220,16 +220,72 @@ test("regel 2: het prijsbedrag wijzigen verandert de compleetheid niet", async (
   expect(after).toEqual(before);
 });
 
-test("prijs-EXISTS respecteert valid_until: verlopen lijst telt niet als prijs", async () => {
+// 1.6-A, BEWUSTE CONTRACTOMKERING: dit was tot 1.6 "prijs-EXISTS respecteert
+// valid_until: verlopen lijst telt niet als prijs" en verwachtte ratio 0. Die naam
+// beschreef het OUDE gedrag; hem laten staan terwijl de assertie omdraait zou een
+// leugen zijn voor de volgende lezer (zie sprint1-6-briefing.md val 2). Zelfde seed
+// (validUntil "2025-01-01") als de oude test — alleen de naam en de verwachting
+// zijn omgekeerd: compleetheid meet AANLEVERING, niet geldigheid. Zichtbaarheid
+// (ijzeren regel 3) is een aparte as; zie de test hieronder.
+test("1.6-A: prijs op een verlopen lijst telt WEL mee in de compleetheid", async () => {
   const db = await createTestDb();
   const { brandId } = await seedBrandProduct(db, {
     brand: "Merk Verlopen Lijst", name: "P1",
     validFrom: "2024-01-01", validUntil: "2025-01-01",
   });
   const c = await getBrandCompleteness(db, brandId);
-  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(0);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(1);
   const commercie = c.buckets.find((b) => b.bucket.key === "commercie")!;
-  expect(commercie.score.must.ratio).toBe(0);
+  expect(commercie.score.must.ratio).toBe(1);
+});
+
+// DoD 2: de andere as van dezelfde asymmetrie. Compleetheid gaat nu omhoog voor dit
+// merk, maar de catalogus (visible_products, ijzeren regel 3) blijft leeg — de
+// verlopen lijst maakt het product nog altijd onvindbaar. Dat bewijst dat de twee
+// assen ontkoppeld zijn: compleetheid = aanlevering, zichtbaarheid = geldigheid.
+test("DoD 2: verlopen lijst — compleetheid telt de prijs, visible_products blijft leeg", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Merk Verlopen Zichtbaarheid", name: "P1",
+    validFrom: "2024-01-01", validUntil: "2025-01-01",
+  });
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(1); // compleetheid: prijs geleverd
+
+  const visibleRes = await db.execute(
+    sql`select count(*) as count from visible_products where brand_id = ${brandId}`,
+  );
+  const visibleRows = (
+    Array.isArray(visibleRes) ? visibleRes : (visibleRes as { rows?: unknown[] }).rows ?? []
+  ) as { count: string | number }[];
+  expect(Number(visibleRows[0].count)).toBe(0); // zichtbaarheid: onverkort onvindbaar
+});
+
+// DoD 3: regressiecheck. Twee merken met identieke veldvulling, alleen het merk met
+// de verlopen lijst is ná 1.6-A anders — en wel gelijk aan het merk met de geldige
+// lijst. BrandCompleteness moet dus identiek zijn op brandId (en aggregate.productCount
+// blijft ongemoeid, die is per merk toch al gelijk) na.
+test("DoD 3: merk met verlopen lijst en merk met geldige lijst geven identieke compleetheid", async () => {
+  const db = await createTestDb();
+  const geldig = await seedBrandProduct(db, {
+    brand: "Merk Regressie Geldig", name: "P1",
+    supplierArticleCode: "R-1", categoryPath: "Binnen > Downlights", kelvin: 3000,
+    validFrom: "2026-01-01", validUntil: "2999-12-31",
+  });
+  const verlopen = await seedBrandProduct(db, {
+    brand: "Merk Regressie Verlopen", name: "P1",
+    supplierArticleCode: "R-1", categoryPath: "Binnen > Downlights", kelvin: 3000,
+    validFrom: "2024-01-01", validUntil: "2025-01-01",
+  });
+
+  const cGeldig = await getBrandCompleteness(db, geldig.brandId);
+  const cVerlopen = await getBrandCompleteness(db, verlopen.brandId);
+
+  const zonderBrandId = (c: typeof cGeldig) => {
+    const { brandId: _brandId, ...rest } = c;
+    return rest;
+  };
+  expect(zonderBrandId(cVerlopen)).toEqual(zonderBrandId(cGeldig));
 });
 
 test("getBrandCompleteness en getAllBrandCompleteness geven identieke cijfers", async () => {
@@ -256,4 +312,24 @@ test("merk zonder producten: hasProducts=false (UI toont n.v.t.) en géén map-e
 
   const all = await getAllBrandCompleteness(db);
   expect(all.has(kaalId)).toBe(false);
+});
+
+// DoD 4e (G11), op DB-niveau: `stock` is een 🔒-veld in bucket 11 en telt niet mee
+// in categorie 1-10 — de aggregate.totals mogen dus niet bewegen als het merk zijn
+// eigen voorraadstand invult. bucketScore/buckets (het bevroren, per-bucket contract)
+// veranderen uiteraard wél op bucket "intern" zelf; dat toetst deze test bewust niet.
+test("DoD 4e (DB-niveau): stock invullen laat aggregate.totals ongemoeid", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Merk Voorraad", name: "P1", supplierArticleCode: "V-1", kelvin: 3000,
+  });
+  const before = await getBrandCompleteness(db, brandId);
+
+  await db.execute(sql`update products set stock = 5 where id = ${productId}`);
+
+  const after = await getBrandCompleteness(db, brandId);
+  expect(after.aggregate.totals).toEqual(before.aggregate.totals);
+  expect(after.aggregate.scoredFieldCount).toBe(before.aggregate.scoredFieldCount);
+  // Ter controle: het cijfer verandert wél, alleen in bucket 11 zelf.
+  expect(after.filledByField.stock).toBe(1);
 });

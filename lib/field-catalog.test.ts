@@ -7,15 +7,21 @@ import { products } from "@/db/schema";
 import {
   FIELD_CATALOG,
   GEEN_REACTIE_DAGEN,
+  INTERNAL_BUCKET_KEY,
   bucketScore,
   excelColumns,
   measurableFields,
+  scorecardAggregate,
+  templateBuckets,
 } from "@/lib/field-catalog";
 
-test("catalog: 10 buckets, oplopende order, unieke veld-keys", () => {
-  expect(FIELD_CATALOG).toHaveLength(10);
+// 11 sinds 1.6-C: de zes 🔒-velden verhuisden uit 2. Commercie naar de nieuwe bucket
+// "11. Internal" (besluit G10). Geen veld is toegevoegd of verwijderd — de keys-set
+// hieronder is per constructie ongewijzigd; alleen hun bucket is anders.
+test("catalog: 11 buckets, oplopende order, unieke veld-keys", () => {
+  expect(FIELD_CATALOG).toHaveLength(11);
   expect(FIELD_CATALOG.map((b) => b.order).sort((a, b) => a - b)).toEqual([
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
   ]);
   const keys = FIELD_CATALOG.flatMap((b) => b.fields.map((f) => f.key));
   expect(new Set(keys).size).toBe(keys.length);
@@ -154,4 +160,169 @@ test("bucketScore: alleen nice gevuld → must/wanna 0, nice 1; deels gevuld = e
   const partial = bucketScore(bucket, { height_cm: 5 }, 10);
   expect(partial.wanna.ratio).toBeCloseTo(5 / 10 / 4, 10);
   expect(partial.wanna.filled).toBe(0);
+});
+
+// ── DoD 4c: de afbakening van bucket 11 t.o.v. categorie 1-10 (besluiten G9/G10) ──
+
+test("DoD 4c: categorie 1-10 = excelColumns() exact; bucket 11 = precies de zes interne velden, nergens anders", () => {
+  const templateKeys = templateBuckets().flatMap((b) => b.fields.map((f) => f.key));
+  const excelKeys = excelColumns().map(({ field }) => field.key);
+  expect(templateKeys).toEqual(excelKeys); // zelfde velden, zelfde volgorde
+  expect(templateKeys.length).toBe(66); // = excelColumns().length, DoD 4c
+
+  const internalBucket = FIELD_CATALOG.find((b) => b.key === INTERNAL_BUCKET_KEY)!;
+  expect(internalBucket.fields.map((f) => f.key)).toEqual([
+    "purchase_price_excl_vat",
+    "brand_discount",
+    "stock",
+    "stock_reserved",
+    "show_on_web",
+    "show_price_on_web",
+  ]);
+
+  // Geen internalOnly-veld buiten bucket 11.
+  for (const bucket of FIELD_CATALOG) {
+    if (bucket.key === INTERNAL_BUCKET_KEY) continue;
+    for (const f of bucket.fields) {
+      expect(f.internalOnly, `${bucket.key}.${f.key}`).toBe(false);
+    }
+  }
+
+  // templateBuckets() bevat bucket 11 niet — hij levert nul 📄-velden.
+  expect(templateBuckets().some((b) => b.bucket.key === INTERNAL_BUCKET_KEY)).toBe(false);
+});
+
+// ── DoD 4d/4e: scorecardAggregate op de ZZTEST QA-15-fixture (21 jul, live gemeten) ──
+//
+// 3 producten, ongelijk gevuld (zie FASE1-BEVINDINGEN §5):
+//   supplier_article_code 3, ean_code 3, name_en 3, category 3 (alle bucket 1)
+//   sdcm 3, ugr 2 (bucket 6 fotometrie) · ik_rating 1 (bucket 8) · url_datasheet 3
+//   (bucket 9) · list_price_excl_vat 2 (bucket 2 commercie) · verder alles 0.
+const QA15_PRODUCT_COUNT = 3;
+const QA15_FILLED: Record<string, number> = {
+  supplier_article_code: 3,
+  ean_code: 3,
+  name_en: 3,
+  category: 3,
+  sdcm: 3,
+  ugr: 2,
+  ik_rating: 1,
+  url_datasheet: 3,
+  list_price_excl_vat: 2,
+};
+
+test("scorecardAggregate: QA-15-fixture met de hand nagerekend (categorieën + totalen)", () => {
+  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const byKey = Object.fromEntries(agg.categories.map((c) => [c.bucketKey, c]));
+
+  // 1. Basis & identiteit (8 velden: must sac/name_en/category, wanna description_en/
+  //    etim_class, nice ean_code/family/designer). Gevuld: sac 3/3, ean 3/3, name_en
+  //    3/3, category 3/3 → coverageSum = 1+1+1+1 = 4, over 8 velden → 0,5.
+  expect(byKey.basis_identiteit.coverageSum).toBeCloseTo(4, 10);
+  expect(byKey.basis_identiteit.measurableFields).toBe(8);
+  expect(byKey.basis_identiteit.ratio).toBeCloseTo(0.5, 10);
+
+  // 2. Commercie (1 veld, must, na de verhuizing): list_price_excl_vat 2/3.
+  expect(byKey.commercie.measurableFields).toBe(1);
+  expect(byKey.commercie.ratio).toBeCloseTo(2 / 3, 10);
+
+  // 6. Fotometrie (11 velden, geen must): sdcm 3/3=1, ugr 2/3 → coverageSum = 1 + 2/3
+  //    = 5/3, over 11 velden → 5/33 ≈ 0,1515.
+  expect(byKey.fotometrie.coverageSum).toBeCloseTo(5 / 3, 10);
+  expect(byKey.fotometrie.measurableFields).toBe(11);
+  expect(byKey.fotometrie.ratio).toBeCloseTo(5 / 33, 10);
+
+  // 8. Bescherming & conformiteit (8 velden): ik_rating 1/3, coverageSum = 1/3, over
+  //    8 velden → 1/24 ≈ 0,0417.
+  expect(byKey.bescherming_conformiteit.coverageSum).toBeCloseTo(1 / 3, 10);
+  expect(byKey.bescherming_conformiteit.ratio).toBeCloseTo(1 / 24, 10);
+
+  // 9. Documentatie/links (5 velden): url_datasheet 3/3=1, coverageSum=1, over 5 → 0,2.
+  expect(byKey.documentatie_links.coverageSum).toBeCloseTo(1, 10);
+  expect(byKey.documentatie_links.ratio).toBeCloseTo(0.2, 10);
+
+  // Ongewijzigde categorieën (3, 4, 5, 7, 10): niets gevuld → ratio 0.
+  for (const key of ["afmetingen", "uiterlijk", "lichtbron_fitting", "elektrisch_driver", "duurzaamheid_milieu"]) {
+    expect(byKey[key].ratio, key).toBe(0);
+    expect(byKey[key].coverageSum, key).toBe(0);
+  }
+
+  // Drie totalen over categorie 1-10 SAMEN (G11), niet het gemiddelde van tien
+  // categorie-ratio's:
+  //   must:  velden = sac/name_en/category (bucket 1) + list_price (bucket 2) = 4;
+  //          coverageSum = 1+1+1 + 2/3 = 11/3 → ratio 11/12 ≈ 0,9167.
+  //   wanna: 43 velden totaal; coverageSum = sdcm(1) + ugr(2/3) + ik_rating(1/3) +
+  //          url_datasheet(1) = 3 → ratio 3/43 ≈ 0,0698.
+  //   nice:  19 velden totaal; coverageSum = ean_code(1) = 1 → ratio 1/19 ≈ 0,0526.
+  expect(agg.totals.must.measurableFields).toBe(4);
+  expect(agg.totals.must.coverageSum).toBeCloseTo(11 / 3, 10);
+  expect(agg.totals.must.ratio).toBeCloseTo(11 / 12, 10);
+  expect(agg.totals.wanna.measurableFields).toBe(43);
+  expect(agg.totals.wanna.coverageSum).toBeCloseTo(3, 10);
+  expect(agg.totals.wanna.ratio).toBeCloseTo(3 / 43, 10);
+  expect(agg.totals.nice.measurableFields).toBe(19);
+  expect(agg.totals.nice.coverageSum).toBeCloseTo(1, 10);
+  expect(agg.totals.nice.ratio).toBeCloseTo(1 / 19, 10);
+
+  // DoD 4c naast elkaar: template vs. gescoord.
+  expect(agg.templateFieldCount).toBe(66);
+  expect(agg.scoredFieldCount).toBe(66);
+  expect(agg.scoredFieldCount).toBe(agg.templateFieldCount);
+
+  // Categorie 11 (Internal) is aanwezig maar telt niet mee: alles 0 in deze fixture,
+  // en inTotals is false.
+  const internal = byKey[INTERNAL_BUCKET_KEY];
+  expect(internal.inTotals).toBe(false);
+  expect(internal.order).toBe(11);
+});
+
+test("scorecardAggregate: 0 producten → alle ratio's en coverageSums 0, veldentelling blijft staan", () => {
+  const agg = scorecardAggregate({}, 0);
+  expect(agg.hasProducts).toBe(false);
+  for (const c of agg.categories) {
+    expect(c.ratio, c.bucketKey).toBe(0);
+    expect(c.coverageSum, c.bucketKey).toBe(0);
+    for (const f of c.fields) {
+      if (f.measurable) expect(f.ratio, f.key).toBe(0);
+      else expect(f.ratio, f.key).toBeNull();
+    }
+  }
+  expect(agg.totals.must.ratio).toBe(0);
+  expect(agg.totals.wanna.ratio).toBe(0);
+  expect(agg.totals.nice.ratio).toBe(0);
+  expect(agg.totals.must.coverageSum).toBe(0);
+  // De veldentelling zelf is geen dekking — die blijft ongeacht productCount.
+  expect(agg.totals.must.measurableFields).toBe(4);
+  expect(agg.templateFieldCount).toBe(66);
+  expect(agg.scoredFieldCount).toBe(66);
+});
+
+test("ANTI-VAL (G12): totals.must.ratio is NIET het gemiddelde van de tien categorie-must-ratio's", () => {
+  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const categorieRatiosMust = agg.categories
+    .filter((c) => c.inTotals)
+    .map((c) => c.perNiveau.must.ratio);
+  expect(categorieRatiosMust).toHaveLength(10);
+  const naiefGemiddelde =
+    categorieRatiosMust.reduce((a, b) => a + b, 0) / categorieRatiosMust.length;
+  // Naief (fout, categoriegewogen): (1 + 2/3 + 0×8) / 10 = 1/6 ≈ 0,1667.
+  expect(naiefGemiddelde).toBeCloseTo(1 / 6, 10);
+  // Correct (veldgewogen, G12): 11/12 ≈ 0,9167 — een heel ander getal.
+  expect(agg.totals.must.ratio).toBeCloseTo(11 / 12, 10);
+  expect(agg.totals.must.ratio).not.toBeCloseTo(naiefGemiddelde, 2);
+});
+
+test("G11: een intern veld (bucket 11) vullen verandert totals en scoredFieldCount NIET", () => {
+  const zonder = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const met = scorecardAggregate(
+    { ...QA15_FILLED, stock: 3, show_on_web: 2 },
+    QA15_PRODUCT_COUNT,
+  );
+  expect(met.totals).toEqual(zonder.totals);
+  expect(met.scoredFieldCount).toBe(zonder.scoredFieldCount);
+  expect(met.templateFieldCount).toBe(zonder.templateFieldCount);
+  // Ter controle: bucket 11 zelf verandert wél.
+  const internalZonder = zonder.categories.find((c) => c.bucketKey === INTERNAL_BUCKET_KEY)!;
+  const internalMet = met.categories.find((c) => c.bucketKey === INTERNAL_BUCKET_KEY)!;
+  expect(internalMet.coverageSum).toBeGreaterThan(internalZonder.coverageSum);
 });

@@ -3,7 +3,7 @@
 // gebruikersoverzicht over orgs. Draait op de PGlite-testdatabase (migraties t/m 0005).
 import { expect, test } from "vitest";
 import { createTestDb, seedBrandProduct, addProductToBrand } from "@/db/test-db";
-import { brandUploads } from "@/db/schema";
+import { brandUploads, priceLists } from "@/db/schema";
 import { addMembership, createOrganization } from "@/lib/repo/orgs";
 import { getBrandFieldOverrides } from "@/lib/repo/disclosure";
 import {
@@ -38,6 +38,39 @@ test("merken: tier round-trip en productentelling", async () => {
   await setBrandTier(db, brandId, "tier3", "timo");
   brandsList = await listBrandsWithTier(db);
   expect(brandsList.find((b) => b.id === brandId)?.disclosureTier).toBe("tier3");
+});
+
+// Sprint 1.6 (deel B): listBrandsWithTier() kreeg een tweede leftJoin voor de
+// prijslijst-einddatum. Die query had al een leftJoin op products + groupBy voor
+// productCount — een kale tweede join op price_lists zou het kruisproduct tellen
+// (2 producten × 2 prijslijsten = productCount 4). Dit legt vast dat de VOORAF
+// geaggregeerde subquery (max(valid_until) per merk) dat niet doet.
+test("regressie: een merk met twee prijslijsten laat productCount niet fan-outen", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Regressie BV",
+    name: "Product A",
+    validUntil: "2999-12-31",
+  });
+  await addProductToBrand(db, { brandId, priceListId, name: "Product B" });
+  // Tweede, oudere (VERVANGEN) prijslijst voor hetzelfde merk — dit is precies de
+  // fan-out-val voor een kale join op price_lists. replacedAt moet gezet zijn: het
+  // schema staat maar één ACTIEVE prijslijst per merk toe
+  // (price_lists_brand_active_uniq, db/schema.ts ~regel 374-379).
+  await db.insert(priceLists).values({
+    brandId,
+    name: "Prijslijst Regressie BV (oud)",
+    validFrom: "2020-01-01",
+    validUntil: "2021-01-01",
+    replacedAt: new Date("2026-01-01"),
+  });
+
+  const rows = await listBrandsWithTier(db);
+  const brand = rows.find((b) => b.id === brandId);
+  expect(brand?.productCount).toBe(2); // niet 4
+  // De nieuwste einddatum van de twee lijsten, niet de oudste en geen duplicaat-rij.
+  expect(brand?.priceListValidUntil).toBe("2999-12-31");
+  expect(rows.filter((b) => b.id === brandId)).toHaveLength(1);
 });
 
 test("per-veld-zichtbaarheid schrijft door naar de disclosure-bron (J-04)", async () => {

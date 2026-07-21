@@ -13,7 +13,137 @@ import { DataCards } from "./data-cards";
 import { blokKleur, type BucketBlok } from "./mini-scorecard";
 import { BrandRelationForm } from "./brand-relation-form";
 import { BrandScorecard } from "./brand-scorecard";
-import { bucketScore, FIELD_CATALOG } from "@/lib/field-catalog";
+import { PriceListExpiryNotice } from "./price-list-expiry-notice";
+import {
+  FIELD_CATALOG,
+  INTERNAL_BUCKET_KEY,
+  type CategorieScore,
+  type Compleetheidsniveau,
+  type FieldCoverage,
+  type NiveauTotaal,
+  type ScorecardAggregate,
+} from "@/lib/field-catalog";
+
+// Bouwt een ScorecardAggregate-fixture rechtstreeks uit FIELD_CATALOG, volgens dezelfde
+// regels als scorecardAggregate() straks toepast (G9-G12: categorie 1-10 = excelColumns(),
+// categorie 11 apart en niet meegewogen, per-veld gewogen — nooit per categorie gemiddeld).
+// Puur voor deze RSC-tests: geen aanroep naar lib/repo/brand-relations.ts, dat blijft van
+// agent 1 (rekenkant).
+const NIVEAUS: Compleetheidsniveau[] = ["must", "wanna", "nice"];
+
+function niveauTotaal(
+  fields: FieldCoverage[],
+  niveau: Compleetheidsniveau,
+): NiveauTotaal {
+  const relevant = fields.filter((f) => f.niveau === niveau && f.measurable);
+  const measurableFields = relevant.length;
+  const coverageSum = relevant.reduce((sum, f) => sum + (f.ratio ?? 0), 0);
+  const fullyFilledFields = relevant.filter((f) => f.ratio === 1).length;
+  return {
+    niveau,
+    measurableFields,
+    coverageSum,
+    ratio: measurableFields > 0 ? coverageSum / measurableFields : 0,
+    fullyFilledFields,
+  };
+}
+
+function fixtureAggregate(
+  filledByField: Record<string, number>,
+  productCount: number,
+): ScorecardAggregate {
+  const categories: CategorieScore[] = [...FIELD_CATALOG]
+    .sort((a, b) => a.order - b.order)
+    .map((bucket) => {
+      const inTotals = bucket.key !== INTERNAL_BUCKET_KEY;
+      // Categorie 1-10 = uitsluitend de Excel-velden van die bucket (G9); categorie 11
+      // is per definitie het complement en heeft er dus geen te filteren.
+      const bucketFields = inTotals
+        ? bucket.fields.filter((f) => f.inExcel && !f.internalOnly)
+        : bucket.fields;
+      const fields: FieldCoverage[] = bucketFields.map((f) => {
+        const measurable = f.measure.kind !== "none";
+        const filled = Math.min(filledByField[f.key] ?? 0, productCount);
+        const ratio = measurable
+          ? productCount > 0
+            ? filled / productCount
+            : 0
+          : null;
+        return {
+          key: f.key,
+          labelEn: f.labelEn,
+          niveau: f.niveau,
+          internalOnly: f.internalOnly,
+          measurable,
+          filled,
+          ratio,
+        };
+      });
+      const perNiveau = Object.fromEntries(
+        NIVEAUS.map((n) => [n, niveauTotaal(fields, n)]),
+      ) as Record<Compleetheidsniveau, NiveauTotaal>;
+      const measurableFields = fields.filter((f) => f.measurable).length;
+      const unmeasurableFields = fields.length - measurableFields;
+      const coverageSum = NIVEAUS.reduce(
+        (sum, n) => sum + perNiveau[n].coverageSum,
+        0,
+      );
+      return {
+        bucketKey: bucket.key,
+        order: bucket.order,
+        labelEn: bucket.labelEn,
+        inTotals,
+        fields,
+        measurableFields,
+        unmeasurableFields,
+        coverageSum,
+        ratio: measurableFields > 0 ? coverageSum / measurableFields : 0,
+        perNiveau,
+      };
+    });
+
+  const templateCategories = categories.filter((c) => c.inTotals);
+  const totals = Object.fromEntries(
+    NIVEAUS.map((n) => {
+      const measurableFields = templateCategories.reduce(
+        (sum, c) => sum + c.perNiveau[n].measurableFields,
+        0,
+      );
+      const coverageSum = templateCategories.reduce(
+        (sum, c) => sum + c.perNiveau[n].coverageSum,
+        0,
+      );
+      const fullyFilledFields = templateCategories.reduce(
+        (sum, c) => sum + c.perNiveau[n].fullyFilledFields,
+        0,
+      );
+      return [
+        n,
+        {
+          niveau: n,
+          measurableFields,
+          coverageSum,
+          ratio: measurableFields > 0 ? coverageSum / measurableFields : 0,
+          fullyFilledFields,
+        },
+      ];
+    }),
+  ) as Record<Compleetheidsniveau, NiveauTotaal>;
+
+  const scoredFieldCount = templateCategories.reduce(
+    (sum, c) => sum + c.fields.length,
+    0,
+  );
+
+  return {
+    productCount,
+    hasProducts: productCount > 0,
+    categories,
+    totals,
+    templateFieldCount: scoredFieldCount,
+    scoredFieldCount,
+  };
+}
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -176,9 +306,7 @@ const filledByField: Record<string, number> = {
   cri: 1,
   color_1: 1,
 };
-const detailBuckets = [...FIELD_CATALOG]
-  .sort((a, b) => a.order - b.order)
-  .map((bucket) => ({ bucket, score: bucketScore(bucket, filledByField, 2) }));
+const detailAggregate = fixtureAggregate(filledByField, 2);
 
 const detail = (
   <Screen>
@@ -194,12 +322,7 @@ const detail = (
         }}
         updateAction={noopAction}
       />
-      <BrandScorecard
-        buckets={detailBuckets}
-        filledByField={filledByField}
-        productCount={2}
-        hasProducts
-      />
+      <BrandScorecard aggregate={detailAggregate} />
     </div>
   </Screen>
 );
@@ -217,12 +340,98 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .element(page.getByText("9. Documentation / links"))
         .toBeInTheDocument();
+      // Geldige prijslijst → PriceListExpiryNotice-banner blijft afwezig (DoD 4b).
+      expect(page.getByText(/extension/i).query()).toBeNull();
       await page.screenshot({
         path: `./data-merkrelatie-detail.${theme}.${device}.test.png`,
       });
     });
   }
 }
+
+// DoD 4b: dezelfde merkpagina, maar met een VERLOPEN prijslijst — de banner (variant
+// "banner" van PriceListExpiryNotice) moet zichtbaar zijn, mét einddatum en "extension",
+// terwijl de rest van de pagina (formulier, scorecard) ongewijzigd blijft.
+const detailVerlopenPrijslijst = (
+  <Screen>
+    <div className="space-y-8">
+      <BrandRelationForm
+        values={{
+          brandId: "b-occhio",
+          status: "benaderd",
+          contactName: "Anna",
+          contactEmail: "anna@occhio.de",
+          lastContactAt: "2026-06-01",
+          notes: "Toezegging: Excel volgt.",
+        }}
+        updateAction={noopAction}
+      />
+      <section>
+        <h2 className="mb-3 font-medium">Completeness</h2>
+        <div className="mb-4">
+          <PriceListExpiryNotice
+            indicator="verlopen"
+            validUntil="2026-07-13"
+            variant="banner"
+            brandName="Occhio"
+          />
+        </div>
+        <BrandScorecard aggregate={detailAggregate} />
+      </section>
+    </div>
+  </Screen>
+);
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`merkrelatie-detail met verlopen prijslijst (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(detailVerlopenPrijslijst);
+      await expect
+        .element(page.getByText(/Occhio delivered prices/))
+        .toBeInTheDocument();
+      // Zelfde race als de andere matrix-tests: wacht tot de HELE scorecard (t/m
+      // categorie 10) is doorgerenderd vóór de full-page capture, anders vangt de
+      // screenshot een halfklaar grid met een lege staart.
+      await expect
+        .element(page.getByText("9. Documentation / links"))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./data-merkrelatie-detail-verlopen-prijslijst.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
+test("merkpagina met verlopen prijslijst: banner toont einddatum en 'extension'", async () => {
+  await renderServer(detailVerlopenPrijslijst);
+  await expect
+    .element(page.getByText(/Occhio delivered prices — the list expired on 13-07-2026/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText(/extension/i)).toBeInTheDocument();
+});
+
+test("merkpagina met geldige prijslijst: banner is afwezig (DoD 4b, tweede stand)", async () => {
+  await renderServer(
+    <Screen>
+      <section>
+        <h2 className="mb-3 font-medium">Completeness</h2>
+        <PriceListExpiryNotice
+          indicator="aanwezig_geldig"
+          validUntil="2027-07-21"
+          variant="banner"
+          brandName="Occhio"
+        />
+        <BrandScorecard aggregate={detailAggregate} />
+      </section>
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("1. Basics & identity"))
+    .toBeInTheDocument();
+  expect(page.getByText(/extension/i).query()).toBeNull();
+});
 
 test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden en legenda", async () => {
   await renderServer(detail);
@@ -237,18 +446,49 @@ test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden 
   await expect
     .element(page.getByTitle(/CRI: 50% of products/))
     .toBeInTheDocument();
-  // Niet-meetbaar veld: sinds 1.3-A zijn dat er nog exact twee — de commercie-🔒's
-  // zonder products-kolom. EAN-code stond hier vóór 1.3-A en is nu wél meetbaar.
+  // Niet-meetbaar veld: sinds 1.6 staan de twee kolomloze 🔒-velden uitsluitend in
+  // categorie 11 (G10). EAN-code is measurable en staat in categorie 1.
   await expect
     .element(page.getByTitle(/Purchase price excl\. VAT: not measurable yet/))
     .toBeInTheDocument();
   expect(page.getByTitle(/EAN code: not measurable yet/).query()).toBeNull();
-  // Bucket 9 is nu volledig meetbaar, maar staat er nog steeds.
+  // Bucket 9 is volledig meetbaar, maar staat er nog steeds (categorie 1-10).
   await expect
     .element(page.getByText("9. Documentation / links"))
     .toBeInTheDocument();
-  // Interne 🔒-velden dragen een slotje (aria-label "intern").
-  expect(page.getByLabelText("internal").all().length).toBeGreaterThanOrEqual(5);
+  // Interne 🔒-velden dragen een slotje (aria-label "internal") — sinds 1.6 staan alle
+  // zes uitsluitend in categorie 11, dus dit telt exact, niet "minstens".
+  expect(page.getByLabelText("internal").all()).toHaveLength(6);
+});
+
+test("detail-scorecard (G9-G12): categorie 1-10 met percentage, categorie 11 apart en niet meegewogen, drie totalen", async () => {
+  await renderServer(detail);
+  // G9: categorie 1-10 heeft een percentage naast de kop — niet het gemiddelde van de
+  // drie niveaus (G12), maar de veldgewogen ratio uit de aggregatie zelf.
+  await expect
+    .element(page.getByText("1. Basics & identity"))
+    .toBeInTheDocument();
+  // G10: categorie "11. Internal" staat er, zichtbaar, en apart gemarkeerd.
+  await expect.element(page.getByText("11. Internal")).toBeInTheDocument();
+  await expect
+    .element(page.getByText("not included in the totals"))
+    .toBeInTheDocument();
+  // Commercial hield na de verhuizing precies één veld over (G9/G12): het prijsveld.
+  const commercialHeading = page.getByText("2. Commercial").query();
+  const commercial = commercialHeading?.closest("section");
+  expect(commercial).not.toBeNull();
+  expect(commercial!.textContent).toContain("Gross list price excl. VAT");
+  expect(commercial!.textContent).not.toContain("Stock");
+  // DoD 4c: categorie 1-10 dekt exact excelColumns().length (66) velden.
+  await expect
+    .element(page.getByText(/66 fields requested in the brand Excel/))
+    .toBeInTheDocument();
+  // G11: drie totalen onderaan, veldgewogen over 1-10 — niet over 11.
+  for (const niveau of ["must", "wanna", "nice"]) {
+    const total = page.getByLabelText(`Total ${niveau}`);
+    await expect.element(total).toBeInTheDocument();
+    await expect.element(total).toHaveTextContent(/%/);
+  }
 });
 
 test("detail-formulier: relatievelden vooringevuld en opslaan-knop aanwezig", async () => {
@@ -269,15 +509,39 @@ test("detail-formulier: relatievelden vooringevuld en opslaan-knop aanwezig", as
 test("scorecard zonder producten toont n/a-uitleg i.p.v. 0% rood", async () => {
   await renderServer(
     <Screen>
-      <BrandScorecard
-        buckets={detailBuckets}
-        filledByField={{}}
-        productCount={0}
-        hasProducts={false}
-      />
+      <BrandScorecard aggregate={fixtureAggregate({}, 0)} />
     </Screen>,
   );
   await expect
     .element(page.getByText(/completeness n\/a/))
     .toBeInTheDocument();
 });
+
+// DoD 6 vraagt dat de PNG's zélf bekeken worden, en dat kon bij de scorecard niet:
+// page.screenshot() schildert alleen wat binnen de viewport valt, en die is 800px
+// hoog terwijl de volledige scorecard ~3000px is. Op de detail-PNG's is daardoor
+// alles vanaf categorie 3 blanco — de assertions dekken het wél, het beeld niet.
+// Daarom hier één capture op volle hoogte: dit is de enige PNG waarop de elf
+// categorieën, de percentages en de drie totalen tegelijk te zien zijn.
+// (De viewport-afkapping is een bestaande eigenschap van de harness en raakt élke
+// pagina langer dan 800px; niet geïntroduceerd door 1.6 — zie rapport.)
+for (const theme of ["light", "dark"] as const) {
+  test(`scorecard volledig (${theme}, volle hoogte) — 11 categorieën + totalen`, async () => {
+    await page.viewport(1280, 3200);
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    await renderServer(
+      <Screen>
+        <BrandScorecard aggregate={detailAggregate} />
+      </Screen>,
+    );
+    await expect
+      .element(page.getByText("11. Internal"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("10. Sustainability / environment"))
+      .toBeInTheDocument();
+    await page.screenshot({
+      path: `./data-scorecard-volledig.${theme}.desktop.test.png`,
+    });
+  });
+}

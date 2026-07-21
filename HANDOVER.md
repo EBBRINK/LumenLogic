@@ -1540,3 +1540,43 @@ lost G1 die rijen niet op. Géén `failliet` (dat is een reden, hoort in `descri
   Wil je ze verplicht: twee fixture-regels daar.
 - **Milieu-informatie per merk** is buiten scope gehouden, maar het formulier zet zijn tekstvelden
   in een `FIELDS`-array — een veld erbij is één regel.
+
+## Sprint 1.6 — de scorecard vertelt de waarheid over merkdata (21 jul)
+
+**Deel A.** `pl.valid_until >= current_date` is uit `completenessSelection()`
+(`lib/repo/brand-relations.ts`) gehaald. Compleetheid meet vanaf nu AANLEVERING, niet
+geldigheid. Zichtbaarheid blijft ongemoeid bij `visible_products` — gemeten: 210 119 rijen
+vóór én ná. De meting blijft een EXISTS; het bedrag wordt nergens gelezen.
+
+**Deel B.** `components/data/price-list-expiry-notice.tsx` — één gedeelde component, drie
+gewichten (`banner` op de merkpagina, `badge` op `/admin/brands`, `inline` op
+`/data/price-lists`). Neemt `indicator` van `priceListIndicator()` en herhaalt de datumregel
+dus niet. Er is bewust géén prop voor een bedrag.
+
+**Deel C.** De zes 🔒-velden staan nu in bucket 11 "Internal"; categorie 1 t/m 10 wordt via
+`templateBuckets()` afgeleid uit `excelColumns()` (66 = 66). `scorecardAggregate()` rekent
+veldgewogen (G12) náást `bucketScore()`, dat ongewijzigd bleef.
+
+**Bewust niet gedaan / open eindes:**
+- **Catalogus-uitzondering (ijzeren regel 3).** Een merk met een verlopen prijslijst verdwijnt
+  volledig uit `visible_products` — er is dus geen merk-rij om een waarschuwing aan te hangen,
+  precies op de plek waar iemand het effect merkt. Daar is bewust NIETS gebouwd: dat raakt regel
+  3 en is een eigen ontwerpvraag. **Opvolgtaak.**
+- **Latent lek in `lib/brand-message.ts`.** Dat bucket 11 nooit in de merkmail belandt, hangt
+  eraan dat `dekking()` `null` teruggeeft zodra `must.total + wanna.total === 0` — en de vier
+  meetbare 🔒-velden staan toevallig allemaal op `nice`. Krijgt `purchase_price_excl_vat` ooit
+  een kolom (de converse-test dwingt dan `measure: col(...)` af), dan wordt `wanna.total` 1 en
+  verschijnt het label "Internal" in de mail NAAR HET MERK. Vastgelegd met een expliciete test
+  in `lib/brand-message.test.ts`, maar het blijft een scherpe rand. **Opvolgtaak.**
+- **`priceListIndicator(validUntil)` wordt op de merkpagina zonder `today` aangeroepen**
+  (`app/data/brand-relations/[brandId]/page.tsx`), terwijl de lijstpagina wél een vaste `today`
+  meegeeft. Bestaande inconsistentie, niet gerepareerd (melden, niet meenemen). **Opvolgtaak.**
+- **`listBrandRelations` neemt `max(valid_until)` als "de" prijslijst.** Heeft een merk ooit een
+  nieuwere kortlopende naast een oudere langlopende lijst, dan is de indicator fout. Vandaag
+  latent: alle 438 merken hebben precies één lijst. **Opvolgtaak.**
+- **Screenshots kappen af op de viewporthoogte.** `page.screenshot()` schildert alleen wat binnen
+  de viewport (800 px) valt; alles daaronder is blanco. Raakt élke pagina langer dan 800 px en
+  bestond al vóór 1.6. Daarom een aparte capture op volle hoogte
+  (`data-scorecard-volledig.*.test.png`) — anders is de scorecard niet visueel te controleren.
+- **`components/data/brand-message.test.tsx` blijft flaky** onder volle suite-belasting (de
+  10s-`waitFor` op "Copied"); al gemeld bij 1.5, opnieuw waargenomen, geïsoleerd groen.

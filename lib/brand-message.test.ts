@@ -135,6 +135,39 @@ test("verwijzing naar het template en afsluiting zijn er altijd", () => {
   }
 });
 
+// DoD (1.6-C): tot nu toe een STILLE afhankelijkheid — dekking() (regel 39-46
+// hierboven) telt alleen must+wanna op, en bucket "intern" heeft daar nul velden in
+// (de twee wanna-velden zijn beide kind "none", de rest is "nice"). Bucket 11 kan
+// daardoor per constructie nooit in `laagste` terechtkomen. Dat gold al vóór 1.6-C
+// (de INVARIANT-test hierboven bewaakt de voorwaarde), maar 1.6-C voegt de bucket
+// pas expliciet toe aan FIELD_CATALOG — dus dit gedrag verdient nu een eigen,
+// zichtbare test i.p.v. alleen af te leiden uit de invariant.
+test("DoD 1.6-C: bucket 11 (Internal) komt nooit voor in de merkmail — niet bij 100%, niet bij 0%", () => {
+  const internalBucket = FIELD_CATALOG.find((b) => b.key === "intern")!;
+  expect(internalBucket.labelEn).toBe("Internal");
+
+  // Alles gevuld, óók de interne velden (allesGevuld() vult elk meetbaar veld, dus
+  // ook bucket 11's stock/stock_reserved/show_on_web/show_price_on_web).
+  const alles = buildBrandMessage({ ...basis, buckets: maakBuckets(allesGevuld(30), 30) });
+  expect(alles).not.toContain(internalBucket.labelEn);
+  expect(alles.toLowerCase()).not.toContain("internal");
+
+  // Omgekeerd: alle NIET-interne meetbare velden 100%, bucket 11 juist 0% — de
+  // enige echte lacune in de hele catalogus zit dan in bucket 11. De stille
+  // afhankelijkheid betekent dat de mail dit toch "complete" noemt: bucket 11
+  // telt gewoon nooit mee, hoe leeg hij ook is.
+  const filledZonderIntern: Record<string, number> = { ...allesGevuld(30) };
+  for (const f of internalBucket.fields) delete filledZonderIntern[f.key];
+  const tekstZonderIntern = buildBrandMessage({
+    ...basis,
+    buckets: maakBuckets(filledZonderIntern, 30),
+  });
+  expect(tekstZonderIntern).toContain("complete");
+  expect(tekstZonderIntern).not.toMatch(/^- /m);
+  expect(tekstZonderIntern).not.toContain(internalBucket.labelEn);
+  expect(tekstZonderIntern.toLowerCase()).not.toContain("internal");
+});
+
 test("NEGATIEF: geen enkel 🔒-veld (key of label) in welke stand dan ook", () => {
   const standen: BrandMessageInput[] = [
     basis,

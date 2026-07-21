@@ -10,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
+import { priceListIndicator } from "@/lib/repo/brand-relations";
 
 // De per-veld-uitzonderingen die de admin per merk kan sturen (J-04). Bewust een korte,
 // vaste set — de velden die commercieel/gevoelig zijn. Geen vrije-tekst-veldnaam: dat zou
@@ -29,6 +31,10 @@ export type BrandTierRow = {
   // lifecycle, dan geldt de norm ('actief') en verschijnt er dus geen badge.
   brandCode?: string | null;
   lifecycle?: BrandLifecycle;
+  // Sprint 1.6 (deel B): voedt de PriceListExpiryNotice-badge. Optioneel om dezelfde
+  // reden als brandCode/lifecycle hierboven — bestaande tests die rijen zelf bouwen
+  // horen niet te breken op een veld dat het scherm alleen maar extra toont.
+  priceListValidUntil?: string | null;
   disclosureTier: "tier1" | "tier2" | "tier3";
   productCount: number;
   // per-veld-override: field → visible. Ontbreekt een veld, dan geldt de tier-basis.
@@ -85,7 +91,14 @@ export function BrandsTierBlock({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brands.map((b) => (
+              {brands.map((b) => {
+                // Sprint 1.6 (deel B): dezelfde indicator-logica als het merkrelaties-
+                // overzicht, maar hier alleen om te BESLISSEN of de badge verschijnt — de
+                // datumlogica zelf woont uitsluitend in priceListIndicator().
+                const priceIndicator = priceListIndicator(
+                  b.priceListValidUntil ?? null,
+                );
+                return (
                 <TableRow key={b.id}>
                   <TableCell className="font-medium">
                     {/* Gewone <a>, geen next/link — precedent brand-relations-table.tsx:
@@ -105,6 +118,20 @@ export function BrandsTierBlock({
                       <span className="block text-xs text-muted-foreground tabular-nums">
                         {b.brandCode}
                       </span>
+                    )}
+                    {priceIndicator === "verlopen" && (
+                      // whitespace-normal overschrijft TableCell's whitespace-nowrap
+                      // (components/ui/table.tsx) — anders knipt de badge zijn eigen
+                      // zin af met "…" en verdwijnt de einddatum uit beeld.
+                      <div className="mt-1 whitespace-normal">
+                        <PriceListExpiryNotice
+                          indicator={priceIndicator}
+                          validUntil={b.priceListValidUntil ?? null}
+                          variant="badge"
+                          brandName={b.name}
+                          href={`/data/brand-relations/${b.id}`}
+                        />
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
@@ -182,7 +209,8 @@ export function BrandsTierBlock({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

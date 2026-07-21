@@ -10,6 +10,7 @@ import {
 } from "@/components/data/brand-relations-table";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { bucketBlok } from "@/components/data/scorecard-blokken";
+import { INTERNAL_BUCKET_KEY } from "@/lib/field-catalog";
 import {
   getAllBrandCompleteness,
   listBrandRelations,
@@ -37,10 +38,14 @@ export default async function MerkrelatiesPage() {
       priceListIndicator: r.priceListIndicator,
       sharedBrandCode: r.sharedBrandCode,
       // Geen producten → null → "n.v.t." (geen 0% rood).
+      // Sprint 1.6 (G10): c.buckets draagt sinds de verhuizing ook categorie
+      // "11. Internal" — die mag hier niet als elfde blokje meetellen. Filter op de
+      // sleutel, geen `order <= 10`-drempel (die zou stil verkeerd worden als de
+      // catalogusvolgorde ooit verandert).
       scorecard: c
-        ? c.buckets.map(({ bucket, score }) =>
-            bucketBlok(bucket, score, c.hasProducts),
-          )
+        ? c.buckets
+            .filter(({ bucket }) => bucket.key !== INTERNAL_BUCKET_KEY)
+            .map(({ bucket, score }) => bucketBlok(bucket, score, c.hasProducts))
         : null,
     };
   });

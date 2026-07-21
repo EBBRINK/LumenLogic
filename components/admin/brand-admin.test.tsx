@@ -135,6 +135,8 @@ const tierRows: BrandTierRow[] = [
     lifecycle: "bestaat_niet_meer",
     disclosureTier: "tier3",
     productCount: 0,
+    // Sprint 1.6 (deel B): verlopen prijslijst → PriceListExpiryNotice-badge in de rij.
+    priceListValidUntil: "2024-01-01",
     overrides: {},
   },
 ];
@@ -243,7 +245,12 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(listScreen);
-      await expect.element(page.getByText("Tronconi")).toBeInTheDocument();
+      // exact: true — sinds 1.6 draagt deze rij ook de verloop-badge, en die begint
+      // met de merknaam ("Tronconi delivered prices — …"), dus een losse substring-
+      // match op "Tronconi" is nu ambigu.
+      await expect
+        .element(page.getByText("Tronconi", { exact: true }))
+        .toBeInTheDocument();
       await page.screenshot({
         path: `./brand-list.${theme}.${device}.test.png`,
       });
@@ -441,6 +448,34 @@ test("lijst: 'actief' krijgt geen badge, de andere twee wel; naam linkt naar het
     .querySelector<HTMLAnchorElement>('a[href="/admin/brands/b2"]')
     ?.closest("td");
   expect(itreCell?.querySelector('[data-slot="badge"]')).not.toBeNull();
+});
+
+test("lijst: verlopen prijslijst toont de gedeelde PriceListExpiryNotice-badge, niet bij een merk zonder datum", async () => {
+  await renderServer(
+    <Screen>
+      <BrandsTierBlock
+        brands={tierRows}
+        setTierAction={noopAction}
+        setFieldVisibilityAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText(/extension/i)).toBeInTheDocument();
+  await expect.element(page.getByText(/01-01-2024/)).toBeInTheDocument();
+  // Tronconi droeg de verlopen lijst; Delta Light en Itre hebben geen priceListValidUntil.
+  const tronconiCell = document
+    .querySelector<HTMLAnchorElement>('a[href="/admin/brands/b3"]')
+    ?.closest("td");
+  expect(tronconiCell?.textContent).toMatch(/extension/i);
+  const deltaCell = document
+    .querySelector<HTMLAnchorElement>('a[href="/admin/brands/b1"]')
+    ?.closest("td");
+  expect(deltaCell?.textContent).not.toMatch(/extension/i);
+  // DoD 4b eist de waarschuwing op beeld, óók op /admin/brands. De reguliere
+  // admin-screenshots hebben geen merk met verlopen lijst in hun fixture, dus die
+  // laten hem per definitie niet zien — vandaar hier een eigen capture, met zowel
+  // het merk mét (Tronconi) als de merken zónder waarschuwing in beeld.
+  await page.screenshot({ path: "./admin-brands-verlopen-prijslijst.light.desktop.test.png" });
 });
 
 test("filterbalk: gewone GET-form met q en phase, geen client-state", async () => {
