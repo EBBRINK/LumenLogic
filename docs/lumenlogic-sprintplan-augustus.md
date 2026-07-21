@@ -724,6 +724,36 @@ verificatie staat in de week 2-buffer en heeft doorlooptijd nodig (zie Openstaan
 
 **Risico's & plan B:** voorstel-diff complexer dan gedacht → conflictregel ligt vast, slimmer merge-gedrag = ná augustus · geen echt ingevulde template op tijd → 1.4 met zelf-ingevulde template, echte-merk-verificatie naar week 2-buffer.
 
+**1.5 — Merkbeheer in het systeem zelf** (~3 u) · briefing: `docs/sprint1-5-briefing.md`
+- *Given* Admin · Brands, *when* een Brink-gebruiker een merk toevoegt of bewerkt, *then* staat
+  dat merk in Brand relations en is elke schrijfactie gelogd — zonder dat een van de 437
+  bestaande merkrijen verandert.
+
+**Waarom dit item er is:** om in 1.4 een testmerk te maken moest een constante in een script
+worden gewijzigd. Er is geen enkele manier om via de app een merk aan te maken — geverifieerd:
+`app/admin/brands/page.tsx` toont alleen disclosure-tier en veldzichtbaarheid.
+
+*Zes besluiten uit de grill-sessie met Timo (20 jul):* **G1** levensfase modelleren i.p.v. kale
+CRUD (de status zit nu in de naamtekst) · **G2** de 437 bestaande merken blijven exact zoals ze
+zijn, 1.5 bouwt alleen het vermógen · **G3** uitbreiden van Admin · Brands, geen nieuw portal ·
+**G4** verwijderen blokkeert met uitleg en biedt de levensfase aan · **G5** dubbele naam/code
+waarschuwt maar blokkeert niet (Flos, Flos Architectural en Flos SOFT Architectural delen L028
+en zijn écht drie merken) · **G6** alleen identiteitsvelden, want korting en betaaltermijn komen
+uit de bronimport.
+
+*Gemeten stand:* 437 merken, waarvan **405 met nul producten** — dat is geen rommel maar de
+outreach-werklijst. Slechts **18 merken** dragen een annotatie in de naam ("BESTAAT NIET MEER",
+"Boom / BEGA"), alle 18 zonder producten. **19 dubbele merkcodes**; `L062` hoort bij 5 merken.
+
+*Twee vallen die de briefing vastlegt:* een **unieke index kan niet** (19 dubbele codes staan in
+productie en moeten blijven), dus de dubbelcheck hoort in de applicatielaag · **verwijderen is
+voor 32 merken onmogelijk** omdat `products.brand_id` geen cascade heeft (`db/schema.ts:347`) —
+de knop moet vóóraf tellen wat er hangt, niet de databasefout vertalen.
+
+*Bewust buiten scope:* milieu-info per merk en merkpagina's (Timo wil ze, maar later) · de
+opvolger-verwijzing voor de 5 "opgegaan in"-merken — die vraag is gesteld en niet gekozen, en
+vraagt een self-reference-migratie met raakvlak met de matcher. **Opvolgtaak, niet bouwen.**
+
 **Technische schuld (bufferuren, ~5 u):** Drizzle-snapshot-gat vanaf 0004 bijwerken (timebox 2 u; anders gedocumenteerd naar het runbook).
 
 ### Week 2 (27–31 jul) — alle losse dingen afwerken
