@@ -25,9 +25,17 @@ kolom waarin "dit merk bestaat niet meer" een feit is in plaats van een tekstuel
 
 ## Gemeten stand (eigen query, 21 jul 2026)
 
+> **Noot van de sprintmaster (21 jul, ná afronding).** Alle getallen hieronder zijn correct
+> gemeten en kloppen nog steeds — ze tellen alleen de **437 merken uit de bronimport**. Later die
+> dag kwam er één merk bij: `ZZTEST QA-15`, een testmerk dat de sprintmaster tijdens deze sessie
+> aanmaakte voor een handmatige walkthrough. Wie nu meet ziet daarom **438**. De conclusies
+> veranderen niet — ook dat testmerk kreeg één prijslijst, dus "elk merk heeft er precies één"
+> blijft staan. Sluit `slug = 'zztest-qa-15'` uit en elk cijfer hieronder is reproduceerbaar,
+> inclusief de fingerprint.
+
 | Meting | Waarde |
 |---|---|
-| Merken | **437** |
+| Merken | **437** (bronimport; 438 inclusief het testmerk, zie noot) |
 | Merken met nul producten | **405** |
 | Merken die producten dragen | **32**, samen **211.314** producten |
 | Merken met een annotatie in de naam | **18** — alle 18 met nul producten |

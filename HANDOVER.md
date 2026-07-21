@@ -1476,6 +1476,10 @@ aangenomen: fingerprint over id, naam, code, slug, land, tier, omschrijving, web
 in PG11+ metadata-only, dus er is geen enkele UPDATE gedraaid.
 ⚠️ De brands-tabel telt inmiddels 438 rijen: `ZZTEST QA-15` is van een parallelle sessie, niet
 van mij. Sluit die rij uit en de hash klopt exact.
+*(Sprintmaster, 21 jul: dat testmerk is van mij — aangemaakt voor een handmatige walkthrough van
+het merkretourpad, midden in deze sessie. De meting van 1.5 was dus correct op het moment van
+meten; alleen de noemer schoof erna op. Het merk staat er bewust nog: de prijslijst is geldig tot
+21-07-2027, dus het is zichtbaar in de catalogus. Opruimen kan met `scripts/testmerk-1-4.ts`.)*
 
 **Levensfase = drie waarden**, niet twee: `actief | slapend | bestaat_niet_meer`. In de 18
 geannoteerde merknamen staan twee verschillende zinnen. `Itre (niet meer gebruiken)` is een
