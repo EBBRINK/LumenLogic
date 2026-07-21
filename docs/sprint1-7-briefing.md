@@ -25,8 +25,8 @@ geen datamodelprobleem, en 1.7 lost het niet op.
 
 ## Wat je bouwt
 
-**Eén nieuw gegeven op het merk: de afstand tot Brink Licht.** Plus het recept waarmee Stefan er
-straks zelf velden bij kan zetten.
+**Eén nieuw gegeven op het merk: de afstand tot Brink Licht.** Meer niet — het recept voor Stefan
+is uit dit item gehaald en verhuisd naar sprint 1.8 (zie verderop).
 
 Brink Licht: **Veldzigt 30A, 3454 PW Utrecht**. Leg dat adres op één plek vast, niet verspreid —
 als Brink verhuist moet elke afstand herrekenbaar zijn.
@@ -72,7 +72,6 @@ straks als eerste kijkt.
 | Server actions | `app/admin/brands/actions.ts` |
 | Repo-laag | `lib/repo/brands.ts` |
 | Schema | `db/schema.ts` (`brands`, rond regel 179) |
-| Veldcatalogus (voor het recept) | `lib/field-catalog.ts` |
 
 ## Vallen
 
@@ -120,7 +119,7 @@ Het recept hoort dus bij het scherm, en wordt in 1.8 geschreven. **Schrijf hier 
 | Fase | Model | Wat |
 |---|---|---|
 | **1. Probleem** | het lichtere model | Verifieer zelf tegen de live database dat de drie velden bestaan, in het template staan en leeg zijn. Neem mijn getallen niet over — er zijn nu vijf briefingfouten van de sprintmaster gevangen door bouwsessies. Nog geen code |
-| **2. Plan** | **het scherpste model, twee agents parallel** | De interessante vragen: hoe je locatie + afstand modelleert zonder een half adresboek te bouwen, waar het Brink-adres woont, en hoe het recept eruitziet zodat het over een maand nog klopt. Laat ze botsen |
+| **2. Plan** | **het scherpste model, twee agents parallel** | De interessante vragen: hoe je locatie + afstand modelleert zonder een half adresboek te bouwen, en waar het Brink-adres woont zodat het bij een verhuizing op één plek verandert. Laat ze botsen |
 | **3. Bouwen** | het lichtere model, één agent | Twee kolommen, een formulierblok en een event. Klein en samenhangend; twee agents zouden elkaar in de weg zitten |
 
 ## Harde grenzen
