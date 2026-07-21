@@ -51,12 +51,36 @@ Dat is de hele functionele wijziging. Hij zit in één SQL-fragment in één fun
 
 - **`visible_products` blijft ongemoeid.** Die view is ijzeren regel 3 en drijft de catalogus,
   de matcher en alle zoekresultaten. Er verandert niets aan wat zichtbaar is.
-- **Je bouwt geen vervangend verloop-signaal.** Dat bestaat al op twee plekken: de
-  `Price list`-badge per merk in de merkenlijst (Valid / verlopen) en de coverage-gap-telling op
-  `/data/price-lists`. De informatie verdwijnt dus niet, hij komt alleen op de plek te staan die
-  hem al draagt.
 - **Je leest het bedrag niet.** De meting blijft een `EXISTS` — ijzeren regel 2 (geld nooit in
   de ranking, bedragen nooit in een meting) blijft precies zoals hij is.
+
+## Tweede helft: het verloop-signaal (besluit G8, Timo 21 jul)
+
+Zodra de datumvoorwaarde uit de meting is, moet het scherm zélf vertellen dat de prijslijst
+verlopen is — anders toont het 67% zonder dat iets verklaart waarom de catalogus leeg is. Timo
+koos daarbij expliciet voor **overal waar het merk voorkomt**, niet alleen bij de scorecard.
+
+**"Overal" betekent hier: één gedeelde component, op elk intern scherm waar het merk als rij of
+als pagina voorkomt.** Niet vier keer dezelfde luide banner — hetzelfde signaal, in het gewicht
+dat bij dat scherm past. Bouw het als één component en hergebruik hem; twee implementaties gaan
+uit elkaar lopen (zie hoe `field-catalog.measure` vijf weken achterliep).
+
+| Scherm | Nu | Wat erbij moet |
+|---|---|---|
+| Merkpagina `/data/brand-relations/[brandId]` | **niets** — geverifieerd, dit scherm draagt geen enkel prijslijst-signaal | De waarschuwing, bij `Completeness` |
+| Merkenlijst `/data/brand-relations` | `Price list`-badge (Valid / verlopen) | Nakijken dat hij consistent is met de nieuwe component |
+| `/data/price-lists` | telling "1 expired (coverage gap)" | Idem |
+| `/admin/brands` | niets | De waarschuwing, of op z'n minst een verwijzing |
+
+**De tekst moet zeggen wat je moet dóén.** Het verschil dat ertoe doet is: *het merk heeft wél
+geleverd, maar de lijst is verlopen* → je hebt een **verlenging** nodig, geen nieuwe aanlevering.
+Noem de einddatum. Toon **nooit een bedrag** (ijzeren regel 2).
+
+**De catalogus is de uitzondering, en dat moet je melden in plaats van oplossen.** Daar
+verdwijnt het merk volledig — verlopen prijslijst betekent geen rijen in `visible_products`, dus
+er is geen merk-rij om een waarschuwing aan te hangen. Precies op de plek waar iemand het effect
+merkt, kun je het niet uitleggen. **Bouw daar niets** (dat raakt ijzeren regel 3 en is een eigen
+ontwerpvraag); noteer het als opvolgtaak.
 
 ## Waarom dit ijzeren regel 3 niet schendt
 
@@ -98,6 +122,9 @@ Meet met echte cijfers, niet met een redenering:
 3. **Een merk met een gelde prijslijst verandert niet.** Regressiecheck: bij een merk waar de
    lijst gewoon geldig is, blijft het cijfer identiek.
 4. **De drie commentaarplekken kloppen weer** (zie val 2).
+4b. **De waarschuwing staat op de merkpagina en op `/admin/brands`**, komt uit één gedeelde
+   component, noemt de einddatum, zegt "verlenging" en toont geen bedrag. Bij een merk met een
+   geldige lijst is hij afwezig — laat beide gevallen op een screenshot zien.
 5. Bestaande tests groen; een test die de oude datumvoorwaarde vastlegde moet je aanpassen —
    **beschrijf in je rapport welke test je hebt gewijzigd en waarom**, want een test aanpassen om
    groen te worden is precies hoe een echte regressie ongemerkt doorglipt.

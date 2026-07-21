@@ -803,8 +803,17 @@ blijft ongemoeid — dat is meteen de belangrijkste acceptatiecheck: compleethei
 zichtbaarheid niet. IJzeren regel 2 blijft ook intact: de meting blijft een `EXISTS`, het bedrag
 wordt nooit gelezen.
 
-**Geen vervangend verloop-signaal bouwen:** dat bestaat al twee keer — de `Price list`-badge per
-merk en de coverage-gap-telling op `/data/price-lists`.
+**Besluit G8 (Timo, 21 jul) — het verloop-signaal komt er wél, en overal.** Zodra de
+datumvoorwaarde uit de meting is, moet het scherm zelf vertellen dat de lijst verlopen is, anders
+toont het 67% zonder te verklaren waarom de catalogus leeg is. Geverifieerd: de **merkpagina
+draagt vandaag geen enkel prijslijst-signaal** — de badge bestaat alleen in de merkenlijst en op
+`/data/price-lists`. "Overal" = één gedeelde component op elk intern scherm waar het merk als rij
+of pagina voorkomt, in het gewicht dat bij dat scherm past; niet vier keer dezelfde banner. De
+tekst noemt de einddatum en zegt **verlenging** (het merk hééft geleverd), en toont nooit een
+bedrag (regel 2). **De catalogus is de uitzondering:** daar verdwijnt het merk volledig uit
+`visible_products`, dus er is geen rij om een waarschuwing aan te hangen — juist waar iemand het
+effect merkt, kun je het niet uitleggen. Dat is een eigen ontwerpvraag die regel 3 raakt:
+opvolgtaak, niet bouwen. Hierdoor groeit 1.6 van ~1 u naar ~2 u.
 
 **Val voor de bouwsessie:** het commentaar dat de oude meting beschrijft staat op **drie** plekken
 (`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet
