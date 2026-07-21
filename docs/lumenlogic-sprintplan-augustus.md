@@ -1045,7 +1045,7 @@ Brink Licht: **Veldzigt 30A, 3454 PW Utrecht** — op één plek in de code vast
 
 **Het recept voor Stefan is uit 1.7 gehaald** en verhuisd naar 1.8, zie hieronder.
 
-**1.8 — Velden toevoegen zonder de app te verlaten** (~6–8 u) · briefing: `docs/sprint1-8-briefing.md`
+**1.8 — Velden toevoegen zonder de app te verlaten** ✅ **AF (21 jul, commit `ba90f8c`)** · briefing: `docs/sprint1-8-briefing.md`
 - *Given* de app, *when* Stefan een milieuveld toevoegt zonder code, *then* staat het in het
   eerstvolgende merk-Excel, telt het mee in de scorecard, overleeft een waarde het hele retour-pad
   — en kan de matcher er niet bij.
@@ -1069,6 +1069,51 @@ dat patroon bestaat al (`products.tier2_source`).
 
 *Harde eis:* een zelf toegevoegd veld mag de **matcher nooit** bereiken, en de bouwsessie moet
 aantonen dát het onmogelijk is — niet dat het niet gebeurt.
+
+*Onafhankelijk geverifieerd door de sprintmaster tegen de live database:* de tabel `custom_fields`
+en de kolom `products.custom_values` bestaan (migratie 0015) · **geen van de 436 bronimport-merken
+is aangeraakt** · precies **één** product draagt een testwaarde · `tsc` schoon en **80 testfiles /
+951 tests groen** · het merk-template telde tijdens de demonstratie **67** kolommen en staat na
+archivering weer op **66**.
+
+*Correcties op mijn briefing, beide terecht:*
+- **Het zijn 9 lezers van de veldcatalogus, niet 13.** Vijf importeren alleen types of een losse
+  constante. De echte kern is drie afgeleide functies.
+- **De gevaarlijkste lezer importeert de catalogus helemaal niet.** `lib/template-diff.ts` koppelt
+  eraan via de conventie dat `SCHRIJF_MAPPING` op catalog-key gesleuteld is — zonder import, dus
+  de compiler ziet die koppeling niet. Een eigen veld had daar stil als `not_storable` geëindigd:
+  zichtbaar op het voorstelscherm, niet opslaanbaar. Precies waar DoD 4 stil zou falen.
+- **Val 1 was erger dan ik schreef.** Een botsend label geeft geen "stil de verkeerde kolom
+  vullen" maar `dubbele_kolomkop` — een **harde afwijzing van het hele bestand, voor alle merken
+  tegelijk**.
+- **Val 3 had een kant die ik niet zag.** `lib/repo/brand-relations.ts:172` interpoleert de
+  kolomnaam met `sql.raw`. Zodra een gebruiker die naam bepaalt is dat een injectiepoort. Eén
+  JSONB-kolom maakt de meting voor elk veld dezelfde uitdrukking met de sleutel als **parameter**.
+
+*De scherpste ontwerpkeuze:* een `must` op een **eigen** veld wijst nooit een bestand af. De harde
+afwijzing bestaat omdat catalogus-musts dragend zijn voor de verwerking zelf — zonder artikelcode
+is er geen sleutel. Een veld dat Stefan vandaag aanmaakt kan dat per definitie nooit zijn. Zou het
+tóch afwijzen, dan maakt **één klik elk merkbestand dat al onderweg is onbruikbaar** — bestanden
+die geen enkel merk had kúnnen invullen.
+
+*Sleutel is een uuid, geen leesbare slug:* een slug uit het label plus hernoemen betekent dat een
+veld dat "Recycled content" heet voor altijd de sleutel `cf_energieverbruik` draagt. Dat is exact
+het soort stille mismatch dat `field-catalog.measure` vijf weken heeft laten achterlopen.
+
+**De suite is breder flaky dan gedacht.** Naast `brand-message.test.tsx` vallen ook
+`components/admin/brand-admin.test.tsx` en de nieuwe `custom-fields.test.tsx` wisselend om onder
+volle belasting, alle drie met "Matcher did not succeed in time", alle drie geïsoleerd groen.
+`brand-admin` is door 1.8 niet aangeraakt. **Dit is een suite-conditie, geen bestandsprobleem** —
+"er is één bekende flaky test" klopt niet meer. Kandidaat voor de week 2-bufferuren.
+
+**Fout van de sprintmaster bij het pushen (21 jul).** Mijn pushcommando nam aan dat `0036ca4` nog
+gepusht moest worden; die stond al op `origin`. De cherry-pick liep vast en de `git reset` daarna
+haalde sprint 1.8 van de branch af. Werk stond nog op schijf, commit bestond nog, alles hersteld —
+maar de les staat hier omdat het de derde pushfout van de week is: **controleer wat er al op
+`origin` staat vóór een reset, in plaats van het aan te nemen.**
+
+*Opgeruimd:* vijf `sprint1-8-wip-*`-stashes van een parallelle sessie, alle vijf nagelopen en
+achterhaald door `HEAD`. Het testveld is gearchiveerd zodat het merk-template terug op 66 staat.
 
 *Twee vallen die in de briefing staan:* het Excel matcht kolommen op **labeltekst**, dus een eigen
 veld dat "EAN code" heet maakt het bestand dubbelzinnig · en `measure` is de brug die in juli al
