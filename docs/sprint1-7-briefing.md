@@ -112,8 +112,8 @@ Het recept hoort dus bij het scherm, en wordt in 1.8 geschreven. **Schrijf hier 
 3. Elke wijziging logt een event (ijzeren regel 5), net als de andere merkacties uit 1.5.
 4. **De 437 bronimport-merken zijn ongewijzigd** — fingerprint vóór en ná, identiek.
 5. Het adres van Brink Licht staat op één plek in de code, niet hardgecodeerd op meerdere.
-7. White-box RSC-test met screenshots (light/dark × mobile/desktop). Bekijk de PNG's zelf.
-8. `bunx tsc --noEmit` schoon en `bun vitest run` groen.
+6. White-box RSC-test met screenshots (light/dark × mobile/desktop). Bekijk de PNG's zelf.
+7. `bunx tsc --noEmit` schoon en `bun vitest run` groen.
 
 ## Modelverdeling per fase
 

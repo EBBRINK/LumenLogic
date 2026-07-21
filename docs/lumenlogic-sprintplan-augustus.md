@@ -823,7 +823,7 @@ zich correct aan "stop vóór de push"; de sprintmaster niet.
 `components/data/brand-message.test.tsx` is flaky onder volle suite-belasting · de
 opvolger-verwijzing voor de 5 "opgegaan in"-merken.
 
-**1.6 — De scorecard vertelt de waarheid over merkdata** (~4 u) · briefing: `docs/sprint1-6-briefing.md`
+**1.6 — De scorecard vertelt de waarheid over merkdata** ✅ **AF (21 jul, commit `8c0776e`)** · briefing: `docs/sprint1-6-briefing.md`
 - *Given* een merk met een verlopen prijslijst, *when* je de scorecard bekijkt, *then* toont de
   prijsbalk wat het merk heeft aangeleverd — terwijl de catalogus onveranderd leeg blijft.
 
@@ -892,6 +892,43 @@ gevolg.
 **Val voor de bouwsessie:** het commentaar dat de oude meting beschrijft staat op **drie** plekken
 (`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet
 meer doet wat het commentaar belooft, is precies hoe `field-catalog.measure` vijf weken achterliep.
+
+*Onafhankelijk geverifieerd door de sprintmaster:* **11 buckets, `templateBuckets()` geeft er 10
+met samen 66 velden = `excelColumns()` = 66**, bucket 11 "Internal" draagt alle zes interne velden
+en er lekt er geen enkele naar categorie 1–10. `visible_products` **210.119**, onveranderd.
+`tsc` schoon, **76 testfiles / 868 tests groen**.
+
+*De meting die de sprint samenvat:* ZZTEST QA-14 (verlopen lijst) en QA-15 (geldige lijst) tonen
+nu een **identieke compleetheid** — beide prijs 2/3 — terwijl QA-14 **0** producten in de catalogus
+heeft en QA-15 er **2**. Vóór 1.6 stond QA-14 op 0%. Compleetheid meet aanlevering, zichtbaarheid
+meet geldigheid.
+
+*Vondsten van de bouwsessie die de briefing niet had:*
+- **Een vierde commentaarplek** (`lib/field-catalog.ts:91-92`) beweerde dat "prijs ✓ niet naast
+  een verlopen lijst kan staan" — precies wat 1.6 mogelijk maakt. De briefing noemde er drie.
+- **De prijslijst 2006–2007 uit de briefing bestond niet meer** (de sprintmaster had hem
+  rechtgezet). Het vóór/ná-merk is QA-14, niet QA-15; QA-15 is het regressie- en narekenmerk.
+- **`getAllBrandCompleteness` werd 3,5× sneller**: 4,2–4,6 s → **1,2–1,5 s** warm. Dat stond als
+  risico in de briefing ("meet het even") en pakte de andere kant op uit.
+- **Na de verhuizing houdt categorie 1–10 nog vier MUST-velden over**, waarvan de prijs er één is.
+  Deel A verschuift het MUST-totaal daardoor tot 25 procentpunt — de reden dat de volgorde
+  C → A → B klopte en dat beide apart gemeten zijn.
+
+*Twee tests gingen om, niet één* (de DoD noemde er één): de prijs-EXISTS-test en de
+bucket-telling 10 → 11. Beide omdat het contract veranderde; de verloren dekking is overgenomen
+door een nieuwe test die assert dat `visible_products` de datum wél blijft handhaven.
+
+*De sessie corrigeerde haar eigen agents twee keer:* agent 2 meldde de suite groen terwijl hij dat
+niet was, en agent 2's screenshots lieten de scorecard vanaf categorie 3 blanco omdat
+`page.screenshot()` alleen de 800px-viewport schildert. De sessie voegde captures op volle hoogte
+toe en bekeek ze zelf — precies wat de DoD vraagt.
+
+*Opvolgtaken:* de catalogus-uitzondering (verlopen merk = geen rij om een waarschuwing aan te
+hangen) · **latent lek in `brand-message.ts`**: dat bucket 11 nooit in de merkmail belandt hangt
+eraan dat de vier meetbare 🔒-velden toevallig allemaal op `nice` staan — krijgt
+`purchase_price_excl_vat` ooit een kolom, dan verschijnt "Internal" in de mail náár het merk ·
+`priceListIndicator(validUntil)` zonder `today` op de merkpagina · `max(valid_until)` als "de"
+prijslijst in `listBrandRelations`.
 
 **1.7 — Milieudata: de afstand tot Brink Licht** (~1,5 u) · briefing: `docs/sprint1-7-briefing.md`
 - *Given* het merkbeheerscherm, *when* je bij een merk de fabriekslocatie en de afstand tot Brink
