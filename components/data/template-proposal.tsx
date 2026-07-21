@@ -47,7 +47,15 @@ export type ActivePriceList = { name: string; validUntil: string };
 const LABEL_PER_KEY = new Map<string, string>(
   FIELD_CATALOG.flatMap((b) => b.fields.map((f) => [f.key, f.labelEn] as const)),
 );
-const veldLabel = (key: string): string => LABEL_PER_KEY.get(key) ?? key;
+
+/** Sprint 1.8: een EIGEN veld van Stefan staat niet in FIELD_CATALOG, dus komt zijn label
+ *  hier binnen als kant-en-klare map (fieldKey → labelEn). Bewust geen import uit
+ *  lib/custom-fields.ts: dit scherm hoeft de sleutelvorm `custom:<uuid>` niet te kennen,
+ *  en wat het niet kent kan het ook niet verkeerd samenstellen. De pagina levert de map. */
+export type EigenVeldLabels = Readonly<Record<string, string>>;
+
+const veldLabel = (key: string, eigen?: EigenVeldLabels): string =>
+  LABEL_PER_KEY.get(key) ?? eigen?.[key] ?? key;
 
 const PRIJS_LABEL = veldLabel("list_price_excl_vat");
 
@@ -141,17 +149,19 @@ function VeldRij({
   rij,
   artikelcode,
   veld,
+  eigenVeldLabels,
   readOnly = false,
 }: {
   rij: number;
   artikelcode: string;
   veld: FieldProposal;
+  eigenVeldLabels?: EigenVeldLabels;
   /** Nieuw product: álles hangt aan het ene productvinkje, dus geen veld-vinkjes.
    *  Per-veld vinkjes zouden suggereren dat je een half product kunt aanmaken. */
   readOnly?: boolean;
 }) {
   if (veld.kind === "unchanged") return null; // telt alleen mee in de samenvatting
-  const label = veldLabel(veld.fieldKey);
+  const label = veldLabel(veld.fieldKey, eigenVeldLabels);
   const naam = fieldSelectionKey(rij, veld.fieldKey);
   const aria = `Apply ${label} for ${artikelcode}`;
 
@@ -368,7 +378,13 @@ function Waarschuwingen({ items }: { items: RijWaarschuwing[] }) {
 
 // ── Eén productgroep ────────────────────────────────────────────────────────
 
-function ProductGroep({ diff }: { diff: ProductDiff }) {
+function ProductGroep({
+  diff,
+  eigenVeldLabels,
+}: {
+  diff: ProductDiff;
+  eigenVeldLabels?: EigenVeldLabels;
+}) {
   if (diff.kind === "ambiguous_duplicate") {
     return (
       <section
@@ -450,6 +466,7 @@ function ProductGroep({ diff }: { diff: ProductDiff }) {
             rij={diff.rij}
             artikelcode={diff.articleCode}
             veld={veld}
+            eigenVeldLabels={eigenVeldLabels}
             readOnly={readOnly}
           />
         ))}
@@ -490,6 +507,7 @@ export function TemplateProposal({
   proposal,
   waarschuwingen,
   activePriceList,
+  eigenVeldLabels,
   approveAction,
   rejectAction,
 }: {
@@ -502,6 +520,9 @@ export function TemplateProposal({
   /** Alle 1.1-waarschuwingen van het bestand; voor de samenvattingszin. */
   waarschuwingen: RijWaarschuwing[];
   activePriceList: ActivePriceList | null;
+  /** fieldKey → labelEn voor de EIGEN velden (sprint 1.8), inclusief gearchiveerde: een
+   *  bestand dat onderweg was mag zijn kolom hier niet als kale sleutel zien. */
+  eigenVeldLabels?: EigenVeldLabels;
   approveAction: FormAction;
   rejectAction: FormAction;
 }) {
@@ -580,6 +601,7 @@ export function TemplateProposal({
                   : `r${diff.rij}`
               }
               diff={diff}
+              eigenVeldLabels={eigenVeldLabels}
             />
           ))}
         </div>

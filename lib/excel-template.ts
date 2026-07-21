@@ -7,7 +7,7 @@
 // werkblad "Instructions". 🔒-velden komen hier per constructie nooit in terecht; de
 // negatieve test parse't de buffer terug.
 import ExcelJS from "exceljs";
-import { excelColumns } from "@/lib/field-catalog";
+import { excelColumns, type CatalogBucket } from "@/lib/field-catalog";
 
 export const TEMPLATE_FILENAME = "brinklicht-product-data-template.xlsx";
 
@@ -17,8 +17,15 @@ const INVULRIJEN = 200;
 // Zachte, afwisselende buckettinten voor de groepsrij (ARGB, licht).
 const BUCKET_TINTEN = ["FFE8F0E8", "FFE8ECF4", "FFF4EEE4", "FFEDE8F2"] as const;
 
-export async function buildMasterTemplateXlsx(): Promise<Uint8Array> {
-  const columns = excelColumns();
+/**
+ * @param catalogus de COMPLETE veldcatalogus (vast deel + eigen velden), uit
+ *   laadCatalogus() in lib/repo/custom-fields.ts. Verplichte parameter: deze module blijft
+ *   puur, en een default zou stil een template zonder Stefans velden opleveren.
+ */
+export async function buildMasterTemplateXlsx(
+  catalogus: readonly CatalogBucket[],
+): Promise<Uint8Array> {
+  const columns = excelColumns(catalogus);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Brink Licht — Lumen Logic";
   wb.created = new Date();

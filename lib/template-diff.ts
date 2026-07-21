@@ -20,6 +20,7 @@
 // De engine itereert daarom uitsluitend over keys die aanwezig ZIJN in `velden`.
 import { getTableColumns } from "drizzle-orm";
 import { products } from "@/db/schema";
+import { eigenVeldIdVan, isEigenVeldKey } from "@/lib/custom-fields";
 import type { GelezenRij, RijWaarschuwing } from "@/lib/excel-validate";
 
 /**
@@ -118,8 +119,10 @@ export const SCHRIJF_MAPPING: Record<string, keyof typeof products.$inferSelect>
 /** De catalog-key van de prijs. Loopt niet via products maar via het prijzenpad. */
 export const PRIJS_VELD = "list_price_excl_vat";
 
-/** Waar de prijs wél landt: prices.gross_price. Alleen om een conflict te kunnen benoemen —
- *  de repo-laag schrijft hem via upsertPriceLines, nooit als products-kolom. */
+/** Waar de prijs wél landt: prices.gross_price. Puur beschrijvend — de repo-laag schrijft
+ *  hem via upsertPriceLines, nooit als products-kolom. Sinds 1.8 draagt het prijsconflict
+ *  `doel: { kind: "prijs" }` in plaats van deze string; hij staat er nog voor lezers die
+ *  willen weten wélke kolom dat is (en voor de test die dat vastlegt). */
 export const PRIJS_KOLOM = "grossPrice";
 
 /** De catalog-key die identificeert. Nooit een veldvoorstel: hij bepaalt tégen welk product
@@ -129,6 +132,52 @@ export const SLEUTEL_VELD = "supplier_article_code";
 /** Kolomtype waarnaar we celtekst canonicaliseren. Afgeleid uit het Drizzle-schema, niet
  *  handmatig overgetypt — een tweede typetabel loopt uit sync met db/schema.ts. */
 export type KolomType = "text" | "int" | "num" | "bool";
+
+/**
+ * WAAR een goedgekeurd voorstel landt. Een discriminated union en géén `kolom: string` met
+ * de conventie "voor een eigen veld is kolom === fieldKey".
+ *
+ * Dat is niet cosmetisch. Fase 1 wees juist dít bestand aan als de gevaarlijkste rand van
+ * sprint 1.8: het koppelt aan de veldcatalogus via de CONVENTIE dat SCHRIJF_MAPPING op
+ * catalog-key gesleuteld is, zonder één import — en daarom viel een onbekend veld er stil
+ * doorheen als `not_storable`. Dezelfde constructie herhalen in de reparatie ervan kan niet.
+ * Met deze union is elke vergeten plek een typefout in plaats van een stil verkeerd doel.
+ *
+ * ⚠️ AFWIJKING VAN HET BEVROREN CONTRACT (gemeld, niet stilzwijgend): het contract noemt
+ * twee varianten, "kolom" en "custom". Er is een derde nodig. ConflictReden.unprocessable
+ * wordt namelijk óók door het PRIJS-pad gebruikt, en de prijs landt op prices.gross_price —
+ * geen kolom van `products`, dus niet uit te drukken als
+ * { kind: "kolom"; kolom: keyof typeof products.$inferSelect }. De alternatieven waren een
+ * cast (precies de stille leugen die deze union moet uitbannen) of `kolom: string`
+ * (waarmee de hele union zijn waarde verliest). `{ kind: "prijs" }` is het eerlijke doel.
+ */
+export type SchrijfDoel =
+  /** Een kolom op products. */
+  | { kind: "kolom"; kolom: keyof typeof products.$inferSelect }
+  /** Een eigen veld: sleutel `fieldId` binnen products.custom_values. Nooit een kolom —
+   *  dat is precies waarom de matcher er structureel niet bij kan (db/matcher-grens.test.ts). */
+  | { kind: "custom"; fieldId: string }
+  /** De brutoprijs. Landt via upsertPriceLines op prices.gross_price, nooit op products. */
+  | { kind: "prijs" };
+
+/**
+ * Het type waarnaar celtekst voor dit doel gecanonicaliseerd wordt.
+ * `null` = onbekende/niet-schrijfbare kolom → het voorstel wordt `not_storable`.
+ *
+ * Een eigen veld is ALTIJD "text": products.custom_values is jsonb met tekstwaarden, en
+ * getypeerde eigen velden zijn expliciet buiten scope. Er valt hier dus niets uit sync te
+ * lopen — geen per-veld typekeuze, geen tweede typetabel.
+ */
+export function doelType(doel: SchrijfDoel): KolomType | null {
+  switch (doel.kind) {
+    case "kolom":
+      return kolomTypeVan(doel.kolom);
+    case "custom":
+      return "text";
+    case "prijs":
+      return "num";
+  }
+}
 
 /** products-kolom → type, uit getTableColumns(). `db/schema` importeren is metadata, geen
  *  connectie: dit bestand blijft testbaar zonder database. */
@@ -254,26 +303,26 @@ export function getoondeOudeWaarde(voorstel: FieldProposal | PriceProposal): str
  */
 export type FieldProposal =
   /** DB leeg/NULL, cel gevuld en verwerkbaar. Vinkje default AAN (additief, niets gaat stuk). */
-  | { kind: "new"; fieldKey: string; kolom: string; next: string; nextRuw: string }
+  | { kind: "new"; fieldKey: string; doel: SchrijfDoel; next: string; nextRuw: string }
   /** DB gevuld, cel gevuld, verschillend. Vinkje default UIT — bestaand wint. */
   | {
       kind: "changed";
       fieldKey: string;
-      kolom: string;
+      doel: SchrijfDoel;
       prev: string;
       next: string;
       nextRuw: string;
     }
   /** Genormaliseerd gelijk. Niet getoond, telt alleen mee in de samenvatting. */
-  | { kind: "unchanged"; fieldKey: string; kolom: string; waarde: string }
+  | { kind: "unchanged"; fieldKey: string; doel: SchrijfDoel; waarde: string }
   /** Zie ConflictReden. Alleen `clear` is toepasbaar (met vinkje, default UIT). */
   | { kind: "conflict"; fieldKey: string; reden: ConflictReden };
 
 export type ConflictReden =
   /** Kolom aanwezig, cel leeg, DB gevuld → voorstel om te WISSEN. Toepasbaar mét vinkje. */
-  | { code: "clear"; kolom: string; prev: string }
+  | { code: "clear"; doel: SchrijfDoel; prev: string }
   /** Celtekst past niet in het kolomtype ("warm" in kelvin). Niet toepasbaar. */
-  | { code: "unprocessable"; kolom: string; ruw: string; kolomType: KolomType }
+  | { code: "unprocessable"; doel: SchrijfDoel; ruw: string; kolomType: KolomType }
   /** Geen schrijf-mapping. Ontvangen, niet opslagbaar — nooit stil weggooien. */
   | { code: "not_storable"; ruw: string }
   /** Prijs wissen: nooit toepasbaar. Een gewiste prijs maakt het product onzichtbaar
@@ -342,6 +391,10 @@ export type BestaandProduct = {
   supplierArticleCode: string;
   /** products-kolomnaam → huidige waarde als tekst (null = leeg). */
   velden: Record<string, string | null>;
+  /** custom_fields.id → huidige waarde uit products.custom_values (null/afwezig = leeg).
+   *  Gesleuteld op de uuid, niet op de `custom:`-key: dat is exact hoe de waarde in de
+   *  jsonb-kolom ligt, en één sleutelvorm minder is één vertaling minder die kan afwijken. */
+  eigenWaarden: Record<string, string | null>;
   /** Brutoprijs op de ACTIEVE prijslijst, of null als er geen (geldige) prijsregel is. */
   grossPrice: string | null;
 };
@@ -411,11 +464,18 @@ export type ApplySelection = {
  *                     Hoofdlettergevoelig, consistent met products_brand_sac_uniq en met
  *                     codeVoorLookup() in de validator: een valse "bekend" verbergt schade.
  * @param waarschuwingen uit de snapshot; worden per rij bij het voorstel getoond.
+ * @param actieveEigenVelden de catalog-keys (`custom:<uuid>`) die NU bestaan en actief zijn.
+ *   Verplicht en zonder default. Een payload is een SNAPSHOT: hij kan kolommen bevatten van
+ *   een eigen veld dat inmiddels gearchiveerd is. Zo'n waarde mag niet stil in custom_values
+ *   landen onder een sleutel die niemand meer kan lezen — hij wordt `not_storable`, precies
+ *   zoals een onbekende kolom. Een lege Set betekent dus "er zijn geen eigen velden", nooit
+ *   "sla de check over".
  */
 export function diffTemplateRows(
   rijen: GelezenRij[],
   bestaand: Map<string, BestaandProduct>,
   waarschuwingen: RijWaarschuwing[],
+  actieveEigenVelden: ReadonlySet<string>,
 ): TemplateProposal {
   const perRij = waarschuwingenPerRij(waarschuwingen);
   const duplicaten = duplicaatGroepen(rijen, waarschuwingen);
@@ -431,7 +491,7 @@ export function diffTemplateRows(
     if (rijenInDuplicaat.has(rij.rij)) continue;
     genummerd.push({
       sorteer: rij.rij,
-      diff: diffRij(rij, bestaand, perRij.get(rij.rij) ?? []),
+      diff: diffRij(rij, bestaand, perRij.get(rij.rij) ?? [], actieveEigenVelden),
     });
   }
   genummerd.sort((a, b) => a.sorteer - b.sorteer);
@@ -446,6 +506,7 @@ function diffRij(
   rij: GelezenRij,
   bestaand: Map<string, BestaandProduct>,
   waarschuwingen: RijWaarschuwing[],
+  actieveEigenVelden: ReadonlySet<string>,
 ): ProductDiff {
   // Hoofdlettergevoelig, alleen getrimd — zie codeVoorLookup() in de validator: een valse
   // "bekend" schrijft stil in het verkeerde product.
@@ -453,7 +514,7 @@ function diffRij(
   const product = articleCode === "" ? undefined : bestaand.get(articleCode);
 
   if (product) {
-    const { fields, price } = voorstellenVoor(rij, product);
+    const { fields, price } = voorstellenVoor(rij, product, actieveEigenVelden);
     return {
       kind: "known",
       rij: rij.rij,
@@ -466,7 +527,7 @@ function diffRij(
     };
   }
 
-  const { fields, price } = voorstellenVoor(rij, null);
+  const { fields, price } = voorstellenVoor(rij, null, actieveEigenVelden);
   return {
     kind: "new_product",
     rij: rij.rij,
@@ -498,6 +559,7 @@ function blokkade(
 function voorstellenVoor(
   rij: GelezenRij,
   product: BestaandProduct | null,
+  actieveEigenVelden: ReadonlySet<string>,
 ): { fields: FieldProposal[]; price: PriceProposal | null } {
   const fields: FieldProposal[] = [];
   let price: PriceProposal | null = null;
@@ -509,33 +571,71 @@ function voorstellenVoor(
       price = prijsVoorstel(ruw, product?.grossPrice ?? null, product !== null);
       continue;
     }
-    const voorstel = veldVoorstel(fieldKey, ruw, product);
+    const voorstel = veldVoorstel(fieldKey, ruw, product, actieveEigenVelden);
     if (voorstel) fields.push(voorstel);
   }
   return { fields, price };
+}
+
+/**
+ * Het schrijfdoel van één catalog-key, of null als er niets te schrijven valt.
+ *
+ * De twee bronnen zijn strikt gescheiden en dat is opzet: SCHRIJF_MAPPING is een
+ * met de hand onderhouden SCHRIJF-besluit over ónze kolommen, en een eigen veld hoort
+ * daar per definitie nooit in — het schrijft in zijn eigen jsonb-sleutel en kan geen
+ * bestaande productkolom raken. `SCHRIJF_MAPPING` veralgemenen tot "alles is schrijfbaar"
+ * zou precies dat onderscheid opheffen.
+ */
+function doelVoor(
+  fieldKey: string,
+  actieveEigenVelden: ReadonlySet<string>,
+): SchrijfDoel | null {
+  if (isEigenVeldKey(fieldKey)) {
+    // Alleen een veld dat NU nog actief is. Een gearchiveerd veld in een oude snapshot
+    // wordt not_storable: zichtbaar ontvangen, niet weggeschreven onder een sleutel die
+    // uit de catalogus verdwenen is.
+    if (!actieveEigenVelden.has(fieldKey)) return null;
+    const fieldId = eigenVeldIdVan(fieldKey);
+    return fieldId === null ? null : { kind: "custom", fieldId };
+  }
+  const kolom = SCHRIJF_MAPPING[fieldKey];
+  return kolom ? { kind: "kolom", kolom } : null;
+}
+
+/** De huidige waarde van dit doel op een bestaand product, als rauwe tekst. */
+function huidigeWaarde(product: BestaandProduct, doel: SchrijfDoel): string | null {
+  switch (doel.kind) {
+    case "kolom":
+      return product.velden[doel.kolom] ?? null;
+    case "custom":
+      return product.eigenWaarden[doel.fieldId] ?? null;
+    case "prijs":
+      return product.grossPrice;
+  }
 }
 
 function veldVoorstel(
   fieldKey: string,
   ruw: string,
   product: BestaandProduct | null,
+  actieveEigenVelden: ReadonlySet<string>,
 ): FieldProposal | null {
-  const kolom = SCHRIJF_MAPPING[fieldKey];
-  const kolomType = kolom ? kolomTypeVan(kolom) : null;
-  if (!kolom || !kolomType) {
+  const doel = doelVoor(fieldKey, actieveEigenVelden);
+  const kolomType = doel ? doelType(doel) : null;
+  if (!doel || !kolomType) {
     // Ontvangen maar niet opslagbaar — nooit stil weggooien. Een lege cel in zo'n kolom is
     // echter niets: er is niets ontvangen om over te melden.
     return ruw === "" ? null : { kind: "conflict", fieldKey, reden: { code: "not_storable", ruw } };
   }
 
-  const prevRuw = product?.velden[kolom] ?? null;
+  const prevRuw = product ? huidigeWaarde(product, doel) : null;
   const prev = prevRuw === null || prevRuw.trim() === "" ? null : normaliseer(prevRuw, kolomType);
 
   if (ruw === "") {
     // Kolom stond er, cel leeg: het merk maakt dit veld leeg.
     if (product === null) return null; // nieuw product: niets om te wissen, niets te melden
-    if (prev === null) return { kind: "unchanged", fieldKey, kolom, waarde: "" };
-    return { kind: "conflict", fieldKey, reden: { code: "clear", kolom, prev } };
+    if (prev === null) return { kind: "unchanged", fieldKey, doel, waarde: "" };
+    return { kind: "conflict", fieldKey, reden: { code: "clear", doel, prev } };
   }
 
   const next = normaliseer(ruw, kolomType);
@@ -543,12 +643,12 @@ function veldVoorstel(
     return {
       kind: "conflict",
       fieldKey,
-      reden: { code: "unprocessable", kolom, ruw, kolomType },
+      reden: { code: "unprocessable", doel, ruw, kolomType },
     };
   }
-  if (prev === null) return { kind: "new", fieldKey, kolom, next, nextRuw: ruw };
-  if (prev === next) return { kind: "unchanged", fieldKey, kolom, waarde: next };
-  return { kind: "changed", fieldKey, kolom, prev, next, nextRuw: ruw };
+  if (prev === null) return { kind: "new", fieldKey, doel, next, nextRuw: ruw };
+  if (prev === next) return { kind: "unchanged", fieldKey, doel, waarde: next };
+  return { kind: "changed", fieldKey, doel, prev, next, nextRuw: ruw };
 }
 
 function prijsVoorstel(
@@ -569,7 +669,7 @@ function prijsVoorstel(
   if (next === null) {
     return {
       kind: "conflict",
-      reden: { code: "unprocessable", kolom: PRIJS_KOLOM, ruw, kolomType: "num" },
+      reden: { code: "unprocessable", doel: { kind: "prijs" }, ruw, kolomType: "num" },
     };
   }
   if (prev === null) return { kind: "new", next, nextRuw: ruw };

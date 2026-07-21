@@ -15,6 +15,7 @@ import type { TemplateUploadState } from "@/components/data/template-upload-card
 import { MAX_TEMPLATE_UPLOAD_BYTES, templateCapMelding } from "@/components/data/template-upload-limits";
 import { validateFilledTemplateXlsx } from "@/lib/excel-validate";
 import { afwijzingsTekst } from "@/lib/excel-validate-messages";
+import { laadCatalogus } from "@/lib/repo/custom-fields";
 import { logEvent } from "@/lib/repo/events";
 import {
   applyTemplateProposal,
@@ -88,7 +89,14 @@ export async function uploadTemplateAction(
     (await loadBestaandeProducten(db, brandId)).keys(),
   );
 
-  const resultaat = await validateFilledTemplateXlsx(bytes, { knownArticleCodes });
+  // De COMPLETE catalogus, uit dezelfde bron als de template-route: valideert hij tegen
+  // FIELD_CATALOG, dan komen de eigen kolommen die het merk keurig invulde binnen als
+  // `onbekendeKolommen` — netjes gemeld, en toch weggegooid.
+  const catalogus = await laadCatalogus(db);
+
+  const resultaat = await validateFilledTemplateXlsx(bytes, catalogus, {
+    knownArticleCodes,
+  });
 
   if (!resultaat.ok) {
     // Geen staging-rij, geen statuswijziging (besluit 6) — wel een spoor (besluit 8).

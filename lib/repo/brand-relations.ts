@@ -27,11 +27,11 @@ import {
   bucketScore,
   measurableFields,
   scorecardAggregate,
-  FIELD_CATALOG,
   type BucketScore,
   type CatalogBucket,
   type ScorecardAggregate,
 } from "@/lib/field-catalog";
+import { laadCatalogus } from "./custom-fields";
 
 // Prijslijst-indicator voor het overzicht. 'verloopt_binnenkort' volgt dezelfde
 // 30-dagen-horizon als de waarschuwingsbuckets van listPriceListStatus.
@@ -158,12 +158,36 @@ export type BrandCompleteness = {
 
 // Selectie-fragmenten, gedeeld door getBrandCompleteness en getAllBrandCompleteness
 // zodat beide codepaden per definitie identieke cijfers geven.
-function completenessSelection(): Record<string, SQL<unknown>> {
+function completenessSelection(
+  catalogus: readonly CatalogBucket[],
+): Record<string, SQL<unknown>> {
   const selection: Record<string, SQL<unknown>> = {
     brand_id: sql`${products.brandId}`,
     product_count: sql`count(*)`,
   };
-  for (const { field } of measurableFields()) {
+  for (const { field } of measurableFields(catalogus)) {
+    if (field.measure.kind === "custom") {
+      // EIGEN VELD — bewust GÉÉN sql.raw. De sleutel gaat als BOUND PARAMETER de query in;
+      // hij komt namelijk uit gebruikersinvoer (Stefan maakt het veld aan), en een
+      // gebruikersgekozen waarde die als identifier in de SQL-tekst belandt is een
+      // injectie-poort. Bij de kolomtak hieronder mag sql.raw wél: die kolomnaam staat in
+      // lib/field-catalog.ts en komt dus altijd van een programmeur — plus de regex ervoor
+      // gooit bij alles wat geen kale identifier is.
+      //
+      // Dit is óók waarom álle eigen velden in ÉÉN jsonb-kolom leven: hun meting is dan voor
+      // elk veld dezelfde uitdrukking met alleen een andere parameter. Er is geen per-veld
+      // kolomkeuze die uit sync kan lopen — een eigen veld kán niet bestaan zonder geldige
+      // meting.
+      //
+      // `<> ''` naast `is not null`: het retour-pad kan een eigen veld leegmaken zonder de
+      // sleutel te verwijderen, en een lege string als "gevuld" tellen laat de scorecard liegen.
+      const id = field.measure.fieldId;
+      selection[field.key] = sql`count(*) filter (
+        where ${products.customValues} ->> ${id} is not null
+          and ${products.customValues} ->> ${id} <> ''
+      )`;
+      continue;
+    }
     if (field.measure.kind !== "column") continue;
     const column = field.measure.column;
     if (!/^[a-z0-9_]+$/.test(column)) {
@@ -185,6 +209,7 @@ function completenessSelection(): Record<string, SQL<unknown>> {
 function toCompleteness(
   brandId: string,
   row: Record<string, unknown> | undefined,
+  catalogus: readonly CatalogBucket[],
 ): BrandCompleteness {
   const productCount = row ? Number(row.product_count) : 0;
   const filledByField: Record<string, number> = {};
@@ -199,41 +224,54 @@ function toCompleteness(
     productCount,
     hasProducts: productCount > 0,
     filledByField,
-    buckets: [...FIELD_CATALOG]
+    buckets: [...catalogus]
       .sort((a, b) => a.order - b.order)
       .map((bucket) => ({
         bucket,
         score: bucketScore(bucket, filledByField, productCount),
       })),
-    aggregate: scorecardAggregate(filledByField, productCount),
+    aggregate: scorecardAggregate(filledByField, productCount, catalogus),
   };
 }
 
+// `catalogus` is optioneel MET een laadfunctie als terugval, en dat is hier iets anders dan
+// de verboden default in de pure laag: daar zou een default stil FIELD_CATALOG kiezen en de
+// eigen velden laten verdwijnen; hier haalt de terugval juist de complete catalogus uit de
+// database. De parameter bestaat zodat een aanroeper die er al een heeft (het overzicht met
+// ~436 merken) hem niet per merk opnieuw laadt.
 export async function getBrandCompleteness(
   db: AppDb,
   brandId: string,
+  catalogus?: readonly CatalogBucket[],
 ): Promise<BrandCompleteness> {
+  const cat = catalogus ?? (await laadCatalogus(db));
   const rows = await db
-    .select(completenessSelection())
+    .select(completenessSelection(cat))
     .from(products)
     .where(eq(products.brandId, brandId))
     .groupBy(products.brandId);
-  return toCompleteness(brandId, rows[0] as Record<string, unknown> | undefined);
+  return toCompleteness(
+    brandId,
+    rows[0] as Record<string, unknown> | undefined,
+    cat,
+  );
 }
 
 // Voor het overzicht: alle merken mét producten in één query (geen N+1).
 // Merken zonder producten ontbreken in de map — de UI toont daar "n.v.t.".
 export async function getAllBrandCompleteness(
   db: AppDb,
+  catalogus?: readonly CatalogBucket[],
 ): Promise<Map<string, BrandCompleteness>> {
+  const cat = catalogus ?? (await laadCatalogus(db));
   const rows = (await db
-    .select(completenessSelection())
+    .select(completenessSelection(cat))
     .from(products)
     .groupBy(products.brandId)) as Record<string, unknown>[];
   const map = new Map<string, BrandCompleteness>();
   for (const row of rows) {
     const brandId = String(row.brand_id);
-    map.set(brandId, toCompleteness(brandId, row));
+    map.set(brandId, toCompleteness(brandId, row, cat));
   }
   return map;
 }

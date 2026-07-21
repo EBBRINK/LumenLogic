@@ -5,11 +5,22 @@
 // 🔒-veld (keys, NL-labels én EN-labels) in het hele werkboek.
 import { expect, test } from "vitest";
 import ExcelJS from "exceljs";
-import { excelColumns, FIELD_CATALOG } from "@/lib/field-catalog";
+import { catalogusMet, type EigenVeldDef } from "@/lib/custom-fields";
+import {
+  excelColumns,
+  FIELD_CATALOG,
+  type CatalogBucket,
+} from "@/lib/field-catalog";
+
+/** Het vaste deel van de catalogus: wat elke bestaande test hier bedoelde toen
+ *  excelColumns() nog parameterloos was. */
+const CATALOGUS = FIELD_CATALOG;
 import { buildMasterTemplateXlsx, TEMPLATE_FILENAME } from "./excel-template";
 
-async function parseTemplate(): Promise<ExcelJS.Workbook> {
-  const bytes = await buildMasterTemplateXlsx();
+async function parseTemplate(
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+): Promise<ExcelJS.Workbook> {
+  const bytes = await buildMasterTemplateXlsx(catalogus);
   const wb = new ExcelJS.Workbook();
   // exceljs accepteert een ArrayBuffer; sliceje voorkomt offset-verrassingen.
   await wb.xlsx.load(
@@ -39,7 +50,7 @@ test("werkblad Product data: Engelse veldlabels (rij 2) = alle 📄-velden in bu
   const wb = await parseTemplate();
   const ws = wb.getWorksheet("Product data");
   expect(ws).toBeDefined();
-  const expected = excelColumns().map(({ field }) => field.labelEn);
+  const expected = excelColumns(CATALOGUS).map(({ field }) => field.labelEn);
   expect(expected).toContain("Supplier article code");
   expect(expected).toContain("Gross list price excl. VAT");
   expect(rowValues(ws!, 2).slice(0, expected.length)).toEqual(expected);
@@ -50,14 +61,14 @@ test("werkblad Product data: Engelse veldlabels (rij 2) = alle 📄-velden in bu
 test("instructie-rij (rij 3) aanwezig met de Engelse catalog-instructies", async () => {
   const wb = await parseTemplate();
   const ws = wb.getWorksheet("Product data")!;
-  const expected = excelColumns().map(({ field }) => field.instructionEn);
+  const expected = excelColumns(CATALOGUS).map(({ field }) => field.instructionEn);
   expect(rowValues(ws, 3).slice(0, expected.length)).toEqual(expected);
 });
 
 test("bucketgroep-rij (rij 1): merges volgen exact de bucketgrenzen, Engelse labels", async () => {
   const wb = await parseTemplate();
   const ws = wb.getWorksheet("Product data")!;
-  const columns = excelColumns();
+  const columns = excelColumns(CATALOGUS);
   // Verwachte (start, eind, label) per bucket, afgeleid uit de catalog zelf.
   let col = 1;
   for (const bucket of [...FIELD_CATALOG].sort((a, b) => a.order - b.order)) {
@@ -128,4 +139,43 @@ test("frozen panes onder rij 3 en werkblad Instructions aanwezig", async () => {
   expect(teksten.join("\n")).toContain(
     "Please return the completed file to your contact at Brink Licht.",
   );
+});
+
+// ── Sprint 1.8: eigen velden staan écht in het bestand dat het merk krijgt ────
+
+const EIGEN: EigenVeldDef = {
+  id: "22222222-2222-4222-8222-222222222222",
+  labelNl: "Gerecycled aandeel (%)",
+  labelEn: "Recycled content (%)",
+  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
+  instructionEn: "Share of recycled material in percent, e.g. 35.",
+  niveau: "wanna",
+  bucketKey: "duurzaamheid_milieu",
+  createdAt: "2026-07-21T10:00:00.000Z",
+  archivedAt: null,
+};
+
+test("1.8: een eigen veld krijgt een echte kolom, mét zijn instructie in rij 3", async () => {
+  const wb = await parseTemplate(catalogusMet([EIGEN]));
+  const ws = wb.getWorksheet("Product data")!;
+  const labels = rowValues(ws, 2);
+  const kolom = labels.indexOf(EIGEN.labelEn) + 1;
+  expect(kolom).toBeGreaterThan(0);
+  // Rij 3 is wat het merk vertelt wát het moet invullen — een kolom zonder instructie is
+  // precies hoe je een kolom krijgt die niemand invult. Daarom is instructie ook verplicht
+  // niet-leeg in migratie 0015.
+  expect(String(ws.getRow(3).getCell(kolom).value ?? "")).toBe(EIGEN.instructionEn);
+  // In de bucket van het veld, achteraan: de bestaande 66 kolommen houden hun plek.
+  expect(kolom).toBe(labels.filter((l) => l !== "").length);
+  // …en onder de bucketgroep van rij 1, niet onder een elfde groep: de merge van
+  // "Sustainability / environment" loopt over hem heen.
+  expect(String(ws.getRow(1).getCell(kolom).value ?? "")).toBe(
+    "Sustainability / environment",
+  );
+});
+
+test("1.8: zonder eigen velden is het bestand bit-voor-bit het oude template", async () => {
+  const wb = await parseTemplate(catalogusMet([]));
+  const ws = wb.getWorksheet("Product data")!;
+  expect(rowValues(ws, 2).filter((v) => v !== "")).toHaveLength(66);
 });

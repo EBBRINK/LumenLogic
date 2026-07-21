@@ -4,7 +4,9 @@
 import { expect, test } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
-import { brandRelations, brands, events } from "@/db/schema";
+import { brandRelations, brands, events, products } from "@/db/schema";
+import { eigenVeldKey } from "@/lib/custom-fields";
+import { archiveEigenVeld, createEigenVeld } from "@/lib/repo/custom-fields";
 import {
   getAllBrandCompleteness,
   getBrandCompleteness,
@@ -332,4 +334,79 @@ test("DoD 4e (DB-niveau): stock invullen laat aggregate.totals ongemoeid", async
   expect(after.aggregate.scoredFieldCount).toBe(before.aggregate.scoredFieldCount);
   // Ter controle: het cijfer verandert wél, alleen in bucket 11 zelf.
   expect(after.filledByField.stock).toBe(1);
+});
+
+// ── Sprint 1.8: een eigen veld wordt gemeten via products.custom_values ──────
+
+test("1.8: eigen veld telt mee in filledByField, met de sleutel als query-PARAMETER", async () => {
+  const db = await createTestDb();
+  const def = await createEigenVeld(db, {
+    labelNl: "Gerecycled aandeel (%)",
+    labelEn: "Recycled content (%)",
+    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
+    instructionEn: "Share of recycled material in percent, e.g. 35.",
+    niveau: "wanna",
+    bucketKey: "duurzaamheid_milieu",
+  });
+  const key = eigenVeldKey(def);
+
+  const { brandId, priceListId, productId } = await seedBrandProduct(db, {
+    brand: "Merk Eigen", name: "P1", supplierArticleCode: "A-1",
+  });
+  const { addProductToBrand } = await import("@/db/test-db");
+  const tweede = await addProductToBrand(db, {
+    brandId, priceListId, name: "P2", supplierArticleCode: "A-2",
+  });
+  const derde = await addProductToBrand(db, {
+    brandId, priceListId, name: "P3", supplierArticleCode: "A-3",
+  });
+
+  await db.update(products).set({ customValues: { [def.id]: "35" } })
+    .where(eq(products.id, productId));
+  // Leeggemaakt: sleutel aanwezig, waarde "". Telt NIET als dekking.
+  await db.update(products).set({ customValues: { [def.id]: "" } })
+    .where(eq(products.id, tweede.productId));
+  // Derde product heeft de sleutel helemaal niet.
+  void derde;
+
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.productCount).toBe(3);
+  expect(c.filledByField[key]).toBe(1);
+
+  // …en het invariant van 1.6-C houdt stand: wat we vragen is wat we scoren.
+  expect(c.aggregate.templateFieldCount).toBe(67);
+  expect(c.aggregate.scoredFieldCount).toBe(67);
+  const duurzaamheid = c.aggregate.categories.find(
+    (x) => x.bucketKey === "duurzaamheid_milieu",
+  )!;
+  expect(duurzaamheid.fields.map((f) => f.key)).toContain(key);
+  expect(duurzaamheid.fields.find((f) => f.key === key)?.ratio).toBeCloseTo(1 / 3, 10);
+});
+
+test("1.8: getBrandCompleteness en getAllBrandCompleteness blijven identiek mét eigen velden", async () => {
+  const db = await createTestDb();
+  await createEigenVeld(db, {
+    labelNl: "x", labelEn: "Recycled content (%)", instructieNl: "x",
+    instructionEn: "x", niveau: "wanna", bucketKey: "duurzaamheid_milieu",
+  });
+  const { brandId } = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
+  const all = await getAllBrandCompleteness(db);
+  expect(all.get(brandId)).toEqual(await getBrandCompleteness(db, brandId));
+});
+
+test("1.8: een GEARCHIVEERD eigen veld verdwijnt uit de scorecard", async () => {
+  const db = await createTestDb();
+  const def = await createEigenVeld(db, {
+    labelNl: "x", labelEn: "Recycled content (%)", instructieNl: "x",
+    instructionEn: "x", niveau: "wanna", bucketKey: "duurzaamheid_milieu",
+  });
+  const { brandId, productId } = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
+  await db.update(products).set({ customValues: { [def.id]: "35" } })
+    .where(eq(products.id, productId));
+
+  expect((await getBrandCompleteness(db, brandId)).aggregate.templateFieldCount).toBe(67);
+  await archiveEigenVeld(db, def.id);
+  const na = await getBrandCompleteness(db, brandId);
+  expect(na.aggregate.templateFieldCount).toBe(66);
+  expect(na.filledByField[eigenVeldKey(def)]).toBeUndefined();
 });

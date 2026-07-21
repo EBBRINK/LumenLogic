@@ -32,6 +32,12 @@ const viewports = {
 
 // ── De fixture: élke categorie uit besluit 4, één keer ───────────────────────
 
+// Eén eigen veld (sprint 1.8). De sleutel wordt hier LETTERLIJK geschreven en niet met
+// eigenVeldKey() gebouwd: deze test moet breken als de sleutelvorm verandert, want dat is
+// precies wat het scherm en de apply-laag uit elkaar zou laten lopen.
+const EIGEN_ID = "6f1a3d2c-8b44-4c1e-9f77-2a5b6c7d8e90";
+const EIGEN_VELD = `custom:${EIGEN_ID}`;
+
 const rows: ProductDiff[] = [
   // Bestaand product met de volle waaier: new, changed, alle drie de conflictsoorten
   // die op een veld kunnen landen, één unchanged (mag NIET renderen) en een prijs.
@@ -43,16 +49,16 @@ const rows: ProductDiff[] = [
     productName: "Downlight Alpha 3000K",
     fields: [
       // DB leeg → vinkje AAN
-      { kind: "new", fieldKey: "kelvin", kolom: "kelvin", next: "3000", nextRuw: "3000" },
+      { kind: "new", fieldKey: "kelvin", doel: { kind: "kolom", kolom: "kelvin" }, next: "3000", nextRuw: "3000" },
       // DB gevuld, ander → vinkje UIT
-      { kind: "changed", fieldKey: "cri", kolom: "cri", prev: "80", next: "90", nextRuw: "90" },
+      { kind: "changed", fieldKey: "cri", doel: { kind: "kolom", kolom: "cri" }, prev: "80", next: "90", nextRuw: "90" },
       // Cel leeg, DB gevuld → wissen; vinkje UIT
-      { kind: "conflict", fieldKey: "color_1", reden: { code: "clear", kolom: "color1", prev: "Black" } },
+      { kind: "conflict", fieldKey: "color_1", reden: { code: "clear", doel: { kind: "kolom", kolom: "color1" }, prev: "Black" } },
       // Celtekst past niet in het kolomtype → geen vinkje
       {
         kind: "conflict",
         fieldKey: "lumen_output",
-        reden: { code: "unprocessable", kolom: "lumenOutput", ruw: "warm-ish", kolomType: "int" },
+        reden: { code: "unprocessable", doel: { kind: "kolom", kolom: "lumenOutput" }, ruw: "warm-ish", kolomType: "int" },
       },
       // Geen schrijf-mapping → ontvangen, niet opslagbaar; geen vinkje
       {
@@ -61,7 +67,17 @@ const rows: ProductDiff[] = [
         reden: { code: "not_storable", ruw: "RG1" },
       },
       // Genormaliseerd gelijk → mag NIET als rij verschijnen (telt alleen mee)
-      { kind: "unchanged", fieldKey: "material_1", kolom: "material1", waarde: "Aluminium" },
+      { kind: "unchanged", fieldKey: "material_1", doel: { kind: "kolom", kolom: "material1" }, waarde: "Aluminium" },
+      // Sprint 1.8: een EIGEN veld van Stefan. Het staat niet in FIELD_CATALOG, dus zijn
+      // label komt uit de eigenVeldLabels-map van de pagina — zonder die map zou het
+      // scherm hier de kale sleutel `custom:<uuid>` tonen.
+      {
+        kind: "new",
+        fieldKey: EIGEN_VELD,
+        doel: { kind: "custom", fieldId: EIGEN_ID },
+        next: "35",
+        nextRuw: "35",
+      },
     ],
     price: { kind: "changed", prev: "199", next: "210.5", nextRuw: "210,50" },
     waarschuwingen: [],
@@ -83,8 +99,8 @@ const rows: ProductDiff[] = [
     rij: 6,
     articleCode: "ART-300",
     fields: [
-      { kind: "new", fieldKey: "name_en", kolom: "nameEn", next: "Pendant Gamma", nextRuw: "Pendant Gamma" },
-      { kind: "new", fieldKey: "kelvin", kolom: "kelvin", next: "2700", nextRuw: "2700" },
+      { kind: "new", fieldKey: "name_en", doel: { kind: "kolom", kolom: "nameEn" }, next: "Pendant Gamma", nextRuw: "Pendant Gamma" },
+      { kind: "new", fieldKey: "kelvin", doel: { kind: "kolom", kolom: "kelvin" }, next: "2700", nextRuw: "2700" },
     ],
     price: { kind: "new", next: "349", nextRuw: "349,00" },
     blocked: null,
@@ -98,7 +114,7 @@ const rows: ProductDiff[] = [
     rij: 7,
     articleCode: "ART-400",
     fields: [
-      { kind: "new", fieldKey: "kelvin", kolom: "kelvin", next: "4000", nextRuw: "4000" },
+      { kind: "new", fieldKey: "kelvin", doel: { kind: "kolom", kolom: "kelvin" }, next: "4000", nextRuw: "4000" },
     ],
     price: null,
     blocked: { code: "missing_name" },
@@ -122,7 +138,7 @@ const waarschuwingen: RijWaarschuwing[] = [
 const proposal: TemplateProposalData = {
   rows,
   counts: {
-    newFields: 4, // kelvin(4) + name_en(6) + kelvin(6) + kelvin(7)
+    newFields: 5, // kelvin(4) + eigen veld(4) + name_en(6) + kelvin(6) + kelvin(7)
     changedFields: 1, // cri(4)
     conflicts: 4, // clear + unprocessable + not_storable + price_clear
     unchangedFields: 1, // material_1(4)
@@ -153,6 +169,7 @@ const voorstel = (
       proposal={proposal}
       waarschuwingen={waarschuwingen}
       activePriceList={null}
+      eigenVeldLabels={{ [EIGEN_VELD]: "Recycled content (%)" }}
       approveAction={noopAction}
       rejectAction={noopAction}
     />
@@ -350,14 +367,62 @@ test("het formulier bevat precies de vinkjes van besluit 4 — niet meer, niet m
     "np.r6",
     "r4.color_1",
     "r4.cri",
+    `r4.${EIGEN_VELD}`,
     "r4.kelvin",
     "r4.list_price_excl_vat",
   ]);
-  // Van die vijf staat er precies één aan (r4.kelvin = new) plus de prijs (new/changed
-  // volgt de veldregel: changed → uit).
+  // Van die zes staan er precies twee aan: r4.kelvin en het eigen veld — beide `new`.
+  // Een eigen veld volgt exact dezelfde defaults als een catalogusveld; een eigen regel
+  // ervoor zou een tweede soort waarheid over dit scherm invoeren.
   expect(vinkjes().filter((v) => v.checked).map((v) => v.name)).toEqual([
     "r4.kelvin",
+    `r4.${EIGEN_VELD}`,
   ]);
+});
+
+// ── Sprint 1.8: een eigen veld van Stefan op dit scherm ─────────────────────
+
+test("eigen veld: label uit de map, sleutel in de selectie, defaults als elk ander veld", async () => {
+  await renderServer(voorstel);
+  await expect.element(page.getByText("Downlight Alpha 3000K")).toBeInTheDocument();
+
+  // Het label komt uit eigenVeldLabels — niet uit FIELD_CATALOG, waar het per
+  // constructie nooit in staat.
+  await expect
+    .element(page.getByText("Recycled content (%)"))
+    .toBeInTheDocument();
+  expect(page.getByText(EIGEN_VELD).query()).toBeNull();
+
+  // De selectie-sleutel draagt de dubbele punt ongeschonden (plan §1): de apply-laag
+  // parseert hem nooit terug uit de samengestelde string.
+  const vink = vinkje(`r4.${EIGEN_VELD}`);
+  expect(vink).not.toBeNull();
+  expect(vink!.checked).toBe(true);
+  expect(vink!.value).toBe("");
+  expect(veldRij(4, EIGEN_VELD)?.dataset.soort).toBe("new");
+});
+
+test("eigen veld zonder label in de map valt terug op de sleutel — zichtbaar, niet stil", async () => {
+  await renderServer(
+    <Screen>
+      <TemplateProposal
+        brandId="b-occhio"
+        uploadId="u-1"
+        filename="occhio-template-ingevuld.xlsx"
+        rowCount={6}
+        proposal={proposal}
+        waarschuwingen={waarschuwingen}
+        activePriceList={null}
+        approveAction={noopAction}
+        rejectAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Downlight Alpha 3000K")).toBeInTheDocument();
+  // Geen map meegegeven (of het veld is intussen weg): dan staat de kale sleutel er, en
+  // is het meteen te zien dat er een label ontbreekt. Een lege cel zou de rij laten
+  // lijken op iets zonder naam en dus zonder betekenis.
+  await expect.element(page.getByText(EIGEN_VELD)).toBeInTheDocument();
 });
 
 test("unchanged verschijnt niet als rij, wél in de telling", async () => {

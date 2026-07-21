@@ -29,6 +29,11 @@ export const DATA_CARDS: DataCard[] = [
     title: "Brand relations",
     desc: "Relationship status and data completeness per brand; data collection.",
   },
+  {
+    href: "/data/fields",
+    title: "Fields",
+    desc: "What we ask brands for — and the fields you add yourself.",
+  },
 ];
 
 export function DataCards({ badge }: { badge: Record<string, number> }) {

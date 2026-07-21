@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { brands } from "@/db/schema";
 import { TemplateProposal } from "@/components/data/template-proposal";
+import { eigenVeldKey } from "@/lib/custom-fields";
 import { getTemplateReturn } from "@/lib/repo/template-return";
 import { requireSession } from "@/lib/session";
 import {
@@ -41,7 +42,15 @@ export default async function TemplateVoorstelPage({
   // een andere payload en geeft daar null), maar het merk kent alléén de route.
   if (!brand || !retour || retour.upload.brandId !== brandId) notFound();
 
-  const { upload, payload, proposal, actievePrijslijst } = retour;
+  const { upload, payload, proposal, actievePrijslijst, eigenVelden } = retour;
+
+  // Sprint 1.8: het scherm kent de sleutelvorm `custom:<uuid>` niet en hoeft dat ook niet
+  // — het krijgt een kant-en-klare labelmap. GEARCHIVEERDE velden zitten er bewust ook in:
+  // een bestand dat onderweg was toen het veld nog bestond, moet zijn kolom hier met naam
+  // en toenaam zien in plaats van als kale sleutel.
+  const eigenVeldLabels = Object.fromEntries(
+    eigenVelden.map((def) => [eigenVeldKey(def), def.labelEn]),
+  );
 
   const terug = (
     <Link
@@ -108,6 +117,7 @@ export default async function TemplateVoorstelPage({
         proposal={proposal}
         waarschuwingen={payload.waarschuwingen}
         activePriceList={actieveLijst}
+        eigenVeldLabels={eigenVeldLabels}
         approveAction={approveTemplateProposalAction}
         rejectAction={rejectTemplateProposalAction}
       />

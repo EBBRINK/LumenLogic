@@ -4,6 +4,7 @@
 import { expect, test } from "vitest";
 import { getTableColumns } from "drizzle-orm";
 import { products } from "@/db/schema";
+import { catalogusMet, type EigenVeldDef } from "@/lib/custom-fields";
 import {
   FIELD_CATALOG,
   GEEN_REACTIE_DAGEN,
@@ -55,7 +56,7 @@ test("🔒-velden: internalOnly ⇒ nooit in het Excel", () => {
   );
   for (const f of internal) expect(f.inExcel).toBe(false);
   // Negatief: geen enkel 🔒-veld in de Excel-kolommen.
-  for (const { field } of excelColumns()) {
+  for (const { field } of excelColumns(FIELD_CATALOG)) {
     expect(field.internalOnly).toBe(false);
   }
 });
@@ -64,7 +65,7 @@ test("meetbare velden: elke measure.column bestaat als échte drizzle-kolom", ()
   const realColumns = new Set(
     Object.values(getTableColumns(products)).map((c) => c.name),
   );
-  for (const { field } of measurableFields()) {
+  for (const { field } of measurableFields(FIELD_CATALOG)) {
     if (field.measure.kind !== "column") throw new Error("onverwacht");
     expect(realColumns, `kolom voor veld ${field.key}`).toContain(
       field.measure.column,
@@ -164,11 +165,11 @@ test("bucketScore: alleen nice gevuld → must/wanna 0, nice 1; deels gevuld = e
 
 // ── DoD 4c: de afbakening van bucket 11 t.o.v. categorie 1-10 (besluiten G9/G10) ──
 
-test("DoD 4c: categorie 1-10 = excelColumns() exact; bucket 11 = precies de zes interne velden, nergens anders", () => {
-  const templateKeys = templateBuckets().flatMap((b) => b.fields.map((f) => f.key));
-  const excelKeys = excelColumns().map(({ field }) => field.key);
+test("DoD 4c: categorie 1-10 = excelColumns(FIELD_CATALOG) exact; bucket 11 = precies de zes interne velden, nergens anders", () => {
+  const templateKeys = templateBuckets(FIELD_CATALOG).flatMap((b) => b.fields.map((f) => f.key));
+  const excelKeys = excelColumns(FIELD_CATALOG).map(({ field }) => field.key);
   expect(templateKeys).toEqual(excelKeys); // zelfde velden, zelfde volgorde
-  expect(templateKeys.length).toBe(66); // = excelColumns().length, DoD 4c
+  expect(templateKeys.length).toBe(66); // = excelColumns(FIELD_CATALOG).length, DoD 4c
 
   const internalBucket = FIELD_CATALOG.find((b) => b.key === INTERNAL_BUCKET_KEY)!;
   expect(internalBucket.fields.map((f) => f.key)).toEqual([
@@ -188,8 +189,8 @@ test("DoD 4c: categorie 1-10 = excelColumns() exact; bucket 11 = precies de zes 
     }
   }
 
-  // templateBuckets() bevat bucket 11 niet — hij levert nul 📄-velden.
-  expect(templateBuckets().some((b) => b.bucket.key === INTERNAL_BUCKET_KEY)).toBe(false);
+  // templateBuckets(FIELD_CATALOG) bevat bucket 11 niet — hij levert nul 📄-velden.
+  expect(templateBuckets(FIELD_CATALOG).some((b) => b.bucket.key === INTERNAL_BUCKET_KEY)).toBe(false);
 });
 
 // ── DoD 4d/4e: scorecardAggregate op de ZZTEST QA-15-fixture (21 jul, live gemeten) ──
@@ -212,7 +213,7 @@ const QA15_FILLED: Record<string, number> = {
 };
 
 test("scorecardAggregate: QA-15-fixture met de hand nagerekend (categorieën + totalen)", () => {
-  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT, FIELD_CATALOG);
   const byKey = Object.fromEntries(agg.categories.map((c) => [c.bucketKey, c]));
 
   // 1. Basis & identiteit (8 velden: must sac/name_en/category, wanna description_en/
@@ -277,7 +278,7 @@ test("scorecardAggregate: QA-15-fixture met de hand nagerekend (categorieën + t
 });
 
 test("scorecardAggregate: 0 producten → alle ratio's en coverageSums 0, veldentelling blijft staan", () => {
-  const agg = scorecardAggregate({}, 0);
+  const agg = scorecardAggregate({}, 0, FIELD_CATALOG);
   expect(agg.hasProducts).toBe(false);
   for (const c of agg.categories) {
     expect(c.ratio, c.bucketKey).toBe(0);
@@ -298,7 +299,7 @@ test("scorecardAggregate: 0 producten → alle ratio's en coverageSums 0, velden
 });
 
 test("ANTI-VAL (G12): totals.must.ratio is NIET het gemiddelde van de tien categorie-must-ratio's", () => {
-  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const agg = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT, FIELD_CATALOG);
   const categorieRatiosMust = agg.categories
     .filter((c) => c.inTotals)
     .map((c) => c.perNiveau.must.ratio);
@@ -313,10 +314,11 @@ test("ANTI-VAL (G12): totals.must.ratio is NIET het gemiddelde van de tien categ
 });
 
 test("G11: een intern veld (bucket 11) vullen verandert totals en scoredFieldCount NIET", () => {
-  const zonder = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT);
+  const zonder = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT, FIELD_CATALOG);
   const met = scorecardAggregate(
     { ...QA15_FILLED, stock: 3, show_on_web: 2 },
     QA15_PRODUCT_COUNT,
+    FIELD_CATALOG,
   );
   expect(met.totals).toEqual(zonder.totals);
   expect(met.scoredFieldCount).toBe(zonder.scoredFieldCount);
@@ -325,4 +327,80 @@ test("G11: een intern veld (bucket 11) vullen verandert totals en scoredFieldCou
   const internalZonder = zonder.categories.find((c) => c.bucketKey === INTERNAL_BUCKET_KEY)!;
   const internalMet = met.categories.find((c) => c.bucketKey === INTERNAL_BUCKET_KEY)!;
   expect(internalMet.coverageSum).toBeGreaterThan(internalZonder.coverageSum);
+});
+
+// ── Sprint 1.8: eigen velden mengen mee zonder tweede indeling ────────────────
+//
+// De converse-test hierboven heeft GEEN uitzondering voor products.custom_values nodig en
+// krijgt die ook niet: hij itereert FIELD_CATALOG en slaat elke key over die geen
+// products-kolomnaam is. `custom_values` is wél een kolom, maar er is geen catalogusVELD met
+// die key — er valt dus niets te overtreden. Een uitzonderingslijst zou hier de eerste
+// scheur zijn waardoor de volgende gemiste kolom alsnog stil wegvalt.
+
+const EIGEN: EigenVeldDef = {
+  id: "11111111-1111-4111-8111-111111111111",
+  labelNl: "Gerecycled aandeel (%)",
+  labelEn: "Recycled content (%)",
+  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
+  instructionEn: "Share of recycled material in percent, e.g. 35.",
+  niveau: "wanna",
+  bucketKey: "duurzaamheid_milieu",
+  createdAt: "2026-07-21T10:00:00.000Z",
+  archivedAt: null,
+};
+
+test("1.8: een eigen veld komt in excelColumns, achteraan zijn eigen bucket", () => {
+  const cat = catalogusMet([EIGEN]);
+  const keys = excelColumns(cat).map(({ field }) => field.key);
+  expect(keys).toHaveLength(67);
+  expect(keys.at(-1)).toBe("custom:" + EIGEN.id); // bucket 10 is de laatste 📄-bucket
+  // Het vaste deel blijft ongemoeid: FIELD_CATALOG is niet gemuteerd.
+  expect(excelColumns(FIELD_CATALOG)).toHaveLength(66);
+});
+
+test("1.8: gearchiveerd eigen veld verdwijnt uit de catalogus", () => {
+  const cat = catalogusMet([{ ...EIGEN, archivedAt: "2026-07-22T09:00:00.000Z" }]);
+  expect(excelColumns(cat)).toHaveLength(66);
+});
+
+test("1.8: een eigen veld is meetbaar en telt mee in de scorecard-noemer", () => {
+  const cat = catalogusMet([EIGEN]);
+  const key = "custom:" + EIGEN.id;
+
+  // measurableFields() levert het veld met een custom-meting — geen kolomnaam, dus niets
+  // dat als identifier in de SQL kan belanden.
+  const meetbaar = measurableFields(cat).find(({ field }) => field.key === key);
+  expect(meetbaar?.field.measure).toEqual({ kind: "custom", fieldId: EIGEN.id });
+
+  // Het invariant van 1.6-C blijft staan: wat we in het Excel vragen is exact wat we scoren.
+  const agg = scorecardAggregate({ ...QA15_FILLED, [key]: 2 }, QA15_PRODUCT_COUNT, cat);
+  expect(agg.templateFieldCount).toBe(67);
+  expect(agg.scoredFieldCount).toBe(agg.templateFieldCount);
+
+  // En hij landt in de categorie van zijn bucket, niet in een elfde categorie.
+  const duurzaamheid = agg.categories.find((c) => c.bucketKey === "duurzaamheid_milieu")!;
+  expect(duurzaamheid.fields.map((f) => f.key)).toContain(key);
+  expect(agg.categories).toHaveLength(11);
+
+  // Veldgewogen (G12): het eigen veld voegt 2/3 aan de wanna-som toe en één aan de noemer.
+  const zonder = scorecardAggregate(QA15_FILLED, QA15_PRODUCT_COUNT, FIELD_CATALOG);
+  expect(agg.totals.wanna.measurableFields).toBe(zonder.totals.wanna.measurableFields + 1);
+  expect(agg.totals.wanna.coverageSum).toBeCloseTo(zonder.totals.wanna.coverageSum + 2 / 3, 10);
+});
+
+test("1.8: een eigen veld kan nooit in bucket 11 belanden (CHECK in 0015 + hier zichtbaar)", () => {
+  // catalogusMet plaatst puur op bucketKey; de database weigert 'intern' al bij het
+  // aanmaken. Deze test legt vast wat er zou gebeuren als die CHECK ooit sneuvelt: het veld
+  // zou in de niet-meegewogen categorie 11 verdwijnen — zichtbaar, maar buiten de totalen.
+  const cat = catalogusMet([{ ...EIGEN, bucketKey: INTERNAL_BUCKET_KEY }]);
+  expect(excelColumns(cat)).toHaveLength(67); // inExcel:true trekt hem tóch het Excel in
+  const agg = scorecardAggregate({}, 0, cat);
+  // …en dán komt bucket 11 TWEE KEER in de scorecard: één keer via templateBuckets()
+  // (want hij levert nu een 📄-veld) en één keer als de vaste, niet-meegewogen categorie 11.
+  // Dat is de schade die de CHECK in migratie 0015 voorkomt.
+  const internCategorieen = agg.categories.filter(
+    (c) => c.bucketKey === INTERNAL_BUCKET_KEY,
+  );
+  expect(internCategorieen).toHaveLength(2);
+  expect(internCategorieen.map((c) => c.inTotals)).toEqual([true, false]);
 });

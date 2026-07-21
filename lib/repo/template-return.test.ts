@@ -25,7 +25,9 @@ import {
   type ApplySelection,
   type TemplateReturnPayload,
 } from "@/lib/template-diff";
+import { eigenVeldKey } from "@/lib/custom-fields";
 import { listBrandUploadsForReview } from "@/lib/repo/admin";
+import { archiveEigenVeld, createEigenVeld } from "@/lib/repo/custom-fields";
 import { archivePriceList } from "@/lib/repo/price-archive";
 import {
   applyTemplateProposal,
@@ -623,4 +625,215 @@ test("reject na goedkeuren → alreadyProcessed, de goedkeuring blijft staan", a
   });
   const [upload] = await db.select().from(brandUploads).where(eq(brandUploads.id, uploadId));
   expect(upload.status).toBe("approved");
+});
+
+// ── Sprint 1.8, DoD 4: een ingevulde eigen-veldwaarde overleeft het VOLLEDIGE retour-pad ──
+
+test("DoD 4: eigen veld — staging → voorstel → goedkeuren → waarde staat in custom_values", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedMerk(db);
+  const def = await createEigenVeld(db, {
+    labelNl: "Gerecycled aandeel (%)",
+    labelEn: "Recycled content (%)",
+    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
+    instructionEn: "Share of recycled material in percent, e.g. 35.",
+    niveau: "wanna",
+    bucketKey: "duurzaamheid_milieu",
+  });
+  const key = eigenVeldKey(def);
+
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [key]: "35" } },
+    ]),
+  });
+
+  // Het voorstel toont hem als opslagbaar (vroeger: not_storable — de scherpste bevinding
+  // van fase 1) en levert de labels mee zodat het scherm geen uuid hoeft te tonen.
+  const ret = (await getTemplateReturn(db, uploadId))!;
+  expect(ret.eigenVelden.map((d) => d.id)).toEqual([def.id]);
+  const voorstel = ret.proposal.rows[0];
+  expect(voorstel.kind === "known" && voorstel.fields[0]).toMatchObject({
+    kind: "new",
+    doel: { kind: "custom", fieldId: def.id },
+    next: "35",
+  });
+
+  await applyTemplateProposal(
+    db,
+    uploadId,
+    selectie({ [fieldSelectionKey(4, key)]: null }),
+    null,
+  );
+
+  const [na] = await db.select().from(products).where(eq(products.id, productId));
+  expect(na.customValues).toEqual({ [def.id]: "35" });
+  // …en geen enkele bestaande kolom is meeveranderd.
+  expect(na.kelvin).toBe(3000);
+});
+
+test("1.8: een tweede eigen veld MERGET, en wissen haalt alleen die ene sleutel weg", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedMerk(db);
+  const basis = {
+    labelNl: "x",
+    instructieNl: "x",
+    instructionEn: "x",
+    niveau: "wanna" as const,
+    bucketKey: "duurzaamheid_milieu",
+  };
+  const a = await createEigenVeld(db, { ...basis, labelEn: "Recycled content (%)" });
+  const b = await createEigenVeld(db, { ...basis, labelEn: "Take-back scheme" });
+
+  // Eerste ronde: alleen a.
+  const eerste = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [eigenVeldKey(a)]: "35" } },
+    ]),
+  });
+  await applyTemplateProposal(
+    db,
+    eerste.uploadId,
+    selectie({ [fieldSelectionKey(4, eigenVeldKey(a))]: null }),
+    null,
+  );
+
+  // Tweede ronde: b erbij. a moet blijven staan — `||` merget, hij overschrijft niet.
+  const tweede = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [eigenVeldKey(b)]: "yes" } },
+    ]),
+  });
+  await applyTemplateProposal(
+    db,
+    tweede.uploadId,
+    selectie({ [fieldSelectionKey(4, eigenVeldKey(b))]: null }),
+    null,
+  );
+  const [naTwee] = await db.select().from(products).where(eq(products.id, productId));
+  expect(naTwee.customValues).toEqual({ [a.id]: "35", [b.id]: "yes" });
+
+  // Derde ronde: a wissen (lege cel bij gevulde waarde = conflict/clear, aangevinkt mét de
+  // oude waarde als stale-guard). Alleen die sleutel verdwijnt.
+  const derde = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [eigenVeldKey(a)]: "" } },
+    ]),
+  });
+  await applyTemplateProposal(
+    db,
+    derde.uploadId,
+    selectie({ [fieldSelectionKey(4, eigenVeldKey(a))]: "35" }),
+    null,
+  );
+  const [naDrie] = await db.select().from(products).where(eq(products.id, productId));
+  expect(naDrie.customValues).toEqual({ [b.id]: "yes" });
+});
+
+test("1.8: een NIEUW product krijgt zijn eigen veldwaarden mee in de insert zelf", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedMerk(db);
+  const def = await createEigenVeld(db, {
+    labelNl: "x",
+    labelEn: "Recycled content (%)",
+    instructieNl: "x",
+    instructionEn: "x",
+    niveau: "wanna",
+    bucketKey: "duurzaamheid_milieu",
+  });
+
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      {
+        rij: 4,
+        velden: {
+          supplier_article_code: "NIEUW-1",
+          name_en: "Downlight New",
+          [eigenVeldKey(def)]: "35",
+        },
+      },
+    ]),
+  });
+  await applyTemplateProposal(
+    db,
+    uploadId,
+    { fields: new Map(), newProducts: new Set([newProductSelectionKey(4)]) },
+    { name: "Lijst 2026", validFrom: "2026-01-01", validUntil: "2999-12-31" },
+  );
+
+  const nieuw = (await productVan(db, brandId, "NIEUW-1"))!;
+  expect(nieuw.customValues).toEqual({ [def.id]: "35" });
+});
+
+test("1.8: een tussentijds GEARCHIVEERD veld wordt bij goedkeuren niet weggeschreven", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedMerk(db);
+  const def = await createEigenVeld(db, {
+    labelNl: "x",
+    labelEn: "Recycled content (%)",
+    instructieNl: "x",
+    instructionEn: "x",
+    niveau: "wanna",
+    bucketKey: "duurzaamheid_milieu",
+  });
+  const key = eigenVeldKey(def);
+
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [key]: "35" } },
+    ]),
+  });
+  // Tussen tonen en goedkeuren archiveert iemand het veld.
+  await archiveEigenVeld(db, def.id);
+
+  await applyTemplateProposal(
+    db,
+    uploadId,
+    selectie({ [fieldSelectionKey(4, key)]: null }),
+    null,
+  );
+
+  const [na] = await db.select().from(products).where(eq(products.id, productId));
+  // Geen sleutel die niemand meer kan lezen. De diff wordt vers herberekend, dus het
+  // voorstel is nu not_storable — en not_storable is nooit toepasbaar.
+  expect(na.customValues).toBeNull();
+});
+
+test("1.8: custom_values raakt visible_products niet — het product blijft gewoon zichtbaar", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedMerk(db);
+  const def = await createEigenVeld(db, {
+    labelNl: "x",
+    labelEn: "Recycled content (%)",
+    instructieNl: "x",
+    instructionEn: "x",
+    niveau: "wanna",
+    bucketKey: "duurzaamheid_milieu",
+  });
+  const { uploadId } = await stageTemplateReturn(db, {
+    brandId,
+    payload: payloadVan([
+      { rij: 4, velden: { supplier_article_code: "A-1", [eigenVeldKey(def)]: "35" } },
+    ]),
+  });
+  await applyTemplateProposal(
+    db,
+    uploadId,
+    selectie({ [fieldSelectionKey(4, eigenVeldKey(def))]: null }),
+    null,
+  );
+
+  const zichtbaar = await db
+    .select()
+    .from(visibleProducts)
+    .where(eq(visibleProducts.id, productId));
+  expect(zichtbaar).toHaveLength(1);
+  // En de view levert de kolom niet: hij staat niet in de selectie (DoD 5).
+  expect(Object.keys(zichtbaar[0])).not.toContain("customValues");
 });

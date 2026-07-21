@@ -20,7 +20,7 @@
 // GEEN replacePriceList. Een template is per constructie een DEELverzameling (40 van 500
 // producten mag); replacePriceList zou de andere 460 prijsregels archiveren en die producten
 // onzichtbaar maken. Prijzen lopen via upsertPriceLines (plan besluit 1).
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import {
   brandUploads,
   brands,
@@ -42,13 +42,25 @@ import {
   type FieldProposal,
   type PriceProposal,
   type ProductDiff,
+  type SchrijfDoel,
   type TemplateProposal,
   type TemplateReturnPayload,
 } from "@/lib/template-diff";
+import { eigenVeldKey, type EigenVeldDef } from "@/lib/custom-fields";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { upsertBrandRelation } from "./brand-relations";
+import { listEigenVelden } from "./custom-fields";
 import { upsertPriceLines } from "./price-archive";
+
+/** De keys (`custom:<uuid>`) die NU bestaan en actief zijn — het vierde argument van
+ *  diffTemplateRows. Uit dezelfde bron als het voorstelscherm zijn labels haalt, zodat een
+ *  veld dat het scherm toont per definitie ook opslagbaar is. */
+function actieveKeys(eigen: readonly EigenVeldDef[]): Set<string> {
+  return new Set(
+    eigen.filter((d) => d.archivedAt === null).map((d) => eigenVeldKey(d)),
+  );
+}
 
 /** `kind` op brand_uploads voor een retour-pad-upload. Sleutelt de guard op de route én het
  *  uitfilteren in lib/repo/admin.ts (die goedkeurknop past niets toe). */
@@ -169,11 +181,18 @@ export async function loadBestaandeProducten(
       const v = (row as Record<string, unknown>)[kolom];
       velden[kolom] = v === null || v === undefined ? null : String(v);
     }
+    // Eigen veldwaarden komen ONGEFILTERD mee, gesleuteld op definitie-uuid: welke sleutels
+    // er nog toe doen bepaalt de diff-engine met `actieveEigenVelden`, niet deze lader.
+    const eigenWaarden: Record<string, string | null> = {};
+    for (const [id, waarde] of Object.entries(row.customValues ?? {})) {
+      eigenWaarden[id] = waarde === null || waarde === undefined ? null : String(waarde);
+    }
     map.set(code, {
       id: row.id,
       name: row.name,
       supplierArticleCode: code,
       velden,
+      eigenWaarden,
       grossPrice: prijzen.get(row.id) ?? null,
     });
   }
@@ -191,6 +210,13 @@ export type TemplateReturn = {
     validFrom: string;
     validUntil: string;
   } | null;
+  /** De eigen velden zoals ze NU zijn, inclusief gearchiveerde. Het voorstelscherm heeft ze
+   *  nodig om een `custom:<uuid>`-key een leesbaar label te geven — anders staat er een uuid
+   *  op het scherm, of erger: een leeg label (dat is vandaag al de zwakke plek van de
+   *  key→label-lookup in template-proposal.tsx). Gearchiveerde velden zitten erbij omdat een
+   *  oude snapshot ze nog kan bevatten; hun voorstellen zijn `not_storable`, maar ze moeten
+   *  wél met naam getoond kunnen worden. */
+  eigenVelden: EigenVeldDef[];
 };
 
 /**
@@ -210,11 +236,18 @@ export async function getTemplateReturn(
   const payload = upload.payload as unknown as TemplateReturnPayload;
   const bestaand = await loadBestaandeProducten(db, upload.brandId);
   const actief = await actievePrijslijst(db, upload.brandId);
+  const eigenVelden = await listEigenVelden(db, { metGearchiveerd: true });
 
   return {
     upload,
     payload,
-    proposal: diffTemplateRows(payload.rijen, bestaand, payload.waarschuwingen),
+    eigenVelden,
+    proposal: diffTemplateRows(
+      payload.rijen,
+      bestaand,
+      payload.waarschuwingen,
+      actieveKeys(eigenVelden),
+    ),
     actievePrijslijst: actief
       ? {
           id: actief.id,
@@ -250,23 +283,52 @@ export type ApplyTemplateResult =
  *  Alles wat hier `null` teruggeeft is niet toepasbaar en wordt overgeslagen. */
 function toepasbaar(
   voorstel: FieldProposal,
-): { kolom: string; next: string | null } | null {
+): { doel: SchrijfDoel; next: string | null } | null {
   switch (voorstel.kind) {
     case "new":
     case "changed":
-      return { kolom: voorstel.kolom, next: voorstel.next };
+      return { doel: voorstel.doel, next: voorstel.next };
     case "conflict":
       // Alleen 'clear' is toepasbaar. unprocessable/not_storable/price_clear krijgen in het
       // scherm geen vinkje; komt zo'n sleutel tóch binnen, dan negeren we hem hier — het
       // formulier is geen autoriteit over wat opslagbaar is.
       return voorstel.reden.code === "clear"
-        ? { kolom: voorstel.reden.kolom, next: null }
+        ? { doel: voorstel.reden.doel, next: null }
         : null;
     case "unchanged":
       // Niets te doen: de catalogus zegt al wat het merk stuurt. Bewust GEEN stale-melding —
       // dit is precies de tweede-keer-toepassen-situatie, en die is een no-op, geen conflict.
       return null;
   }
+}
+
+/**
+ * De SQL-uitdrukking die products.custom_values bijwerkt: bestaande sleutels blijven staan,
+ * `patch` wordt erin gemerged, `wissen` gaat eruit.
+ *
+ * ALLES BOUND PARAMETERS, geen sql.raw. De sleutels zijn uuid's die een gebruiker heeft laten
+ * ontstaan; een gebruikersgekozen waarde die als SQL-tekst wordt samengesteld is een
+ * injectie-poort, ook als hij "toch altijd een uuid is".
+ *
+ * `coalesce(…, '{}')` want de kolom is NULL bij elk product dat nog nooit een eigen waarde
+ * had — en `NULL || '{…}'` is NULL, wat de hele patch stil zou laten verdampen.
+ *
+ * De haakjes zijn niet cosmetisch: `||` en `-` op jsonb hebben in Postgres dezelfde
+ * precedentie en associëren links, dus zonder haakjes verandert de betekenis zodra er zowel
+ * gezet als gewist wordt.
+ */
+function customValuesExpr(
+  patch: Record<string, string>,
+  wissen: readonly string[],
+): SQL<unknown> {
+  let expr: SQL<unknown> = sql`coalesce(${products.customValues}, '{}'::jsonb)`;
+  if (Object.keys(patch).length > 0) {
+    expr = sql`(${expr} || ${JSON.stringify(patch)}::jsonb)`;
+  }
+  for (const key of wissen) {
+    expr = sql`(${expr} - ${key}::text)`;
+  }
+  return expr;
 }
 
 function prijsToepasbaar(voorstel: PriceProposal): string | null {
@@ -341,12 +403,16 @@ export async function applyTemplateProposal(
     },
   });
 
-  // 3. VERS herberekenen — nooit een opgeslagen diff toepassen.
+  // 3. VERS herberekenen — nooit een opgeslagen diff toepassen. Óók de eigen velden worden
+  //    hier vers gelezen: is een veld tussen tonen en goedkeuren gearchiveerd, dan is zijn
+  //    voorstel nu not_storable en wordt het niet weggeschreven.
   const bestaand = await loadBestaandeProducten(db, brandId);
+  const eigenVelden = await listEigenVelden(db, { metGearchiveerd: true });
   const proposal = diffTemplateRows(
     payload.rijen,
     bestaand,
     payload.waarschuwingen,
+    actieveKeys(eigenVelden),
   );
 
   let createdProducts = 0;
@@ -411,13 +477,22 @@ export async function applyTemplateProposal(
   for (const row of nieuwe) {
     if (row.kind !== "new_product") continue;
     const waarden: Record<string, unknown> = {};
+    const eigenNieuw: Record<string, string> = {};
     let naam: string | null = null;
     for (const f of row.fields) {
       // Bij een nieuw product hangt álles aan het ene productvinkje (zie template-proposal.tsx):
       // per-veld-vinkjes zouden suggereren dat je een half product kunt aanmaken. Er is ook
       // niets om te beschermen — het product bestaat nog niet.
       if (f.kind !== "new") continue;
-      waarden[f.kolom] = waardeVoorKolom(f.kolom, f.next);
+      if (f.doel.kind === "custom") {
+        // Nieuw product: de eigen velden gaan gewoon mee in de INSERT. Geen aparte
+        // vervolg-update — die zou het product tussentijds zonder zijn eigen waarden laten
+        // bestaan en updated_at twee keer verzetten.
+        eigenNieuw[f.doel.fieldId] = f.next;
+        continue;
+      }
+      if (f.doel.kind !== "kolom") continue; // 'prijs' loopt via het prijzenpad
+      waarden[f.doel.kolom] = waardeVoorKolom(f.doel.kolom, f.next);
       // name_en vult óók products.name: die is NOT NULL en er is geen bestaande naam om te
       // beschermen. Bij een BESTAAND product landt name_en uitsluitend op nameEn.
       if (f.fieldKey === "name_en") naam = f.next;
@@ -435,6 +510,8 @@ export async function applyTemplateProposal(
         brandName,
         supplierArticleCode: row.articleCode,
         ...waarden,
+        customValues:
+          Object.keys(eigenNieuw).length > 0 ? eigenNieuw : null,
       })
       // Een eerdere halve run kan hem al hebben aangemaakt: DO NOTHING, daarna id ophalen.
       .onConflictDoNothing({
@@ -454,7 +531,7 @@ export async function applyTemplateProposal(
           uploadId,
           brandId,
           supplierArticleCode: row.articleCode,
-          fields: Object.keys(waarden).length,
+          fields: Object.keys(waarden).length + Object.keys(eigenNieuw).length,
         },
       });
     } else {
@@ -486,14 +563,19 @@ export async function applyTemplateProposal(
   for (const row of proposal.rows) {
     if (row.kind !== "known") continue;
     const set: Record<string, unknown> = {};
+    // Eigen velden: één patch-object om te zetten en één lijst sleutels om te wissen. Ze
+    // landen samen met de kolommen in ÉÉN update per product — zie stap 5 hierboven: de
+    // granulariteit van gedeeltelijk falen blijft daarmee "één product".
+    const eigenPatch: Record<string, string> = {};
+    const eigenWissen: string[] = [];
     const fieldsLog: Record<string, { old: string | null; new: string | null }> =
       {};
 
     for (const f of row.fields) {
       const key = fieldSelectionKey(row.rij, f.fieldKey);
       if (!selection.fields.has(key)) continue;
-      const doel = toepasbaar(f);
-      if (!doel) continue;
+      const toe = toepasbaar(f);
+      if (!toe) continue;
       const getoond = getoondeOudeWaarde(f);
       if (
         await staleOfNiet(
@@ -505,17 +587,31 @@ export async function applyTemplateProposal(
       ) {
         continue;
       }
-      set[doel.kolom] = waardeVoorKolom(doel.kolom, doel.next);
-      fieldsLog[f.fieldKey] = { old: getoond, new: doel.next };
+      if (toe.doel.kind === "custom") {
+        if (toe.next === null) eigenWissen.push(toe.doel.fieldId);
+        else eigenPatch[toe.doel.fieldId] = toe.next;
+      } else if (toe.doel.kind === "kolom") {
+        set[toe.doel.kolom] = waardeVoorKolom(toe.doel.kolom, toe.next);
+      } else {
+        continue; // 'prijs' loopt via het prijzenpad, nooit als products-kolom
+      }
+      fieldsLog[f.fieldKey] = { old: getoond, new: toe.next };
     }
 
-    if (Object.keys(set).length > 0) {
+    const eigenAantal = Object.keys(eigenPatch).length + eigenWissen.length;
+    if (Object.keys(set).length > 0 || eigenAantal > 0) {
       await db
         .update(products)
-        .set({ ...set, updatedAt: new Date() })
+        .set({
+          ...set,
+          ...(eigenAantal > 0
+            ? { customValues: customValuesExpr(eigenPatch, eigenWissen) }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(products.id, row.productId));
       updatedProducts++;
-      appliedFields += Object.keys(set).length;
+      appliedFields += Object.keys(set).length + eigenAantal;
       // Het per-veld-spoor van ijzeren regel 5, zonder duizenden events: één event per
       // product met alle {old, new} erin.
       await logEvent(db, {

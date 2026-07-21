@@ -22,7 +22,11 @@
 // het in 1.2 een generieke "er ging iets mis", precies het tegenovergestelde van
 // "afwijzing mét wat er mist".
 import ExcelJS from "exceljs";
-import { excelColumns, type Compleetheidsniveau } from "@/lib/field-catalog";
+import {
+  excelColumns,
+  type CatalogBucket,
+  type Compleetheidsniveau,
+} from "@/lib/field-catalog";
 
 export const WERKBLAD_NAAM = "Product data";
 /** Rij 1 = bucketgroepen, rij 2 = veldlabels, rij 3 = instructies, data vanaf rij 4. */
@@ -160,8 +164,13 @@ export type ValidatieResultaat = FormatAfgewezen | FormatGeldig;
  * lowercase, en dan EXACT matchen. Geen fuzzy matching, geen synoniemen — een
  * vals-positieve kolommatch schrijft stil de verkeerde data in het verkeerde veld, exact
  * de schade die naam-herkenning nu juist wegneemt. Normalisatie is verliesvrij, fuzzy niet.
+ *
+ * GEËXPORTEERD sinds 1.8: labelBotsing() in lib/custom-fields.ts moet bij het AANMAKEN van
+ * een eigen veld exact dezelfde normalisatie toepassen als deze module bij het HERKENNEN
+ * doet. Een tweede kopie zou een botsing opleveren die de aanmaakcheck niet ziet en de
+ * validator wél — en die botsing is een harde afwijzing van élk merkbestand.
  */
-function normLabel(tekst: string): string {
+export function normLabel(tekst: string): string {
   return tekst
     .normalize("NFKC")
     .replace(/[ ​﻿]/g, " ")
@@ -243,11 +252,17 @@ const CODE_RANG: Record<RijWaarschuwing["code"], number> = {
 
 // ── De module ───────────────────────────────────────────────────────────────
 
+/**
+ * @param catalogus de COMPLETE veldcatalogus (vast deel + eigen velden). Verplicht en
+ *   vóór `context`: deze module blijft puur, en met een default zou een merkbestand mét
+ *   Stefans kolommen die kolommen stil als `onbekendeKolommen` afserveren.
+ */
 export async function validateFilledTemplateXlsx(
   bytes: Uint8Array | ArrayBuffer,
+  catalogus: readonly CatalogBucket[],
   context: ValidatieContext = {},
 ): Promise<ValidatieResultaat> {
-  const kolommen = excelColumns();
+  const kolommen = excelColumns(catalogus);
   // labelEn → catalog-veld, genormaliseerd. Uniciteit is een aanname over field-catalog.ts
   // die deze module draagt; de test dwingt hem af in plaats van te hopen.
   const perLabel = new Map<string, (typeof kolommen)[number]["field"]>();
@@ -351,8 +366,8 @@ export async function validateFilledTemplateXlsx(
     }
   }
 
-  // 6. Must-kolommen. Runtime uit de catalog afgeleid — promoveert iemand een veld naar
-  // must, dan verscherpt de validator vanzelf mee (zie HANDOVER: dat is een breaking
+  // 6. Must-kolommen. Runtime uit de catalog afgeleid — promoveert iemand een CATALOGUSveld
+  // naar must, dan verscherpt de validator vanzelf mee (zie HANDOVER: dat is een breaking
   // change voor merkbestanden die onderweg zijn).
   const ontbrekendeMust: KolomVerwijzing[] = [];
   const ontbrekendeOptioneleKolommen: KolomVerwijzing[] = [];
@@ -363,7 +378,27 @@ export async function validateFilledTemplateXlsx(
       labelEn: field.labelEn,
       niveau: field.niveau,
     };
-    if (field.niveau === "must") ontbrekendeMust.push(ref);
+    // ⚠️ `must` OP EEN EIGEN VELD WIJST NOOIT EEN BESTAND AF (sprint 1.8, plan §2). "must"
+    // heeft daardoor twee licht verschillende betekenissen, en dat is opzet.
+    //
+    // De harde afwijzing bestaat omdat catalogus-musts DRAGEND ZIJN VOOR DE VERWERKING
+    // zelf: zonder supplier_article_code is er geen sleutel om een rij aan een product te
+    // koppelen — dedup en de bekende-codes-check hangen eraan (zie de toelichting onder
+    // deze lus). Een veld dat Stefan vandaag aanmaakt kan per definitie nooit dragend zijn
+    // voor de verwerking; de verwerking kende het gisteren nog niet.
+    //
+    // Zou het tóch afwijzen, dan maakt één klik élk merkbestand dat al onderweg is
+    // onbruikbaar: bestanden die verstuurd zijn vóórdat het veld bestond, die geen enkel
+    // merk had kúnnen invullen. Een ontbrekend eigen must-veld gaat dus naar
+    // ontbrekendeOptioneleKolommen; `must` werkt op een eigen veld uitsluitend door in de
+    // weging van de scorecard en in de must_veld_leeg-waarschuwing hieronder — en die
+    // vraagt om een kolom die er wél is.
+    //
+    // Herkend aan measure.kind, niet aan de key-prefix: dat is de discriminant die de
+    // compiler ziet, en het houdt deze module vrij van een import uit lib/custom-fields.ts
+    // (die importeert normLabel hiervandaan — andersom zou een cyclus zijn).
+    const eigenVeld = field.measure.kind === "custom";
+    if (field.niveau === "must" && !eigenVeld) ontbrekendeMust.push(ref);
     else ontbrekendeOptioneleKolommen.push(ref);
   }
   // Ontbrekende must-KOLOM = afwijzing, lege must-CEL = waarschuwing. Die asymmetrie oogt

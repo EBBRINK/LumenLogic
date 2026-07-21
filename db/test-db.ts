@@ -21,6 +21,7 @@ import ocrTilesSql from "./migrations/0011_ocr_tiles.sql?raw";
 import aliasSeraxSql from "./migrations/0012_alias_serax.sql?raw";
 import levensfaseSql from "./migrations/0013_merk_levensfase.sql?raw";
 import milieuFabrieksafstandSql from "./migrations/0014_milieu_fabrieksafstand.sql?raw";
+import eigenVeldenSql from "./migrations/0015_eigen_velden.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -45,6 +46,9 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(aliasSeraxSql); // 0012: alias serax → Valerie Objects (seedt niets op een lege test-DB)
   await client.exec(levensfaseSql); // 0013: brands.lifecycle — kolomdefault, geen backfill
   await client.exec(milieuFabrieksafstandSql); // 0014: factory_location/-distance_km — geen backfill
+  // 0015: custom_fields + products.custom_values — eigen velden. De nieuwe kolom staat in
+  // GEEN view; db/matcher-grens.test.ts leest de view-definities uit déze test-DB terug.
+  await client.exec(eigenVeldenSql);
   return drizzle(client, { schema });
 }
 

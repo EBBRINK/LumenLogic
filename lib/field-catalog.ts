@@ -37,12 +37,23 @@
 // SCHRIJF_MAPPING in lib/template-diff.ts; die twee blijven bewust gescheiden.
 //
 // 🔒-velden (internalOnly): nooit in het merk-Excel, nooit extern.
+//
+// Sinds sprint 1.8 is FIELD_CATALOG het VASTE deel van de catalogus. De eigen velden van
+// Stefan komen uit de database en worden er in lib/custom-fields.ts (catalogusMet) bij
+// gemengd; de afgeleiden hieronder nemen de complete catalogus daarom als parameter.
+// FIELD_CATALOG zelf wordt nooit gemuteerd.
 
 export type Compleetheidsniveau = "must" | "wanna" | "nice";
 
 export type FieldMeasure =
   | { kind: "column"; column: string } // bestaande products-kolom (db/schema.ts)
   | { kind: "price" } // EXISTS op prices, geldig of verlopen (nooit het bedrag)
+  // Eigen veld (sprint 1.8): waarde in products.custom_values onder deze uuid. Voor élk
+  // eigen veld dezelfde uitdrukking met alleen een andere fieldId — de sleutel gaat als
+  // BOUND PARAMETER de query in, nooit als geïnterpoleerde identifier. Er is dus geen
+  // per-veld kolomkeuze die uit sync kan lopen: een eigen veld kán niet bestaan zonder
+  // geldige meting.
+  | { kind: "custom"; fieldId: string }
   | { kind: "none" }; // nog niet meetbaar (grijs in de scorecard)
 
 export type CatalogField = {
@@ -259,11 +270,24 @@ export const FIELD_CATALOG: CatalogBucket[] = [
 export const INTERNAL_BUCKET_KEY = "intern";
 
 // ── Afgeleiden (pure functies) ───────────────────────────────────────────────
+//
+// ⚠️ ALLE DRIE NEMEN DE CATALOGUS ALS VERPLICHTE PARAMETER (sprint 1.8). Sinds er eigen
+// velden bestaan is FIELD_CATALOG niet meer de hele catalogus maar het vaste deel ervan;
+// de complete catalogus komt uit catalogusMet() (lib/custom-fields.ts) en die heeft de
+// database nodig. Parameter in plaats van een async laadfunctie hierbinnen, want
+// lib/excel-validate.ts en lib/template-diff.ts dragen "geen imports uit db/" als
+// ontwerpdoel voor 4.B.
+//
+// GEEN DEFAULT (= FIELD_CATALOG). Een default laat elke bestaande aanroep stil zonder
+// eigen velden doorcompileren, en dat is exact de stille drift die `measure` ooit vijf
+// weken kostte. Een aanroeper die écht alleen het vaste deel wil, typt dat zichtbaar.
 
 // Alle 📄-velden in bucket-volgorde — de kolommen van het merk-Excel-template.
 // Filtert dubbel (inExcel én !internalOnly) zodat een 🔒-veld er nooit doorheen glipt.
-export function excelColumns(): { bucket: CatalogBucket; field: CatalogField }[] {
-  return [...FIELD_CATALOG]
+export function excelColumns(
+  catalogus: readonly CatalogBucket[],
+): { bucket: CatalogBucket; field: CatalogField }[] {
+  return [...catalogus]
     .sort((a, b) => a.order - b.order)
     .flatMap((bucket) =>
       bucket.fields
@@ -277,9 +301,11 @@ export function excelColumns(): { bucket: CatalogBucket; field: CatalogField }[]
 // Geen `order <= 10`-drempel en geen tweede veldenlijst — bucket 11 valt er vanzelf
 // buiten omdat hij nul 📄-velden heeft. Verhuist er ooit een veld, dan schuift de
 // noemer van de scorecard automatisch mee met het merk-Excel.
-export function templateBuckets(): { bucket: CatalogBucket; fields: CatalogField[] }[] {
+export function templateBuckets(
+  catalogus: readonly CatalogBucket[],
+): { bucket: CatalogBucket; fields: CatalogField[] }[] {
   const perBucket = new Map<string, { bucket: CatalogBucket; fields: CatalogField[] }>();
-  for (const { bucket, field } of excelColumns()) {
+  for (const { bucket, field } of excelColumns(catalogus)) {
     let entry = perBucket.get(bucket.key);
     if (!entry) {
       entry = { bucket, fields: [] };
@@ -290,14 +316,20 @@ export function templateBuckets(): { bucket: CatalogBucket; fields: CatalogField
   return [...perBucket.values()];
 }
 
-// Alle velden die v1 kan meten via een bestaande products-kolom (kind "column").
+// Alle velden die per product te tellen zijn: een bestaande products-kolom (kind "column")
+// of een sleutel in products.custom_values (kind "custom"). Beide worden in dezelfde
+// gegroepeerde query gemeten (completenessSelection in lib/repo/brand-relations.ts), en
+// dáárom staan ze in één lijst — een tweede lijst voor eigen velden zou meteen een tweede
+// plek zijn die uit de pas kan lopen.
 // De prijs-meting (kind "price") loopt apart via de prices-tabel.
-export function measurableFields(): { bucket: CatalogBucket; field: CatalogField }[] {
-  return [...FIELD_CATALOG]
+export function measurableFields(
+  catalogus: readonly CatalogBucket[],
+): { bucket: CatalogBucket; field: CatalogField }[] {
+  return [...catalogus]
     .sort((a, b) => a.order - b.order)
     .flatMap((bucket) =>
       bucket.fields
-        .filter((f) => f.measure.kind === "column")
+        .filter((f) => f.measure.kind === "column" || f.measure.kind === "custom")
         .map((field) => ({ bucket, field })),
     );
 }
@@ -427,6 +459,7 @@ export type ScorecardAggregate = {
 export function scorecardAggregate(
   filledByField: Record<string, number>,
   productCount: number,
+  catalogus: readonly CatalogBucket[],
 ): ScorecardAggregate {
   const hasProducts = productCount > 0;
 
@@ -506,12 +539,13 @@ export function scorecardAggregate(
   };
 
   // Categorie 1-10: uit templateBuckets(), dus per constructie exact excelColumns().
-  const categories: CategorieScore[] = templateBuckets().map(({ bucket, fields }) =>
-    categorieVan(bucket, fields, true),
+  const categories: CategorieScore[] = templateBuckets(catalogus).map(
+    ({ bucket, fields }) => categorieVan(bucket, fields, true),
   );
 
-  // Categorie 11: rechtstreeks uit FIELD_CATALOG, nooit meegeteld in totals (G11).
-  const internalBucket = FIELD_CATALOG.find((b) => b.key === INTERNAL_BUCKET_KEY)!;
+  // Categorie 11: rechtstreeks uit de catalogus, nooit meegeteld in totals (G11). Eigen
+  // velden kunnen hier per constructie niet staan (CHECK bucket_key <> 'intern' in 0015).
+  const internalBucket = catalogus.find((b) => b.key === INTERNAL_BUCKET_KEY)!;
   categories.push(categorieVan(internalBucket, internalBucket.fields, false));
   categories.sort((a, b) => a.order - b.order);
 
@@ -533,7 +567,7 @@ export function scorecardAggregate(
     hasProducts,
     categories,
     totals,
-    templateFieldCount: excelColumns().length,
+    templateFieldCount: excelColumns(catalogus).length,
     scoredFieldCount,
   };
 }

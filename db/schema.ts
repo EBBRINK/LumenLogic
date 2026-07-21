@@ -351,6 +351,20 @@ const productColumns = {
   urlInstallManual: text("url_install_manual"),
   urlPhotometry: text("url_photometry"), // IES/LDT
   urlDeclaration: text("url_declaration"), // CE/DoC
+  // ── Eigen velden 0015 (sprint 1.8): waarden van de door Stefan aangemaakte velden ──
+  // Sleutel = custom_fields.id (uuid), waarde = altijd tekst. Eén kolom voor álle eigen
+  // velden, want dan is hun meting per constructie DEZELFDE uitdrukking met de sleutel
+  // als query-PARAMETER — er valt niets uit sync te lopen en er komt nooit een
+  // gebruikersgekozen identifier in de SQL (fase 1, Val 3).
+  //
+  // ⚠️ DEZE KOLOM MAG NOOIT IN `visible_products` OF `visible_specs`. Dat is de hele
+  // grens: de match-engine leest productgegevens uitsluitend via die views, en beide
+  // hebben een expliciete kolomlijst (geen SELECT *). Zolang custom_values daar buiten
+  // staat, is een eigen veld voor de matcher structureel onbereikbaar — niet "we doen het
+  // niet", maar "het kán niet zonder een migratie die de view herdefinieert". Het is óók
+  // de reden dat deze waarden NIET in tier2_source landen: die staat wél in beide views.
+  // db/matcher-grens.test.ts leest de view-definities terug en bewaakt dit.
+  customValues: jsonb("custom_values").$type<Record<string, string>>(),
   ...timestamps,
 };
 // Natuurlijke sleutel (O1): merk + leveranciers-artikelcode identificeert een artikel —
@@ -936,6 +950,30 @@ export const brandFieldVisibility = pgTable(
   },
   (t) => [uniqueIndex("brand_field_vis_uniq").on(t.brandId, t.field)],
 );
+
+// ── Eigen velden (sprint 1.8, migratie 0015) ─────────────────────────────────
+// De velddefinities die Stefan zelf aanmaakt, bovenop de 66 catalogusvelden in
+// lib/field-catalog.ts. uuid-PK omdat events.entity_id uuid is; diezelfde uuid is de
+// sleutel in products.custom_values.
+//
+// ⚠️ NIET brand_field_visibility. Die tabel lijkt hierop maar is per-MERK-zichtbaarheid
+// van BESTAANDE velden (J-04), geen velddefinitie. Niet hergebruiken, niet uitbreiden.
+//
+// Archiveren i.p.v. verwijderen: de waarden onder een uuid die niemand meer heeft zijn
+// onherstelbaar. `archived_at` is dus de enige "weg"-knop, en de unique index op de
+// genormaliseerde label_en is partieel (alleen actieve velden) zodat een gearchiveerd
+// label weer vrijkomt.
+export const customFields = pgTable("custom_fields", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  labelNl: text("label_nl").notNull(),
+  labelEn: text("label_en").notNull(), // de Excel-kolomkop (rij 2)
+  instructieNl: text("instructie_nl").notNull(),
+  instructionEn: text("instruction_en").notNull(), // rij 3 van het Excel
+  niveau: text("niveau").notNull(), // 'must' | 'wanna' | 'nice' (CHECK in 0015)
+  bucketKey: text("bucket_key").notNull(), // een van de 10 template-buckets; nooit 'intern'
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  ...timestamps,
+});
 
 // Prijsaanvraag-knop bij tier 2 = een lead (J-03).
 export const leads = pgTable("leads", {

@@ -5,7 +5,16 @@
 // (buffer terug-parsen, ArrayBuffer-cast, alles uit de catalog afleiden).
 import { expect, test } from "vitest";
 import ExcelJS from "exceljs";
-import { excelColumns, FIELD_CATALOG } from "@/lib/field-catalog";
+import { catalogusMet, type EigenVeldDef } from "@/lib/custom-fields";
+import {
+  excelColumns,
+  FIELD_CATALOG,
+  type CatalogBucket,
+} from "@/lib/field-catalog";
+
+/** Het vaste deel van de catalogus — wat elke bestaande test hier bedoelt. De 1.8-tests
+ *  onderaan geven expliciet een catalogus mét eigen velden mee. */
+const CATALOGUS = FIELD_CATALOG;
 import { buildMasterTemplateXlsx } from "./excel-template";
 import {
   EERSTE_DATARIJ,
@@ -24,22 +33,31 @@ function alsArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-async function laadTemplate(): Promise<ExcelJS.Workbook> {
+async function laadTemplate(
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(alsArrayBuffer(await buildMasterTemplateXlsx()) as never);
+  await wb.xlsx.load(alsArrayBuffer(await buildMasterTemplateXlsx(catalogus)) as never);
   return wb;
 }
 
 /** labelEn van een catalog-key — uit de catalog, nooit getypt. */
-function labelVan(fieldKey: string): string {
-  const kol = excelColumns().find(({ field }) => field.key === fieldKey);
+function labelVan(
+  fieldKey: string,
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+): string {
+  const kol = excelColumns(catalogus).find(({ field }) => field.key === fieldKey);
   if (!kol) throw new Error(`onbekende fieldKey in test: ${fieldKey}`);
   return kol.field.labelEn;
 }
 
 /** Kolomnummer van een catalog-key, gevonden via de koprij zelf (nooit een index hardcoden). */
-function kolomVan(ws: ExcelJS.Worksheet, fieldKey: string): number {
-  const label = labelVan(fieldKey);
+function kolomVan(
+  ws: ExcelJS.Worksheet,
+  fieldKey: string,
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+): number {
+  const label = labelVan(fieldKey, catalogus);
   for (let c = 1; c <= ws.columnCount; c++) {
     if (String(ws.getRow(2).getCell(c).value ?? "") === label) return c;
   }
@@ -47,8 +65,10 @@ function kolomVan(ws: ExcelJS.Worksheet, fieldKey: string): number {
 }
 
 /** De must-velden, runtime afgeleid — net als de module zelf. */
-function mustKeys(): string[] {
-  return excelColumns()
+function mustKeys(
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+): string[] {
+  return excelColumns(catalogus)
     .filter(({ field }) => field.niveau === "must")
     .map(({ field }) => field.key);
 }
@@ -71,26 +91,35 @@ function rij(code: string, extra: Record<string, string | number | boolean> = {}
 async function bouwIngevuldTemplate(
   rijen: Record<string, string | number | boolean>[],
   muteer?: (ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) => void,
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
 ): Promise<Uint8Array> {
-  const wb = await laadTemplate();
+  const wb = await laadTemplate(catalogus);
   const ws = wb.getWorksheet(WERKBLAD_NAAM)!;
   rijen.forEach((waarden, i) => {
     for (const [fieldKey, waarde] of Object.entries(waarden)) {
-      ws.getRow(EERSTE_DATARIJ + i).getCell(kolomVan(ws, fieldKey)).value = waarde;
+      ws.getRow(EERSTE_DATARIJ + i).getCell(kolomVan(ws, fieldKey, catalogus)).value =
+        waarde;
     }
   });
   muteer?.(ws, wb);
   return new Uint8Array((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 }
 
-async function geldig(bytes: Uint8Array, context?: Parameters<typeof validateFilledTemplateXlsx>[1]) {
-  const res = await validateFilledTemplateXlsx(bytes, context);
+async function geldig(
+  bytes: Uint8Array,
+  context?: Parameters<typeof validateFilledTemplateXlsx>[2],
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+) {
+  const res = await validateFilledTemplateXlsx(bytes, catalogus, context);
   expect(res.ok, `verwachtte een geldig format, kreeg: ${JSON.stringify((res as FormatAfgewezen).reden)}`).toBe(true);
   return res as FormatGeldig;
 }
 
-async function afgewezen(bytes: Uint8Array) {
-  const res = await validateFilledTemplateXlsx(bytes);
+async function afgewezen(
+  bytes: Uint8Array,
+  catalogus: readonly CatalogBucket[] = CATALOGUS,
+) {
+  const res = await validateFilledTemplateXlsx(bytes, catalogus);
   expect(res.ok).toBe(false);
   return res as FormatAfgewezen;
 }
@@ -110,15 +139,15 @@ test("RONDGANG: de échte buildMasterTemplateXlsx()-buffer met testrijen passeer
 });
 
 test("RONDGANG: het kale gedownloade template (200 cosmetische invulrijen) is geldig met 0 datarijen", async () => {
-  const res = await geldig(await buildMasterTemplateXlsx());
+  const res = await geldig(await buildMasterTemplateXlsx(CATALOGUS));
   expect(res.rijen).toEqual([]);
   expect(res.waarschuwingen).toEqual([]);
 });
 
-test("de herkende kolommen dekken exact excelColumns() — geen hardgecodeerde kolomlijst", async () => {
+test("de herkende kolommen dekken exact excelColumns(CATALOGUS) — geen hardgecodeerde kolomlijst", async () => {
   const res = await geldig(await bouwIngevuldTemplate([rij("A-1")]));
   expect(res.kolommen.map((k) => k.fieldKey)).toEqual(
-    excelColumns().map(({ field }) => field.key),
+    excelColumns(CATALOGUS).map(({ field }) => field.key),
   );
 });
 
@@ -126,7 +155,7 @@ test("elke genormaliseerde labelEn is uniek — naam-herkenning kan niet botsen"
   // De module draagt deze aanname over field-catalog.ts; hier wordt hij afgedwongen in
   // plaats van gehoopt. Zelfde normalisatie-kern als normLabel() in de module.
   const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
-  const labels = excelColumns().map(({ field }) => norm(field.labelEn));
+  const labels = excelColumns(CATALOGUS).map(({ field }) => norm(field.labelEn));
   expect(new Set(labels).size).toBe(labels.length);
 });
 
@@ -247,7 +276,7 @@ test("onleesbaar: 0 bytes → onleesbaar_bestand, geen exception", async () => {
 
 test("een ArrayBuffer wordt net zo goed geaccepteerd als een Uint8Array", async () => {
   const bytes = await bouwIngevuldTemplate([rij("A-1")]);
-  const res = await validateFilledTemplateXlsx(alsArrayBuffer(bytes));
+  const res = await validateFilledTemplateXlsx(alsArrayBuffer(bytes), CATALOGUS);
   expect(res.ok).toBe(true);
 });
 
@@ -503,7 +532,7 @@ test("NEGATIEF: geen enkel 🔒-veld komt in het resultaat terecht — ook niet 
     ws.getRow(EERSTE_DATARIJ).getCell(doel).value = "89.00";
   });
   const res = await geldig(bytes);
-  // De 🔒-kolom is niet herkend (excelColumns() filtert dubbel) en belandt als rauwe
+  // De 🔒-kolom is niet herkend (excelColumns(CATALOGUS) filtert dubbel) en belandt als rauwe
   // koptekst bij de onbekende kolommen — de fieldKey raakt het resultaat nooit.
   for (const f of intern) {
     expect(res.kolommen.map((k) => k.fieldKey)).not.toContain(f.key);
@@ -520,4 +549,88 @@ test("het resultaat is JSON-serialiseerbaar — 4.B zet het in brand_uploads.pay
   expect(JSON.parse(JSON.stringify(ok))).toEqual(ok);
   const nok = await afgewezen(new Uint8Array([1, 2, 3]));
   expect(JSON.parse(JSON.stringify(nok))).toEqual(nok);
+});
+
+// ── Sprint 1.8: eigen velden ─────────────────────────────────────────────────
+
+function eigenVeld(niveau: "must" | "wanna" | "nice"): EigenVeldDef {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    labelNl: "Gerecycled aandeel (%)",
+    labelEn: "Recycled content (%)",
+    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
+    instructionEn: "Share of recycled material in percent, e.g. 35.",
+    niveau,
+    bucketKey: "duurzaamheid_milieu",
+    createdAt: "2026-07-21T10:00:00.000Z",
+    archivedAt: null,
+  };
+}
+
+test("1.8: een ingevulde eigen kolom wordt herkend op zijn labeltekst, net als elk ander veld", async () => {
+  const def = eigenVeld("wanna");
+  const cat = catalogusMet([def]);
+  const key = `custom:${def.id}`;
+  const bytes = await bouwIngevuldTemplate(
+    [{ ...rij("A-1"), [key]: "35" }],
+    undefined,
+    cat,
+  );
+  const res = await geldig(bytes, undefined, cat);
+  expect(res.kolommen.map((k) => k.fieldKey)).toContain(key);
+  expect(res.rijen[0].velden[key]).toBe("35");
+  expect(res.onbekendeKolommen).toEqual([]);
+});
+
+// DE KERN VAN BESLUIT §2. Een ontbrekende must-KOLOM van de catalogus is een harde
+// afwijzing; van een eigen veld nooit.
+test("1.8: een ontbrekende eigen MUST-kolom wijst het bestand NIET af", async () => {
+  const def = eigenVeld("must");
+  const cat = catalogusMet([def]);
+  const key = `custom:${def.id}`;
+  // Een bestand dat al onderweg was: gebouwd vóórdat het veld bestond, dus zónder die kolom.
+  const bytes = await bouwIngevuldTemplate([rij("A-1")], undefined, CATALOGUS);
+
+  const res = await geldig(bytes, undefined, cat);
+  expect(res.ontbrekendeOptioneleKolommen.map((k) => k.fieldKey)).toContain(key);
+  // …en het niveau reist gewoon mee: `must` blijft waar voor de weging, alleen niet voor
+  // de afwijzing.
+  expect(
+    res.ontbrekendeOptioneleKolommen.find((k) => k.fieldKey === key)?.niveau,
+  ).toBe("must");
+});
+
+test("1.8: CONTRAST — een ontbrekende CATALOGUS-must wijst wél af (die is dragend)", async () => {
+  const cat = catalogusMet([eigenVeld("must")]);
+  const bytes = await bouwIngevuldTemplate(
+    [rij("A-1")],
+    (ws) => {
+      ws.getRow(2).getCell(kolomVan(ws, "supplier_article_code", cat)).value = null;
+    },
+    cat,
+  );
+  const res = await afgewezen(bytes, cat);
+  expect(res.reden.code).toBe("must_kolommen_ontbreken");
+  if (res.reden.code !== "must_kolommen_ontbreken") throw new Error("onverwacht");
+  // Alleen de catalogus-must staat in de lijst; het eigen must-veld nooit.
+  expect(res.reden.ontbrekend.map((k) => k.fieldKey)).toEqual([
+    "supplier_article_code",
+  ]);
+});
+
+test("1.8: een lege cel in een eigen MUST-kolom is wél een rijwaarschuwing", async () => {
+  const def = eigenVeld("must");
+  const cat = catalogusMet([def]);
+  const key = `custom:${def.id}`;
+  const bytes = await bouwIngevuldTemplate(
+    [{ ...rij("A-1"), [key]: "" }],
+    undefined,
+    cat,
+  );
+  const res = await geldig(bytes, undefined, cat);
+  // De asymmetrie van de module blijft intact: kolom ontbreekt = het merk zag het veld
+  // nooit; cel leeg = het merk zag het en had niets.
+  expect(
+    res.waarschuwingen.filter((w) => w.code === "must_veld_leeg" && w.fieldKey === key),
+  ).toHaveLength(1);
 });

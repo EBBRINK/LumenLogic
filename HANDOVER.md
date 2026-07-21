@@ -532,6 +532,77 @@ kruislink en outreach-filter stonden er al sinds 14 juli — dit was alleen de n
   voor SQL, de ander camelCase Drizzle-properties voor schrijven, en `category` mapt in
   beide anders. Meten ≠ een merk toestaan te overschrijven.
 
+## Sprint 1.8 — Eigen velden toevoegen zonder de app te verlaten — af 21 jul 2026
+
+Stefan kan op `/data/fields` een productveld toevoegen zonder code en zonder deploy.
+Definities in `custom_fields` (migratie 0015), waarden in `products.custom_values jsonb`.
+Geen `ALTER TABLE` vanuit de app: een veld toevoegen is een INSERT.
+
+**Fase-documenten:** `docs/sprint1-8-fase1-probleem.md` (meting), `docs/sprint1-8-fase2-plan.md`
+(het bevroren contract + waarom per beslissing), `docs/milieuvelden-toevoegen.md` (het recept).
+
+### Aannames en open eindes
+
+- **De briefing zei 13 lezers van de veldcatalogus; het zijn er 9.** Vijf daarvan importeren
+  alleen types of een constante en zijn niet gewijzigd. Gemeten met
+  `grep -rln 'from "@/lib/field-catalog"'`.
+- **`lib/template-diff.ts` importeerde de veldcatalogus niet** en was er tóch aan gekoppeld,
+  via de conventie dat `SCHRIJF_MAPPING` op catalog-key gesleuteld is. Dáárom viel een
+  onbekend veld er stil doorheen als `not_storable`. Opgelost door `FieldProposal.kolom` te
+  vervangen door `doel: SchrijfDoel` — een union, zodat de compiler elke vergeten plek aanwijst.
+  ⚠️ **Niet terugdraaien naar een string-conventie**; dat was precies de bug.
+- **`must` betekent voor een eigen veld iets anders dan voor een catalogusveld.** Bij de 66 is
+  een ontbrekende must-KOLOM een harde afwijzing van het hele bestand; bij een eigen veld nooit.
+  Reden: die afwijzing bestaat omdat catalogus-musts dragend zijn voor de verwerking (zonder
+  `supplier_article_code` is er geen sleutel), en een veld van Stefan kan dat per definitie niet
+  zijn. Zou het wél afwijzen, dan maakt één klik elk merkbestand dat onderweg is onbruikbaar —
+  bestanden die geen merk had kúnnen invullen. Staat als commentaar in `lib/excel-validate.ts`
+  en in het recept. **Niet "harmoniseren".**
+- **De sleutel van een eigen veld is `custom:<uuid>`, niet iets leesbaars.** Bewust: het label
+  mag hernoemd worden, dus een van het label afgeleide sleutel gaat liegen zodra dat gebeurt.
+  Leesbaarheid zit in de events (elke payload draagt `labelEn`).
+- **Verwijderen bestaat niet, archiveren wel.** `archived_at` wordt gezet, waarden blijven in
+  `custom_values` staan. Waarden wissen zou een mass-update over productrijen zijn en
+  `updated_at` verzetten — dat breekt de fingerprint-discipline van elke volgende sprint.
+  Gevolg: een gearchiveerd veld laat weeswaarden achter. Er is geen opruimknop; dat is een
+  bewuste keuze, geen omissie.
+- **Labelbotsing is maar half een DB-constraint.** Eigen↔eigen: partiële unique index op de
+  genormaliseerde `label_en` waar `archived_at is null`. Eigen↔catalogus kan geen constraint
+  zijn — die 66 labels leven in TypeScript. Dat blijft `labelBotsing()` in de server-actie.
+  ⚠️ **Restrisico:** voegt een programmeur later een catalogusveld toe met een label dat botst
+  met een bestaand eigen veld, dan vangt niets dat af vóór de merge. De faalwijze is wél luid
+  (`dubbele_kolomkop` → bestandsafwijzing), nooit stil verkeerde data.
+- **`lib/custom-fields.ts` importeert `normLabel` uit `lib/excel-validate.ts`**, en
+  `lib/template-diff.ts` importeert nu `lib/custom-fields.ts`. Daarmee trekt `template-diff` bij
+  een runtime-import exceljs mee. Onschadelijk op serverpaden. ⚠️ **Een client component mag
+  uitsluitend types uit `template-diff`/`custom-fields` importeren**, geen waarden.
+- **`SchrijfDoel` heeft een derde variant `{ kind: "prijs" }`** die niet in het plan stond.
+  `ConflictReden.unprocessable` wordt ook door het prijspad gebruikt en de prijs landt op
+  `prices.gross_price` — geen products-kolom, dus niet uit te drukken als
+  `keyof typeof products.$inferSelect`. Het alternatief was een cast, en dat is precies de
+  stille leugen die deze union moet uitbannen.
+- **`getBrandCompleteness`/`getAllBrandCompleteness` kregen een optionele `catalogus`-parameter**
+  met `laadCatalogus(db)` als terugval, omdat hun aanroepers op geen van beide bouwagentlijsten
+  stonden. Overal elders is de parameter verplicht zónder default — met opzet, want een default
+  laat een aanroeper stil zonder eigen velden doorcompileren.
+- **In de database staat één actief eigen veld** ("Recycled content (%)", categorie 10) plus één
+  gearchiveerd exemplaar met dezelfde naam, en op `ZZTEST QA-15 / ZZTEST-LL15-0001` staat de
+  waarde `42` onder de uuid van het gearchiveerde veld. Dat is het bewijsmateriaal van DoD 4 en
+  6; weg te halen zodra het niet meer nodig is.
+- ⚠️ **Er staan 5 git-stashes** (`sprint1-8-wip-*`) die een parallelle sessie tijdens deze bouw
+  op de gedeelde werkdirectory heeft aangemaakt. Ze bevatten momentopnamen van dit sprintwerk.
+  Niet zomaar droppen zonder te kijken.
+
+### Bekend en niet gerepareerd
+
+- **De testsuite is flaky onder volle belasting, breder dan gedacht.** Niet alleen
+  `components/data/brand-message.test.tsx` (bekend), maar ook `components/admin/brand-admin.test.tsx`
+  en de nieuwe `components/data/custom-fields.test.tsx`. Alle drie geïsoleerd groen (25/25, 14/14),
+  alle drie vallen wisselend om in de volle run met "Matcher did not succeed in time".
+  `brand-admin` is niet aangeraakt door deze sprint. Het is dus een suite-conditie
+  (browser-mode + `waitFor` onder parallelle druk), geen bestandsprobleem — en de aanname
+  "er is één bekende flaky test" klopt niet meer.
+
 ## Sprint 1.7 — Milieudata: de afstand tot Brink Licht — af 21 jul 2026
 
 Eén gegeven erbij op het merk: `brands.factory_location` (het feit van het mérk) en
