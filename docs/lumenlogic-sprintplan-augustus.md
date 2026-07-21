@@ -754,6 +754,39 @@ de knop moet vóóraf tellen wat er hangt, niet de databasefout vertalen.
 opvolger-verwijzing voor de 5 "opgegaan in"-merken — die vraag is gesteld en niet gekozen, en
 vraagt een self-reference-migratie met raakvlak met de matcher. **Opvolgtaak, niet bouwen.**
 
+**1.6 — Compleetheid meet aanlevering, niet geldigheid** (~1 u) · briefing: `docs/sprint1-6-briefing.md`
+- *Given* een merk met een verlopen prijslijst, *when* je de scorecard bekijkt, *then* toont de
+  prijsbalk wat het merk heeft aangeleverd — terwijl de catalogus onveranderd leeg blijft.
+
+**Besluit G7 (Timo, 21 jul):** de compleetheidsmeting laat de voorwaarde
+`pl.valid_until >= current_date` vallen (`lib/repo/brand-relations.ts:169`). Alle andere velden
+meten `count(*) filter (where <kolom> is not null)` op de producttabel; alléén het prijsveld eist
+een geldige lijst. Die asymmetrie is de bug.
+
+**Waarom het ertoe doet:** dit scherm is de outreach-werklijst. Zakt de prijsbalk naar 0% zodra
+een lijst verloopt, dan leest dat als "dit merk heeft ons nooit prijzen gegeven" en stuur je de
+verkeerde mail — het merk hééft geleverd, je hebt een *verlenging* nodig. Compleetheid hoort te
+meten wat is aangeleverd; zichtbaarheid meet wat de matcher mag zien. Nu beantwoordt één balk
+beide vragen en daardoor geen van beide goed.
+
+**Live waargenomen (21 jul).** Timo maakte bewust een prijslijst met een verkeerd jaartal
+(1-8-2006 t/m 1-8-2007) op testmerk `ZZTEST QA-15`. Resultaat: `Gross list price — MUST — 0%`
+terwijl artikelcode, naam, categorie en EAN op 100% stonden en de prijzen gewoon in `prices`
+zaten. Niets in het scherm verklaarde het verschil.
+
+**Waarom dit ijzeren regel 3 niet schendt:** regel 3 gaat over *zoekresultaten*. De scorecard is
+een interne meting achter de login, toont geen bedragen en voedt de matcher niet. `visible_products`
+blijft ongemoeid — dat is meteen de belangrijkste acceptatiecheck: compleetheid beweegt,
+zichtbaarheid niet. IJzeren regel 2 blijft ook intact: de meting blijft een `EXISTS`, het bedrag
+wordt nooit gelezen.
+
+**Geen vervangend verloop-signaal bouwen:** dat bestaat al twee keer — de `Price list`-badge per
+merk en de coverage-gap-telling op `/data/price-lists`.
+
+**Val voor de bouwsessie:** het commentaar dat de oude meting beschrijft staat op **drie** plekken
+(`lib/repo/brand-relations.ts:137` en `lib/field-catalog.ts:14` + `:34`). Een scorecard die niet
+meer doet wat het commentaar belooft, is precies hoe `field-catalog.measure` vijf weken achterliep.
+
 **Technische schuld (bufferuren, ~5 u):** Drizzle-snapshot-gat vanaf 0004 bijwerken (timebox 2 u; anders gedocumenteerd naar het runbook).
 
 ### Week 2 (27–31 jul) — alle losse dingen afwerken
