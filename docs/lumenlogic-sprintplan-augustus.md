@@ -1136,52 +1136,104 @@ verdubbelt dat risico.
 
 **Technische schuld (bufferuren, ~5 u):** Drizzle-snapshot-gat vanaf 0004 bijwerken (timebox 2 u; anders gedocumenteerd naar het runbook).
 
-### Week 2 (27–31 jul) — alle losse dingen afwerken
+### Week 2 (27–31 jul) — het werkt goed, en het laat zien waar de winst zit
 
-**Klaar wanneer** (vault): belangrijkste vragen met echte cijfers beantwoord, lijst met kleine punten leeg, geheel oogt af.
+> **Herzien 22 jul — VOORSTEL, wacht op akkoord Timo.** Het oude week 2 ("alle losse dingen
+> afwerken", analytics-zwaar) is geschreven vóór besluit G18 (geen echte merken/gebruikers vóór
+> de demo) en vóór Timo's richting van 22 jul. Twee dingen verschoven, en dat verandert de helft
+> van de items:
+> 1. **De interface zelf is nu de hoogste prioriteit** — minder klikken per doel, betere namen
+>    ("Data" dekt de lading niet), dingen wegstoppen die niet altijd nodig zijn, en het moet er af
+>    zijn. Dat stond nergens in week 2.
+> 2. **Analytics moeten waarde tónen, niet mooi staan** — intern sturen (wat loopt goed, wat moet
+>    beter) én commercieel (waar zit omzet die Brink via XIS kan pakken).
 
-**2.1a — Interne analytics: de kern (5 widgets)** (~8 u)
-- *Given* /analytics (alleen Brink-intern), *when* een periode is gekozen (per week filterbaar), *then* beantwoordt de pagina op echte events: **top-overwogen producten · trends per week · datagaten & dekking** (zoek-zonder-resultaat + blauw-wachtrij per merk) · **afwijzingsredenen-top-10 · projectfunnel** (concept→estimate→offerte→gegund/niet).
-- *Given* een blok zonder data, *then* toont het "nog geen data" — nooit een lege of brekende widget.
-- *Given* de query-laag, *then* is elke widget org-scoped opgezet (parameter; intern = alles), zodat week 3 externen zonder herbouw kan scopen.
+**Gemeten uitgangspunt (22 jul, live db).** 1.427 events over onze eigen testdagen: 680
+`product_considered`, 298 `matched_status` (blauw 133 · rood 64 · groen 57 · open 22 · geel 11 ·
+paars 11), 84 `search`, 40 in de blauwe wachtrij, 204 spec-regels, 16 dossiers — maar **1 offerte,
+0 organisaties, 0 memberships**. Drie analytics-vragen hebben dus écht materiaal; de projectfunnel
+en alles wat een account of organisatie vereist niet. Dat laatste is post-demo (G18) en hoort in
+week 3, waar de rollen leven.
 
-**2.2 — Merk-demo-pagina (versmald)** (~5 u)
-- Omvat het **aanmaken van een demo-merkaccount** en een pagina in `/merk/*` met scoping in fase 0 hard gekoppeld aan dat ene merk (generieke accounttype-afscherming komt in week 3).
-- *Given* het demo-merkaccount, *when* het zijn analytics opent, *then* uitsluitend geaggregeerde eigen-productcijfers uit `mv_brand_considerations`, en **alleen voor producten met ≥ 5 events/week** (besluit 12) — nooit projectnamen, gebruikers of andere merken (met test).
-- *Given* de materialized view, *then* een refresh-knop + "laatst ververst"-timestamp.
+**Klaar wanneer:** de veelgebruikte schermen zijn korter en beter benoemd (Timo tekent op het
+ontwerp), en op /analytics staat op echte events wat goed loopt, wat ontbreekt, en waar omzet
+blijft liggen — elk blok toont "nog geen data" waar de data er nog niet is.
 
-**2.3 — SPIKE: account-migratie naar Brink (timebox 3 u, alleen uitzoeken)**
-- *Given* de Brink-accountgegevens (besluit C8), *when* de spike klaar is, *then* ligt er een één-pagina-migratiedraaiboek: per dienst (Vercel, Neon, GitHub, Supabase, domein/DNS) de exacte stappen, **wat zonder downtime kan**, welke env-keys/DNS geraakt worden, volgorde + terugvalstap. Géén migratie uitvoeren.
+**2.0 — UI/UX-fundament** (~10 u) · **twee fases, ontwerp eerst, dán code** (besluit G20)
+De kern van de week en Timo's hoogste prioriteit. Timo doet het bewust in twee stappen: eerst de
+navigatie- en informatiestructuur helemaal opnieuw, dán de visuele afwerking met een **brand kit
+die hij nog aanlevert**. Niet los sleutelen.
 
-**2.4 — Ontwerp-notitie architect-analytics (papier)** (~2 u)
-- *Given* de derde smaak (specifiers: duurzaamheid vs. prijs op eigen projecten), *then* één pagina in `docs/` (events, views, schermontwerp), gemarkeerd "bouwen ná augustus".
+*2.0a — informatiestructuur (nu te doen).* De hele hoofdnavigatie opnieuw indelen, en per onderdeel
+bepalen waar het hoort. **De exacte indeling wordt in deze fase vastgelegd, met Timo — niet vooraf
+door de sprintmaster dichtgetimmerd.** Wat vaststaat als probleem dat het moet oplossen:
+- Nu **8 top-items**; "merk" zit op **drie** plekken (Brand relations = top-nav én kaart onder
+  Data; merkbeheer onder Admin; Brand portal apart), en **import op twee** (`/data/loading` +
+  `/admin/imports`).
+- **"Data" is een vergaarbak** (import, prijslijsten, merkrelaties, evaluatie, enrichment, eigen
+  velden) — Timo's eigen woorden: sommige onderdelen horen daar niet thuis.
+- **Vindbaarheid.** Timo vond het merkbeheer niet omdat de kaart "Brands & visibility" heette met
+  als omschrijving "Disclosure tier and per-field exceptions". Een gebouwde feature die niemand
+  vindt is niet af.
+- **Klikpaden inkorten** (één stap minder per veelgebruikt doel) · **progressive disclosure**
+  (wegstoppen wat niet altijd nodig is) · **de navbalk loopt over op 375px**.
+- Werkwijze: een design-/IA-notitie in `docs/` met de nieuwe boom (elk scherm → nieuwe plek),
+  waarop Timo tekent, dán bouwen. Screenshots light/dark × mobile/desktop, zelf bekeken.
 
-**2.5 — LLM-budget & OCR-hygiëne (oogst uit sprint 0.1)** (~3 u)
-Acht punten die 0.1 vond en bewust niet fixte. Geen ervan blokkeert het vangnet; ze zijn
-uitgeschreven in `HANDOVER.md` §"Open punten uit sprint 0.1". Twee ervan zijn UI's die
-**liegen** — die gaan voor.
-- *Given* een maandcap-stop tijdens OCR, *when* de UI de reden toont, *then* zegt hij de waarheid — nu staat er hardcoded "het €1-boek-budget is op" (`app/projects/actions.ts:310-311` plet beide redenen tot één string + `components/dossier/pdf-upload-card.tsx:158-160`). Het event in de DB heeft het wél goed. (~0,5 u)
-- *Given* budget `0` in de instellingen, *then* toont de UI dat als een hard plafond — nu zegt `components/settings/llm-budget-block.tsx:24` "No monthly cap set", precies het tegenovergestelde van wat `7071038` afdwingt. (~0,25 u)
-- *Given* budget `0`, *then* dekt een test het gedrag — nu nergens: `vangnet.test.ts` gebruikt cap `1`, `ocr.test.ts` `0.5`, `settings.test.tsx` rendert `20`/`50`/`null`, nooit `0`. De fix is alleen met code-inspectie geverifieerd en staat regressie-onbeschermd. (~0,5 u)
-- *Given* een OCR-run die op budget stopte (`ocrStatus = gestopt`), *when* de cap omhoog gaat, *then* is hervatten mogelijk — nu is die toestand **terminaal** (hervatten kan alleen bij `bezig`). (~1 u)
-- *Given* `getLlmSpend`, *then* rekent `startOfMonth` in **UTC** — nu lokale tijdzone, latente bug in de eerste uren van een maand op Vercel. (~0,25 u)
-- **Keuze nodig:** de maandcap is **gedeeld** tussen OCR en vangnet, dus OCR kan het vangnet wegdrukken. `getLlmSpendForPurpose` bestaat al voor een uitsplitsing. Splitsen of gedeeld laten? (~0,5 u als we splitsen)
-- *(nieuw, uit 0.1b)* **Beurten-uitputting blijft stil.** Raakt `runLine` `MAX_TURNS_PER_LINE` zónder slottekst, dan is `finalText` leeg → `parseFailed: false` → opnieuw een onverklaarde nul. Zelfde blinde vlek als de stille `catch`, één laag hoger. (G4 bewijst dat dit bij `49c6340e` niet speelde.) (~0,25 u)
-- *(nieuw, uit 0.1b)* **`scripts/cleanup-testdata.ts` raakt losse testdossiers niet.** Het scoopt op org "Van Dijk Elektro" (`ORG_NAME`, regel 27); dossier `49c6340e` heeft géén `organizationId` en valt er dus buiten. Óf het script verbreden, óf accepteren dat losse testdossiers handwerk zijn — maar de briefing van 0.1b ging er ten onrechte van uit dat dit script het opruimt. (~0,5 u)
-- *(nieuw, uit de live-check 20 jul)* **`outcome.reason` wordt nergens per regel gepersisteerd** — de matcher bepaalt een reden (bv. "te weinig gevraagd om gelijkwaardigheid aan te tonen", fix `c2121a3`) maar alleen de blauw-inlaadwachtrij gebruikt hem; op de regel zelf is de reden later niet terug te lezen. Pre-existing gat, gevonden bij de vacuous-green-fix. (~1 u)
-- Opruimen: **`VANGNET_MAX_MS` (120 s) is dood beleid** onder `after()` — het is een zachte grens *tussen* regels; de live run haalde 52 s voor 7 regels, één regel kan theoretisch ~360 s duren. Plus **stale comments in `lib/ai/vangnet.ts`** die nog beweren dat de run "awaited in de import-respons" wordt. (~0,25 u, → bufferuren)
+*2.0b — visuele afwerking (wacht op de brand kit).* Zodra Timo de brand kit levert: het geheel
+"voorbeeldig op papier" zetten en dan doorvoeren — kleur, typografie, componenten. Volgt de
+`frontend-design`-werkwijze (reference-first). **Start niet vóór de kit er is;** tot dan is 2.0b
+alleen voorbereiding.
 
-**2.U — UITLOOP (schrapbaar): aanvullende widgets** (~4 u)
-- Gebruik per gebruiker/org · hit-rate-ontwikkeling · prijslijst-gezondheid · scorecard-voortgang. Zelfde acceptatiecriteria als 2.1a. Niet af = naar week 3-buffer.
+**2.1 — Interne stuur-analytics op echte events** (~5 u)
+Uitsluitend de widgets die vandaag écht data hebben; een blok zonder data toont "nog geen data",
+nooit een lege of brekende widget.
+- **Top-overwogen producten** (680 events) · **afwijzingsredenen-top-10** (298, zes statussen) ·
+  **datagaten & dekking** (zoek-zonder-resultaat + blauwe wachtrij per merk).
+- Query-laag org-scoped als parameter (intern = alles), zodat week 3 externen zonder herbouw kan
+  scopen — nu goedkoop, later duur.
+- **Niet** de projectfunnel (1 offerte, 16 dossiers → niets te tonen) en **niet** het
+  demo-merkaccount (0 organisaties). Die verhuizen naar week 3.
 
-> ⚠️ **Week 2 is met 2.5 erbij overboekt**: 2.1a (8) + 2.2 (5) + 2.3 (3) + 2.4 (2) + 2.5 (3) =
-> **21 u** op een doel van ~19 u. **2.U is daarmee de eerste schrap** (was al schrapbaar), en het
-> opruimwerk uit 2.5 (`VANGNET_MAX_MS`, stale comments) hoort in de bufferuren. Loopt het uit:
-> 2.5 splitsen — de twee liegende UI's zijn het enige deel dat echt niet kan blijven staan.
+**2.2 — Commerciële analytics: gemiste vraag = gemiste order** (~4 u)
+De winst-kant die Timo vroeg. **Advies (open beslissing, zie onder):** meet wat klanten zoeken dat
+Brink niet kan leveren. Elke zoekopdracht zonder treffer (84 `search`) en elke rode regel (64) is
+een gemiste order — en wijst direct aan welk merk te benaderen of welk product in te kopen. Raakt
+ijzeren regel 2 niet: het gaat over wat ontbreekt, niet over ranking of marge.
+- *Given* de gap-analyse, *then* per merk/categorie: hoe vaak gezocht, hoe vaak niets gevonden, en
+  de blauwe-wachtrij-druk — de outreach- én inkoop-werklijst in cijfers.
 
-**Risico's & plan B:** te weinig echte events voor een demo → demo-seed met duidelijk gemarkeerde synthetische events · MV-verversing traag → refresh-knop volstaat in fase 0 · spike ontdekt lock-in (bv. Neon-ownership) → juist de winst: plan B in het draaiboek, week 4 begint zonder verrassing.
+**2.3 — SPIKE: account-migratie naar Brink** (timebox 3 u, alleen uitzoeken) — *ongewijzigd t.o.v.
+het oude plan.* Eén-pagina-draaiboek per dienst (Vercel, Neon, GitHub, Supabase, domein/DNS): wat
+zonder downtime kan, welke env-keys/DNS geraakt worden, volgorde + terugvalstap. Geen migratie
+uitvoeren.
 
-**Technische schuld (bufferuren):** uuid-cast/`payload`-guards in analytics-queries (één afwijkend event mag de pagina nooit breken) · opruimwerk uit 2.5 (`VANGNET_MAX_MS`, stale comments in `lib/ai/vangnet.ts`) · restjes week 1.
+**2.4 — De twee liegende UI's uit sprint 0.1** (~1 u) — *naar voren gehaald uit het oude 2.5.*
+Twee UI's die aantoonbaar onwaarheid tonen: de maandcap-reden is hardgecodeerd
+(`app/projects/actions.ts:310-311`), en budget `0` toont "No monthly cap set" terwijl het juist
+een hard plafond is (`components/settings/llm-budget-block.tsx:24`). De DB heeft het in beide
+gevallen wél goed. De rest van de 0.1-hygiëne (zes punten, in `HANDOVER.md`) blijft bufferwerk.
+
+**Naar week 3 verschoven (stond in het oude week 2):** merk-demo-pagina + demo-merkaccount +
+org-scoping (vereist organisaties en rollen die daar leven) · architect-analytics-ontwerpnotitie
+(papier, "bouwen ná augustus") · aanvullende widgets (het oude 2.U).
+
+**Bufferuren:** rest van de sprint-0.1-hygiëne · de drie flaky testbestanden
+(`brand-message`, `brand-admin`, `custom-fields` — nu een suite-conditie, geen los testprobleem) ·
+NL-labels uit `field-catalog.ts` (132 dode strings, opvolgtaak van 1.9) · uuid-cast/`payload`-guards
+in de analytics-queries (één afwijkend event mag de pagina nooit breken).
+
+**⚠️ Eén open beslissing die het plan afmaakt:** de commerciële vraag van 2.2. Advies hierboven:
+*"wat vragen klanten dat we niet kunnen leveren"* — meetbaar met wat er ligt, raakt de ranking
+niet, en het is meteen een werklijst. Alternatieven: *"meest overwogen producten"* (bevestigt
+vooral wat je al inkoopt) of *"waar zit de marge"* (direct commercieel, maar raakt ijzeren regel 2
+en moet dan strikt gescheiden). Zonder dit besluit staat 2.2 op mijn advies; met een ander
+antwoord herschrijf ik het.
+
+**Risico's & plan B:** design-gate loopt vast op smaak → één referentie vooraf laat Timo tekenen
+vóór er code is · de eventlaag is testdata, geen gebruikersgedrag → de widgets tonen dat eerlijk
+("testperiode") in plaats van het als echte trend te verkopen · UI-werk loopt uit → 2.1 en 2.2
+zijn de eerste schrap, want 2.0 is de prioriteit.
 
 ### Week 3 (3–7 aug) — de eerste klanten van buiten kunnen erin
 
