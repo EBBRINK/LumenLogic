@@ -98,3 +98,9 @@ case aantoont dat een gevulde bak wél verkeerd geordend wordt. Dat scheelt een 
   het schema aanpassen raakt élke leesroute, dus dat is de zwaardere ingreep.
 - Raadhuis is `SASSO PRO 100`, TNO is `Sasso 100` — verwante families; de meting moet bevestigen
   dat P2 op beide de juiste familienaam oppakt.
+- **Bekende beperking (review 21 jul):** de P2-snit verankert op de LINKERgrens (het merk). Bij een
+  boek dat de Productnaam VÓÓR het merk drukt, levert `splitBrandType` de niet-lege staart ná het
+  merk (reflector/maatruis) en valt hij dus NIET terug op `type` — dan is `product_text` potentieel
+  slechter dan de oude waarde. Geen bug binnen deze scope (kolomvolgorde-variatie is al benoemd),
+  maar het beslissende argument als een latere case een omgekeerde volgorde toont: dán is P1 (een
+  gestructureerd `productnaam`-veld) de duurzame oplossing, niet een bredere heuristiek.
