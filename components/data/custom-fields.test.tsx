@@ -64,9 +64,7 @@ const buckets: BucketOptie[] = FIELD_CATALOG.filter(
 const rows: EigenVeldRij[] = [
   {
     id: "6f1a3d2c-8b44-4c1e-9f77-2a5b6c7d8e90",
-    labelNl: "Gerecycled materiaal (%)",
     labelEn: "Recycled content (%)",
-    instructieNl: "Aandeel gerecycled materiaal in procenten, bv. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -78,9 +76,7 @@ const rows: EigenVeldRij[] = [
   },
   {
     id: "1d2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
-    labelNl: "Herkomst behuizing",
     labelEn: "Housing origin",
-    instructieNl: "Land waar de behuizing wordt gemaakt, bv. Italië.",
     instructionEn: "Country where the housing is made, e.g. Italy.",
     niveau: "must",
     bucketKey: "duurzaamheid_milieu",
@@ -92,9 +88,7 @@ const rows: EigenVeldRij[] = [
   },
   {
     id: "aa11bb22-cc33-4d44-8e55-ff6677889900",
-    labelNl: "Proefveld",
     labelEn: "Trial field",
-    instructieNl: "Tijdelijk veld, niet meer in gebruik.",
     instructionEn: "Temporary field, no longer in use.",
     niveau: "nice",
     bucketKey: "documentatie_links",
@@ -219,9 +213,9 @@ test("kolomteller maakt de groei zichtbaar", async () => {
 test("tabel: labels, categorie, niveau, aantal producten met waarde en aanmaakdatum", async () => {
   await renderServer(scherm);
   await expect.element(page.getByText("Your own fields (2)")).toBeInTheDocument();
-  await expect
-    .element(page.getByText("Gerecycled materiaal (%)"))
-    .toBeInTheDocument();
+  // Het NL-label bestaat niet meer — noch in de fixture, noch op het scherm. Deze
+  // negatieve assertie is de wachter tegen herintroductie (DoD 1).
+  expect(page.getByText("Gerecycled materiaal (%)").query()).toBeNull();
   await expect
     .element(page.getByText("Recycled content (%)"))
     .toBeInTheDocument();
@@ -289,7 +283,7 @@ test("archiveren vraagt om bevestiging: geen archivering zonder VERSE telling", 
 
 // ── Het formulier ───────────────────────────────────────────────────────────
 
-test("formulier: vier verplichte tekstvelden, niveau default 'wanna', 10 categorieën", async () => {
+test("formulier: twee verplichte tekstvelden, niveau default 'wanna', 10 categorieën", async () => {
   await renderServer(
     <Screen>
       <CustomFieldForm
@@ -302,10 +296,17 @@ test("formulier: vier verplichte tekstvelden, niveau default 'wanna', 10 categor
   await expect
     .element(page.getByRole("button", { name: "Add field" }))
     .toBeInTheDocument();
-  for (const naam of ["labelNl", "labelEn", "instructieNl", "instructionEn"]) {
+  for (const naam of ["labelEn", "instructionEn"]) {
     const veld = document.querySelector<HTMLInputElement>(`[name="${naam}"]`);
     expect(veld, naam).not.toBeNull();
     expect(veld!.required, naam).toBe(true);
+  }
+  // Wachters tegen herintroductie: het formulier vraagt geen Nederlands meer (DoD 1).
+  for (const naam of ["labelNl", "instructieNl"]) {
+    expect(
+      document.querySelector<HTMLInputElement>(`[name="${naam}"]`),
+      naam,
+    ).toBeNull();
   }
   // Default 'wanna': `must` mag nooit de stand zijn waar je per ongeluk in blijft staan.
   const wanna = document.querySelector<HTMLInputElement>(

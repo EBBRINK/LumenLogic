@@ -339,9 +339,7 @@ test("G11: een intern veld (bucket 11) vullen verandert totals en scoredFieldCou
 
 const EIGEN: EigenVeldDef = {
   id: "11111111-1111-4111-8111-111111111111",
-  labelNl: "Gerecycled aandeel (%)",
   labelEn: "Recycled content (%)",
-  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
   instructionEn: "Share of recycled material in percent, e.g. 35.",
   niveau: "wanna",
   bucketKey: "duurzaamheid_milieu",

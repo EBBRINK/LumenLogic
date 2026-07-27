@@ -37,9 +37,7 @@ export type CatalogusOverzichtBucket = {
 
 export type EigenVeldRij = {
   id: string;
-  labelNl: string;
   labelEn: string;
-  instructieNl: string;
   instructionEn: string;
   niveau: Compleetheidsniveau;
   bucketKey: string;
@@ -271,7 +269,7 @@ export function CustomFieldsTable({
             <table className="w-full min-w-[46rem] text-sm">
               <thead>
                 <tr className="border-b border-foreground/10 text-left text-xs text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Label (NL / EN)</th>
+                  <th className="px-3 py-2 font-medium">Label</th>
                   <th className="px-3 py-2 font-medium">Category</th>
                   <th className="px-3 py-2 font-medium">Level</th>
                   <th className="px-3 py-2 font-medium">Products with value</th>
@@ -289,10 +287,7 @@ export function CustomFieldsTable({
                     className="border-b border-foreground/5 align-top last:border-b-0"
                   >
                     <td className="px-3 py-2">
-                      <div className="font-medium">{r.labelNl}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {r.labelEn}
-                      </div>
+                      <div className="font-medium">{r.labelEn}</div>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {r.bucketOrder}. {r.bucketLabelEn}
@@ -341,9 +336,7 @@ export function CustomFieldsTable({
               key={r.id}
               waarden={{
                 id: r.id,
-                labelNl: r.labelNl,
                 labelEn: r.labelEn,
-                instructieNl: r.instructieNl,
                 instructionEn: r.instructionEn,
                 niveau: r.niveau,
                 bucketKey: r.bucketKey,

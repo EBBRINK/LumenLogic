@@ -145,9 +145,7 @@ test("frozen panes onder rij 3 en werkblad Instructions aanwezig", async () => {
 
 const EIGEN: EigenVeldDef = {
   id: "22222222-2222-4222-8222-222222222222",
-  labelNl: "Gerecycled aandeel (%)",
   labelEn: "Recycled content (%)",
-  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
   instructionEn: "Share of recycled material in percent, e.g. 35.",
   niveau: "wanna",
   bucketKey: "duurzaamheid_milieu",

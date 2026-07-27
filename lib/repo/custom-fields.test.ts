@@ -5,7 +5,7 @@
 //   • de teltelling gebruikt de sleutel als parameter en telt "" niet als gevuld;
 //   • elk schrijfpad logt zijn eigen event, met de changed-lijst afgeleid uit de patch.
 import { expect, test } from "vitest";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { customFields, events, products } from "@/db/schema";
 import { eigenVeldKey } from "@/lib/custom-fields";
@@ -21,9 +21,7 @@ import {
 } from "./custom-fields";
 
 const INVOER = {
-  labelNl: "Gerecycled aandeel (%)",
   labelEn: "Recycled content (%)",
-  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
   instructionEn: "Share of recycled material in percent, e.g. 35.",
   niveau: "wanna" as const,
   bucketKey: "duurzaamheid_milieu",
@@ -76,6 +74,22 @@ test("createEigenVeld: labels en instructies worden getrimd", async () => {
   const db = await createTestDb();
   const def = await createEigenVeld(db, { ...INVOER, labelEn: "  Recycled content (%)  " });
   expect(def.labelEn).toBe("Recycled content (%)");
+});
+
+// 1.9: 0016 maakt label_nl/instructie_nl nullable en drizzle schrijft ze niet meer — dit
+// bewijst dat 0016 op déze test-DB draait en dat er geen verstopte schrijver van de
+// legacy-kolommen is. Rauwe select, want db/schema.ts kent de kolommen bewust niet meer.
+test("1.9: een verse createEigenVeld laat label_nl en instructie_nl NULL — 0016 draait, geen verstopte schrijver", async () => {
+  const db = await createTestDb();
+  const def = await createEigenVeld(db, INVOER);
+  const res = await db.execute(
+    sql`select label_nl, instructie_nl from custom_fields where id = ${def.id}`,
+  );
+  const rows = (
+    Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? []
+  ) as { label_nl: string | null; instructie_nl: string | null }[];
+  expect(rows[0].label_nl).toBeNull();
+  expect(rows[0].instructie_nl).toBeNull();
 });
 
 // ── De constraints uit migratie 0015 ────────────────────────────────────────
@@ -204,17 +218,17 @@ test("updateEigenVeld: de changed-lijst komt uit de PATCH, niet uit een handlijs
   const na = await updateEigenVeld(
     db,
     def.id,
-    { labelNl: "Recyclaat (%)", niveau: "must" },
+    { labelEn: "Recyclaat (%)", niveau: "must" },
     "stefan@brinklicht.nl",
   );
-  expect(na.labelNl).toBe("Recyclaat (%)");
+  expect(na.labelEn).toBe("Recyclaat (%)");
   expect(na.niveau).toBe("must");
 
   const [ev] = await eventsVan(db, def.id);
   expect(ev.action).toBe("custom_field_updated");
   expect(ev.payload).toEqual({
     fields: {
-      labelNl: { old: "Gerecycled aandeel (%)", new: "Recyclaat (%)" },
+      labelEn: { old: "Recycled content (%)", new: "Recyclaat (%)" },
       niveau: { old: "wanna", new: "must" },
     },
   });
@@ -224,7 +238,7 @@ test("updateEigenVeld: een patch die niets verandert logt geen event", async () 
   const db = await createTestDb();
   const def = await createEigenVeld(db, INVOER);
   const voor = (await eventsVan(db, def.id)).length;
-  await updateEigenVeld(db, def.id, { labelNl: INVOER.labelNl });
+  await updateEigenVeld(db, def.id, { labelEn: INVOER.labelEn });
   expect((await eventsVan(db, def.id)).length).toBe(voor);
 });
 

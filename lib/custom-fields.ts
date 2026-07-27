@@ -32,9 +32,7 @@ export const EIGEN_VELD_PREFIX = "custom:" as const;
 export type EigenVeldDef = {
   /** uuid, PK van custom_fields; óók de sleutel in products.custom_values */
   id: string;
-  labelNl: string;
   labelEn: string; // de Excel-kolomkop (rij 2)
-  instructieNl: string;
   instructionEn: string; // rij 3 van het Excel
   niveau: Compleetheidsniveau;
   /** key van een van de 10 template-buckets; nooit "intern" */
@@ -71,17 +69,21 @@ export function eigenVeldIdVan(fieldKey: string): string | null {
  * `inExcel: true` zonder opt-out: er is vandaag geen ander invoerkanaal (het
  * merkportaal-schrijfpad is 4.B), dus een veld met inExcel:false zou gegarandeerd voor
  * altijd leeg blijven.
+ *
+ * `labelNl`/`instructie` zijn er alleen omdat `CatalogField` (lib/field-catalog.ts, bewust
+ * onaangeraakt — sprint 1.9 §6) dat contract nog kent. Voor een eigen veld bestaat er geen
+ * Nederlandse tekst meer, dus deze twee dragen gewoon het Engels door (compat-mapping).
  */
 export function alsCatalogField(def: EigenVeldDef): CatalogField {
   return {
     key: eigenVeldKey(def),
-    labelNl: def.labelNl,
+    labelNl: def.labelEn,
     labelEn: def.labelEn,
     niveau: def.niveau,
     matcher: false,
     internalOnly: false,
     inExcel: true,
-    instructie: def.instructieNl,
+    instructie: def.instructionEn,
     instructionEn: def.instructionEn,
     measure: { kind: "custom", fieldId: def.id },
   };

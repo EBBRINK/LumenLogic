@@ -505,9 +505,7 @@ test("RONDGANG: template bouwen → invullen → validator → diff levert een k
 
 const EIGEN: EigenVeldDef = {
   id: "44444444-4444-4444-8444-444444444444",
-  labelNl: "Gerecycled aandeel (%)",
   labelEn: "Recycled content (%)",
-  instructieNl: "Percentage gerecycled materiaal, bv. 35.",
   instructionEn: "Share of recycled material in percent, e.g. 35.",
   niveau: "wanna",
   bucketKey: "duurzaamheid_milieu",

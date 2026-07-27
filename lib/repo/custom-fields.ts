@@ -36,9 +36,7 @@ type Rij = typeof customFields.$inferSelect;
 function alsDef(rij: Rij): EigenVeldDef {
   return {
     id: rij.id,
-    labelNl: rij.labelNl,
     labelEn: rij.labelEn,
-    instructieNl: rij.instructieNl,
     instructionEn: rij.instructionEn,
     niveau: rij.niveau as Compleetheidsniveau,
     bucketKey: rij.bucketKey,
@@ -104,9 +102,7 @@ export async function telProductenMetWaarde(
 }
 
 export type EigenVeldInvoer = {
-  labelNl: string;
   labelEn: string;
-  instructieNl: string;
   instructionEn: string;
   niveau: Compleetheidsniveau;
   bucketKey: string;
@@ -120,9 +116,7 @@ export async function createEigenVeld(
   const [rij] = await db
     .insert(customFields)
     .values({
-      labelNl: invoer.labelNl.trim(),
       labelEn: invoer.labelEn.trim(),
-      instructieNl: invoer.instructieNl.trim(),
       instructionEn: invoer.instructionEn.trim(),
       niveau: invoer.niveau,
       bucketKey: invoer.bucketKey,
@@ -138,7 +132,6 @@ export async function createEigenVeld(
     // labelEn draagt de leesbaarheid die de uuid-sleutel niet heeft: zonder dit veld is
     // een event over `custom:9f2c…` voor een mens betekenisloos.
     payload: {
-      labelNl: def.labelNl,
       labelEn: def.labelEn,
       niveau: def.niveau,
       bucketKey: def.bucketKey,

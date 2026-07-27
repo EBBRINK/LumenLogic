@@ -963,11 +963,12 @@ export const brandFieldVisibility = pgTable(
 // onherstelbaar. `archived_at` is dus de enige "weg"-knop, en de unique index op de
 // genormaliseerde label_en is partieel (alleen actieve velden) zodat een gearchiveerd
 // label weer vrijkomt.
+// label_nl/instructie_nl bestaan nog in de database (0016: nullable legacy-kolommen) maar
+// worden nooit meer beschreven — het formulier op /data/fields vraagt geen Nederlands meer
+// (sprint 1.9). Drizzle kent ze bewust niet meer.
 export const customFields = pgTable("custom_fields", {
   id: uuid("id").primaryKey().defaultRandom(),
-  labelNl: text("label_nl").notNull(),
   labelEn: text("label_en").notNull(), // de Excel-kolomkop (rij 2)
-  instructieNl: text("instructie_nl").notNull(),
   instructionEn: text("instruction_en").notNull(), // rij 3 van het Excel
   niveau: text("niveau").notNull(), // 'must' | 'wanna' | 'nice' (CHECK in 0015)
   bucketKey: text("bucket_key").notNull(), // een van de 10 template-buckets; nooit 'intern'

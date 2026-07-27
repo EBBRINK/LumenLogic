@@ -83,9 +83,7 @@ export default async function EigenVeldenPage() {
     const bucket = bucketVan.get(def.bucketKey);
     return {
       id: def.id,
-      labelNl: def.labelNl,
       labelEn: def.labelEn,
-      instructieNl: def.instructieNl,
       instructionEn: def.instructionEn,
       niveau: def.niveau,
       bucketKey: def.bucketKey,

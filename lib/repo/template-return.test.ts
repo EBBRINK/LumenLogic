@@ -633,9 +633,7 @@ test("DoD 4: eigen veld — staging → voorstel → goedkeuren → waarde staat
   const db = await createTestDb();
   const { brandId, productId } = await seedMerk(db);
   const def = await createEigenVeld(db, {
-    labelNl: "Gerecycled aandeel (%)",
     labelEn: "Recycled content (%)",
-    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -677,8 +675,6 @@ test("1.8: een tweede eigen veld MERGET, en wissen haalt alleen die ene sleutel 
   const db = await createTestDb();
   const { brandId, productId } = await seedMerk(db);
   const basis = {
-    labelNl: "x",
-    instructieNl: "x",
     instructionEn: "x",
     niveau: "wanna" as const,
     bucketKey: "duurzaamheid_milieu",
@@ -738,9 +734,7 @@ test("1.8: een NIEUW product krijgt zijn eigen veldwaarden mee in de insert zelf
   const db = await createTestDb();
   const { brandId } = await seedMerk(db);
   const def = await createEigenVeld(db, {
-    labelNl: "x",
     labelEn: "Recycled content (%)",
-    instructieNl: "x",
     instructionEn: "x",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -774,9 +768,7 @@ test("1.8: een tussentijds GEARCHIVEERD veld wordt bij goedkeuren niet weggeschr
   const db = await createTestDb();
   const { brandId, productId } = await seedMerk(db);
   const def = await createEigenVeld(db, {
-    labelNl: "x",
     labelEn: "Recycled content (%)",
-    instructieNl: "x",
     instructionEn: "x",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -809,9 +801,7 @@ test("1.8: custom_values raakt visible_products niet — het product blijft gewo
   const db = await createTestDb();
   const { brandId, productId } = await seedMerk(db);
   const def = await createEigenVeld(db, {
-    labelNl: "x",
     labelEn: "Recycled content (%)",
-    instructieNl: "x",
     instructionEn: "x",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",

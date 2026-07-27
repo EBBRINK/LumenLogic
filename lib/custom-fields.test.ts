@@ -17,9 +17,7 @@ import {
 function def(over: Partial<EigenVeldDef> = {}): EigenVeldDef {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    labelNl: "Gerecycled aandeel (%)",
     labelEn: "Recycled content (%)",
-    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -58,15 +56,18 @@ test("de sleutel overleeft hernoemen — dát is waarom hij geen slug van het la
 
 test("alsCatalogField: nooit matcher, nooit intern, altijd in het Excel, meting op fieldId", () => {
   const veld = alsCatalogField(def());
+  // labelNl/instructie dragen hier het Engels: sinds 1.9 bestaat er voor een eigen veld
+  // geen Nederlandse tekst meer, en dit is de compat-mapping voor het CatalogField-contract
+  // (lib/field-catalog.ts blijft bewust onaangeraakt, zie sprint1-9-plan.md §6).
   expect(veld).toEqual({
     key: `${EIGEN_VELD_PREFIX}aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
-    labelNl: "Gerecycled aandeel (%)",
+    labelNl: "Recycled content (%)",
     labelEn: "Recycled content (%)",
     niveau: "wanna",
     matcher: false,
     internalOnly: false,
     inExcel: true,
-    instructie: "Percentage gerecycled materiaal, bv. 35.",
+    instructie: "Share of recycled material in percent, e.g. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     measure: { kind: "custom", fieldId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
   });

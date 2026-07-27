@@ -6,8 +6,8 @@
 // dat een bestaand pad meelogt is precies hoe 1.7 bijna een veld stil liet wegvallen).
 //
 // DRIE DINGEN WORDEN HIER BEWUST GETOETST, NIET IN DE BROWSER:
-//  1. Alle vier de tekstvelden niet-leeg. `required` in het formulier is een hint, geen
-//     contract — een POST kan er zo omheen.
+//  1. Label en instructie (beide Engels) niet-leeg. `required` in het formulier is een
+//     hint, geen contract — een POST kan er zo omheen.
 //  2. bucketKey is een van de 10 template-buckets. Nooit "intern": een eigen veld gaat
 //     per definitie naar het merk, en bucket 11 is juist wat we NIET vragen.
 //  3. Labelbotsing op het GENORMALISEERDE label (labelBotsing() → normLabel()). Dit is de
@@ -48,9 +48,7 @@ const tekst = (formData: FormData, key: string) =>
   String(formData.get(key) ?? "").trim();
 
 type Invoer = {
-  labelNl: string;
   labelEn: string;
-  instructieNl: string;
   instructionEn: string;
   niveau: Compleetheidsniveau;
   bucketKey: string;
@@ -59,17 +57,17 @@ type Invoer = {
 /** Leest en toetst het formulier. Retourneert óf de invoer óf één zin die uitlegt wat
  *  eraan schort — nooit een half ingevuld object. */
 function leesInvoer(formData: FormData): Invoer | { error: string } {
-  const labelNl = tekst(formData, "labelNl");
   const labelEn = tekst(formData, "labelEn");
-  const instructieNl = tekst(formData, "instructieNl");
   const instructionEn = tekst(formData, "instructionEn");
-  if (!labelNl || !labelEn) {
-    return { error: "Both labels are required — NL for us, EN for the brand." };
+  if (!labelEn) {
+    return {
+      error: "A label is required — it is the column header the brand sees (row 2).",
+    };
   }
-  if (!instructieNl || !instructionEn) {
+  if (!instructionEn) {
     return {
       error:
-        "Both instructions are required. Row 3 of the brand Excel is the instruction; a column without one is a column nobody fills in.",
+        "An instruction is required. Row 3 of the brand Excel is the instruction; a column without one is a column nobody fills in.",
     };
   }
   const niveau = tekst(formData, "niveau") as Compleetheidsniveau;
@@ -78,7 +76,7 @@ function leesInvoer(formData: FormData): Invoer | { error: string } {
   if (!TEMPLATE_BUCKET_KEYS.includes(bucketKey)) {
     return { error: "Pick one of the ten template categories." };
   }
-  return { labelNl, labelEn, instructieNl, instructionEn, niveau, bucketKey };
+  return { labelEn, instructionEn, niveau, bucketKey };
 }
 
 function botsingsZin(

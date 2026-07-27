@@ -556,9 +556,7 @@ test("het resultaat is JSON-serialiseerbaar — 4.B zet het in brand_uploads.pay
 function eigenVeld(niveau: "must" | "wanna" | "nice"): EigenVeldDef {
   return {
     id: "33333333-3333-4333-8333-333333333333",
-    labelNl: "Gerecycled aandeel (%)",
     labelEn: "Recycled content (%)",
-    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     niveau,
     bucketKey: "duurzaamheid_milieu",

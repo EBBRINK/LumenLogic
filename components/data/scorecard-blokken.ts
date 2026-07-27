@@ -20,7 +20,7 @@ export function bucketBlok(
           : score.nice.ratio;
   return {
     key: bucket.key,
-    labelNl: bucket.labelEn,
+    labelEn: bucket.labelEn,
     ratio,
     mustComplete: score.must.total === 0 || score.must.ratio >= 1,
   };

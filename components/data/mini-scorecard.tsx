@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 export type BucketBlok = {
   key: string;
-  labelNl: string;
+  labelEn: string;
   // Ratio (0..1) waarop het blokje kleurt: must-ratio als de bucket must-velden
   // heeft, anders de wanna-/nice-ratio. null = niet meetbaar (grijs).
   ratio: number | null;
@@ -38,8 +38,8 @@ export function MiniScorecard({ blokken }: { blokken: BucketBlok[] | null }) {
           key={b.key}
           title={
             b.ratio === null
-              ? `${b.labelNl}: not measurable yet`
-              : `${b.labelNl}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? " (all must fields complete)" : ""}`
+              ? `${b.labelEn}: not measurable yet`
+              : `${b.labelEn}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? " (all must fields complete)" : ""}`
           }
           className={cn(
             "inline-block size-3 rounded-[3px]",

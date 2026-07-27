@@ -3,10 +3,12 @@
 // Formulier voor een EIGEN PRODUCTVELD (sprint 1.8). Eén component voor aanmaken én
 // bewerken — het verschil is `waarden` (leeg = nieuw) en de action die het krijgt.
 //
-// WAAROM ALLE VIER DE TEKSTVELDEN VERPLICHT ZIJN (plan §7): rij 3 van het merk-Excel is
+// WAAROM LABEL EN INSTRUCTIE (BEIDE ENGELS) VERPLICHT ZIJN: rij 3 van het merk-Excel is
 // de instructie. Een veld zonder instructie is een kolom die niemand invult — precies de
-// valkuil die dit item juist moet vermijden. `required` is hier dus geen nettigheid maar
-// het ontwerp; de server-actie toetst het nog een keer (een browser is geen contract).
+// valkuil die dit item juist moet vermijden. Sinds sprint 1.9 vraagt het formulier geen
+// Nederlands meer (besluit W1: de interne UI is Engels). `required` is hier dus geen
+// nettigheid maar het ontwerp; de server-actie toetst het nog een keer (een browser is
+// geen contract).
 //
 // GEEN EIGEN DB-PAD, GEEN EIGEN VALIDATIEPROZA: de labelbotsing-melding komt uit de
 // server-actie via useActionState. Dit bestand verzint geen enkele reden waarom iets niet
@@ -20,9 +22,7 @@ export type BucketOptie = { key: string; labelEn: string; order: number };
 
 export type EigenVeldFormWaarden = {
   id: string;
-  labelNl: string;
   labelEn: string;
-  instructieNl: string;
   instructionEn: string;
   niveau: Compleetheidsniveau;
   bucketKey: string;
@@ -136,29 +136,14 @@ export function CustomFieldForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Veld
-          label="Label (NL)"
-          name="labelNl"
-          defaultValue={waarden?.labelNl ?? ""}
-          placeholder="Gerecycled materiaal (%)"
-          hint="Internal label — scorecard and this screen."
-        />
-        <Veld
-          label="Label (EN)"
+          label="Label"
           name="labelEn"
           defaultValue={waarden?.labelEn ?? ""}
           placeholder="Recycled content (%)"
           hint="The column header the brand sees (row 2). Must be unique."
         />
         <Veld
-          label="Instruction (NL)"
-          name="instructieNl"
-          textarea
-          defaultValue={waarden?.instructieNl ?? ""}
-          placeholder="Aandeel gerecycled materiaal in procenten, bv. 35."
-          hint="Internal wording of what you are asking for."
-        />
-        <Veld
-          label="Instruction (EN)"
+          label="Instruction"
           name="instructionEn"
           textarea
           defaultValue={waarden?.instructionEn ?? ""}

@@ -155,7 +155,7 @@ const TODAY = "2026-07-14";
 // Mini-scorecard-fixture: 10 blokjes met oplopende dekking + één grijs blokje.
 const blokken: BucketBlok[] = Array.from({ length: 10 }, (_, i) => ({
   key: `b${i + 1}`,
-  labelNl: `Bucket ${i + 1}`,
+  labelEn: `Bucket ${i + 1}`,
   ratio: i === 8 ? null : i / 9, // bucket 9 = nog niet meetbaar (grijs)
   mustComplete: i === 9,
 }));
@@ -287,11 +287,11 @@ test("mini-scorecard: n/a bij 0 producten en donkergroen bij 100% must", async (
   await renderServer(overzicht);
   await expect.element(page.getByText("n/a")).toBeInTheDocument();
   // Kleurfunctie (pure): donkergroen alleen bij mustComplete + ratio 1.
-  expect(blokKleur({ key: "x", labelNl: "x", ratio: 1, mustComplete: true }))
+  expect(blokKleur({ key: "x", labelEn: "x", ratio: 1, mustComplete: true }))
     .toBe("hsl(142 72% 26%)");
-  expect(blokKleur({ key: "x", labelNl: "x", ratio: 0.5, mustComplete: false }))
+  expect(blokKleur({ key: "x", labelEn: "x", ratio: 0.5, mustComplete: false }))
     .toBe("hsl(55 65% 45%)");
-  expect(blokKleur({ key: "x", labelNl: "x", ratio: null, mustComplete: false }))
+  expect(blokKleur({ key: "x", labelEn: "x", ratio: null, mustComplete: false }))
     .toBeUndefined();
 });
 

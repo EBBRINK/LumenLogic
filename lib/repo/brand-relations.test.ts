@@ -341,9 +341,7 @@ test("DoD 4e (DB-niveau): stock invullen laat aggregate.totals ongemoeid", async
 test("1.8: eigen veld telt mee in filledByField, met de sleutel als query-PARAMETER", async () => {
   const db = await createTestDb();
   const def = await createEigenVeld(db, {
-    labelNl: "Gerecycled aandeel (%)",
     labelEn: "Recycled content (%)",
-    instructieNl: "Percentage gerecycled materiaal, bv. 35.",
     instructionEn: "Share of recycled material in percent, e.g. 35.",
     niveau: "wanna",
     bucketKey: "duurzaamheid_milieu",
@@ -386,7 +384,7 @@ test("1.8: eigen veld telt mee in filledByField, met de sleutel als query-PARAME
 test("1.8: getBrandCompleteness en getAllBrandCompleteness blijven identiek mét eigen velden", async () => {
   const db = await createTestDb();
   await createEigenVeld(db, {
-    labelNl: "x", labelEn: "Recycled content (%)", instructieNl: "x",
+    labelEn: "Recycled content (%)",
     instructionEn: "x", niveau: "wanna", bucketKey: "duurzaamheid_milieu",
   });
   const { brandId } = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
@@ -397,7 +395,7 @@ test("1.8: getBrandCompleteness en getAllBrandCompleteness blijven identiek mét
 test("1.8: een GEARCHIVEERD eigen veld verdwijnt uit de scorecard", async () => {
   const db = await createTestDb();
   const def = await createEigenVeld(db, {
-    labelNl: "x", labelEn: "Recycled content (%)", instructieNl: "x",
+    labelEn: "Recycled content (%)",
     instructionEn: "x", niveau: "wanna", bucketKey: "duurzaamheid_milieu",
   });
   const { brandId, productId } = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
