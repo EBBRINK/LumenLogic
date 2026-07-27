@@ -675,6 +675,30 @@ export async function processOcrPage(
   return { created, duplicates, upgraded, costEur: result.costEur };
 }
 
+// P2-fix (docs/probleem-productnaam-kolom-valt-weg.md): het armaturenboek drukt naast
+// de kolom Armatuurtype ("Richtbare downlight") een aparte kolom Productnaam ("Sasso 100")
+// af — dat is de familienaam waarop de catalogus doorzoekbaar is. Die stond alleen in
+// ruweTekst en viel weg omdat product_text enkel `type` meekreeg, waardoor de matcher op
+// het typewoord zocht dat in géén enkele XAL-productnaam voorkomt → 0 kandidaten. Deze
+// PURE helper haalt de tekst NÁ het merk uit de ruwe regel (via dezelfde splitBrandType
+// als de rest van de leesroute), zodat "Sasso 100 …" in product_text belandt.
+// Nul-regressie-garantie: zónder merk-anker in de body (split.brand === null), bij een
+// lege body, of bij een lege staart valt hij byte-identiek terug op `type || null`.
+function productTextVoorMatcher(
+  regel: OcrRegel,
+  brand: string | null,
+  type: string | null,
+  brandNames: string[],
+): string | null {
+  const body = regel.ruweTekst.replace(regel.armatuurcode, "").trim();
+  if (!body) return type || null;
+  const ankers = brand ? [brand, ...brandNames] : brandNames;
+  const split = splitBrandType(body, ankers);
+  if (!split.brand) return type || null;
+  const staart = split.type.trim();
+  return staart.length > 0 ? staart : type || null;
+}
+
 // Eén gelezen regel → SpecLineInput, met de bestaande deterministische helpers:
 // gaf vision geen merk, dan knipt splitBrandType het uit de typetekst (zelfde
 // helper als de tekstlaag-import); specs komen uit parseProductName (nooit geraden).
@@ -734,7 +758,7 @@ export function regelToSpecLine(
     fixtureCode: regel.armatuurcode,
     quantity: regel.aantal ?? null,
     brandText: brand,
-    productText: type || null,
+    productText: productTextVoorMatcher(regel, brand, type, brandNames),
     reqKelvin: specs.kelvin ?? null,
     reqCri: specs.cri ?? null,
     reqIp: specs.ipValue ?? null,

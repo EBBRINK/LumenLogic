@@ -17,6 +17,7 @@ import {
   OCR_MAX_EUR_PER_RUN,
   type OcrClient,
   type OcrMessageParams,
+  type OcrRegel,
   type OcrResponse,
 } from "@/lib/ai/ocr";
 import { createDossier } from "@/lib/repo/dossiers";
@@ -29,6 +30,7 @@ import {
   getOpenOcrRun,
   isJpegImage,
   processOcrPage,
+  regelToSpecLine,
   startOcrRun,
 } from "@/lib/repo/ocr";
 import { logEvent } from "@/lib/repo/events";
@@ -343,6 +345,42 @@ test("specs uit ruweTekst komen door ook als het korte type-veld ze niet noemt",
   expect(line.reqWatt).toBe("17.90");
   expect(line.reqKelvin).toBe(3000);
   expect(line.reqCri).toBe(90);
+});
+
+// ── P2-fix (docs/probleem-productnaam-kolom-valt-weg.md): de kolom Productnaam
+// ("Sasso 100") stond alleen in ruweTekst en viel weg omdat product_text enkel
+// het type-veld ("Richtbare downlight") kreeg. regelToSpecLine haalt nu de tekst
+// ná het merk uit de ruwe regel naar product_text, met byte-identieke terugval op
+// `type` wanneer er geen merk-anker is.
+test("regelToSpecLine haalt de familienaam uit ruweTekst naar productText (Sasso 100)", () => {
+  const regel: OcrRegel = {
+    armatuurcode: "Lr302",
+    merk: "XAL",
+    type: "Richtbare downlight",
+    ruweTekst:
+      "Lr302 Vergaderruimte Richtbare downlight XAL Sasso 100 Witte reflector " +
+      "95 118 118 20 02 Wit LED n.t.b. 80 3 50.000u @L90 DALI Ja 2460 23,8 103 19 51°",
+    codeValid: true,
+  };
+  const line = regelToSpecLine(regel, 1, "run-1", ["XAL"]);
+  // De familienaam waarop de catalogus doorzoekbaar is, staat nu vooraan…
+  expect(line.productText).toContain("Sasso 100");
+  expect(line.productText!.startsWith("Sasso 100")).toBe(true);
+  // …en het typewoord dat in géén XAL-productnaam voorkomt staat niet meer vooraan.
+  expect(line.productText!.startsWith("Richtbare downlight")).toBe(false);
+});
+
+test("regelToSpecLine valt byte-identiek terug op type bij een merkloze regel", () => {
+  const regel: OcrRegel = {
+    armatuurcode: "Lx010",
+    merk: null,
+    type: "Losse werkpleklamp",
+    ruweTekst: "Lx010 Losse werkpleklamp",
+    codeValid: true,
+  };
+  // brandNames zonder enig merk dat in de body voorkomt → geen merk-anker.
+  const line = regelToSpecLine(regel, 1, "run-1", ["XAL"]);
+  expect(line.productText).toBe("Losse werkpleklamp");
 });
 
 // ── Hervatten (B5): idempotent per pagina en per run ─────────────────────────
