@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# pre-push — de poort. main = productie, dus een kale push naar main is geblokkeerd.
+#
+# Installeer met:  bash scripts/install-git-hooks.sh
+# (kopieert dit bestand naar .git/hooks/pre-push; dat pad is gedeeld met alle worktrees.)
+#
+# Een directe `git push origin main` stuurt élke commit op de lokale main mee, ook die
+# van parallelle sessies — en deployt die naar productie. Deze hook weigert dat en wijst
+# naar scripts/safe-push.sh, dat exact één (of enkele) commit(s) rebased op origin/main
+# pusht. Dat script zet LUMENLOGIC_SAFE_PUSH=1 en mag daarom wél door.
+#
+# Bewust omzeilen (op eigen risico):  LUMENLOGIC_SAFE_PUSH=1 git push origin main
+
+if [ "${LUMENLOGIC_SAFE_PUSH:-}" = "1" ]; then
+  exit 0
+fi
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    cat >&2 <<'MSG'
+✗ Directe push naar main is geblokkeerd — main deployt naar productie.
+
+  Een kale `git push origin main` stuurt élke commit op je lokale main mee,
+  ook die van een parallelle sessie. Gebruik in plaats daarvan:
+
+      bash scripts/safe-push.sh <sha>      # pusht exact die commit(s)
+      bash scripts/safe-push.sh            # pusht HEAD
+
+  Eerst kijken wat er zou gaan:  DRY_RUN=1 bash scripts/safe-push.sh <sha>
+MSG
+    exit 1
+  fi
+done
+
+exit 0

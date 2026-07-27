@@ -26,10 +26,18 @@ op de deploy in de Vercel-logs:
 
 ## Werkwijze
 Elke feature: white-box RSC-test met screenshots (light/dark × mobile/desktop) vóór hij af
-heet. Kleine commits op main, regelmatig pushen — ⚠️ **elke push naar main deployt automatisch
-naar productie** (geverifieerd 17 jul: deployment 3 s na push; er is géén aparte preview-stap).
-"Stop vóór een productie-deploy" betekent hier dus: stop vóór de push. Aannames en open eindes
-altijd in `HANDOVER.md`. Brondata in `data/` is read-only en staat niet in git.
+heet. Kleine commits op main — ⚠️ **elke push naar main deployt automatisch naar productie**
+(geverifieerd 17 jul: deployment 3 s na push; er is géén aparte preview-stap). Aannames en open
+eindes altijd in `HANDOVER.md`. Brondata in `data/` is read-only en staat niet in git.
+
+⚠️ **Pushen naar main gaat UITSLUITEND via `bash scripts/safe-push.sh`.** Een kale
+`git push origin main` stuurt élke commit op de lokale main mee — ook die van een parallelle
+sessie in dezelfde werkdirectory — en die deployt dan ongevraagd naar productie. Een pre-push-hook
+weigert de kale push daarom (installeer eenmalig per clone met `bash scripts/install-git-hooks.sh`;
+worktrees delen de hook). `safe-push.sh <sha>` pusht exact die commit(s), rebased op de actuele
+origin/main, via een wegwerp-worktree — het raakt je lokale main nooit aan. Zonder argument pusht
+het HEAD; `DRY_RUN=1` toont wat er zou gaan zonder te pushen. Ging in week 1 vier keer mis vóór dit
+er was; zie het beslissingslog in `docs/lumenlogic-sprintplan-augustus.md`.
 
 ⚠️ **Await je een server action vanuit een client component?** Doe dat via `callAction()`
 uit `lib/next-action-result.ts`, nooit met een kale `await` in een `try/catch`. Een action

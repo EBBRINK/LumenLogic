@@ -294,6 +294,18 @@ worden duurder naarmate ze langer wachten):
    `git log origin/main..HEAD` in z'n geheel dekken — dus ook wat anderen eronder hebben gezet —
    en wacht als dat niet mag. **Besluit W4 (alleen de sprintmaster pusht) lost dit niet op**: de
    sprintmaster pushte hier zelf, en dat was precies het probleem.
+
+   **✅ Opgelost 22 jul — `scripts/safe-push.sh` + een pre-push-hook.** De kale
+   `git push origin main` wordt door de hook geweigerd (main = productie); pushen gaat
+   uitsluitend via het script, dat exact de opgegeven commit(s) rebased op de actuele
+   origin/main pusht via een wegwerp-worktree en de lokale main nooit aanraakt. Daarmee zijn
+   alle drie de faalmodi van deze week dicht: geen meeliftende commits (script pusht alleen de
+   SHA's die je noemt), geen SHA-push-illusie (het rebaset i.p.v. voorouders mee te sturen), en
+   geen reset-die-werk-wist (de werkmap wordt niet aangeraakt). Getest: hook blokkeert een kale
+   push, laat een non-main-branch en de bypass door; het script slaat een al-gepushte commit
+   over en houdt de werkmap schoon. **De onderste laag — productie loskoppelen van de
+   `main`-branch in het Vercel-dashboard — blijft een aanrader voor Timo, maar is met de hook
+   niet meer strikt nodig.**
 2. **Er is nog géén enkel echt merk benaderd** — 1 relatie-rij op 430 merken. Dit is het énige
    open punt in het weekdoel, en het heeft **doorlooptijd** (een merk moet antwoorden), dus het
    kan niet in een sprintitem worden weggewerkt. Hoe langer het wacht, hoe later week 2 kan
