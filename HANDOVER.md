@@ -1798,3 +1798,65 @@ een verlopen sessie, en al het overige faalt (default-deny). Details en meetlat 
   `catch`-blokken in `compare-tray.tsx` en `brand-message-block.tsx` omsluiten
   localStorage resp. de clipboard-API, en alle overige redirectende actions lopen via
   `<form action={…}>` of een server component.
+
+## TNO-boek regel-voor-regel beoordeeld — 7 openstaande bevindingen (27 jul)
+
+Een aparte sessie liep alle 20 regels van `Bijlage_E02_TNO_AvB_Armaturenlijst.pdf` na tegen
+`scripts/eval/grondwaarheid.ts` en het boek zelf. De sprintmaster heeft de bevindingen
+read-only tegen de database geverifieerd; de cijfers hieronder zijn zelf nagemeten, tenzij
+anders vermeld. **Bevinding 1 is opgelost en staat live** (`3f9fd60`, zie
+`docs/probleem-productnaam-kolom-valt-weg.md`). De overige zeven staan open — vandaar deze
+lijst, zodat ze niet met die chat verdwijnen.
+
+Gegroepeerd naar dader-laag, want dat bepaalt wie het oplost.
+
+### Laag 1 — inlezen (parser/AI-leesroute)
+
+- **Kale getallen zonder eenheid worden niet als eis gelezen** — raakt 19 van de 20 regels.
+  Het boek drukt lumen, W, CRI, IP, kleur en maat als losse kolomwaarden (`2460  23,8  103  19`);
+  de parser heeft een eenheid of label nodig (`WATT_RE`, `CRI_RE` … in `lib/enrichment/parser.ts`).
+  Geverifieerd: `req_cri` is **null op alle 20 regels**, terwijl het boek bij Lr001 gewoon
+  `CRI> 80` in een eigen kolom heeft staan. **Grootste resterende hefboom in deze laag.**
+- **Merk komt uit de verkeerde subrij of kolom** — 4 regels. Bij Lp601a/Lp601b/Lp602 staan twee
+  subrijen (armatuur + lichtbron) met twee merken; de lezer pakt consequent de laatste →
+  `merk="Philips"` in plaats van Oblure/Pantone. Bij Ls001 schuift hij één kolom op →
+  `merk="Xooline"` (de productnaam) in plaats van LED Linear. Beide zelf geverifieerd in
+  `spec_lines`. Gevolg: de inlaadwachtrij vult zich met `philips`/`xooline` terwijl Oblure er
+  níét in staat — en Jayden offreerde er wél twee Oblure-artikelen voor.
+- **Het rijsegment van de laatste code is onbegrensd** — 1 regel (Lp101). Zijn segment loopt door
+  tot het einde van het document en slokt het Opmerkingen-blok plus kolomkoppen op. Geverifieerd:
+  `req_watt = 40.00` en `req_beam_angle = 25.00` terwijl het boek bij Lp101 tweemaal `n.t.b.` zegt.
+  Herkomst (door de sessie gerapporteerd, plausibel): "Maximaal 40W." en "bij Ta 25°C" — een
+  omgevingstemperatuur uit een kolomkop is een stralingshoek-eis geworden. **Verzonnen eisen zijn
+  erger dan ontbrekende: ze sturen de matcher actief de verkeerde kant op.**
+- **Stralingshoek wordt alleen gelezen mét gradenteken** — 2 regels. Geverifieerd: Ls002 (`120`
+  zonder `°`) → `req_beam_angle = null`; Ls003 (`120°`) → `120.00`. `BEAM_RE` eist `°`/`deg`/`graden`.
+
+### Laag 2 — data (lege kolommen / merken zonder producten)
+
+- **Vijf merkrijen bestaan maar hebben nul producten**: Philips MyCreation, Intra-lighting, Moooi,
+  Oblure, LED Linear. Het gedrag is correct (blauw + inlaadwachtrij, precies waarvoor blauw
+  bestaat), maar het gat is echt: **Jayden offreerde uit vier van deze vijf**. Dit is
+  week 1-werk (merkgegevens-spoor), niet het matchspoor.
+
+### Laag 3 — ordening
+
+- **Merkloze regels zoeken door de hele catalogus** — 3 regels (Ls002/Ls003/Lp101). De poort in
+  `fetchCandidates` schakelt bij een leeg merk terecht de spec-bewuste ordening uit, maar laat de
+  tekstzoektocht wél toe. Gevolg: pendelkits en spiegelarmaturen als kandidaat bij een
+  placeholder-regel. Status `open` is per regelset verdedigbaar (lijst 2, alles onbekend), maar
+  wat de gebruiker ziet is ruis.
+
+### Laag 4 — oordeel
+
+- **Placeholder-merk valt willekeurig uiteen in rood en open** — 7 regels. `n.t.b.`
+  (Lr001/B/C/_N) wordt **rood**; "te bepalen door meubelmaker/wandenmaker" (Ls002/Ls003) wordt
+  **open**. Beide betekenen "nog te bepalen". Het enige verschil is of het Nederlandse typewoord
+  toevallig in een productnaam voorkomt. **Dit is geen bug maar een openstaand besluit van Timo:
+  welke status hoort bij een expliciet-nog-te-bepalen regel?** Zolang dat niet beslist is, blijft
+  de uitkomst toeval.
+
+**Cijfers van de ronde:** import 20/20 codes gelezen (de AI-leesroute leest er méér dan de
+deterministische 15/20) · merkkolom 16/20 correct (9 van de 13 gevulde, 7 van de 7 lege — leeg
+lezen wáár het boek `n.t.b.` zegt is correct gedrag, geen misser) · bruikbare kandidaten vóór
+bevinding 1: 0/20.
