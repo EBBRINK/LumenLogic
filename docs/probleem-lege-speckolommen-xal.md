@@ -313,11 +313,36 @@ Geen enkel product krijgt er zeven bij, dus de gevreesde 1,05 treedt niet op; he
 andere helft, en dat is nog altijd drie keer de marge die in de wattage-zaak top-1 bepaalde. De
 vierde regressie-categorie blijft dus reëel, alleen begrensd.
 
-### Nog open
+### Wélke specs de testcases vragen — en waarom dat het meetontwerp bepaalt
 
-**Vragen de testcases om CRI?** Uit `docs/probleem-wattage-dubbeltelling.md` blijkt dat Lr303
-vraagt om 3000K, CRI≥90, IP20, 27 W, 2810 lm, 57° en DALI — dus ja, minstens de Raadhuis-regels.
-Ik verifieer dat op de branch uit de `--json`-nulmeting zelf in plaats van uit een ander doc.
+Gemeten via `scripts/spec-eisen-testset.ts`, met exact het parse-pad van de eval
+(`extractPagesFromPdf` → `parseSpecLinesFromPages`, mét de echte merknamenlijst — zonder die
+lijst leest raadhuis 0 regels in plaats van 31):
+
+| case | regels | CRI | kelvin | watt | lumen | IP | beam | dimbaar |
+|---|---|---|---|---|---|---|---|---|
+| raadhuis | 31 | **31** | 31 | 22 | 22 | 22 | 30 | 29 |
+| tno | 15 | **0** | 0 | 1 | 1 | 0 | 11 | 15 |
+
+**Elke raadhuis-regel vraagt om CRI** — 19× ≥80, 11× ≥90, en één ≥92 (Lr302). **Geen enkele
+tno-regel doet dat**, terwijl tno wél op alle 15 regels dimbaarheid vraagt.
+
+Dat geeft een meetontwerp dat we niet hoefden te bedenken:
+
+> Vullen we **alleen CRI**, dan kan uitsluitend `raadhuis` bewegen. `tno` moet per constructie
+> exact gelijk blijven — het vraagt het veld niet, dus het telt niet mee in `specScoreSql` en niet
+> in `judgeCandidate`. **Beweegt tno tóch, dan klopt de meting niet of klopt de aanname niet.**
+> Een ingebouwde controlegroep, gratis.
+
+Nemen we dimbaarheid mee, dan vervalt die controle: tno vraagt dimbaarheid op alle 15 regels en
+gaat dus meebewegen. Dat is een concreet argument voor gefaseerd vullen dat vóór deze meting niet
+op tafel lag.
+
+**Eén concrete voorspelling voor de nameting.** Lr302 vraagt CRI≥92. XAL-namen dragen `CRI90`
+(11 raadhuis-regels vragen ≥90, dus 90 is de gangbare XAL-waarde). 90 < 92 → `judgeCri` geeft
+**rood**. Krijgt Lr302 na de vulling XAL-kandidaten, dan wordt die regel rood — en dat is de
+categorie *eerlijker geworden*, niet regressie: het bestek vraagt 92 en XAL levert 90. Als de
+nameting dit precies zo laat zien, is dat bevestiging dat de keten werkt, geen alarm.
 
 Meetnoot: `kvk` (0/48) en `dordrecht` (0/18) lezen zonder `--ai` geen enkele regel — die hebben
 de leesroute respectievelijk OCR nodig, met echte betaalde calls
