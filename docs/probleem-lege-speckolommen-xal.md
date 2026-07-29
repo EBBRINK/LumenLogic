@@ -103,8 +103,49 @@ steekproefdichtheid: bij **alleen CRI** is `open → geel` onmogelijk en bestaat
 `open → groen`, met rood als enige neerwaartse richting. Bij de **volledige run** komt de winst
 via vier velden binnen, waarvan er één (dimbaarheid) geen enkel neerwaarts risico draagt.
 
+- **Rangverschuiving door ongelijke naamdekking** = de vierde categorie, en de lastigste, want
+  hij lijkt op regressie en is het niet. Zie hieronder.
+
 Een meting die deze gevallen niet uit elkaar houdt, keurt het goede resultaat af — of viert een
 verkeerde waarde als vooruitgang.
+
+### Rangverschuiving door ongelijke naamdekking
+
+Verrijken verschuift de ranking systematisch ten gunste van producten die hun specs in de naam
+zetten. `specScoreSql` geeft een lege kolom `0` en een kloppende waarde `+1`
+([engine.ts:361](lib/matching/engine.ts:361)); vullen tilt een product dus van 0 naar 1, maal
+`SPEC_COEFF` 0,15. Eén veld is daarmee **drie keer** de marge van 0,05 die in
+`docs/probleem-wattage-dubbeltelling.md` besliste wie top-1 werd.
+
+En de termen worden **opgeteld**, niet gemiddeld ([engine.ts:392](lib/matching/engine.ts:392)):
+
+```
+return sql`(${sql.join(terms, sql` + `)})`
+```
+
+Bij een regel die alle zeven velden vraagt loopt specScore dus van −7 tot +7. Het verschil tussen
+een volledig gedekt en een volledig ongedekt product is dan tot **7 × 0,15 = 1,05** — een
+veelvoud van elke marge die we tot nu toe hebben gemeten.
+
+Dat is op zichzelf niet fout: een bewezen CRI 90 hóórt boven een onbekende te staan. Het venijn
+zit in de dekking. De parser raakt alleen producten die de spec in hun naam zetten, en dat is een
+schrijfconventie van de fabrikant, geen producteigenschap. **Een product dat CRI 90 heeft maar
+het niet in zijn naam vermeldt, zakt onder een product dat het wél vermeldt.** Bij XAL loopt die
+conventie vermoedelijk per productfamilie uiteen, dus het effect is niet toevallig verdeeld maar
+systematisch — precies het soort verschuiving dat in de nameting als "regressie" opduikt terwijl
+het een artefact van naamdekking is.
+
+Hoe de nameting hem herkent, aan de signatuur: de gezakte kandidaat heeft géén verse
+`tier2_source`-stempel op het veld in kwestie (kolom nog leeg → term 0), de gestegen kandidaat
+wél (`parsed-from-name` → term +1), en beide kandidaten hebben verder dezelfde tekstscore. Is dat
+het patroon, dan is het deze categorie en niet een verkeerd ingelezen waarde. Het onderscheid met
+échte regressie blijft: dáár klopt de nieuwe waarde zelf niet.
+
+**Voor de plan-agents:** weegt dit mee in alleen-CRI versus de volledige run? Alleen CRI is één
+veld, dus hooguit 0,15 verschuiving. De volledige run stapelt tot zeven velden op hetzelfde
+product en verschuift daarmee tot 1,05 — wat de winst vergroot én dit artefact. De vraag is niet
+alleen "hoeveel data winnen we" maar "hoeveel rangverschuiving durven we in één stap te nemen,
+gegeven dat we hem maar op vier testcases kunnen zien".
 
 ## Zwakke plek 1: publiceren is een eenrichtingsdeur
 
@@ -169,7 +210,8 @@ oppervlak: de 100 steekproefplekken worden over zeven velden verdeeld (het strat
 
 Of we het bij CRI moeten houden of de hele run moeten draaien, is een echte fase-2-keuze. Alles
 tegelijk is minder werk en dekt het doel "de lege spec-kolommen vullen" volledig; alleen CRI maakt
-de meting scherper en de steekproef zeven keer dichter. Bouwen kost in beide gevallen ongeveer
+de meting scherper, de steekproef zeven keer dichter en de rangverschuiving zeven keer kleiner
+(zie "Rangverschuiving door ongelijke naamdekking"). Bouwen kost in beide gevallen ongeveer
 hetzelfde, want een veld-filter is één `if` in de parse-lus.
 
 Wat de poort betreft zit het goed: `parsed-from-name` staat **niet** in
@@ -189,6 +231,11 @@ Geen van deze getallen is geverifieerd; ze staan hier als meetopdracht, niet als
 5. **Vragen de vier testcases überhaupt om CRI?** Zo niet, dan is de CRI-vulling voor die cases
    neutraal en meten we vooral "geen schade", niet "winst". Dat verandert niets aan de
    succesdefinitie (de grill heeft dat al vastgelegd), maar het moet vooraf op tafel.
+6. **Hoe scheef is de naamdekking?** Niet alleen "hoeveel producten krijgen iets", maar de
+   spreiding: hoeveel producten krijgen 0 velden, hoeveel 1, hoeveel 7. Die spreiding ís de
+   rangverschuiving uit de vierde regressie-categorie — een merk waar élk product even veel
+   velden krijgt, verschuift niets ten opzichte van zijn buren; een merk waar de ene familie
+   zeven velden krijgt en de andere nul, verschuift maximaal.
 
 Meetnoot: `dordrecht` heeft geen tekstlaag en vergt `--ai` met echte, betaalde calls
 ([eval-testset.ts:19](scripts/eval-testset.ts:19)). De nul- en nameting draaien daarom zonder

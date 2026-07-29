@@ -86,9 +86,16 @@ async function main() {
   const perVeld: Record<string, { gevuld: number; geparsed: number; opLege: number; toetsbaar: number; gelijk: number }> =
     Object.fromEntries(FIELDS.map((f) => [f, { gevuld: 0, geparsed: 0, opLege: 0, toetsbaar: 0, gelijk: 0 }]));
 
+  // Spreiding van de winst per product: hoeveel lege velden krijgt dít product erbij? Dat is de
+  // maat voor de rangverschuiving door ongelijke naamdekking (zie het probleemdoc). Krijgt elk
+  // product er even veel bij, dan verschuift niemand ten opzichte van zijn buren; krijgt de ene
+  // familie er zeven en de andere nul, dan is het verschil tot 7 × SPEC_COEFF = 1,05.
+  const winstPerProduct = new Array(FIELDS.length + 1).fill(0) as number[];
+
   for (const r of rijen) {
     const rec = r as unknown as Record<string, unknown>;
     const specs = parseProductName(r.name);
+    let winst = 0;
     for (const field of FIELDS) {
       const kolom = rec[field];
       const leeg = kolom == null || kolom === "";
@@ -98,6 +105,7 @@ async function main() {
       perVeld[field].geparsed++;
       if (leeg) {
         perVeld[field].opLege++;
+        winst++;
       } else {
         // Gratis validatie: waar de kolom al gevuld is, kunnen we de parser toetsen zonder mens.
         perVeld[field].toetsbaar++;
@@ -105,6 +113,7 @@ async function main() {
       }
       items.push({ productName: r.name, field, value: String(v), opLegeKolom: leeg });
     }
+    winstPerProduct[winst]++;
   }
 
   // ── Steekproefdekking — met de echte keuzefunctie ──────────────────────────
@@ -127,6 +136,7 @@ async function main() {
     strata: strata.size,
     steekproef: sample.size,
     strataGezien: strataInSample.size,
+    winstPerProduct,
   };
 
   if (asJson) {
@@ -152,8 +162,19 @@ async function main() {
     `\nvoorstellen: ${resultaat.items} items, waarvan ${resultaat.itemsOpLegeKolom} op een lege kolom` +
       ` (alleen die worden toegepast — publishRun overschrijft nooit)`,
   );
+  // De spreiding, met de rangverschuiving die erbij hoort: n velden × SPEC_COEFF (0,15).
+  console.log(`\nspreiding van de winst (rangverschuiving door ongelijke naamdekking):`);
+  for (const [n, aantal] of winstPerProduct.entries()) {
+    if (aantal === 0) continue;
+    const pct = ((100 * aantal) / rijen.length).toFixed(1);
+    console.log(
+      `  ${n} veld(en) erbij: ${String(aantal).padStart(6)} producten (${pct.padStart(5)}%)` +
+        `  → +${(n * 0.15).toFixed(2)} in de sorteersleutel`,
+    );
+  }
+
   console.log(
-    `steekproef: ${resultaat.steekproef} rijen uit ${resultaat.strata} naamvorm-strata` +
+    `\nsteekproef: ${resultaat.steekproef} rijen uit ${resultaat.strata} naamvorm-strata` +
       ` → ${resultaat.strataGezien} vormen gezien (${((100 * resultaat.strataGezien) / resultaat.strata).toFixed(1)}%)`,
   );
   console.log(
