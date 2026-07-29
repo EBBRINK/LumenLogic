@@ -1159,6 +1159,16 @@ week 3, waar de rollen leven.
 ontwerp), en op /analytics staat op echte events wat goed loopt, wat ontbreekt, en waar omzet
 blijft liggen — elk blok toont "nog geen data" waar de data er nog niet is.
 
+**Besluit G21 (Timo, 29 jul) — de IA-as van 2.0a = vier inlog-/rollentypen.** De hoofdnavigatie
+wordt georganiseerd rond vier rollen — **Intern · Intern super admin · User (lichtontwerper/
+architect/aannemer) · Brand** — en "wie wat ziet" is een eerste-klas ontwerpvraag, geen bijzaak.
+Volledige boom + schermmapping in `docs/ia-notitie-2.0a.md` §3–4. **Grens die de sprintmaster
+bewaakt:** 2.0a legt de *structuur* langs deze rollen vast (boom, namen, minder klikken) en zet een
+rol→schermen-kaart klaar; het *afdwingen* (server-side gating, org-scoping) en de rollen/accounts
+zelf blijven **week 3** (besluiten 11 + G18; 3.1 + 3.2a). Er bestaat nu nog geen rol in de db
+(0 orgs, 0 memberships), dus 2.0a bouwt géén auth. Nog met Timo scherp te krijgen: hoe "live" de
+per-rol-nav in week 2 al moet zijn. *Labels/bundeling (knopen 2–6) nog open; Timo tekent op de boom.*
+
 **2.0 — UI/UX-fundament** (~10 u) · **twee fases, ontwerp eerst, dán code** (besluit G20)
 De kern van de week en Timo's hoogste prioriteit. Timo doet het bewust in twee stappen: eerst de
 navigatie- en informatiestructuur helemaal opnieuw, dán de visuele afwerking met een **brand kit
@@ -1195,11 +1205,20 @@ nooit een lege of brekende widget.
 - **Niet** de projectfunnel (1 offerte, 16 dossiers → niets te tonen) en **niet** het
   demo-merkaccount (0 organisaties). Die verhuizen naar week 3.
 
-**2.2 — Commerciële analytics: gemiste vraag = gemiste order** (~4 u)
-De winst-kant die Timo vroeg. **Advies (open beslissing, zie onder):** meet wat klanten zoeken dat
-Brink niet kan leveren. Elke zoekopdracht zonder treffer (84 `search`) en elke rode regel (64) is
-een gemiste order — en wijst direct aan welk merk te benaderen of welk product in te kopen. Raakt
-ijzeren regel 2 niet: het gaat over wat ontbreekt, niet over ranking of marge.
+**2.2 — Commerciële analytics: waar kan Brink geld verdienen** (~4 u)
+
+**Besluit G22 (Timo, 29 jul) — 2.2 gaat breder dan de gap-lijst: het is een *opportunity*-signaal.**
+Timo's kader: commerciële analytics = "waar kan Brink licht[-omzet] pakken, welke data willen zij
+zien zodat ze geld kunnen maken?" Zijn scenario: een aannemer maakt een project aan (meerdere
+partijen kijken naar dezelfde tender); producten stromen door naar XIS; iemand loopt op ons
+platform vast → *dan bellen we ze om te helpen*. Marge komt óók ("dit product, zelfde prijs, beter
+voor milieu"), maar apart. **Frictie die de sprintmaster meldt:** dat scenario leunt op
+projectfunnel-events, externe gebruikers en XIS-koppeling die er nu **niet** zijn (gemeten: 1
+offerte, 16 dossiers, 0 orgs; funnel-signaal en externe rollen zijn week 3+). Wél nu meetbaar als
+eerste plak van dat opportunity-beeld: de **vraag-/gap-signalen** — 84 `search`, 64 rode regels,
+blauwe-wachtrij-druk per merk/categorie. **Open (met Timo af te maken):** of 2.2 deze week díe
+eerste plak bouwt, met het funnel-/lead-/XIS-deel als week-3-afhankelijkheid erbij gedocumenteerd.
+Raakt ijzeren regel 2 niet zolang het over ontbrekende vraag gaat, niet over ranking/marge.
 - *Given* de gap-analyse, *then* per merk/categorie: hoe vaak gezocht, hoe vaak niets gevonden, en
   de blauwe-wachtrij-druk — de outreach- én inkoop-werklijst in cijfers.
 
@@ -1223,12 +1242,12 @@ org-scoping (vereist organisaties en rollen die daar leven) · architect-analyti
 NL-labels uit `field-catalog.ts` (132 dode strings, opvolgtaak van 1.9) · uuid-cast/`payload`-guards
 in de analytics-queries (één afwijkend event mag de pagina nooit breken).
 
-**⚠️ Eén open beslissing die het plan afmaakt:** de commerciële vraag van 2.2. Advies hierboven:
-*"wat vragen klanten dat we niet kunnen leveren"* — meetbaar met wat er ligt, raakt de ranking
-niet, en het is meteen een werklijst. Alternatieven: *"meest overwogen producten"* (bevestigt
-vooral wat je al inkoopt) of *"waar zit de marge"* (direct commercieel, maar raakt ijzeren regel 2
-en moet dan strikt gescheiden). Zonder dit besluit staat 2.2 op mijn advies; met een ander
-antwoord herschrijf ik het.
+**✓ De open beslissing van 2.2 is beantwoord (besluit G22, 29 jul):** de commerciële richting is
+"waar kan Brink geld verdienen / opportunity-signaal", breder dan de oorspronkelijke gap-lijst. Wat
+resteert is geen richtingskeuze meer maar een **scoping-frictie**: het volle scenario (funnel →
+vastloper → outreach → XIS) vereist week-3+-data die er nu niet is, dus 2.2 bouwt deze week
+hoogstens de meetbare eerste plak (vraag-/gap-signalen). Dat laatste bevestigt Timo vóór de
+2.2-briefing uitgaat; zie G22 bij item 2.2.
 
 **Risico's & plan B:** design-gate loopt vast op smaak → één referentie vooraf laat Timo tekenen
 vóór er code is · de eventlaag is testdata, geen gebruikersgedrag → de widgets tonen dat eerlijk
