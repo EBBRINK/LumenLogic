@@ -91,6 +91,9 @@ async function main() {
   // product er even veel bij, dan verschuift niemand ten opzichte van zijn buren; krijgt de ene
   // familie er zeven en de andere nul, dan is het verschil tot 7 × SPEC_COEFF = 1,05.
   const winstPerProduct = new Array(FIELDS.length + 1).fill(0) as number[];
+  // Waar parser en bronkolom uiteenlopen. Dat zijn de enige plekken waar de parser aantoonbaar
+  // iets anders leest dan de fabrikant zelf opgaf — elk geval is de moeite van het bekijken waard.
+  const afwijkingen: { naam: string; field: string; parser: string; kolom: string }[] = [];
 
   for (const r of rijen) {
     const rec = r as unknown as Record<string, unknown>;
@@ -110,14 +113,43 @@ async function main() {
         // Gratis validatie: waar de kolom al gevuld is, kunnen we de parser toetsen zonder mens.
         perVeld[field].toetsbaar++;
         if (sameValue(field, String(v), kolom)) perVeld[field].gelijk++;
+        else afwijkingen.push({ naam: r.name, field, parser: String(v), kolom: String(kolom) });
       }
       items.push({ productName: r.name, field, value: String(v), opLegeKolom: leeg });
     }
     winstPerProduct[winst]++;
   }
 
+  // ── Herkomst van wat er AL staat ────────────────────────────────────────────
+  // Zonder dit is "parser gelijk aan kolom" een cirkelredenering: als die kolom ooit dóór deze
+  // parser is gevuld (tier2_source = 'parsed-from-name'), reproduceert hij alleen zijn eigen
+  // werk. Alleen kolommen met een ANDERE herkomst — of zonder stempel, dus uit de import —
+  // zijn een onafhankelijke toets.
+  const herkomst: Record<string, Record<string, number>> = Object.fromEntries(
+    FIELDS.map((f) => [f, {} as Record<string, number>]),
+  );
+  for (const r of rijen) {
+    const rec = r as unknown as Record<string, unknown>;
+    const src = (r.tier2Source ?? {}) as Record<string, string>;
+    for (const field of FIELDS) {
+      const kolom = rec[field];
+      if (kolom == null || kolom === "") continue;
+      const bron = src[field] ?? "import (geen stempel)";
+      herkomst[field][bron] = (herkomst[field][bron] ?? 0) + 1;
+    }
+  }
+
   // ── Steekproefdekking — met de echte keuzefunctie ──────────────────────────
   const sample = pickSampleIndices(items);
+  // Hoeveel van de 100 reviewplekken gaan over data die daadwerkelijk landt? createRun
+  // sampleert over álle voorstellen, ook die op een al gevulde kolom vallen en dus door
+  // publishRun genegeerd worden (enrichment.ts:429). Elke zo'n rij is een reviewplek die
+  // niets bewaakt.
+  const sampleOpLege = [...sample].filter((i) => items[i].opLegeKolom).length;
+  const samplePerVeld: Record<string, number> = {};
+  for (const i of sample) {
+    samplePerVeld[items[i].field] = (samplePerVeld[items[i].field] ?? 0) + 1;
+  }
   const strata = new Set(items.map((i) => `${i.field}|${nameShape(i.productName)}`));
   const strataInSample = new Set(
     [...sample].map((i) => `${items[i].field}|${nameShape(items[i].productName)}`),
@@ -137,6 +169,9 @@ async function main() {
     steekproef: sample.size,
     strataGezien: strataInSample.size,
     winstPerProduct,
+    herkomst,
+    sampleOpLege,
+    samplePerVeld,
   };
 
   if (asJson) {
@@ -154,6 +189,20 @@ async function main() {
       `${f.padEnd(13)} ${String(p.gevuld).padStart(12)} ${String(p.geparsed).padStart(14)} ${String(p.opLege).padStart(17)}   ${toets}`,
     );
   }
+  if (afwijkingen.length > 0) {
+    console.log(`\nparser ≠ bronkolom (${afwijkingen.length}):`);
+    for (const a of afwijkingen.slice(0, 15)) {
+      console.log(`  [${a.field}] parser ${a.parser} vs kolom ${a.kolom} — ${a.naam}`);
+    }
+  }
+
+  console.log(`\nherkomst van wat er AL staat (tier2_source):`);
+  for (const f of FIELDS) {
+    const bronnen = Object.entries(herkomst[f]);
+    if (bronnen.length === 0) continue;
+    console.log(`  ${f.padEnd(13)} ${bronnen.map(([b, n]) => `${b}: ${n}`).join(" · ")}`);
+  }
+
   console.log(`\ngevuld over ALLE merken:`);
   for (const f of FIELDS) {
     console.log(`  ${f.padEnd(13)} ${resultaat.gevuldAlleMerken[f]}`);
@@ -179,7 +228,15 @@ async function main() {
   );
   console.log(
     `ongezien: ${resultaat.items - resultaat.steekproef} items in ${resultaat.strata - resultaat.strataGezien} vormen` +
-      ` worden gepubliceerd zonder dat iemand die vorm heeft beoordeeld.\n`,
+      ` worden gepubliceerd zonder dat iemand die vorm heeft beoordeeld.`,
+  );
+  console.log(
+    `waarvan zinvol: ${sampleOpLege} van de ${sample.size} reviewplekken gaan over een item dat` +
+      ` DAADWERKELIJK landt; de andere ${sample.size - sampleOpLege} vallen op een al gevulde` +
+      ` kolom en bewaken dus niets.`,
+  );
+  console.log(
+    `steekproef per veld: ${Object.entries(samplePerVeld).map(([f, n]) => `${f}: ${n}`).join(" · ")}\n`,
   );
 }
 

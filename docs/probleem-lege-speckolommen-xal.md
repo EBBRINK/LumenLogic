@@ -1,10 +1,12 @@
 # Probleem: XAL's eigen specs staan in de naam, maar niet in de kolommen
 
-> Fase 1 (probleem uitschrijven), 27 jul 2026. Alles hieronder is óf uit de code afgeleid met
-> bestandsverwijzing, óf expliciet gemarkeerd als **nog niet gemeten**. Geen enkel getal in dit
-> doc komt uit een nagebouwde SQL-query — die les is deze week vijf keer gesneuveld
-> (`docs/probleem-variant-ranking.md`). De metingen volgen op een Neon-branch, via
-> `scripts/eval-testset.ts`, met verse parse.
+> Fase 1 (probleem uitschrijven), 29 jul 2026. Alles hieronder is óf uit de code afgeleid met
+> bestandsverwijzing, óf gemeten op de Neon-branch `enrichment-xal` (endpoint
+> `ep-broad-term-atw1a95t`, geforkt van productie met data tot 29 jul). Geen enkel getal komt uit
+> een nagebouwde SQL-query — die les is deze week vijf keer gesneuveld
+> (`docs/probleem-variant-ranking.md`); de tellingen draaien via `scripts/xal-inventarisatie.ts`
+> met de échte parser- en steekproeffuncties, de statusmetingen via `scripts/eval-testset.ts`
+> met verse parse.
 
 ## Het probleem in één regel
 
@@ -127,6 +129,11 @@ Bij een regel die alle zeven velden vraagt loopt specScore dus van −7 tot +7. 
 een volledig gedekt en een volledig ongedekt product is dan tot **7 × 0,15 = 1,05** — een
 veelvoud van elke marge die we tot nu toe hebben gemeten.
 
+> **Gemeten (29 jul):** die bovengrens treedt bij XAL niet op. Geen enkel product krijgt meer dan
+> **twee** velden erbij, dus de verschuiving is maximaal **+0,30**. De scheefheid is wel reëel:
+> 47,5 % krijgt niets en 51,4 % krijgt +0,15 — nog altijd drie keer de 0,05-marge uit de
+> wattage-zaak. Zie "Gemeten op de branch".
+
 Dat is op zichzelf niet fout: een bewezen CRI 90 hóórt boven een onbekende te staan. Het venijn
 zit in de dekking. De parser raakt alleen producten die de spec in hun naam zetten, en dat is een
 schrijfconventie van de fabrikant, geen producteigenschap. **Een product dat CRI 90 heeft maar
@@ -190,8 +197,27 @@ dan markeer je die ene rij als fout — en alle andere producten met exact dieze
 fout alsnog toegepast. De mens ziet het gat en kan het niet dichten.
 
 Er is vandaag maar één middenweg-loze uitweg: `rejectRun`, de hele run weg. Dat is alles-of-niets
-op een run van (naar schatting) tienduizenden items, dus in de praktijk kiest niemand hem voor één
-verkeerde naamvorm.
+op een run van 90.660 items, dus in de praktijk kiest niemand hem voor één verkeerde naamvorm.
+
+**Gemeten is het nog schever dan de redenering suggereerde.** Voor XAL levert de run 9.497
+`field|nameShape`-strata op; de steekproef ziet er **100** van, oftewel **1,1 %**. Maar het
+ergste zit in de samenstelling:
+
+> **85 van de 100 reviewplekken bewaken niets.** Ze vallen op een item waarvan de kolom al
+> gevuld is, en dat item wordt door `publishRun` sowieso genegeerd
+> ([enrichment.ts:429](lib/repo/enrichment.ts:429)). Slechts **15** rijen gaan over data die
+> daadwerkelijk landt — waarvan **7** over CRI, het veld met 13.407 voorstellen.
+
+De oorzaak: `createRun` sampleert over álle voorstellen
+([enrichment.ts:276](lib/repo/enrichment.ts:276)), niet over de toepasbare. De verdeling over de
+velden laat dat direct zien — `maxWattage: 32 · kelvin: 31 · dimmable: 26 · cri: 7 · beamAngle: 2
+· ipValue: 2` — terwijl wattage, kelvin, beam en IP samen **nul** nieuwe waarden opleveren. Twee
+derde van de menselijke aandacht gaat naar velden waar niets verandert.
+
+Dat is een tweede, onafhankelijke fase-2-ingreep, en waarschijnlijk een goedkopere dan de
+groepsverwerping: filter de voorstellen op "landt op een lege kolom" vóórdat `pickSampleIndices`
+eroverheen gaat. Dan gaan alle 100 plekken over data die echt gepubliceerd wordt, en stijgt de
+CRI-dekking van 7 naar iets in de orde van 80 rijen.
 
 **Ontwerpvraag voor fase 2:** moet een 'fout'-oordeel de hele `field|nameShape`-groep verwerpen in
 plaats van één rij? Dat is een kleine, goed testbare wijziging in `publishRun` (groepeer de fout
@@ -204,38 +230,112 @@ uitziet. De twee plan-agents moeten dit wegen — inclusief het tegenargument da
 
 `startEnrichmentRun` draait per merk en over **alle zeven velden tegelijk**
 ([enrichment.ts:203](lib/repo/enrichment.ts:203)); er is geen veld-filter. CRI is de aanleiding,
-maar de run stelt ook kelvin, wattage, lumen, IP, beam en dimbaarheid voor. Dat vergroot het
-oppervlak: de 100 steekproefplekken worden over zeven velden verdeeld (het stratum is
-`field|nameShape`), dus per veld blijven er ~14 over.
+maar de run stelt ook kelvin, wattage, lumen, IP, beam en dimbaarheid voor.
 
-Of we het bij CRI moeten houden of de hele run moeten draaien, is een echte fase-2-keuze. Alles
-tegelijk is minder werk en dekt het doel "de lege spec-kolommen vullen" volledig; alleen CRI maakt
-de meting scherper, de steekproef zeven keer dichter en de rangverschuiving zeven keer kleiner
-(zie "Rangverschuiving door ongelijke naamdekking"). Bouwen kost in beide gevallen ongeveer
-hetzelfde, want een veld-filter is één `if` in de parse-lus.
+De meting maakt die keuze een stuk kleiner dan hij op papier was. Van de zeven velden leveren er
+maar **twee** iets op: CRI (13.407) en dimbaarheid (3.449). De andere vijf produceren samen 73.804
+voorstellen die allemaal op een reeds gevulde kolom vallen en dus genegeerd worden. "Alleen CRI"
+versus "de volledige run" is dus geen 1-tegen-7 maar **1 tegen 2**.
+
+Wat dan nog verschilt:
+
+- **Dimbaarheid is het enige veld dat `open → geel` kan opleveren** (`judgeDimmable` kent geel,
+  `judgeCri` niet). Laat je dimbaarheid weg, dan is elke statuswinst een `open → groen`.
+- **Dimbaarheid kan nooit rood worden** — `judgeDimmable` geeft groen bij overeenkomst en geel
+  bij een ander protocol, nooit rood ([engine.ts:385](lib/matching/engine.ts:385)). Het kan een
+  regel dus niet verslechteren, alleen de rangorde beïnvloeden.
+- Voor de rangverschuiving zit het verschil in de 352 producten (1,1 %) die twee velden erbij
+  krijgen: die stijgen +0,30 in plaats van +0,15.
+
+Bouwen kost in beide gevallen ongeveer hetzelfde, want een veld-filter is één `if` in de
+parse-lus.
 
 Wat de poort betreft zit het goed: `parsed-from-name` staat **niet** in
 `UNCONFIRMED_TIER2_SOURCES` — die set bevat alleen `optic-code`
 ([engine.ts:197](lib/matching/engine.ts:197)). Deze data is dus groen-waardig, anders dan onze
 optiekcode-gok. Terecht: het is de fabrikant zijn eigen opgave.
 
-## Wat NIET gemeten is (en op de branch moet gebeuren)
+## Gemeten op de branch (29 jul)
 
-Geen van deze getallen is geverifieerd; ze staan hier als meetopdracht, niet als bevinding.
+XAL heeft **31.420** producten; de database 211.317. De briefing sprak van ~11.000 XAL-producten
+met CRI in de naam — het zijn er **13.407**. Het getal "3 gevulde `cri` op 211k" klopt exact.
 
-1. Hoeveel XAL-producten zijn er, en hoeveel dragen CRI in de naam? (briefing zegt ~11.000)
-2. Hoeveel producten hebben vandaag een gevulde `cri`? (briefing zegt 3 van 211k, over álle merken)
-3. Hoeveel items levert `startEnrichmentRun` voor XAL op, per veld?
-4. Hoeveel distinct `field|nameShape`-strata zijn dat — dus welk deel van de naamvormen de
-   steekproef van 100 daadwerkelijk ziet?
-5. **Vragen de vier testcases überhaupt om CRI?** Zo niet, dan is de CRI-vulling voor die cases
-   neutraal en meten we vooral "geen schade", niet "winst". Dat verandert niets aan de
-   succesdefinitie (de grill heeft dat al vastgelegd), maar het moet vooraf op tafel.
-6. **Hoe scheef is de naamdekking?** Niet alleen "hoeveel producten krijgen iets", maar de
-   spreiding: hoeveel producten krijgen 0 velden, hoeveel 1, hoeveel 7. Die spreiding ís de
-   rangverschuiving uit de vierde regressie-categorie — een merk waar élk product even veel
-   velden krijgt, verschuift niets ten opzichte van zijn buren; een merk waar de ene familie
-   zeven velden krijgt en de andere nul, verschuift maximaal.
+| veld | kolom gevuld | parser vindt | landt op lege kolom | parser = bron |
+|---|---|---|---|---|
+| maxWattage | 28.322 | 28.322 | **0** | 28.322/28.322 |
+| kelvin | 27.850 | 27.850 | **0** | 27.849/27.850 |
+| **cri** | **0** | **13.407** | **13.407** | — |
+| ipValue | 2.090 | 2.087 | **0** | 2.087/2.087 |
+| beamAngle | 5.284 | 1.295 | **0** | 1.295/1.295 |
+| lumenOutput | 0 | 0 | **0** | — |
+| **dimmable** | 14.267 | 17.699 | **3.449** | 14.250/14.250 |
+
+Drie dingen die het plan veranderen:
+
+**1. De vulling raakt maar twee velden.** Van de 90.660 voorstellen landen er **16.856**: 13.407
+CRI en 3.449 dimbaarheid. De overige vijf velden leveren nul op — waar de naam iets zegt, staat
+de kolom al gevuld. De fase-2-keuze "alleen CRI of de volledige run" is in werkelijkheid dus
+"CRI, of CRI plus dimbaarheid". Veel kleiner dan hij leek. (`lumenOutput` levert niets omdat XAL
+nooit `lm` in de naam zet en de parser bewust geen kaal getal als lumen leest —
+[parser.ts:108](lib/enrichment/parser.ts:108).)
+
+**2. De parser is onafhankelijk gevalideerd op 73.804 producten — 1 afwijking.** Waar de kolom
+al gevuld ís, kunnen we de parser toetsen zonder mens. Dat is geen cirkelredenering: de
+`tier2_source`-uitdraai laat zien dat álle bestaande waarden `import (geen stempel)` dragen (op
+3.989 beam-graden uit de optiekcode-run na), en `scripts/import.ts` leest losse CSV-kolommen
+(`r.max_wattage`, `r.kelvin`, `r.cri` — [import.ts:224](scripts/import.ts:224)) en roept
+`parseProductName` nergens aan. Naam en kolom zijn dus twee onafhankelijke opgaven van dezelfde
+fabrikant, en ze komen 73.803 van de 73.804 keer overeen.
+
+De enige afwijking is bovendien geen parserfout maar een tegenspraak in de brondata:
+
+```
+[kelvin] parser 3000 vs kolom 2700 — SASSO 100 SQ SP CEIL 17,9W cob LED 3000K 220-240V
+```
+
+De naam zegt 3000K, de prijslijstkolom 2700. De parser leest de naam correct. (Dit raakt de
+vulling niet — `kelvin` is hier al gevuld en wordt nooit overschreven — maar het is wél een
+XAL-datafout in precies de SASSO-familie waar de testcases op leunen.)
+
+Dit bewijs is een orde sterker dan de steekproef van 100 die de pijplijn zelf eist: 73.804
+controles tegen een onafhankelijke bron, versus 100 rijen die een mens beoordeelt.
+
+**3. De rangverschuiving is begrensd — maar scheef.** De spreiding van de winst:
+
+| velden erbij | producten | aandeel | verschuiving |
+|---|---|---|---|
+| 0 | 14.916 | 47,5 % | +0,00 |
+| 1 | 16.152 | 51,4 % | +0,15 |
+| 2 | 352 | 1,1 % | +0,30 |
+
+Geen enkel product krijgt er zeven bij, dus de gevreesde 1,05 treedt niet op; het maximum is
+**+0,30**. Maar de scheefheid is bijna 50/50: de helft van XAL stijgt 0,15 ten opzichte van de
+andere helft, en dat is nog altijd drie keer de marge die in de wattage-zaak top-1 bepaalde. De
+vierde regressie-categorie blijft dus reëel, alleen begrensd.
+
+### Nog open
+
+**Vragen de testcases om CRI?** Uit `docs/probleem-wattage-dubbeltelling.md` blijkt dat Lr303
+vraagt om 3000K, CRI≥90, IP20, 27 W, 2810 lm, 57° en DALI — dus ja, minstens de Raadhuis-regels.
+Ik verifieer dat op de branch uit de `--json`-nulmeting zelf in plaats van uit een ander doc.
+
+Meetnoot: `kvk` (0/48) en `dordrecht` (0/18) lezen zonder `--ai` geen enkele regel — die hebben
+de leesroute respectievelijk OCR nodig, met echte betaalde calls
+([eval-testset.ts:19](scripts/eval-testset.ts:19)). De nul- en nameting steunen daarom op
+`raadhuis` en `tno`; de andere twee alleen als Timo daar apart go voor geeft.
+
+## Nulmeting op de branch (29 jul, zonder `--ai`)
+
+| case | import | merk best/fout/leeg | statusverdeling | rang≤50 | auto-keuze | top-1 |
+|---|---|---|---|---|---|---|
+| raadhuis | 31/31 | 14/0/17 | open:12 blauw:10 geel:6 rood:2 paars:1 | 4/4 | 0/4 | 2/4 |
+| tno | 15/20 | 7/0/8 | open:11 blauw:2 groen:1 geel:1 | – | – | – |
+| kvk | 0/48 | – | – (vergt `--ai`) | – | – | – |
+| dordrecht | 0/18 | – | – (vergt `--ai`) | – | – | – |
+
+Dit is de lat: hier moet de nameting tegenaan. Let op `raadhuis rang≤50 = 4/4` — die staat al
+maximaal, dus daar valt niets te winnen en alles te verliezen. `top-1 2/4` is de enige rangmaat
+met ruimte omhoog én omlaag.
 
 Meetnoot: `dordrecht` heeft geen tekstlaag en vergt `--ai` met echte, betaalde calls
 ([eval-testset.ts:19](scripts/eval-testset.ts:19)). De nul- en nameting draaien daarom zonder
