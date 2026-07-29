@@ -78,9 +78,30 @@ Daarom moet "regressie" scherp gedefinieerd zijn, en de grill heeft dat al gedaa
   zeggen. Meetpunt 3 uit de grill: vullen maakt de status eerlijker, niet automatisch groener.
 - **Geen regressie, gewoon winst** = een regel gaat van `open` naar `groen` (alle gevraagde
   velden nu bekend én in orde), of naar `geel`. Dat laatste is óók een correcte uitkomst en geen
-  anomalie — al komt het nooit van CRI zelf: `judgeCri`, `judgeKelvin` en `judgeIp` kennen
-  alleen groen, rood of onbekend ([tolerances.ts:68–88](lib/matching/tolerances.ts:68)). Alleen
-  watt, lumen en beam kunnen `geel` opleveren, en de run vult die velden mee.
+  anomalie — al komt het nooit van CRI zelf; zie de veldtabel hieronder.
+
+### Welke velden kunnen welk oordeel geven
+
+Dit bepaalt wat de vulling überhaupt kán doen, en het is per veld anders:
+
+| veld | groen | geel | rood | bron |
+|---|---|---|---|---|
+| `cri`, `kelvin`, `ipValue` | ja | **nee** | ja | [tolerances.ts:68–88](lib/matching/tolerances.ts:68) |
+| `maxWattage`, `lumenOutput`, `beamAngle` | ja | ja | ja | [tolerances.ts:40–58](lib/matching/tolerances.ts:40) |
+| `dimmable` | ja | ja | **nee** | [tolerances.ts:119](lib/matching/tolerances.ts:119) |
+
+Twee gevolgen:
+
+- **Vier** velden kunnen een gele regel opleveren, niet drie: watt, lumen, beam én dimbaarheid.
+  Alle vier zitten in `FIELDS` ([parser.ts:27](lib/enrichment/parser.ts:27)) en draaien dus mee
+  in de volledige run.
+- `dimmable` kan een regel **nooit** naar rood duwen — een ander protocol is altijd geel. Van de
+  zeven velden is dat het enige dat alleen maar kan verbeteren of neutraal blijven.
+
+Daarmee is het contrast tussen de twee fase-2-varianten scherper dan een kwestie van
+steekproefdichtheid: bij **alleen CRI** is `open → geel` onmogelijk en bestaat de hele winst uit
+`open → groen`, met rood als enige neerwaartse richting. Bij de **volledige run** komt de winst
+via vier velden binnen, waarvan er één (dimbaarheid) geen enkel neerwaarts risico draagt.
 
 Een meting die deze gevallen niet uit elkaar houdt, keurt het goede resultaat af — of viert een
 verkeerde waarde als vooruitgang.
