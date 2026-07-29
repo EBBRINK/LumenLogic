@@ -366,6 +366,31 @@ Meetnoot: `dordrecht` heeft geen tekstlaag en vergt `--ai` met echte, betaalde c
 ([eval-testset.ts:19](scripts/eval-testset.ts:19)). De nul- en nameting draaien daarom zonder
 `--ai` op `raadhuis`, `kvk` en `tno`; `dordrecht` alleen als Timo daar apart go voor geeft.
 
+## Zwakke plek 3: publiceren is mechanisch te zwaar voor deze run
+
+Niet epistemisch maar praktisch, en gemeten. `publishRun` doet **per product** één select en één
+update ([enrichment.ts:414–447](lib/repo/enrichment.ts:414)), en `db/client.ts` gebruikt de
+neon-**http**-driver: elke query is een losse HTTP-round-trip, en er is geen transactie.
+
+Gemeten vanaf deze machine tegen de branch: **139 ms per round-trip** (25 metingen, warm).
+
+| run | producten | round-trips | geschatte duur |
+|---|---|---|---|
+| alleen CRI | 13.407 | ~26.800 | **~62 min** |
+| volledige run | ~31.000 | ~62.000 | **~144 min** |
+
+Daar komt `rematchBrandLines` nog bovenop, dat per blauwe/open spec-regel een `runMatcher` draait.
+
+Twee gevolgen. Ten eerste kan dit niet via de server-action/UI: dat loopt tegen elke redelijke
+requesttimeout aan. Publiceren moet vanaf een script. Ten tweede is een crash halverwege reëel —
+maar niet fataal: de run blijft op status `steekproef` staan (de statuswissel gebeurt ná de lus)
+en `fieldIsEmpty` maakt een tweede poging idempotent. Wél telt `applied` dan dubbel op in de
+counts.
+
+Noot bij het getal: 139 ms is de latency vanaf hier naar de branch. Op Vercel draait de app naast
+de database en is het een fractie daarvan — dit cijfer zegt iets over *onze* publish-run vanaf een
+script, niet over de app in productie.
+
 ## Vangrails die niet mogen sneuvelen
 
 - **Alles op de Neon-branch.** Guard is fail-closed op een positief signaal: `LUMENLOGIC_DB=branch`
