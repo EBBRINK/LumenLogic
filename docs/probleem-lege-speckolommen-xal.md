@@ -300,6 +300,28 @@ XAL-datafout in precies de SASSO-familie waar de testcases op leunen.)
 Dit bewijs is een orde sterker dan de steekproef van 100 die de pijplijn zelf eist: 73.804
 controles tegen een onafhankelijke bron, versus 100 rijen die een mens beoordeelt.
 
+> ⚠️ **Maar het dekt CRI niet.** Die validatie werkt alleen waar de kolom al gevuld is, en bij
+> XAL staat `cri` op **nul**. Er zijn dus nul onafhankelijke toetsen op precies het veld dat
+> 13.407 waarden gaat leveren. De 73.804 bewijzen de *machinerie* (en dimbaarheid: 14.250/14.250),
+> niet het veld waar het om gaat. Wie "de parser is al bewezen" als argument gebruikt om de
+> menselijke poort over te slaan, gebruikt bewijs dat structureel langs het onderwerp heen valt.
+
+**Wat CRI wél dicht.** Alle 13.407 voorstellen komen uit exact **vijf letterlijke tokens**
+(`scripts/xal-cri-tokens.ts`):
+
+| token | aantal |
+|---|---|
+| `CRI90` | 9.143 |
+| `CRI80` | 2.028 |
+| `CRI97` | 1.296 |
+| `CRI95` | 924 |
+| `CRI98` | 16 |
+
+Geen enkele `Ra`-variant, geen `≥`, geen spatie, geen waarde buiten 80–98. De valse-positief-ruimte
+is hier niet *klein* maar bij inspectie **leeg**: er is geen naamvorm waarin de parser iets anders
+dan een CRI-label als CRI kan lezen. Dat is een vollediger dekking van dit ene veld dan 100
+steekproefrijen ooit geven — maar het is een aparte meting, geen poort in de pijplijn.
+
 **3. De rangverschuiving is begrensd — maar scheef.** De spreiding van de winst:
 
 | velden erbij | producten | aandeel | verschuiving |
