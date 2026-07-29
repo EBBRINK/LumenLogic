@@ -24,19 +24,27 @@ kandidaat valt ([engine.ts:703](lib/matching/engine.ts:703)):
 list = !specless && !red && !unknown && !unconfirmed ? "aantoonbaar" : "onvolledig"
 ```
 
-en de regelstatus komt uitsluitend uit die lijsten ([engine.ts:736](lib/matching/engine.ts:736)):
-`anyGreen` kijkt alleen naar **aantoonbare** kandidaten, en `worstVerdict` zet één `onbekend`
-al boven `groen` ([tolerances.ts:231](lib/matching/tolerances.ts:231)).
+`anyGreen` kijkt vervolgens uitsluitend naar **aantoonbare** kandidaten
+([engine.ts:736](lib/matching/engine.ts:736)), en `worstVerdict` zet één `onbekend` al boven
+`groen` ([tolerances.ts:231](lib/matching/tolerances.ts:231)).
 
 Daaruit volgt een harde uitspraak, puur uit de code, zonder meting:
 
 > **Vraagt een spec-regel om CRI, en is `cri` leeg bij álle kandidaten, dan kan die regel nooit
-> groen worden — en ook niet geel.** Hij valt terug op `open`.
+> groen worden.**
 
 Datzelfde geldt veld voor veld voor kelvin, IP, wattage, lumen en beam. De lege kolom
 diskwalificeert niet de kandidaat maar de hele belofte "aantoonbaar". Met CRI gevuld op 3 van de
 211.000 producten (briefing-getal, **nog niet geverifieerd**) is elke CRI-vragende regel in de
 hele database dus structureel niet-groen.
+
+**Geel blijft wél bereikbaar** — dit is nauwer dan het lijkt. `anyYellow`
+([engine.ts:739](lib/matching/engine.ts:739)) leest álle kandidaten, niet alleen de
+aantoonbare, en eist alleen `worstVerdict === "geel"` zonder rood. En `worstVerdict` toetst
+geel vóór onbekend. Een kandidaat met `[cri: onbekend, watt: geel]` levert dus gewoon een
+**gele** regel op. `open` is de uitkomst alleen als geen enkele kandidaat een geel veld heeft —
+dus als CRI het enige gevraagde veld is, of als alle andere gevraagde velden groen of onbekend
+uitvallen.
 
 De ranking heeft hetzelfde gat, maar zachter: `specScoreSql` telt een lege kolom als `0`
 ([engine.ts:361](lib/matching/engine.ts:361)) — bewust, want geen-data mag een product nooit
@@ -52,7 +60,7 @@ Dit is de kern van de meetdiscussie, en het is géén monotone verbetering.
 |---|---|---|---|
 | veld-oordeel | `onbekend` | `groen` | **`rood`** |
 | lijst | altijd `onvolledig` | kan `aantoonbaar` | uit beide lijsten (C-08) |
-| regelstatus | hooguit `open` | kan `groen` | kan `rood` |
+| regelstatus | nooit `groen`; `geel` als een ánder gevraagd veld geel is, anders `open` | kan `groen` | kan `rood` — en de kandidaat telt niet langer mee voor `geel` (`anyYellow` eist geen rood) |
 | specScore-term | `0` | `+1` | `−1` |
 
 De rangkant: `SPEC_COEFF` is 0,15 ([engine.ts:346](lib/matching/engine.ts:346)), dus het verschil
@@ -68,8 +76,14 @@ Daarom moet "regressie" scherp gedefinieerd zijn, en de grill heeft dat al gedaa
 - **Geen regressie, maar eerlijker** = een regel gaat van `open` naar `rood` omdat het product
   aantoonbaar CRI 80 heeft terwijl het bestek 90 vraagt. Dat is precies wat de tool hoort te
   zeggen. Meetpunt 3 uit de grill: vullen maakt de status eerlijker, niet automatisch groener.
+- **Geen regressie, gewoon winst** = een regel gaat van `open` naar `groen` (alle gevraagde
+  velden nu bekend én in orde), of naar `geel`. Dat laatste is óók een correcte uitkomst en geen
+  anomalie — al komt het nooit van CRI zelf: `judgeCri`, `judgeKelvin` en `judgeIp` kennen
+  alleen groen, rood of onbekend ([tolerances.ts:68–88](lib/matching/tolerances.ts:68)). Alleen
+  watt, lumen en beam kunnen `geel` opleveren, en de run vult die velden mee.
 
-Een meting die deze twee niet uit elkaar houdt, keurt het goede resultaat af.
+Een meting die deze gevallen niet uit elkaar houdt, keurt het goede resultaat af — of viert een
+verkeerde waarde als vooruitgang.
 
 ## Zwakke plek 1: publiceren is een eenrichtingsdeur
 
