@@ -173,12 +173,20 @@ export type EnrichmentItem = typeof enrichmentItems.$inferSelect;
 
 // ── Start: parser over alle producten van één merk ───────────────────────────
 // Draait parseProductName over elk product van het merk, schrijft één enrichment_items-rij
-// per geparst veld (source 'parsed-from-name'), vlagt ~30% als steekproef, en maakt de
+// per geparst veld (source 'parsed-from-name'), vlagt een begrensde steekproef, en maakt de
 // bijbehorende enrichment_runs-rij (status 'steekproef'). Muteert nog NIETS aan products.
+//
+// `fields` beperkt de run tot een deel van de velden (default: alle). Waarom dat bestaat: bij
+// XAL levert een volledige run 90.660 voorstellen waarvan er maar 16.856 landen, en de
+// steekproef van 100 verdeelt zich dan over zeven velden — 85 van de 100 reviewplekken vielen
+// op een al gevulde kolom die publishRun tóch negeert. Eén veld tegelijk maakt de steekproef
+// dicht én houdt de meting falsifieerbaar (zie docs/plan-lege-speckolommen-xal.md: tno vraagt
+// geen CRI en moet bij een CRI-run per constructie stilstaan).
 export async function startEnrichmentRun(
   db: AppDb,
   brandId: string,
   actor?: string,
+  fields: readonly (typeof FIELDS)[number][] = FIELDS,
 ): Promise<EnrichmentRun> {
   const [brand] = await db
     .select({ id: brands.id, name: brands.name })
@@ -200,9 +208,11 @@ export async function startEnrichmentRun(
     field: string;
     value: string;
   }[] = [];
+  const gekozen = new Set<string>(fields);
   for (const p of prods) {
     const specs = parseProductName(p.name);
     for (const field of FIELDS) {
+      if (!gekozen.has(field)) continue;
       const v = specs[field];
       if (v === undefined) continue;
       parsed.push({

@@ -23,6 +23,7 @@ import { runMatcher } from "@/lib/repo/matching";
 import {
   getSampleItems,
   getTier2Coverage,
+  getRunItems,
   listBrandLoadQueue,
   listEnrichmentRuns,
   markBrandLoaded,
@@ -87,6 +88,53 @@ test("start → parser vult enrichment_items met de specs uit de naam", async ()
     expect(it.applied).toBe(false);
     expect(it.inSample).toBe(true);
   }
+});
+
+// Het veldfilter (docs/plan-lege-speckolommen-xal.md): één veld tegelijk kunnen draaien maakt de
+// steekproef dicht (bij XAL viel 85% van de reviewplekken op velden die niets opleverden) en
+// houdt de meting falsifieerbaar. Default-gedrag moet ongewijzigd blijven.
+test("veldfilter: alleen het gevraagde veld levert items op", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+
+  const run = await startEnrichmentRun(db, brandId, "tester", ["cri"]);
+
+  const items = await getRunItems(db, run.id);
+  expect(items.length).toBeGreaterThan(0);
+  for (const it of items) expect(it.field).toBe("cri");
+  // Van de drie producten draagt alleen "SPY 39 IP54 CRI90 4000K" een CRI.
+  expect(items.length).toBe(1);
+  expect(items[0].value).toBe("90");
+  expect((run.counts as Record<string, number>).producten).toBe(3);
+});
+
+test("veldfilter: zonder argument blijft de run over alle velden gaan", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+
+  const alle = await getRunItems(db, (await startEnrichmentRun(db, brandId)).id);
+  const velden = new Set(alle.map((i) => i.field));
+  expect(velden.size).toBeGreaterThan(1);
+  expect(velden.has("cri")).toBe(true);
+  expect(velden.has("kelvin")).toBe(true);
+});
+
+// Een gefilterde run mag de andere kolommen niet aanraken bij publiceren — anders zou het
+// filter alleen de voorstellen beperken en niet de werkelijke mutatie.
+test("veldfilter: publiceren raakt uitsluitend het gefilterde veld", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+
+  const run = await startEnrichmentRun(db, brandId, "tester", ["cri"]);
+  await approveWholeSample(db, run.id);
+  await publishRun(db, run.id, "tester");
+
+  const rijen = await db.select().from(products).where(eq(products.brandId, brandId));
+  const spy = rijen.find((p) => p.name.includes("SPY"))!;
+  expect(spy.cri).toBe(90);
+  expect(spy.kelvin).toBeNull(); // 4000K staat in de naam maar viel buiten het filter
+  expect(spy.ipValue).toBeNull(); // IP54 idem
+  expect(spy.tier2Source).toEqual({ cri: "parsed-from-name" });
 });
 
 test("publiceren vult de productvelden + zet tier2_source (herkomst)", async () => {
