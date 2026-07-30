@@ -344,6 +344,25 @@ async function nextQuoteNumber(db: AppDb): Promise<string> {
   return `BL-${year}-${String(Number(n) + 1).padStart(4, "0")}`;
 }
 
+// VOORSTEL, geen regel: hoe lang een gegenereerde estimate standaard geldig is.
+// Timo mag dit getal veranderen — het staat hier als één constante zodat dat één
+// bewerking is en niet een zoektocht door de UI. De mens overschrijft het sowieso in
+// "Edit header" (A-10); dit is alleen de stand waarin de offerte geboren wordt.
+//
+// Waarom er überhaupt een voorstel staat (herstel 2026-07-30): valid_until werd door
+// GEEN ENKEL codepad gevuld, dus elke gegenereerde offerte kwam met een lege
+// geldigheid ter wereld en viel meteen achter de kopblokpoort — inclusief elke rij die
+// al in productie stond.
+export const DEFAULT_VALIDITY_DAYS = 30;
+
+// 'YYYY-MM-DD' + n dagen, weer als 'YYYY-MM-DD'. Bewust in UTC gerekend: de kolom is
+// een `date` zonder tijdzone, en lokale zomertijd zou er anders een dag naast schieten.
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 // Genereert (of hergenereert) de offerte uit alle gematchte spec-regels die een
 // geldige, niet-verlopen prijs hebben. Regel × stukprijs → totalen. Het kopblok
 // (nummer, klant, contact, …) blijft behouden bij hergenereren; een uitgestuurde
@@ -372,6 +391,7 @@ export async function generateQuote(
     .limit(1);
   if (prev?.frozenAt) return prev; // uitgestuurd → op slot
 
+  const quoteDate = prev?.quoteDate ?? new Date().toISOString().slice(0, 10);
   const header = {
     quoteNumber: prev?.quoteNumber ?? (await nextQuoteNumber(db)),
     customer: prev?.customer ?? dossier?.customer ?? null,
@@ -379,9 +399,13 @@ export async function generateQuote(
     address: prev?.address ?? null,
     projectRef: prev?.projectRef ?? dossier?.name ?? null,
     authorEmail: prev?.authorEmail ?? actor ?? null,
-    quoteDate:
-      prev?.quoteDate ?? new Date().toISOString().slice(0, 10),
-    validUntil: prev?.validUntil ?? null,
+    quoteDate,
+    // Zelfde vorm als quoteDate hierboven: een bestaande waarde blijft staan, anders
+    // een voorstel. Dat betekent dat "Refresh estimate" een handmatig leeggemaakte
+    // geldigheid opnieuw voorstelt — precies zoals hij ook de datum opnieuw voorstelt.
+    // Wie de kop leeg wíl hebben, maakt hem leeg in "Edit header" en genereert niet
+    // opnieuw; dán, en alleen dán, gaat de kopblokpoort dicht.
+    validUntil: prev?.validUntil ?? addDays(quoteDate, DEFAULT_VALIDITY_DAYS),
   };
 
   const existing = await db

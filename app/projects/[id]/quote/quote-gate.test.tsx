@@ -1,0 +1,192 @@
+// De kopblokpoort op de estimate-tab, gemeten aan de ECHTE pagina en de ECHTE route —
+// niet aan een handgebouwde actions-prop (herstel 2026-07-30).
+//
+// Waarom dit bestand bestaat: components/dossier/estimate.test.tsx bouwt de actiebalk
+// zelf op als fixture. Daardoor pinde niets de regel in page.tsx die de knoppen
+// wegneemt: je kon het `outputsAllowed &&`-omhulsel schrappen en er ging geen enkele
+// test rood. Hetzelfde gold voor de 409 op /quote/pdf en voor xisExportAction.
+//
+// Harnasgrens (zie ook app/login/login-gate.test.ts): met vi.mock in dit bestand wordt
+// de modulegraaf herbouwd en renderen CLIENT-componenten leeg. PrintButton en
+// XisPushDialog zijn client — die zijn hier dus niet te zien. De "Download PDF"-knop is
+// een gewone server-gerenderde <a> en staat er wél; die is het anker van deze tests.
+import { page } from "vitest/browser";
+import { expect, test, vi } from "vitest";
+import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { projectDossiers, specLines } from "@/db/schema";
+import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
+import { generateQuote, updateQuoteHeader } from "@/lib/repo/dossiers";
+import { setStatus } from "@/lib/repo/project-status";
+import { getXisExports } from "@/lib/repo/xis";
+
+const harnas = vi.hoisted(() => ({
+  db: null as unknown,
+  email: "hello@noplasticfloralfoam.com",
+}));
+
+// db/client.ts gooit al bij import zonder DATABASE_URL en praat met Neon; hier komt de
+// PGlite-testdatabase ervoor in de plaats. De proxy bindt methodes aan de échte drizzle-
+// instantie, anders verliezen ze hun `this`.
+vi.mock("@/db/client", () => ({
+  db: new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        const echt = harnas.db as Record<string | symbol, unknown>;
+        const waarde = echt[prop];
+        return typeof waarde === "function" ? waarde.bind(echt) : waarde;
+      },
+    },
+  ),
+}));
+
+vi.mock("@/lib/session", () => ({
+  getSession: async () => ({ user: { email: harnas.email } }),
+  requireSession: async () => ({ user: { email: harnas.email } }),
+  getActor: async () => harnas.email,
+}));
+
+// revalidatePath heeft buiten een request-scope geen store; de acties roepen hem wel aan.
+vi.mock("next/cache", () => ({
+  revalidatePath: () => {},
+  revalidateTag: () => {},
+}));
+
+const { default: EstimatePage } = await import("./page");
+const { GET } = await import("./pdf/route");
+const { xisExportAction } = await import("./actions");
+
+// Twee tellende regels — genoeg voor een offerte met inhoud, klein genoeg om snel te zijn.
+async function seedDossier(db: TestDb) {
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Ziekenhuis Noord", customer: "Deerns" })
+    .returning();
+  const p = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 SQ SP CEIL 2700K",
+    price: "310.00",
+    articleCode: "L360-SASSO100",
+  });
+  await db.insert(specLines).values({
+    dossierId: dossier.id,
+    fixtureCode: "Lp301",
+    zone: "A-08",
+    status: "groen",
+    quantity: 12,
+    matchedProductId: p.productId,
+    brandText: "XAL",
+    productText: "SASSO 100",
+    sortOrder: 0,
+  });
+  return dossier.id;
+}
+
+async function nieuweStand() {
+  const db = await createTestDb();
+  harnas.db = db;
+  const dossierId = await seedDossier(db);
+  return { db, dossierId };
+}
+
+function renderPagina(id: string) {
+  return renderServer(<EstimatePage params={Promise.resolve({ id })} />);
+}
+
+const downloadKnop = () => page.getByRole("link", { name: "Download PDF" });
+
+// De EERSTE render in dit bestand trekt de hele pagina-modulegraaf (page → repo → pdf →
+// db) door de transform; gemeten op 30 jul duurde dat ~17 s op een koude vite-cache,
+// ruim over de standaard wachttijd van expect.element. Vandaar deze ruimere marge op
+// elke render-assertie — niet omdat de assertie traag is, maar omdat de eerste compile
+// dat is. Wie hem weghaalt krijgt een test die alleen op een warme cache slaagt.
+const RENDER_WACHT = { timeout: 30_000 };
+
+// ── De pagina ────────────────────────────────────────────────────────────────
+
+test("verse generatie: de uitgangen staan er meteen — geen tussenstop", async () => {
+  const { dossierId } = await nieuweStand();
+  await generateQuote(harnas.db as TestDb, dossierId, harnas.email);
+
+  await renderPagina(dossierId);
+  await expect.element(downloadKnop(), RENDER_WACHT).toBeInTheDocument();
+  await expect.element(downloadKnop()).toHaveAttribute(
+    "href",
+    `/projects/${dossierId}/quote/pdf`,
+  );
+  // Geen banner: de kop is compleet (datum + voorgestelde geldigheid).
+  expect(page.getByRole("status").query()).toBeNull();
+});
+
+test("kop leeggemaakt en niet bevroren: Download PDF is weg, de banner legt uit waarom", async () => {
+  const { db, dossierId } = await nieuweStand();
+  await generateQuote(db, dossierId, harnas.email);
+  await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
+
+  await renderPagina(dossierId);
+  const melding = page.getByRole("status");
+  await expect.element(melding, RENDER_WACHT).toBeInTheDocument();
+  expect(melding.element().textContent).toContain("Valid until is still empty");
+  // Dít is de assertie die valt zodra het `outputsAllowed &&`-omhulsel uit page.tsx
+  // verdwijnt.
+  expect(downloadKnop().query()).toBeNull();
+  // De kop is bewerkbaar (er is een offerte, niet bevroren) → de instructie mag naar
+  // "Edit header" wijzen, en dat blok staat er dan ook echt.
+  expect(melding.element().textContent).toContain("Edit header");
+  await expect.element(page.getByText("Edit header").first()).toBeInTheDocument();
+});
+
+test("BEVROREN met een lege kop: Download PDF staat er, en er is geen banner", async () => {
+  const { db, dossierId } = await nieuweStand();
+  await generateQuote(db, dossierId, harnas.email);
+  await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
+  // De drie-kliksval: genereren → status "estimate gestuurd" → tab Estimate.
+  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+
+  await renderPagina(dossierId);
+  await expect.element(downloadKnop(), RENDER_WACHT).toBeInTheDocument();
+  // De render is hierboven bewezen aanwezig; pas dan zeggen "geen banner" iets.
+  expect(page.getByRole("status").query()).toBeNull();
+  // Het kopblok is op slot (I-06) — de banner mag daar dus ook niet naar wijzen.
+  expect(page.getByText("Edit header").query()).toBeNull();
+});
+
+// ── De PDF-route (dezelfde poort, zonder scherm) ─────────────────────────────
+
+test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async () => {
+  const { db, dossierId } = await nieuweStand();
+  await generateQuote(db, dossierId, harnas.email);
+  await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
+
+  const geweigerd = await GET(new Request("http://test/pdf"), {
+    params: Promise.resolve({ id: dossierId }),
+  });
+  expect(geweigerd.status).toBe(409);
+  expect(await geweigerd.text()).toContain("Valid until");
+
+  // Zelfde lege kop, nu bevroren: het stuk IS verstuurd en moet terug te halen zijn.
+  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  const toegestaan = await GET(new Request("http://test/pdf"), {
+    params: Promise.resolve({ id: dossierId }),
+  });
+  expect(toegestaan.status).toBe(200);
+  expect(toegestaan.headers.get("Content-Type")).toBe("application/pdf");
+});
+
+// ── De XIS-action (een verborgen knop is geen poort) ─────────────────────────
+
+test("xisExportAction: weigert bij een lege kop, laat een bevroren offerte door", async () => {
+  const { db, dossierId } = await nieuweStand();
+  await generateQuote(db, dossierId, harnas.email);
+  await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
+
+  // Handgemaakte POST — de UI biedt deze knop nu niet aan, maar dat is geen beveiliging.
+  const fd = new FormData();
+  fd.set("dossierId", dossierId);
+  await xisExportAction(fd);
+  expect(await getXisExports(db, dossierId)).toEqual([]);
+
+  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  await xisExportAction(fd);
+  expect((await getXisExports(db, dossierId)).length).toBe(1);
+});

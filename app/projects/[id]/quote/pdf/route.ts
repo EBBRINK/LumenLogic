@@ -40,7 +40,11 @@ export async function GET(
   // datum of geldigheid leeg is, maar deze route is ook rechtstreeks op te vragen —
   // dan zou het onvolledige klantstuk alsnog stil de deur uit gaan. 409: er is niets
   // mis met de aanvraag, de offerte is nog niet zover.
-  if (!data.computed.headerComplete) {
+  //
+  // outputsAllowed, niet headerComplete (herstel 2026-07-30): een bevroren offerte is
+  // het al verstuurde document en moet altijd opnieuw te downloaden zijn. Met
+  // headerComplete gaf deze route 409 op élke offerte die vóór vandaag is gemaakt.
+  if (!data.computed.outputsAllowed) {
     return new Response(
       `The quote header is incomplete (${data.computed.missingHeaderFields.join(", ")}). Fill it in on the estimate tab before downloading the PDF.`,
       { status: 409, headers: { "Content-Type": "text/plain; charset=utf-8" } },

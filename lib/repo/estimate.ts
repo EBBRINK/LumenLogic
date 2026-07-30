@@ -31,12 +31,19 @@ export type EstimateLine = {
   manuallyChosen?: boolean;
 };
 
-// Wat er in het veld "Quote number" staat zolang er nog geen nummer is (A-09: de
-// teller loopt pas bij uitsturen). Eén constante, want scherm, PDF en test moeten
-// dezelfde zin gebruiken.
-export const NUMBER_PENDING = "Number assigned on sending";
+// Wat er in het veld "Quote number" staat zolang er nog geen nummer is. Eén constante,
+// want scherm, PDF en test moeten dezelfde zin gebruiken.
+//
+// De zin volgt de CODE, niet A-09. A-09 in het functioneel ontwerp zegt "teller verhoogt
+// pas bij bevestigen/uitsturen", maar nextQuoteNumber (lib/repo/dossiers.ts) kent het
+// nummer toe bij GENEREREN en bewaart het daarna. Dit veld wordt letterlijk op een
+// Engelstalig klantstuk afgedrukt (scherm én PDF), dus het mag geen belofte doen die de
+// software niet nakomt: "assigned on sending" was net zo onwaar als het oude
+// `BL-2026-{nummer volgt}` onleesbaar was. Zie HANDOVER.md 2026-07-30 — welke van de
+// twee (ontwerp of code) moet wijken is een besluit voor Timo.
+export const NUMBER_PENDING = "Number assigned when the estimate is generated";
 
-// Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt pas bij uitsturen.
+// Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt bij genereren.
 export type EstimateHeader = {
   quoteNumber: string | null;
   quoteDate: string | null;
@@ -86,9 +93,9 @@ export type EstimateZoneGroup = {
 };
 
 export type EstimateComputed = {
-  // A-09: het nummer komt pas bij uitsturen. Zolang dat niet is gebeurd staat hier
-  // NUMBER_PENDING — geen sjabloonhaken, geen Nederlands (UX-audit bug #6): dit veld
-  // wordt letterlijk op een Engelstalig klantdocument (scherm én PDF) afgedrukt.
+  // Het nummer komt bij genereren (nextQuoteNumber). Zolang dat niet is gebeurd staat
+  // hier NUMBER_PENDING — geen sjabloonhaken, geen Nederlands (UX-audit bug #6): dit
+  // veld wordt letterlijk op een Engelstalig klantdocument (scherm én PDF) afgedrukt.
   quoteNumberDisplay: string;
   // Is er een écht offertenummer? Voor plekken waar de zin anders moet lopen dan een
   // veldwaarde, zoals de PDF-titel en de voettekst.
@@ -97,6 +104,20 @@ export type EstimateComputed = {
   // Datum en geldigheid zijn het minimum — een offerte zonder die twee is geen aanbod.
   headerComplete: boolean;
   missingHeaderFields: string[]; // labels, in de volgorde van het kopblok
+  // I-06: is de offerte uitgestuurd (bevroren)? Doorgegeven, niet berekend — het scherm
+  // en de poort hieronder moeten er allebei op kunnen leunen zonder de quote-rij te zien.
+  frozen: boolean;
+  // DE POORT (herstel 2026-07-30). Mag dit stuk naar buiten: Print, Download PDF,
+  // → To XIS? Eén veld, drie aanroepers (pagina, PDF-route, XIS-action) — nooit twee
+  // waarheden.
+  //
+  // Een BEVROREN offerte is nooit gepoort. Die IS het verstuurde document: weigeren om
+  // hem te printen is de omgekeerde wereld, en het kopblok staat dan bovendien op slot
+  // (updateQuoteHeader weigert, "Edit header" wordt niet gerenderd) — de gebruiker zou
+  // gestuurd worden naar een knop die niet bestaat en een veld dat niet schrijfbaar is.
+  // Dat gold ook voor élke offerte die al in productie stond: die hebben allemaal
+  // valid_until = NULL, want geen enkel codepad heeft dat veld ooit gevuld.
+  outputsAllowed: boolean;
   totals: { groen: number; geel: number; samen: number };
   pm: { blauw: number; rood: number; paars: number; total: number };
   blauwLines: EstimateLine[]; // p.m.: merk inladen (onze actie)
@@ -138,21 +159,27 @@ function groupByZone(lines: NumberedEstimateLine[]): EstimateZoneGroup[] {
 export function computeEstimate(
   header: EstimateHeader,
   lines: EstimateLine[],
+  opts: { frozen?: boolean } = {},
 ): EstimateComputed {
-  // A-09 blijft ongewijzigd: er wordt hier GEEN nummer gereserveerd, de teller loopt
-  // pas bij uitsturen. Alleen de weergave is veranderd (UX-audit bug #6): de oude
-  // fallback was `BL-{jaar}-{nummer volgt}` — een Nederlandse zin mét accolades op een
-  // Engelstalig klantdocument, die als onvervulde sjabloonvariabele leest. Het jaar
-  // erin was bovendien een gok: de teller loopt op het jaar van uitsturen, niet op de
-  // offertedatum van nu.
-  const quoteNumberAssigned = header.quoteNumber != null;
-  const quoteNumberDisplay = header.quoteNumber ?? NUMBER_PENDING;
+  // Hier wordt GEEN nummer toegekend — dat doet generateQuote. Alleen de weergave is
+  // veranderd (UX-audit bug #6): de oude fallback was `BL-{jaar}-{nummer volgt}` — een
+  // Nederlandse zin mét accolades op een Engelstalig klantdocument, die als onvervulde
+  // sjabloonvariabele leest.
+  //
+  // .trim() aan beide kanten: een kop met alleen witruimte in het nummerveld is geen
+  // nummer. Zonder de trim leverde " " een lege PDF-titel op ("Estimate  — …"), terwijl
+  // de datumchecks hieronder wél al trimden.
+  const quoteNumber = header.quoteNumber?.trim() || "";
+  const quoteNumberAssigned = quoteNumber !== "";
+  const quoteNumberDisplay = quoteNumberAssigned ? quoteNumber : NUMBER_PENDING;
 
   // Kopblokpoort (bug #6): datum en geldigheid zijn het minimum voor een klantstuk.
   const missingHeaderFields: string[] = [];
   if (!header.quoteDate?.trim()) missingHeaderFields.push("Date");
   if (!header.validUntil?.trim()) missingHeaderFields.push("Valid until");
   const headerComplete = missingHeaderFields.length === 0;
+  const frozen = opts.frozen ?? false;
+  const outputsAllowed = headerComplete || frozen;
 
   // Totalen: groen apart, geel apart, samen. Een regel telt alleen mee met een aantal
   // én een geldige prijs; ontbreekt het aantal, dan is het een stukprijs-regel (p/st).
@@ -195,6 +222,8 @@ export function computeEstimate(
     quoteNumberAssigned,
     headerComplete,
     missingHeaderFields,
+    frozen,
+    outputsAllowed,
     totals: { groen, geel, samen: groen + geel },
     pm,
     blauwLines,
@@ -244,12 +273,17 @@ export async function getEstimateData(db: AppDb, dossierId: string) {
     validUntil: quote?.validUntil ?? null,
   };
 
+  // I-06: bevroren = uitgestuurd. Gaat mee de berekening in, want de poort
+  // (outputsAllowed) hangt eraan en die moet overal hetzelfde antwoord geven.
+  const frozen = quote?.frozenAt != null;
+
   return {
     dossier,
     quote, // volledige offerte-rij (o.a. frozenAt voor het kopblok-slot, I-06)
     header,
     lines,
-    computed: computeEstimate(header, lines),
+    frozen,
+    computed: computeEstimate(header, lines, { frozen }),
   };
 }
 

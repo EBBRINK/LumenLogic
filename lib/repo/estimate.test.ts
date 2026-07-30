@@ -5,7 +5,8 @@
 import { expect, test } from "vitest";
 import { projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
-import { generateQuote } from "./dossiers";
+import { DEFAULT_VALIDITY_DAYS, generateQuote, updateQuoteHeader } from "./dossiers";
+import { setStatus } from "./project-status";
 import {
   computeEstimate,
   countedLineTotal,
@@ -132,11 +133,12 @@ test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", asyn
   ]);
 });
 
-// A-09 ongewijzigd: er wordt géén nummer gereserveerd bij aanmaken, de teller loopt
-// pas bij uitsturen. Wat wél veranderde (UX-audit bug #6): de fallbacktekst was
-// `BL-2026-{nummer volgt}` — Nederlands mét accolades op een Engelstalig klantstuk,
-// en het jaar erin was een gok, want de teller loopt op het jaar van uitsturen.
-test("kopblok: vóór genereren geen nummer maar 'Number assigned on sending', ná genereren het echte offertenummer", async () => {
+// Het nummer wordt toegekend bij GENEREREN (nextQuoteNumber) en daarna bewaard — niet
+// bij uitsturen, wat A-09 wél zegt. De weergavetekst volgt sinds 2026-07-30 de code;
+// die tegenspraak staat als besluit voor Timo in HANDOVER.md. Wat in bug #6 veranderde
+// was de vorm: de oude fallback `BL-2026-{nummer volgt}` was Nederlands mét accolades
+// op een Engelstalig klantstuk.
+test("kopblok: vóór genereren geen nummer maar de wachttekst, ná genereren het echte offertenummer", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
@@ -147,6 +149,10 @@ test("kopblok: vóór genereren geen nummer maar 'Number assigned on sending', n
   // Geen sjabloonhaken en geen Nederlands meer op het klantstuk.
   expect(before.computed.quoteNumberDisplay).not.toMatch(/[{}]/);
   expect(before.computed.quoteNumberDisplay).not.toContain("nummer volgt");
+  // De tekst moet waar zijn: het nummer komt bij genereren, niet bij versturen. Zou
+  // hij weer "on sending" beloven, dan liegt het klantstuk over zijn eigen software.
+  expect(NUMBER_PENDING).toBe("Number assigned when the estimate is generated");
+  expect(NUMBER_PENDING).not.toContain("on sending");
 
   await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
 
@@ -200,8 +206,8 @@ test("kopblokpoort: datum én geldigheid nodig, en de ontbrekende velden staan e
     computeEstimate({ ...basis, validUntil: "2026-08-07" }, []).missingHeaderFields,
   ).toEqual(["Date"]);
 
-  // generateQuote vult de datum wél en de geldigheid NIET (lib/repo/dossiers.ts) —
-  // die tussenstand is precies de stand waarin de knoppen uit horen te staan.
+  // generateQuote vult sinds 2026-07-30 datum én geldigheid (zie de test verderop);
+  // deze stand is dus wat een verse generatie oplevert.
   const compleet = computeEstimate(
     { ...basis, quoteDate: "2026-07-07", validUntil: "2026-08-07" },
     [],
@@ -214,4 +220,101 @@ test("kopblokpoort: datum én geldigheid nodig, en de ontbrekende velden staan e
     computeEstimate({ ...basis, quoteDate: "  ", validUntil: "2026-08-07" }, [])
       .headerComplete,
   ).toBe(false);
+});
+
+// ── De poort zelf (herstel 2026-07-30) ───────────────────────────────────────
+//
+// De poort van bug #6 was een val: hij hing aan headerComplete, en géén codepad vulde
+// ooit valid_until. Drie gewone klikken (Generate estimate → status "estimate
+// gestuurd" → tab Estimate) haalden Print, Download PDF en → To XIS wég bij een
+// offerte die al verstuurd wás, terwijl het kopblok op dat moment op slot zit. Twee
+// besluiten repareren dat; deze tests pinnen ze allebei.
+
+test("poort: een BEVROREN offerte is nooit gepoort, ook niet met een lege kop", () => {
+  const leegBevroren = {
+    quoteNumber: "BL-2026-0001",
+    quoteDate: null,
+    customer: "Deerns",
+    projectRef: "PRJ-42",
+    author: "timo@brink.nl",
+    validUntil: null,
+  };
+  const bevroren = computeEstimate(leegBevroren, [], { frozen: true });
+  // De kop is en blijft incompleet — dat feit versluieren we niet…
+  expect(bevroren.headerComplete).toBe(false);
+  expect(bevroren.missingHeaderFields).toEqual(["Date", "Valid until"]);
+  // …maar de poort staat open: dit stuk IS het verstuurde document.
+  expect(bevroren.frozen).toBe(true);
+  expect(bevroren.outputsAllowed).toBe(true);
+
+  // Exact dezelfde kop, níét bevroren → poort dicht. Zonder dit verschil is de
+  // uitzondering betekenisloos.
+  const open = computeEstimate(leegBevroren, [], { frozen: false });
+  expect(open.outputsAllowed).toBe(false);
+  // …en zonder opts is de default veilig: niet bevroren.
+  expect(computeEstimate(leegBevroren, []).outputsAllowed).toBe(false);
+});
+
+test("poort: getEstimateData leest de bevriezing uit de quote-rij, niet uit een prop", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedEstimateDossier(db);
+  await generateQuote(db, dossierId, "timo@brink.nl");
+
+  // De mens maakt de geldigheid leeg — dát is de enige manier waarop de poort nog
+  // dichtgaat na een generatie.
+  await updateQuoteHeader(db, dossierId, { validUntil: null }, "timo@brink.nl");
+  const leeg = (await getEstimateData(db, dossierId))!;
+  expect(leeg.frozen).toBe(false);
+  expect(leeg.computed.outputsAllowed).toBe(false);
+
+  // Status "estimate gestuurd" bevriest de offerte (I-06). Vanaf dat moment is het
+  // stuk verstuurd en moet het altijd opnieuw te printen zijn — de drie-kliksval.
+  await setStatus(db, dossierId, "estimate_gestuurd", "timo@brink.nl");
+  const na = (await getEstimateData(db, dossierId))!;
+  expect(na.quote?.frozenAt).not.toBeNull();
+  expect(na.frozen).toBe(true);
+  expect(na.computed.headerComplete).toBe(false); // de kop is nog steeds leeg…
+  expect(na.computed.outputsAllowed).toBe(true); // …en toch mag het stuk naar buiten
+});
+
+test("generateQuote stelt een geldigheid voor, zodat een verse estimate niet meteen achter de poort valt", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedEstimateDossier(db);
+  await generateQuote(db, dossierId, "timo@brink.nl");
+
+  const data = (await getEstimateData(db, dossierId))!;
+  expect(data.header.quoteDate).not.toBeNull();
+  // Voorstel = offertedatum + DEFAULT_VALIDITY_DAYS, in UTC gerekend.
+  const verwacht = new Date(`${data.header.quoteDate}T00:00:00Z`);
+  verwacht.setUTCDate(verwacht.getUTCDate() + DEFAULT_VALIDITY_DAYS);
+  expect(data.header.validUntil).toBe(verwacht.toISOString().slice(0, 10));
+
+  // En daarmee is de kop compleet: genereren → printen kan, zonder tussenstop.
+  expect(data.computed.headerComplete).toBe(true);
+  expect(data.computed.outputsAllowed).toBe(true);
+
+  // Hergenereren respecteert een handmatige geldigheid (bewaren, niet overschrijven).
+  await updateQuoteHeader(db, dossierId, { validUntil: "2027-01-31" }, "timo@brink.nl");
+  await generateQuote(db, dossierId, "timo@brink.nl");
+  expect((await getEstimateData(db, dossierId))!.header.validUntil).toBe("2027-01-31");
+});
+
+test("offertenummer met alleen witruimte telt niet als toegekend", () => {
+  const basis = {
+    quoteNumber: "   ",
+    quoteDate: "2026-07-07",
+    customer: null,
+    projectRef: null,
+    author: null,
+    validUntil: "2026-08-07",
+  };
+  const c = computeEstimate(basis, []);
+  // Zonder de trim leverde dit een lege PDF-titel op ("Estimate    — …").
+  expect(c.quoteNumberAssigned).toBe(false);
+  expect(c.quoteNumberDisplay).toBe(NUMBER_PENDING);
+  // En een nummer mét spaties eromheen wordt netjes getrimd getoond.
+  expect(
+    computeEstimate({ ...basis, quoteNumber: " BL-2026-0007 " }, [])
+      .quoteNumberDisplay,
+  ).toBe("BL-2026-0007");
 });

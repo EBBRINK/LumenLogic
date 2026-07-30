@@ -59,11 +59,18 @@ export function XisPushDialog({
   preflight,
   existing,
   action,
+  blockedReason = null,
 }: {
   dossierId: string;
   preflight: PreflightSummary;
   existing?: ExistingExport;
   action: (formData: FormData) => void | Promise<void>;
+  /**
+   * Kopblokpoort (herstel 2026-07-30). Gezet → geen verzendknop, wél de dialoog: het
+   * exportspoor ("Already sent — …") en de pre-flight blijven leesbaar. De echte poort
+   * staat serverkant in xisExportAction; dit is de uitleg, niet de beveiliging.
+   */
+  blockedReason?: string | null;
 }) {
   return (
     <Dialog>
@@ -98,6 +105,12 @@ export function XisPushDialog({
               <span className="text-xs">
                 ({existing.environment}, {existing.status})
               </span>
+            </p>
+          </DialogFooter>
+        ) : blockedReason ? (
+          <DialogFooter>
+            <p role="status" className="w-full text-sm text-status-amber-ink">
+              {blockedReason}
             </p>
           </DialogFooter>
         ) : (

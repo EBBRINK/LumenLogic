@@ -125,10 +125,20 @@ export default async function EstimatePage({
   // UX-audit bug #6: Print / Download PDF / → To XIS zijn uitgangen naar de klant.
   // Zolang datum of geldigheid leeg is, is het stuk geen aanbod en horen ze er niet te
   // staan — afwezig, niet uitgegrijsd (zelfde lijn als BrandDeleteBlock: een dode knop
-  // leert niets en nodigt uit tot klikken). De reden staat in het kopblok zelf, met de
-  // ontbrekende velden bij naam; "Edit header" erboven blijft altijd bereikbaar.
-  // "Generate estimate" blijft wél staan: dát is de stap die de datum invult.
-  const headerComplete = data.computed.headerComplete;
+  // leert niets en nodigt uit tot klikken). "Generate estimate" blijft wél staan: dát
+  // is de stap die datum én geldigheid invult.
+  //
+  // De poort zelf (outputsAllowed) komt uit computeEstimate en telt de bevriezing mee:
+  // een uitgestuurde offerte IS het klantstuk en gaat nooit op slot. Zonder die
+  // uitzondering haalde deze pagina Print/PDF/XIS weg bij élke bestaande offerte —
+  // en bij een bevroren offerte rendert KopblokBewerken hieronder niets, dus er was
+  // geen weg terug.
+  const frozen = data.frozen;
+  const outputsAllowed = data.computed.outputsAllowed;
+  // Is "Edit header" straks écht in beeld? Exact dezelfde voorwaarde als
+  // KopblokBewerken hieronder — de banner in QuoteView mag alleen naar dat blok
+  // verwijzen als het er staat.
+  const headerEditable = q != null && !frozen;
 
   const actions = (
     <>
@@ -138,7 +148,7 @@ export default async function EstimatePage({
           {q ? "Refresh estimate" : "Generate estimate"}
         </Button>
       </form>
-      {headerComplete && (
+      {outputsAllowed && (
         <>
           <PrintButton />
           <Button asChild variant="outline" size="sm">
@@ -146,14 +156,24 @@ export default async function EstimatePage({
               Download PDF
             </a>
           </Button>
-          <XisPushDialog
-            dossierId={dossier.id}
-            preflight={preflight}
-            existing={existing}
-            action={xisExportAction}
-          />
         </>
       )}
+      {/* De XIS-dialoog blijft staan óók als de poort dicht is: hij is niet alleen de
+          verzendknop maar ook de plek waar "Already sent — {datum} ({omgeving},
+          {status})" te lezen valt. Dat exportspoor verbergen omdat het kopblok leeg is
+          zou een administratie wissen om een lege datum. Alleen de push zelf gaat op
+          slot — in de dialoog én in xisExportAction (een verborgen knop is geen poort). */}
+      <XisPushDialog
+        dossierId={dossier.id}
+        preflight={preflight}
+        existing={existing}
+        action={xisExportAction}
+        blockedReason={
+          outputsAllowed
+            ? null
+            : `The quote header is incomplete (${data.computed.missingHeaderFields.join(", ")}). Fill it in before sending to XIS.`
+        }
+      />
     </>
   );
 
@@ -162,8 +182,8 @@ export default async function EstimatePage({
       <KopblokBewerken
         dossierId={dossier.id}
         q={q}
-        frozen={q?.frozenAt != null}
-        openen={!headerComplete}
+        frozen={frozen}
+        openen={!outputsAllowed}
       />
       <QuoteView
         dossierName={dossier.name}
@@ -171,6 +191,8 @@ export default async function EstimatePage({
         header={header}
         lines={lines}
         actions={actions}
+        frozen={frozen}
+        headerEditable={headerEditable}
       />
     </>
   );

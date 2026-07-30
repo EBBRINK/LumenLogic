@@ -45,14 +45,24 @@ export function QuoteView({
   header,
   lines,
   actions,
+  frozen = false,
+  headerEditable = false,
 }: {
   dossierName: string;
   phase: Phase;
   header: EstimateHeader;
   lines: EstimateLine[];
   actions?: ReactNode;
+  /** I-06: uitgestuurd. Dan is dit stuk het klantdocument — geen poort, geen banner. */
+  frozen?: boolean;
+  /**
+   * Staat "Edit header" op deze pagina? Bepaalt WELKE instructie de banner geeft.
+   * Default false: zonder dat de aanroeper het bevestigt wijzen we niet naar een blok
+   * dat er misschien niet is — dat was precies de val (herstel 2026-07-30).
+   */
+  headerEditable?: boolean;
 }) {
-  const computed = computeEstimate(header, lines);
+  const computed = computeEstimate(header, lines, { frozen });
   const { totals, pm, blauwLines, roodLines, brandFreq, hasZones, groups } =
     computed;
 
@@ -88,8 +98,18 @@ export function QuoteView({
             naar de printer. Bewust NIET op print:hidden — komt het stuk toch op
             papier (Ctrl+P van de browser), dan hoort deze regel er juist op te staan.
             Print/PDF/XIS zelf staan uit zolang dit blok er is; dat gebeurt in
-            app/projects/[id]/quote/page.tsx, want daar wonen de knoppen. */}
-        {!computed.headerComplete && (
+            app/projects/[id]/quote/page.tsx, want daar wonen de knoppen.
+
+            Twee correcties (herstel 2026-07-30):
+             1. Een BEVROREN offerte krijgt nooit deze banner. computed.outputsAllowed
+                staat dan open, dus de knoppen staan er ook — een melding "dit kan niet
+                geprint worden" onder een printknop is een leugen, en het kopblok is
+                toch op slot.
+             2. De instructie noemt "Edit header" alleen als dat blok er echt staat.
+                Anders is de enige echte uitweg "Generate estimate": dát is de stap die
+                datum én geldigheid invult. De oude tekst stuurde de gebruiker naar een
+                control die niet gerenderd was. */}
+        {!computed.outputsAllowed && (
           <p
             role="status"
             className="mt-3 rounded-lg bg-status-amber-tint px-3 py-2 text-sm text-status-amber-ink"
@@ -97,8 +117,11 @@ export function QuoteView({
             <span className="font-medium">Complete the quote header</span> —{" "}
             {computed.missingHeaderFields.join(" and ")}{" "}
             {computed.missingHeaderFields.length === 1 ? "is" : "are"} still
-            empty. Fill them in under &ldquo;Edit header&rdquo;; until then this
-            estimate cannot be printed, downloaded or sent.
+            empty.{" "}
+            {headerEditable
+              ? "Fill them in under “Edit header”;"
+              : "Use “Generate estimate” to fill them in;"}{" "}
+            until then this estimate cannot be printed, downloaded or sent.
           </p>
         )}
       </header>

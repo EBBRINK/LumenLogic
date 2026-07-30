@@ -2518,3 +2518,77 @@ in handen van parallelle sessies en hebben nog geen eigen `requireUuid(id)`. Ze 
 `NOG_TE_DOEN` in `lib/uuid.test.ts`; zodra de guard erin staat horen die twee regels weg en dekt
 de test ze vanzelf. Tot dan leunen ze op de layout-guard — dat werkt meestal, maar het is de race
 die hierboven beschreven staat, plus een losse afgewezen DB-promise per request.
+
+---
+
+## 2026-07-30 — Kopblokpoort hersteld; A-09 en `nextQuoteNumber` spreken elkaar tegen
+
+### Besluit voor Timo: wanneer krijgt een offerte zijn nummer?
+
+Twee bronnen zeggen iets anders, en dat is nooit opgelost:
+
+- **A-09 (functioneel ontwerp, regel 62 en §3.8 punt 2):** het nummer `BL-{jaar}-{4 cijfers}`
+  is *voorgesteld en bewerkbaar*; **de teller verhoogt pas bij bevestigen/uitsturen.**
+- **De code (`nextQuoteNumber` + `generateQuote`, `lib/repo/dossiers.ts`):** het nummer wordt
+  **bij genereren** toegekend, weggeschreven in `quotes.quote_number` en daarna bewaard. De
+  functiecommentaar zegt dat ook met zoveel woorden. Er is nooit code geweest die op uitsturen
+  nummerde.
+
+De UX-audit-pas van vanochtend verving de oude veldtekst `BL-2026-{nummer volgt}` door
+`"Number assigned on sending"` — schoon Engels, maar **onwaar**, op een veld dat letterlijk op
+het klantdocument (scherm én PDF) wordt afgedrukt. De tekst is nu
+`"Number assigned when the estimate is generated"` (`NUMBER_PENDING` in `lib/repo/estimate.ts`).
+
+**De copy volgt dus de code. Het nummergedrag is NIET aangepast.** Welke van de twee moet wijken
+is een besluit voor Timo:
+
+1. *Code volgt A-09* — nummer pas bij uitsturen toekennen. Dan moet de estimate vóór verzending
+   nummerloos door de PDF kunnen (dat kan al: `quoteNumberAssigned` is false → titel en voettekst
+   lopen zonder nummer), en moet er een plek komen die op uitsturen nummert.
+2. *A-09 volgt de code* — het ontwerpdoc aanpassen. Dan verdwijnt de tegenspraak zonder
+   codewijziging, maar er lopen wel nummers weg aan estimates die nooit verstuurd worden
+   (hergenereren verbruikt géén nieuw nummer, dus het gat blijft beperkt tot één per project).
+
+### Wat er wél veranderde: de poort van bug #6 was een val
+
+`headerComplete` (datum + geldigheid ingevuld) haalde Print, Download PDF en → To XIS weg. Twee
+feiten maakten daar een klem van:
+
+- **Geen enkel codepad heeft ooit `valid_until` geschreven.** `generateQuote` liet het op `null`.
+  Elke offerte in productie heeft dus een lege geldigheid en viel na deploy achter de poort.
+- **Een bevroren offerte kan er niet uit.** Status `estimate_gestuurd` bevriest de offerte
+  (I-06); daarna rendert `KopblokBewerken` niets en weigert `updateQuoteHeader`. De banner
+  verwees naar "Edit header" — een knop die er dan niet is — en `/quote/pdf` gaf 409. Het net
+  verstuurde document was niet meer te produceren.
+
+Drie besluiten, alle drie in tests vastgelegd (zie hieronder):
+
+1. **Een bevroren offerte is nooit gepoort.** De poort heet nu `outputsAllowed` en zit in
+   `computeEstimate` (`headerComplete || frozen`) — één bron voor pagina, PDF-route én
+   `xisExportAction`. `getEstimateData` leest `frozenAt` en geeft het door.
+2. **`generateQuote` stelt een geldigheid voor:** offertedatum + `DEFAULT_VALIDITY_DAYS` (30,
+   `lib/repo/dossiers.ts`). Een **voorstel, geen regel** — Timo mag het getal veranderen, en het
+   kopblok blijft bewerkbaar. Bestaande rijen repareert dit niet; daarvoor is punt 1 er.
+3. **De banner noemt alleen een control die er is.** `QuoteView` krijgt `headerEditable`; staat er
+   geen bewerkbaar kopblok (nog geen offerte gegenereerd), dan wijst de tekst naar
+   "Generate estimate" in plaats van naar "Edit header".
+
+De XIS-dialoog wordt **niet** meer in zijn geheel verborgen: hij is ook de enige plek waar
+"Already sent — {datum} ({omgeving}, {status})" staat. Alleen de verzendknop gaat weg
+(`blockedReason`), en de echte poort staat serverkant in `xisExportAction`.
+
+### Nog open
+
+- **`validUntil` is nergens anders schrijfbaar dan via "Edit header".** Er is geen datumkolom in
+  een lijstweergave en geen bulk-actie. Voor bestaande niet-bevroren offertes is dat de enige weg;
+  dat werkt, maar het is één veld per project.
+- **De poort toetst aanwezigheid, geen zinnigheid.** `validUntil: "2020-01-01"` (verleden, en
+  vóór `quoteDate`) komt er gewoon door. Bewust niet dichtgezet: een datumvalidatie die te streng
+  is blokkeert een legitieme her-uitgifte met een oude datum, en de fout is zichtbaar op het
+  document zelf. Als het wél moet: de check hoort in `computeEstimate`, naast
+  `missingHeaderFields`, met een eigen lijst (`invalidHeaderFields`) — niet in dezelfde bak, want
+  "leeg" en "onlogisch" vragen een andere zin in de banner.
+- **`SpecLineTable` mount één `Dialog` per regel.** Gemeten op 30 jul in de testharnas: 200 regels
+  → 200 dialoogtriggers, **0** dialoog-inhoud in de DOM (Radix portalt de inhoud pas bij openen),
+  4631 DOM-knopen totaal (~23 per rij, lineair) en ~334 ms render. Geen reden tot herontwerp;
+  hier genoteerd zodat de volgende die het ziet niet opnieuw gaat meten.

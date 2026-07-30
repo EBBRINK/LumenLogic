@@ -7,9 +7,10 @@ import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { Button } from "@/components/ui/button";
 import { noopAction } from "@/lib/test-actions";
+import { NUMBER_PENDING } from "@/lib/repo/estimate";
 import { QuoteView } from "./quote-view";
 import type { EstimateHeader, EstimateLine } from "./quote-view";
-import { PrintButton } from "./xis-push-dialog";
+import { PrintButton, XisPushDialog } from "./xis-push-dialog";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -17,7 +18,7 @@ const viewports = {
 } as const;
 
 const header: EstimateHeader = {
-  quoteNumber: null, // nog niet uitgestuurd → "Number assigned on sending" (A-09)
+  quoteNumber: null, // nog niet gegenereerd → NUMBER_PENDING in het nummerveld
   quoteDate: "2026-07-07",
   customer: "Deerns",
   projectRef: "PRJ-42",
@@ -252,12 +253,14 @@ test("kopblok: zonder offertenummer staat er een Engelse zin, geen sjabloonhaken
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
     </Screen>,
   );
-  await expect
-    .element(page.getByText("Number assigned on sending"))
-    .toBeInTheDocument();
+  await expect.element(page.getByText(NUMBER_PENDING)).toBeInTheDocument();
   const tekst = document.body.textContent ?? "";
   expect(tekst).not.toContain("nummer volgt");
   expect(tekst).not.toContain("{");
+  // De zin moet kloppen met wat de software doet: nextQuoteNumber kent het nummer toe
+  // bij GENEREREN en bewaart het (lib/repo/dossiers.ts). "on sending" was schoon
+  // Engels én onwaar, op een document dat de klant leest.
+  expect(tekst).not.toContain("on sending");
 });
 
 // ── Kopblokpoort (UX-audit bug #6) ───────────────────────────────────────────
@@ -274,6 +277,7 @@ test("kop incompleet: melding noemt de ontbrekende velden en verwijst naar Edit 
         phase="tender"
         header={{ ...header, quoteDate: null, validUntil: null }}
         lines={zonedLines}
+        headerEditable
       />
     </Screen>,
   );
@@ -285,6 +289,50 @@ test("kop incompleet: melding noemt de ontbrekende velden en verwijst naar Edit 
   expect(tekst).toContain("Edit header");
   // De melding moet mee naar papier — dat is het hele punt.
   expect(melding.element().className).not.toContain("print:hidden");
+});
+
+// Herstel 2026-07-30. De melding stuurde je naar "Edit header" ook als dat blok er
+// helemaal niet stond: vóór genereren rendert KopblokBewerken niets (er is nog geen
+// offerte-rij). Een instructie die naar een onbestaande knop wijst is erger dan geen
+// instructie — dan zoekt de gebruiker net zo lang tot hij denkt dat de app stuk is.
+test("kop incompleet zónder bewerkbaar kopblok: de melding wijst naar Generate estimate, niet naar Edit header", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={{ ...header, quoteDate: null, validUntil: null }}
+        lines={zonedLines}
+      />
+    </Screen>,
+  );
+  const melding = page.getByRole("status");
+  await expect.element(melding).toBeInTheDocument();
+  const tekst = melding.element().textContent ?? "";
+  expect(tekst).toContain("Generate estimate");
+  expect(tekst).not.toContain("Edit header");
+});
+
+// Het tweede besluit: een BEVROREN offerte is het verstuurde document. Geen poort, dus
+// ook geen banner die zegt dat het stuk niet geprint kan worden — de printknop staat er
+// naast, en het kopblok is op slot (updateQuoteHeader weigert, "Edit header" is weg).
+test("kop incompleet maar bevroren: geen melding — het stuk is al de deur uit", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={{ ...header, quoteDate: null, validUntil: null }}
+        lines={zonedLines}
+        frozen
+      />
+    </Screen>,
+  );
+  // Eerst wachten tot er écht iets staat — anders is "geen banner" vacuüm waar zolang
+  // de render nog niet geflusht is, en pint deze test niets.
+  await expect.element(page.getByText("Ziekenhuis Noord")).toBeInTheDocument();
+  expect(page.getByRole("status").query()).toBeNull();
+  expect(document.body.textContent ?? "").not.toContain("Complete the quote header");
 });
 
 test("kop incompleet met alleen een lege geldigheid: één veld genoemd, enkelvoud", async () => {
@@ -404,4 +452,66 @@ test("review-keuze: merkteken 'handmatig gekozen' op de estimate-regel", async (
   expect(labels.elements().length).toBe(1);
   // de geaccepteerde afwijking blijft als notitie zichtbaar (C-07)
   await expect.element(page.getByText(/requested 12, delivered 14/)).toBeInTheDocument();
+});
+
+// ── XIS-dialoog achter de kopblokpoort (herstel 2026-07-30) ──────────────────
+//
+// De eerste poging verborg de hele XisPushDialog zodra de kop incompleet was. Die
+// dialoog is echter óók de enige plek waar "Already sent — {datum} ({omgeving},
+// {status})" staat: het exportspoor verdween dan mee. De dialoog blijft nu staan;
+// alleen de verzendknop gaat weg.
+const preflight = { productLines: 11, textLines: 3, newProducts: 1, total: 14 };
+
+test("XIS-dialoog gepoort: geen verzendknop, wél de reden en de pre-flight", async () => {
+  await renderServer(
+    <Screen>
+      <XisPushDialog
+        dossierId="d1"
+        preflight={preflight}
+        action={noopAction}
+        blockedReason="The quote header is incomplete (Valid until). Fill it in before sending to XIS."
+      />
+    </Screen>,
+  );
+  await page.getByRole("button", { name: "→ To XIS" }).click();
+  await expect
+    .element(page.getByRole("heading", { name: "Export to XIS" }))
+    .toBeInTheDocument();
+  // De pre-flight blijft leesbaar — dat is informatie, geen uitgang.
+  await expect.element(page.getByText("Article lines")).toBeInTheDocument();
+  // De uitgang zelf is weg, met de reden erbij.
+  expect(page.getByRole("button", { name: "Send to XIS" }).query()).toBeNull();
+  await expect
+    .element(page.getByText(/The quote header is incomplete \(Valid until\)/))
+    .toBeInTheDocument();
+});
+
+test("XIS-dialoog gepoort mét bestaande export: het verzendspoor blijft zichtbaar", async () => {
+  await renderServer(
+    <Screen>
+      <XisPushDialog
+        dossierId="d1"
+        preflight={preflight}
+        action={noopAction}
+        existing={{ environment: "sandbox", createdAt: "12 juli 2026", status: "verstuurd" }}
+        blockedReason="The quote header is incomplete (Valid until). Fill it in before sending to XIS."
+      />
+    </Screen>,
+  );
+  await page.getByRole("button", { name: "→ To XIS" }).click();
+  await expect.element(page.getByText(/Already sent — 12 juli 2026/)).toBeInTheDocument();
+  await expect.element(page.getByText(/sandbox, verstuurd/)).toBeInTheDocument();
+  expect(page.getByRole("button", { name: "Send to XIS" }).query()).toBeNull();
+});
+
+test("XIS-dialoog niet gepoort: de verzendknop staat er gewoon", async () => {
+  await renderServer(
+    <Screen>
+      <XisPushDialog dossierId="d1" preflight={preflight} action={noopAction} />
+    </Screen>,
+  );
+  await page.getByRole("button", { name: "→ To XIS" }).click();
+  await expect
+    .element(page.getByRole("button", { name: "Send to XIS" }))
+    .toBeInTheDocument();
 });
