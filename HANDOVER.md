@@ -4353,3 +4353,77 @@ netjes; dat hij het kón is het probleem. Een slot dat afhangt van de terughoude
 die je controleert is geen slot. De sleutel gaat nu naar `zwerm/sleutels/<runId>.json`, buiten de
 map waar de agents in werken; `zwerm-lees.ts` valt terug op de oude plek zodat afgeronde rondes
 na te rekenen blijven.
+
+---
+
+# 2026-07-30 — BEKENDE BEPERKINGEN van de 28-merken-verrijking
+
+Alles wat een lezer van de uitslagen moet weten voordat hij ze gelooft. Eén plek, want ze staan
+verspreid door de secties hierboven en dan leest niemand ze.
+
+## 1. Het ankerfilter is bij negen van de vijftien runs NIET getoetst
+
+De tegenproef mengt producten mee die de poort als onderdeel weerde. Zijn die er niet, dan meet de
+ronde alleen wat het filter DOORLAAT en niets over wat het onterecht tegenhoudt. Gemeten bij:
+Lombardo (12/12), Wever & Ducré (10/12). Niet getoetst bij: Kreon, XAL, TossB, Sylvania, CLS,
+Marset, Lumiance, Nordlux, TAL, Flos Architectural.
+
+## 2. De zwerm laat onderdelen door — gemeten, niet vermoed
+
+Bij W&D noemden agents twee tegenproef-cellen `goed` die losse lampen zijn
+(`LAMP C35 LED 2700K OPAL 5.5W E14`, `LAMP G95 …E27`). **2 van de 12**, op precies de vraag waar
+de zwerm voor bestaat. Waar de tegenproef nul cellen had is die fout niet gemeten — dat betekent
+niet dat hij er niet is.
+
+## 3. Val-recall van vóór het vierde slot is een ondergrens
+
+Kreon (9/9) en Lombardo (196/196) draaiden toen de val nog naast zijn tweeling stond. Die scores
+zijn geen bewijs van zorgvuldig lezen. XAL, TossB en later zijn de eerste rondes met alle sloten.
+
+## 4. Systematische onderschatting bij samengestelde vermogens
+
+| vorm | wat er gebeurt | gevonden | landend |
+|---|---|---:|---:|
+| `8W+4W` (twee kanalen) | alleen het eerste kanaal | 34 | **10** (TossB) |
+| `2X6/9W` | idem, één lid van het paar | zie eerdere sectie | |
+
+De waarde staat letterlijk in de naam en beschrijft een echt kanaal — de zwerm noemt hem terecht
+`goed`. Maar het armatuur trekt meer, en dat is wat een bestek vraagt. **Geen leesfout, een
+systematische onderschatting.**
+
+## 5. Harde spaties in de brondata (U+00A0)
+
+129 namen over vijf merken: Sylvania 77, Marset 37, Lombardo 12, Kreon 2, Northern 1. Wie een
+`bewijsNaam` overtypt in plaats van kopieert, faalt op het citaatslot — het slot doet dan het
+goede om de verkeerde reden.
+
+## 6. Het ontbrekende producttype-veld — de grootste van allemaal
+
+Sylvania (241 van 904 cellen afgekeurd) en Marset (48 van 71) leveren lampen en ophangsystemen in
+dezelfde tabel als hun armaturen, zonder dat iets zegt wélk soort product het is. Acht keer
+vandaag bleek dat alleen de POSITIE van een woord de twee scheidt en nooit het woord zelf:
+
+| woord | onderdeel | maar óók een armatuur |
+|---|---|---|
+| `canopy` | `CANOPY 20W 24V TRIAC` | `VIRTUS SUSPENSION RECESSED CANOPY 3000K` (Axo Light) |
+| `cob` | `Led Cob Cree Cxa1512 Cri80` | 6.164 XAL-namen, waarvan de CRI al op productie staat |
+| `molla` | `Molla Vetri Componi 200W` | `MOLLA W LED 3000K WHITE` (Artemide) |
+| `drive` | `Drive/Sensore Delta 1 20 W` | `FARETTO DRIVE 24V 4000K` (Egoluce) |
+| `light engine` | `Light engine 80 2700K CRI90+` | `Module 60 for light engine` (behuizing) |
+| `bulb` | `LED bulb AR70 8W` | Kreons 150 `sphere bulb`-pendels |
+| `toledo` | Sylvania's retrofitlijn | `Pendant lamp Toledo, brown` (It's About RoMi) |
+| `led module` | `LED MODULE 35 MEDIUM …` | `MILES WALL SURF 12.0 LED MODULE` |
+
+Elke regex hier is een gok op de positie van een woord. **Krijgt een product bij het inlezen een
+soort — armatuur / lamp / driver / accessoire — dan valt deze hele klasse weg en de helft van de
+kandidaatregels ermee.** Dat is een besluit voor Timo en het is groter dan welke regel ook.
+
+## 7. Prado is bevroren
+
+Enige merk waar de kolomroute en de naamroute over hetzelfde veld spreken. 14.035 landende
+voorstellen, bewust niet aangeraakt tot Timo daar zelf iets over zegt.
+
+## 8. Eén openstaande run is van vóór vandaag
+
+`902ba6e9` (&Tradition, 9 juli) draagt geen `counts.kolomAlGevuld` en staat in het overzicht als
+`poortversie: OUD ⚠`. Bewust niet afgewezen: hij komt niet uit deze sessie.
