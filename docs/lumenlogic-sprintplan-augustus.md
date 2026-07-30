@@ -1432,6 +1432,35 @@ de productiedatabase. Vier claims klopten, één niet (zie onderaan).
   *Aanname van de sprintmaster:* de eindstatus "geblokkeerd" blíjft zichtbaar voor Brink — anders ziet
   niemand bij een supportvraag waarom een code niet werkt. Alleen het getal verdwijnt.
 
+**Besluit G39 (sprintmaster, 30 jul — binnen het mandaat van Timo) — G36 mag zijn tweede deur
+meenemen.** Tijdens de bouw van G36 vond de critic dat de autorisatiepoort weliswaar hield (22 van
+23 aanvallen faalden dicht), maar volstrekt omzeilbaar is: `app/settings/organization/actions.ts:45`
+(`addMemberAction`) roept alléén `requireSession()` aan en neemt `orgId` én `roles` uit de formData,
+met enkel een filter op geldige rolwaarden. Een gewone gebruiker voegt daarmee zichzélf toe aan de
+Brink-org (`type='intern'`) en krijgt vanaf dat moment via G36 alles, inclusief de `org_admin`-rol
+die G36 hem juist ontzegt. *Nagemeten door de sprintmaster tegen de code, 30 jul — bevestigd.*
+De bouwsessie breidde uit eigen beweging de scope uit om dit te sluiten en meldde dat, in plaats van
+het stil te doen. **Goedgekeurd**, om twee redenen: het is niet "een bestaande bug die je toevallig
+tegenkomt" maar de tweede helft van dezelfde deur, en G36 schrijft expliciet voor dat het *in het
+ontwerp* wordt opgelost en **niet** bij 3.2a hoort — dat item gaat over routes, en een
+route-allowlist dekt server actions niet, dus daar zou het blijven liggen. Grens meegegeven: alleen
+de rol- en org-toekenning in `addMemberAction`; al het andere in dat bestand valt weer onder
+"melden, niet repareren".
+
+*Twee opdrachten die hierbij zijn meegegeven:* (a) het autorisatie-**ontwerp** herzien, niet alleen
+het lek — de critic brak de "onvervalsbare" grant door object-spread (die kopieert enumerable own
+symbol properties, en `Object.getOwnPropertySymbols` geeft ze gewoon prijs), en de les is dat een
+grant die de aanroeper meegeeft nooit een autorisatiemechanisme kan zijn; autorisatie hoort in de
+action zelf afgeleid te worden uit de sessie. (b) G38's getal vastpinnen met een test
+(`expect(PIN_MAX_ATTEMPTS).toBe(10)`): alle bestaande asserties gebruiken de constante, nooit het
+letterlijke getal, dus 10 → 11 muteren laat de hele suite groen — het mechanisme is bewaakt, het
+besluit niet.
+
+**Patroon om te onthouden (drie keer deze sprint):** een comment of docstring belooft een garantie
+die de code niet waarmaakt, en het is telkens de critic die het vangt, nooit de builder. Dat is de
+sterkste aanwijzing tot nu toe dat de builder/critic-scheiding uit de gauntlet loop echt werk doet,
+en niet alleen een dubbele rekening is.
+
 **Correctie op het opleveringsrapport (geverifieerd 30 jul):** de gemelde `rules-of-hooks`-fout op
 `app/projects/actions.ts:652` is **geen bug**. `useAiSuggestion` is een gewone async repo-functie
 (`lib/repo/ai-suggestions.ts:124`); ESLint ziet de `use`-prefix aan voor een React hook. Fout-positief.
