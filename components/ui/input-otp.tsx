@@ -20,7 +20,7 @@ function InputOTP({
     <OTPInput
       data-slot="input-otp"
       containerClassName={cn(
-        "flex items-center gap-2 has-disabled:opacity-50",
+        "flex w-full items-center gap-1 has-disabled:opacity-50 sm:gap-2",
         containerClassName,
       )}
       className={cn("disabled:cursor-not-allowed", className)}
@@ -33,7 +33,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-group"
-      className={cn("flex items-center gap-1.5", className)}
+      className={cn("flex flex-1 items-center gap-1 sm:gap-1.5", className)}
       {...props}
     />
   );
@@ -53,7 +53,14 @@ function InputOTPSlot({
       data-active={isActive}
       className={cn(
         // Beweging: 150ms ease-out (kit §8). Geen schaalsprong — alleen rand en vlak.
-        "relative flex h-11 w-10 items-center justify-center rounded-lg border border-input bg-muted text-base font-medium tabular-nums transition-colors outline-none",
+        //
+        // Breedte is elastisch, geen vaste w-10. Acht vakjes van 40px plus tussenruimte
+        // meten ~388px en passen dus niet op een telefoon van 375px: het achtste vakje viel
+        // stil weg achter de overflow van de kaart. `flex-1` met een ondergrens van 28px en
+        // een bovengrens van 40px laat de rij meekrimpen tot hij past en houdt hem op
+        // desktop op de maat uit de kit. Hoogte blijft 44px (kit §6, minimum voor elk
+        // invoerveld) — er wordt dus niets aan de raakvlakhoogte opgeofferd.
+        "relative flex h-11 w-full max-w-10 min-w-7 flex-1 items-center justify-center rounded-lg border border-input bg-muted text-base font-medium tabular-nums transition-colors outline-none",
         "data-[active=true]:z-10 data-[active=true]:border-ring data-[active=true]:bg-background data-[active=true]:ring-3 data-[active=true]:ring-ring/10",
         "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[active=true]:aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         className,
