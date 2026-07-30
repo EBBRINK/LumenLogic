@@ -1461,6 +1461,39 @@ die de code niet waarmaakt, en het is telkens de critic die het vangt, nooit de 
 sterkste aanwijzing tot nu toe dat de builder/critic-scheiding uit de gauntlet loop echt werk doet,
 en niet alleen een dubbele rekening is.
 
+**⚠️ G40 (30 jul) — DEPLOY 1 VAN 3.1 MOET MIGREREN VÓÓR PUSHEN. Er is geen migratiestap op deploy.**
+Gevonden door de bouwsessie bij het schrijven van het deploy-runbook, daarna door de sprintmaster
+onafhankelijk nagemeten — alle vijf de onderdelen bevestigd:
+- `package.json:7` is een kale `"build": "next build"`. **Geen `vercel.json`** in de repo, geen
+  build-hook. `db:migrate` is een lokaal commando dat op `.env.local` leunt.
+- Gevolg als je normaal zou pushen: productiecode die `organizations.type` en `activation_pins`
+  verwacht, komt te staan vóór een database die geen van beide heeft. `/admin/users` en
+  `/settings/organization` vallen om tot iemand het merkt en handmatig migreert.
+- Migratie 0017 is **puur additief** (0 treffers op `DROP` of `ALTER COLUMN … NOT NULL`;
+  `ADD COLUMN IF NOT EXISTS` met default, twee inserts, één backfill, `CREATE TABLE IF NOT EXISTS`).
+  Oude code draait er probleemloos naast. **Daarom mag de volgorde om: eerst migreren, dan pushen.**
+- Twee voorwaarden die vóór de migratie geteld moeten worden, allebei nu vervuld maar breekbaar:
+  `0017:54-61` hardcodeert **drie** e-mailadressen (`hello@noplasticfloralfoam.com`,
+  `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) — productie heeft er nu precies 3, maar een
+  vierde user zou stil géén membership krijgen. En `0017:46-47` gebruikt een scalar subquery op
+  `slug = 'brink-licht'`; `organizations` heeft **alleen** `organizations_pkey` op `id`, dus **geen
+  unique index op `slug`** — bij twee rijen met die slug breekt de migratie. `organizations` is nu
+  leeg (0 rijen), dus dat is vandaag veilig.
+- De bewuste keuze om géén cross join over de hele user-tabel te doen is goed onderbouwd in de
+  migratie zelf: valt deploy 1 later dan de eerste PIN-uitgifte, dan zou zo'n join een externe
+  installateur tot `org_admin` van de interne org promoveren.
+
+**Volgorde voor deploy 1, in deze volgorde:** (1) tel de users en controleer dat `organizations`
+leeg is · (2) migreer · (3) push · (4) **controleer als eerste of de magic link nog werkt** — zo
+niet, terugrollen, want zonder magic link is er geen weg naar binnen · (5) pas als Timo én Eduard
+allebei aantoonbaar met een wachtwoord binnenkomen, mag deploy 2 (magic link eruit). Dat tweede
+akkoord is een apart besluit van Timo, niet een vervolg op het eerste.
+
+*Sprintmasterfout, voor de volledigheid:* bij het vastleggen hiervan gooide de sprintmaster met een
+`git reset --hard origin/main` zijn eigen nog-niet-gepushte G39-commit weg. Teruggehaald via
+`git reflog` + cherry-pick, niets verloren. Les: `reset --hard` op een branch met ongepusht werk is
+precies zo gevaarlijk als het klinkt, ook voor een sessie die alleen documenten schrijft.
+
 **Correctie op het opleveringsrapport (geverifieerd 30 jul):** de gemelde `rules-of-hooks`-fout op
 `app/projects/actions.ts:652` is **geen bug**. `useAiSuggestion` is een gewone async repo-functie
 (`lib/repo/ai-suggestions.ts:124`); ESLint ziet de `use`-prefix aan voor een React hook. Fout-positief.
