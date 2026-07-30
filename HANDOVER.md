@@ -1,5 +1,21 @@
 # HANDOVER — Lumen Logic (runs 1–3)
 
+> ## ⚠ VASTE STAP BIJ ELKE INGREEP IN HET MEETGEREEDSCHAP
+>
+> **Na elke wijziging aan de zwerm-export, de verwerker, de poort of de parser: herhaal één
+> bekende meting en bevestig dat de uitkomst onveranderd is.** Pas daarna agents inzetten.
+>
+> Op 30 juli 2026 zaten er zes lekken in de meetopzet — valvoorvoegsel, vaste stap, tweeling,
+> klontering, restscherf-als-magneet, en een hint in de agent-opdracht die de promptHash niet
+> dekte. **Vier daarvan ontstonden door de reparatie van het vorige.** Alle zes werden zichtbaar
+> aan wat eruit kwam, geen enkele aan de code, en ze kostten twee volledige rondes.
+>
+> De tests die er telkens bij kwamen dekken de fout die al gezien wás; geen van hen zou de
+> volgende gevonden hebben. Een test op de data is iets anders dan een regressietest op het
+> instrument. Dit is de enige les van die dag die de vólgende zes lekken vangt in plaats van de
+> vorige zes te verklaren.
+
+
 _Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de oorspronkelijke run-1-opdracht._
 _2026-07-07: eindbeeld + roadmap runs 4–8 vastgelegd in `docs/MASTERPLAN.md` (plansessie,
 geen code gewijzigd)._
@@ -4483,22 +4499,30 @@ een armatuurzoekopdracht?* Dat is een productbeslissing, geen parservraag.
 citeerde ik de schone 74-cellenmeting als bewijs dat "de waarde klopt", terwijl die meting nooit
 gevraagd had of het ding een armatuur is. Dat was een verkeerd gebruik van een goede meting.
 
-## De omvang
+## De omvang — en een correctie op mijn eigen eerste telling
 
-    namen die met "(LED) MODULE" beginnen : 454   (Kreon 358 · Wever & Ducré 96)
-    daarvan met minstens één LANDENDE waarde : 423
+Ik schreef eerst **454 namen (Kreon 358 · W&D 96), 423 landend**. Dat getal deugt niet, en het
+deugt niet om exact de reden die dit document negen keer beschrijft: ik matchte op een WOORD.
 
-Dus geen randgeval van 96 W&D-producten, maar een besluit over ruim vierhonderd — en het zwaartepunt
-ligt bij **Kreon**, niet bij W&D.
+    begint met "LED MOD(ULE)"  :  96   ← alle Wever & Ducré, echte losse lichtmodules
+    begint met "MODULE"        : 358   ← alle Kreon, en dat is iets heel anders
 
-## De twee mogelijke besluiten
+Kreons 358 zijn geen modules maar zijn **downlightfamilie**:
 
-1. **Module = armatuur.** Niets doen. 423 producten krijgen hun waarden. Risico: een zoekopdracht
-   naar een inbouwspot levert losse modules op, en die kunnen niet gemonteerd worden.
-2. **Module ≠ armatuur.** Een regel op `(LED) MODULE` VOORAAN (de 454 hierboven; namen die de term
-   elders dragen — `MILES WALL SURF 12.0 LED MODULE` — blijven ongemoeid). 423 waarden landen niet.
+| soort | namen | landend | voorbeeld |
+|---|---:|---:|---|
+| ARMATUUR | 242 | 232 | `Module 40 fixed downlight` |
+| onbekend/gemengd | 74 | 66 | `module 80 directional retro le50` |
+| toebehoren | 7 | 0 | `Module 80, sculpture lens`, `Module 40, plasterkit, trimless` |
 
-Er is een derde weg die beide problemen oplost en die hier weer terugkomt: **een producttype-veld
-bij het inlezen.** Dan houdt de module zijn waarden én blijft hij buiten de armatuurzoekopdracht.
+`Module` is bij Kreon de PRODUCTNAAM van een inbouwspotsysteem. Een regel op `^module` zou
+minstens 232 echte armaturen hun waarden afnemen.
+
+**Het besluit gaat dus over 96 producten van Wever & Ducré, niet over ruim vierhonderd.** De
+sprintmaster kwam op 419/391 met Kreon 323 erin; ook dat cijfer telt Kreons downlights mee. W&D
+is in alle drie de tellingen 96 en dat is het getal dat telt.
+
+⚠ Dit is de negende keer vandaag dat alleen de positie én de context een woord scheiden — en de
+eerste keer dat ik die fout maakte in de notitie waarin ik het patroon opschreef.
 
 **Niets van dit alles is gebouwd of gepubliceerd.**
