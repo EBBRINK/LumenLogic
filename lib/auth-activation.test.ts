@@ -12,6 +12,7 @@ import * as authSchema from "@/db/auth-schema";
 import { organizations } from "@/db/schema";
 import { MIN_PASSWORD_LENGTH, createAuth } from "@/lib/auth-factory";
 import { changeOwnPassword, redeemActivationPin } from "@/lib/auth-activation";
+import { createOrganization, getUserMemberships } from "@/lib/repo/orgs";
 import {
   PIN_MAX_ATTEMPTS,
   checkActivationPin,
@@ -59,7 +60,11 @@ async function credentialAccount(db: TestDb, userId: string) {
 test("acceptatie: PIN aanmaken → invullen → wachtwoord zetten → inloggen → uitloggen → opnieuw inloggen", async () => {
   const db = await createTestDb();
   const auth = testAuth(db);
-  const orgId = await brinkOrgId(db);
+  // Een échte externe organisatie, niet de Brink-org: het doel van 3.1 is dat de gebruiker
+  // ná activatie in de JUISTE organisatie zit, en dat bewijs je alleen als er meer dan één
+  // org is om in te belanden.
+  const externeOrg = await createOrganization(db, { name: "Installatiebedrijf Extern" });
+  const orgId = externeOrg.id;
 
   // 1. Brink maakt het account aan. De PIN komt één keer terug — hierna nooit meer.
   const uitgifte = await issueActivationPin(db, {
@@ -130,6 +135,17 @@ test("acceptatie: PIN aanmaken → invullen → wachtwoord zetten → inloggen �
     headers: cookieHeaders(opnieuw.headers),
   });
   expect(tweedeSessie?.user.id).toBe(resultaat.userId);
+
+  // 7. En hij ziet zijn EIGEN organisatie — de laatste zin van "klaar wanneer" uit de
+  //    opdracht. Eén membership, in de externe org waarvoor Brink de PIN uitgaf, met de rol
+  //    die Brink meegaf. Uitdrukkelijk NIET de interne Brink-org: dat die er ook is (0017
+  //    zaait hem) maakt dit pas een echte toets.
+  const lidmaatschappen = await getUserMemberships(db, tweedeSessie!.user.email);
+  expect(lidmaatschappen).toHaveLength(1);
+  expect(lidmaatschappen[0].orgId).toBe(orgId);
+  expect(lidmaatschappen[0].orgName).toBe("Installatiebedrijf Extern");
+  expect(lidmaatschappen[0].roles).toEqual(["projectleider"]);
+  expect(lidmaatschappen[0].orgId).not.toBe(await brinkOrgId(db));
 });
 
 test("faalpad: verkeerde PIN zet geen wachtwoord en geeft geen sessie", async () => {
