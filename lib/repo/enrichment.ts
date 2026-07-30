@@ -280,8 +280,10 @@ export async function startEnrichmentRun(
     .limit(1);
   if (!brand) throw new Error(`brand ${brandId} not found`);
 
+  // Ook de zeven matchkolommen ophalen: een voorstel op een AL GEVULDE kolom kan nooit landen
+  // (publishRun vult uitsluitend lege velden) en verwatert alleen de steekproef.
   const prods = await db
-    .select({ id: products.id, name: products.name })
+    .select()
     .from(products)
     .where(eq(products.brandId, brandId))
     .orderBy(asc(products.name));
@@ -295,6 +297,8 @@ export async function startEnrichmentRun(
   }[] = [];
   const gekozen = new Set<string>(fields);
   const onderdrukt: Record<string, number> = {};
+  // Voorstellen die op een al gevulde kolom zouden vallen — geteld, niet stil weggelaten.
+  const overgeslagen: Record<string, number> = {};
   for (const p of prods) {
     const specs = parseProductName(p.name);
     const vlaggen = verdenkingen(p.name, specs);
@@ -302,6 +306,19 @@ export async function startEnrichmentRun(
       if (!gekozen.has(field)) continue;
       const v = specs[field];
       if (v === undefined) continue;
+      // ── Alleen voorstellen die kúnnen landen (30 jul) ────────────────────
+      // Gemeten op Kreon: van 32.917 voorstellen konden er 21.359 (65 %) nooit landen omdat
+      // kelvin en maxWattage al gevuld waren — en 64 van Timo's 100 STEEKPROEFRIJEN vielen op
+      // zo'n kolom. Die rijen kosten hem zijn beurt zonder iets te kunnen bewijzen: publishRun
+      // negeert ze hoe dan ook.
+      //
+      // Het veldfilter (`fields`) loste dit half op — het helpt alleen als je vooraf wéét welk
+      // veld leeg is. Deze toets werkt altijd, en gebruikt dezelfde definitie van "leeg" als
+      // publishRun (fieldIsEmpty), zodat de twee niet uiteen kunnen lopen.
+      if (!fieldIsEmpty(p as Record<string, unknown>, field)) {
+        overgeslagen[field] = (overgeslagen[field] ?? 0) + 1;
+        continue;
+      }
       // De voorstelpoort (zie ONDERDRUKKENDE_VERDENKINGEN): een aantoonbaar onbetrouwbaar
       // voorstel wordt hier geweerd in plaats van in de parser, zodat het MATCHGEDRAG van
       // spec-regels ongemoeid blijft — parseProductName voedt ook de aanvraagkant
@@ -325,6 +342,7 @@ export async function startEnrichmentRun(
 
   return createRun(db, brand, prods.length, parsed, "parsed-from-name", actor, {
     onderdrukt,
+    kolomAlGevuld: overgeslagen,
   });
 }
 

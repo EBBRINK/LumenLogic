@@ -834,24 +834,34 @@ test("een tweede publish op hetzelfde merk voegt niets toe (idempotent)", async 
   expect(tweede.applied).toBe(0);
 });
 
-test("applied telt alleen items die werkelijk geland zijn", async () => {
+// GEWIJZIGD 30 jul: deze test eiste dat een voorstel op een BEZETTE kolom wél als item
+// bestaat maar niet wordt toegepast. Sinds startEnrichmentRun alleen nog voorstellen maakt
+// voor LEGE kolommen, bestaat dat item niet meer — en dat is de verbetering, niet een
+// regressie. Aanleiding: op Kreon konden 21.359 van de 32.917 voorstellen (65 %) nooit landen,
+// en 64 van Timo's 100 steekproefrijen vielen op zo'n kolom. Die rijen kostten hem zijn beurt
+// zonder iets te kunnen bewijzen.
+//
+// Wat de test nu vastlegt: de bezette kolom levert géén item, het aantal staat geteld in
+// counts.kolomAlGevuld, en `applied` telt nog steeds precies de gelande items.
+test("een bezette kolom levert geen voorstel meer, en dat wordt geteld", async () => {
   const db = await createTestDb();
   const { brandId } = await seedBrandProduct(db, {
     brand: "Teltest",
     name: "DELTA 15W 3500K",
-    kelvin: 6500, // bezet → het kelvin-voorstel landt niet
+    kelvin: 6500, // bezet → hier komt geen kelvin-voorstel meer van
   });
 
   const run = await startEnrichmentRun(db, brandId, "test");
+  const items = await getRunItems(db, run.id);
+  expect(items.find((i) => i.field === "kelvin")).toBeUndefined();
+  expect(items.find((i) => i.field === "maxWattage")).toBeDefined();
+  expect((run.counts as Record<string, unknown>).kolomAlGevuld).toMatchObject({ kelvin: 1 });
+
   for (const it of await getSampleItems(db, run.id)) await setSampleVerdict(db, it.id, "goed");
   const { applied } = await publishRun(db, run.id, "test");
-
-  const items = await getRunItems(db, run.id);
-  const kelvinItem = items.find((i) => i.field === "kelvin")!;
-  const wattItem = items.find((i) => i.field === "maxWattage")!;
-  expect(kelvinItem.applied).toBe(false); // kolom was bezet
-  expect(wattItem.applied).toBe(true);
-  expect(applied).toBe(items.filter((i) => i.applied).length);
+  const na = await getRunItems(db, run.id);
+  expect(applied).toBe(na.filter((i) => i.applied).length);
+  expect(applied).toBe(1);
 });
 
 test("een onzinnige waarde op een numeric-kolom laat de bundel niet klappen", async () => {
