@@ -4175,3 +4175,36 @@ Meegenomen detail dat goed ging: `KAP 80 W-W RND GOLD DW LED ARRAY C95 13W` leve
   overige 58 dragen geen waarde en worden dus toch al niet voorgesteld. Smalle, gratis regel.
 
 Nog steeds geen van de regels gebouwd.
+
+---
+
+## 2026-07-30 — Marset is een ander soort merk, en dat verandert wat de poort moet doen
+
+**Marset** (71 cellen): 23 goed, **48 afgekeurd** (76 producten), val-recall 3/3.
+**CLS** (113 cellen): 110 goed, 3 afgekeurd, val-recall 5/5.
+
+Marset is het eerste merk waar de meerderheid van de voorstellen niet over een armatuur gaat. Zijn
+catalogus draagt het complete ophangsysteem als losse artikelen, en die dragen wél een wattage:
+
+| soort | wat het is | cellen |
+|---|---|---:|
+| `CANOPY 20W 24V TRIAC GOLD` | kap/rozet met ingebouwde voeding | 19 |
+| `CLUSTER AMBROSIA V 100W 3 OUTPUTS 24V TRIAC` | meervoudige voedingseenheid | 11 |
+| `E27 LED GLOBE 120 11W 1521LM CRI80 2700K` | losse retrofit-lamp | 12 |
+
+Alle drie zijn ze `kap`, `voeding` of `losse lamp` — categorieën die de prompt al noemt en die de
+poort dus hóórt te weren. Ze komen er doorheen omdat de herkenning op andere woorden let.
+
+### Gemeten, en alle drie scherp af te bakenen op de POSITIE
+
+| term vooraan | door de poort | wat middenin staat en ongemoeid blijft |
+|---|---:|---|
+| `CANOPY` | 31 (alle Marset) | **2.054** namen dragen `canopy` niet vooraan — `AURA PLUS TRANSPARENT SMOKED W/CANOPY`, `VIRTUS SUSPENSION RECESSED CANOPY WATER BLUE 3000K` (Axo Light, een armatuur) |
+| `CLUSTER` | 20 (Marset) + 8 TossB | 14 middenin, waaronder Artemide's `RIPPLE S CLUSTER (3) APP` |
+| `E14/E27/G9/GU10/AR111` vooraan | 10 | — de 25 die er zo beginnen zijn stuk voor stuk een losse lamp |
+
+TossB' acht `CLUSTER …` heten voluit `CLUSTER Driverbox 30 Coax LED — Excl. Drivers`: ook
+componenten, dus de regel klopt ook daar.
+
+**Dit is nu de grootste van de kandidaten**: samen 61 voorstellen bij één merk, en Marset zakt
+daarmee van 48 afgekeurde cellen naar bijna nul. Nog steeds niet gebouwd.
