@@ -116,6 +116,63 @@ export async function assertBranchDb(
   );
 }
 
+// ── De productie-modus ───────────────────────────────────────────────────────
+// Voor de éne run die wél op productie hoort te landen. Dit is bewust GEEN verzwakking van de
+// poort hierboven: de branch-modus blijft ongewijzigd fail-closed, en deze modus stelt zijn
+// eigen, tegengestelde eisen. Twee dingen die we NIET doen, omdat ze de poort permanent stuk
+// maken in plaats van hem één keer bewust te passeren:
+//   • LUMENLOGIC_DB=branch in .env.local zetten — dan wijst de marker voortaan naar productie
+//     en bewaakt hij niets meer;
+//   • de marker-eis weghalen of optioneel maken — dan valt slot 1 weg voor élke latere run.
+//
+// De eisen staan hier precies omgekeerd aan de branch-modus:
+//   1. de aanroeper moet de bedoeling in het commando zelf hebben gezet (--productie);
+//   2. de endpoint MOET gelijk zijn aan die in .env.local — je kunt dus niet per ongeluk
+//      "productie draaien" tegen een branch, wat de repetitie ongemerkt zou vervangen;
+//   3. de branch-marker mag NIET gezet zijn — dat zou betekenen dat je met .env.branch draait
+//      terwijl je productie bedoelt, en dan klopt één van de twee niet.
+export function beoordeelProductieDb(
+  marker: string | undefined,
+  url: string | undefined,
+  prodEndpoint: string | null,
+): GuardResult {
+  if (marker === MARKER_VALUE) {
+    throw new Error(
+      `GEBLOKKEERD: ${MARKER_ENV}=${MARKER_VALUE} staat gezet terwijl je --productie draait. ` +
+        `Draai de productie-run met --env-file=.env.local, niet met .env.branch.`,
+    );
+  }
+  if (!url) throw new Error("GEBLOKKEERD: DATABASE_URL ontbreekt");
+  const endpoint = endpointOf(url);
+  if (!endpoint || !/^ep-[a-z0-9-]+$/i.test(endpoint)) {
+    throw new Error(`GEBLOKKEERD: '${endpoint}' is geen geldige Neon-endpoint`);
+  }
+  if (!prodEndpoint) {
+    throw new Error(
+      "GEBLOKKEERD: .env.local is niet leesbaar, dus ik kan niet vaststellen dát dit productie " +
+        "is. Voor de productie-run is die bevestiging verplicht — hier geen fallback.",
+    );
+  }
+  if (prodEndpoint !== endpoint) {
+    throw new Error(
+      `GEBLOKKEERD: --productie gevraagd, maar DATABASE_URL wijst naar ${endpoint} terwijl ` +
+        `productie ${prodEndpoint} is. Dit is geen productie; de run zou stilletjes op een ` +
+        `branch landen en de repetitie vervangen.`,
+    );
+  }
+  return { endpoint, productionEndpoint: prodEndpoint, secondLock: "gecontroleerd" };
+}
+
+export async function assertProductieDb(
+  repoRoot: string = process.cwd(),
+): Promise<GuardResult> {
+  return beoordeelProductieDb(
+    process.env[MARKER_ENV],
+    process.env.DATABASE_URL,
+    await leesProductieEndpoint(repoRoot),
+  );
+}
+
 // Eén regel output zodat elke run zichtbaar vastlegt tegen welke database hij draaide.
 export function logGuard(g: GuardResult): void {
   console.log(

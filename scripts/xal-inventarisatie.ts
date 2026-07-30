@@ -14,10 +14,15 @@ import { eq, ilike, sql } from "drizzle-orm";
 import { brands, products } from "@/db/schema";
 import { FIELDS, parseProductName } from "@/lib/enrichment/parser";
 import { nameShape, pickSampleIndices } from "@/lib/repo/enrichment";
-import { assertBranchDb, logGuard } from "./branch-guard";
+import { assertBranchDb, assertProductieDb, logGuard } from "./branch-guard";
 
 const argv = process.argv.slice(2);
 const asJson = argv.includes("--json");
+// --productie: dit script is STRIKT READ-ONLY, dus het mag tegen productie draaien om de
+// ijkpunten vóór een productie-run vast te stellen (hoeveel staat er nu, hoeveel zou er landen).
+// Het gebruikt de omgekeerde poort uit branch-guard.ts, zodat 'ik dacht dat ik productie las
+// maar het was de branch' óók geblokkeerd wordt.
+const naarProductie = argv.includes("--productie");
 const merkArg = argv.find((a) => a.startsWith("--merk="))?.slice(7) ?? "XAL";
 
 // numeric-kolommen komen als string terug; vergelijk numeriek waar dat kan.
@@ -30,7 +35,14 @@ function sameValue(field: string, parsed: string, column: unknown): boolean {
 }
 
 async function main() {
-  logGuard(await assertBranchDb(process.cwd()));
+  const poort = naarProductie
+    ? await assertProductieDb(process.cwd())
+    : await assertBranchDb(process.cwd());
+  if (naarProductie) {
+    console.log(`\n🔴 PRODUCTIE (read-only) — endpoint ${poort.endpoint}\n`);
+  } else {
+    logGuard(poort);
+  }
 
   // Pas ná de poort de client aanmaken: `db/client.ts` bouwt bij import meteen een verbinding
   // rond process.env.DATABASE_URL. Met een statische import zou dat gebeuren vóór de guard —

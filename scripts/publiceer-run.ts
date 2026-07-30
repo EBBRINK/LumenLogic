@@ -19,10 +19,14 @@ import { ilike, isNotNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { brands, products } from "@/db/schema";
 import { getEnrichmentRun, getRunItems, getSampleItems, publishRun } from "@/lib/repo/enrichment";
-import { assertBranchDb, logGuard } from "./branch-guard";
+import { assertBranchDb, assertProductieDb, logGuard } from "./branch-guard";
 
 const [, , runId, ...rest] = process.argv;
 const doorzetten = rest.includes("--ja");
+// Zonder --productie draait alles tegen de branch, met de fail-closed poort. Met --productie
+// staat de bedoeling in het commando zelf en gelden de omgekeerde eisen (zie branch-guard.ts).
+// De vlag is bewust niet af te leiden uit de omgeving: hij moet getypt worden.
+const naarProductie = rest.includes("--productie");
 const veld = rest.find((a) => a.startsWith("--veld="))?.slice(7) ?? "cri";
 
 // Kolomref per parser-veldnaam, zodat de voortgangsteller elk veld aankan. AnyPgColumn omdat de
@@ -39,8 +43,18 @@ const KOLOM: Record<string, AnyPgColumn> = {
 };
 
 async function main() {
-  logGuard(await assertBranchDb(process.cwd()));
-  if (!runId) throw new Error("gebruik: publiceer-run.ts <runId> [--veld=cri] [--ja]");
+  const poort = naarProductie
+    ? await assertProductieDb(process.cwd())
+    : await assertBranchDb(process.cwd());
+  if (naarProductie) {
+    console.log(
+      `\n🔴 PRODUCTIE-MODUS — endpoint ${poort.endpoint} (bevestigd als productie via .env.local)\n` +
+        `   Dit schrijft naar de ECHTE database. publishRun heeft geen rollback-knop.\n`,
+    );
+  } else {
+    logGuard(poort);
+  }
+  if (!runId) throw new Error("gebruik: publiceer-run.ts <runId> [--veld=cri] [--productie] [--ja]");
   const { db } = await import("@/db/client");
 
   const run = await getEnrichmentRun(db, runId);

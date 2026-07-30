@@ -3,7 +3,7 @@
 // verrijkingsrun per ongeluk op productie landt.
 
 import { expect, test } from "vitest";
-import { beoordeelBranchDb, endpointOf } from "./branch-guard";
+import { beoordeelBranchDb, beoordeelProductieDb, endpointOf } from "./branch-guard";
 
 const BRANCH = "postgresql://u:p@ep-shiny-cell-a5y2zuu0.eu-central-1.aws.neon.tech/db?sslmode=require";
 const PROD = "postgresql://u:p@ep-hidden-hall-a5x58cuv.eu-central-1.aws.neon.tech/db?sslmode=require";
@@ -77,4 +77,39 @@ test("marker met onzin-URL: geblokkeerd", () => {
   expect(() => beoordeelBranchDb("branch", "postgres-zonder-host", PROD_EP)).toThrow(
     /geen geldige connection string/,
   );
+});
+
+// ── De productie-modus ───────────────────────────────────────────────────────
+// De branch-modus blijft ongewijzigd fail-closed (alle tests hierboven). Deze modus is de
+// bewuste, eenmalige doorgang — met eisen die precies omgekeerd staan, zodat 'per ongeluk
+// productie' én 'per ongeluk tóch de branch' allebei geblokkeerd worden.
+
+test("productie: draaien met de branch-env is geblokkeerd", () => {
+  expect(() => beoordeelProductieDb("branch", PROD, PROD_EP)).toThrow(/staat gezet terwijl je --productie draait/);
+});
+
+// De gevaarlijkste vergissing: je denkt dat je productie vult, maar je zit op de branch. Dan
+// zou de repetitie ongemerkt de echte run vervangen en zou niemand het merken.
+test("productie: een branch-URL wordt geweigerd, ook zonder marker", () => {
+  expect(() => beoordeelProductieDb(undefined, BRANCH, PROD_EP)).toThrow(/Dit is geen productie/);
+});
+
+// Zonder .env.local kan niet worden vastgesteld DÁT dit productie is. In de branch-modus mag
+// dat doorgaan (slot 1 draagt de run); hier niet — er is dan geen enkel bewijs.
+test("productie: zonder referentie geen doorgang (anders dan de branch-modus)", () => {
+  expect(() => beoordeelProductieDb(undefined, PROD, null)).toThrow(/niet leesbaar/);
+});
+
+test("productie: de echte productie-URL zonder marker gaat door", () => {
+  const g = beoordeelProductieDb(undefined, PROD, PROD_EP);
+  expect(g.endpoint).toBe(PROD_EP);
+  expect(g.secondLock).toBe("gecontroleerd");
+});
+
+test("productie: gepoolde productie-URL telt als dezelfde database", () => {
+  expect(beoordeelProductieDb(undefined, PROD_POOLED, PROD_EP).endpoint).toBe(PROD_EP);
+});
+
+test("productie: onzin-URL geblokkeerd", () => {
+  expect(() => beoordeelProductieDb(undefined, "postgresql://PLAK_HIER", PROD_EP)).toThrow(/geen geldige Neon-endpoint/);
 });
