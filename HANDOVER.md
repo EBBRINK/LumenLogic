@@ -2179,3 +2179,114 @@ PGlite-melding). Volledige run: **1010 geslaagd, 1 overgeslagen, 3 gefaald in 2 
 bekende lastafhankelijke flaky's. Geïsoleerd samen **62/62 groen**. Baseline vóór deze sprint had
 dezelfde twee bestanden rood, dus geen regressie. Nieuw: `components/dossier/dossier-tabs.test.tsx`
 (had nul dekking) en 4+2 tests in `site-nav`/`huisstijl`.
+
+## Filterrij op de projectenpagina naar knoppen (2026-07-30)
+
+`components/dossier/status-filter.tsx`: de rij **All · Concept · Estimate sent · Quote · Won ·
+Lost · Archived** was platte tekst met een onderstreep onder het actieve item, en is nu een rij
+echte knoppen via `Button asChild` (het blijven links — `href` + `aria-current` ongewijzigd).
+
+**Actief** = `variant="default"`: navy vlak met wit label in light, en in dark het
+wit-vlak-met-navy-label uit O10. Navy gevuld kán daar niet: `#1A1F3A` op canvas `#0F1626` is
+~1,3:1 en de chip verdwijnt — daarom `--primary` en niet de `--nav-*`-tokens zelf.
+**Inactief** = `variant="secondary"` + `border-input font-medium`. Het teal-accent van de
+navbalk (O12) komt terug als **stip op de actieve chip**; gevuld teal is bewust niet gebruikt
+(wit-op-teal 2,95:1, in O12 al afgewezen).
+
+**Maat `sm` (28px) — een bewuste uitbreiding van O9, geen rechttoe-rechtaan toepassing.** O9
+beperkt de 44px-eis tot `default`/`lg`/formuliervelden, maar de formulering ("de compacte maten
+blijven zoals ze zijn") grandfathert de 56 bestaande plekken en zegt niets over nieuwe. Deze rij
+rekent zich er bij: zeven opties naast elkaar is een dense control. Gemeten gevolg: het
+aanraakdoel krimpt van **38px naar 28px** en de rij van **469px naar 444px** (~5%). Beide hoogtes
+halen WCAG 2.5.8 (24px), geen van beide de 44px van 2.5.5 — er verschuift geen criterium, maar
+kleiner is het wel. Wil Timo 44px, dan is dat één `size`-waarde.
+
+**Nevenwinst op O8:** de inactieve labels stonden op `text-muted-foreground` (`#8E9BA8`, de
+geaccepteerd-slechte 2,84:1) en staan nu op `--secondary-foreground` = **14,39:1**. Deze rij is
+dus per ongeluk uit de O8-afwijking gelopen; O8 zelf is niet aangeraakt.
+
+### Nagemeten contrast (WCAG 2.x, uit de hexwaarden in `globals.css`)
+
+| Combinatie | Light | Dark |
+|---|---|---|
+| Label actief (wit op navy / navy op wit) | 16,14:1 | 16,14:1 |
+| Label inactief | 14,39:1 | 12,93:1 |
+| Actief vlak vs. canvas | 16,14:1 | 18,06:1 |
+| **Actief vlak vs. inactief vlak** (de stand-drager) | **14,39:1** | **12,93:1** |
+| Teal stip op het actieve vlak | 5,47:1 | 2,95:1 |
+| Focus-rand op het chipvlak | 6,34:1 | 4,38:1 |
+| Focus-rand op het canvas | 7,11:1 | 6,12:1 |
+| Focus-rand vs. de ónbefocuste rand | 4,87:1 | 3,41:1 |
+
+Afgewezen omdat ze het niet halen: `variant="outline"` en `ghost` staan op `--brand-blue` =
+**2,54:1** op het dark canvas; gevuld teal **2,95:1**.
+
+Kleur is niet de enige drager (kit §11): vulling, gewicht (semibold/medium), rand en de stip
+bewegen alle vier mee. Het vlakverschil van 14,4:1 / 12,9:1 betekent dat de stand ook in
+grijswaarde en bij elke vorm van kleurenblindheid leesbaar is. Vastgepind met computed-style-
+assertions in `project-status.test.tsx` (32 tests, incl. focus-screenshots en een
+overloopcheck op 320px).
+
+### Elders bekeken, bewust niet aangeraakt
+
+- **`components/dossier/dossier-tabs.tsx`** — visueel identieke rij, maar dat is paginanavigatie
+  en het uiterlijk is vandaag in **O12** vastgelegd (teal streep, 2,95:1, aanvaard). Meebouwen
+  zou een besluit van een halve dag oud omgooien. **Vraag voor Timo:** moeten die tabs mee naar
+  knoppen, of blijft de streep het onderscheid tussen "filter" en "navigatie"?
+- **`components/data/brand-relations-table.tsx`** en **`components/admin/brand-filter-bar.tsx`** —
+  wél filters, maar native `<select>` in een dense tabel-toolbar, geen rij van opties. Zeven
+  chips zouden daar breedte kosten zonder iets duidelijker te maken.
+- Een sweep over `app/` en `components/` vond geen andere rij van elkaar uitsluitende opties
+  (nul hits op `role="tablist"`, `ToggleGroup`, `?tab=`, `?view=`, `?sort=`).
+
+### Cross-review: drie echte correcties
+
+Een tweede agent heeft de wijziging nagerekend. Alle contrastgetallen klopten op één na, en er
+kwamen drie punten uit die zijn doorgevoerd:
+
+1. **Een onterechte claim.** De eerste versie van de code-toelichting schreef dat deze rij de
+   "~333px-overloop" verbeterde. Onjuist: de oude filterrij had **al** `flex-wrap` en kon dus
+   nooit horizontaal overlopen. De ~333px-overloop is bevinding 2 hierboven — de **site-navbalk**
+   (`components/nav-link.tsx:79`, `flex` zónder wrap). Ander component; deze wijziging raakt noch
+   repareert die. De geschatte breedtes ("~475 tegen ~524px") zijn vervangen door de gemeten
+   469→444px.
+2. **Een testschijnzekerheid.** De overloop-test controleerde
+   `document.scrollWidth <= clientWidth` — dat blijft groen zolang de rij `flex-wrap` heeft, óók
+   als de chips verdubbelen. Vervangen door de assertie die er wél iets over zegt: geen chip mag
+   breder zijn dan zijn kolom op 320px.
+3. **De focus-test toetste alleen `activeElement`**, niet de ring. `focus-visible:border-ring`
+   uit `button.tsx` slopen liet hem groen. Nu meet hij de gerénderde `borderTopColor` tegen
+   `--ring`, plus dat de ruststand een andere kleur is. Alle drie de gerepareerde tests zijn met
+   een negatieve controle geverifieerd: kapotmaken → rood, herstellen → groen.
+
+Verder aangescherpt: de inactieve rand was `not.toBe(transparent)` en is nu de exacte
+`--input`-waarde per stand. Eén getal gecorrigeerd: navy op het dark canvas is **1,12:1**, niet
+"~1,3:1" (de conclusie werd er alleen sterker van).
+
+### Bevinding in bestaande code — gemeld, niet gerepareerd
+
+**De focus-indicator van `button.tsx` is één pixel.** `focus-visible:border-ring
+focus-visible:ring-3 focus-visible:ring-ring/10` verkleurt de bestaande 1px-rand en legt er een
+halo van 10% opacity naast. Dat haalt de 3:1 van WCAG 1.4.11/2.4.11 op alle drie de assen (zie
+tabel), maar niet de 2px-perimeter van 2.4.13 (AAA), en kit §7 schrijft voor invoervelden
+letterlijk "rand 2 px" voor. Geldt voor **élke** knop in de app, niet voor deze rij; ingevoerd in
+`e8325cb`. Zijeffect hier: de oude filterrij had geen eigen focus-stijl en kreeg dus de
+browser-outline (dikker) — die is nu vervangen door de app-brede, dunnere variant. Lokaal
+opplussen is afgewezen: één rij die van de focus-taal afwijkt is erger dan een dunne ring.
+
+### Testtoestand
+
+Volledige run twee keer gedaan: beide keren **1021 geslaagd, 1 overgeslagen, 3 gefaald** — maar
+in een **andere set bestanden** (run 1: `lib/ai/ocr.test.ts` + `custom-fields`; run 2:
+`custom-fields` + 2× `pdf-upload`). Allemaal timeouts, allemaal in bestanden die deze wijziging
+niet raakt, en alle vier geïsoleerd groen (ocr 18/18, custom-fields 14/14, pdf-upload 48/48,
+huisstijl 20/20 — de logopalet-guard blijft groen). Dezelfde lastafhankelijkheid die hierboven
+al als bekend staat. `bun install` gedaan, `tsc --noEmit` en `eslint` schoon, `bun run build`
+groen (`/projects` blijft server-rendered — `@radix-ui/react-slot` heeft geen `"use client"`,
+dus `Button asChild` forceert geen client-boundary).
+
+**Niet geverifieerd in de dev-server:** poort 3000 was in gebruik door een parallelle sessie, en
+`.claude/launch.json` staat in git — die aanpassen om een andere poort te pakken zou in de
+commit belanden. De screenshots komen uit vitest' browsermodus (echte Chromium, echte computed
+styles); wat daar ontbreekt is het echte lettertype (de harnas valt terug op een serif, die
+bréder is dan Geist — de overloopmeting is dus de pessimistische kant).

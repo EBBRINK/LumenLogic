@@ -11,7 +11,7 @@ import { DossierList } from "./dossier-list";
 import { PhaseBadge } from "./phase-badge";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { ProjectStatusControls } from "./project-status-controls";
-import { StatusFilter } from "./status-filter";
+import { StatusFilter, type ProjectStatusFilter } from "./status-filter";
 import { StatusTally } from "./status-badge";
 import { emptyCounts } from "./status";
 import type { DossierSummary } from "./types";
@@ -109,6 +109,18 @@ const screens = {
       />
     </Screen>
   ),
+  // De filterrij als knoppen, met de actieve stand op drie plekken in de rij: vooraan
+  // (default), in het midden en achteraan. Zo staat op één foto of de actieve chip
+  // overal even goed leesbaar is, én hoe de rij afbreekt op mobiel.
+  "projectfilter-knoppen": (
+    <Screen>
+      <div className="flex flex-col gap-6">
+        <StatusFilter active="alle" />
+        <StatusFilter active="estimate_gestuurd" />
+        <StatusFilter active="archief" />
+      </div>
+    </Screen>
+  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -177,6 +189,171 @@ test("statusfilter: zeven opties, de actieve draagt aria-current", async () => {
     .element(page.getByRole("link", { name: "Lost" }))
     .toHaveAttribute("href", "/projects?filter=niet_gegund");
 });
+
+// ── Filterrij als knoppen ────────────────────────────────────────────────────
+// De rij is van tekst-met-onderstreep naar echte knoppen gegaan. Deze tests pinnen
+// de vier dragers van de actieve stand vast (kit §11: kleur nooit de enige drager)
+// en de maatkeuze uit besluit O9. Zakt hier iets weg, dan is de actief/inactief-
+// leesbaarheid stiller geworden — dat is een regressie, geen smaakkwestie.
+
+// Hulpje: de knop hoort de <a> zelf te zijn (Button asChild), niet een wrapper.
+// Zit er een <button> om de link, dan is asChild eraf gevallen en verliest de rij
+// zijn href/aria-current — vandaar de expliciete selector op a[data-slot="button"].
+function chip(href: string): HTMLAnchorElement {
+  const el = document.querySelector<HTMLAnchorElement>(
+    `a[data-slot="button"][href="${href}"]`,
+  );
+  expect(el, `filterchip ${href} is geen Button-link`).not.toBeNull();
+  return el!;
+}
+
+// renderServer rendert asynchroon door: zonder eerst op een element te wachten zijn
+// de querySelectors hieronder nog leeg. Zelfde escape als in huisstijl.test.tsx.
+async function renderFilter(active: ProjectStatusFilter) {
+  await renderServer(
+    <Screen>
+      <StatusFilter active={active} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: "All", exact: true }))
+    .toBeInTheDocument();
+}
+
+const ACTIVE = "/projects?filter=estimate_gestuurd";
+const INACTIVE = "/projects?filter=concept";
+
+// [vlak actief, label actief, vlak inactief, label inactief] per stand. Dark draait
+// het actieve vlak om: wit met navy label (besluit O10) — navy op canvas #0F1626 zou
+// ~1,3:1 zijn en de chip laten verdwijnen.
+const CHIP_KLEUREN = {
+  light: ["rgb(26, 31, 58)", "rgb(255, 255, 255)", "rgb(240, 242, 245)", "rgb(26, 31, 58)"],
+  dark: ["rgb(255, 255, 255)", "rgb(26, 31, 58)", "rgb(42, 49, 69)", "rgb(255, 255, 255)"],
+} as const;
+
+// --input per stand: #D0D6E0 in light, #3A4254 in dark.
+const INPUT_RAND = {
+  light: "rgb(208, 214, 224)",
+  dark: "rgb(58, 66, 84)",
+} as const;
+
+for (const theme of ["light", "dark"] as const) {
+  const [activeBg, activeFg, inactiveBg, inactiveFg] = CHIP_KLEUREN[theme];
+  test(`filterrij ${theme}: actieve chip is gevuld en het label draait mee`, async () => {
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    await renderFilter("estimate_gestuurd");
+    const active = getComputedStyle(chip(ACTIVE));
+    const inactive = getComputedStyle(chip(INACTIVE));
+
+    // Drager 1 — vulling. Het verschil tússen de twee vlakken is 14,4:1 (light) /
+    // 12,9:1 (dark), dus de stand is ook in grijswaarde te zien.
+    expect(active.backgroundColor, `actief vlak in ${theme}`).toBe(activeBg);
+    expect(inactive.backgroundColor, `inactief vlak in ${theme}`).toBe(inactiveBg);
+    expect(active.color, `actief label in ${theme}`).toBe(activeFg);
+    expect(inactive.color, `inactief label in ${theme}`).toBe(inactiveFg);
+
+    // Drager 2 — gewicht: semibold (600) tegen medium (500).
+    expect(active.fontWeight, `actief gewicht in ${theme}`).toBe("600");
+    expect(inactive.fontWeight, `inactief gewicht in ${theme}`).toBe("500");
+
+    // Drager 3 — rand: inactief heeft de --input-rand, actief is transparant. Exact
+    // vastgepind, niet als "niet-transparant": dat laatste blijft ook groen als de rand
+    // per ongeluk een willekeurige andere kleur krijgt.
+    expect(active.borderTopColor, `actieve rand in ${theme}`).toBe(
+      "rgba(0, 0, 0, 0)",
+    );
+    expect(inactive.borderTopColor, `inactieve rand in ${theme}`).toBe(
+      INPUT_RAND[theme],
+    );
+  });
+}
+
+test("filterrij: alleen de actieve chip draagt de teal accentstip", async () => {
+  // Drager 4 — vorm. De stip is het teal-accent uit de navbalk (O12), zodat de
+  // pagina één taal spreekt; aria-hidden, want de stand staat al in aria-current.
+  await renderFilter("estimate_gestuurd");
+  const dots = document.querySelectorAll('a[data-slot="button"] span[aria-hidden]');
+  expect(dots.length, "precies één accentstip in de rij").toBe(1);
+  expect(chip(ACTIVE).contains(dots[0]), "de stip zit op de actieve chip").toBe(
+    true,
+  );
+  expect(getComputedStyle(dots[0]).backgroundColor).toBe("rgb(27, 168, 154)"); // --brand-teal
+  // De stip mag de toegankelijke naam niet vervuilen.
+  await expect
+    .element(page.getByRole("link", { name: "Estimate sent", exact: true }))
+    .toBeInTheDocument();
+});
+
+test("filterrij: chips blijven op de compacte 28px-maat (besluit O9)", async () => {
+  // O9 beperkt de 44px-eis tot default/lg/formuliervelden en laat dense controls
+  // compact. Een filterrij van zeven opties is zo'n control. Gaat deze test om naar
+  // 44px, dan is dat een besluit — geen opruimactie.
+  await renderFilter("alle");
+  expect(chip(INACTIVE).dataset.size).toBe("sm");
+  expect(chip(INACTIVE).offsetHeight, "chiphoogte").toBe(28);
+});
+
+test("filterrij: geen chip breder dan de kolom op 320px", async () => {
+  // De rij heeft `flex-wrap`, dus hij kan alléén overlopen als één chip breder is dan
+  // zijn container. Dát is hier de assertie — een `scrollWidth <= clientWidth` op het
+  // document zou ook groen blijven als de chips verdubbelden, en pint dus niets.
+  // (De ~333px-overloop in HANDOVER.md zit in de site-navbalk, niet in deze rij.)
+  await page.viewport(320, 640);
+  try {
+    await renderFilter("estimate_gestuurd");
+    const rij = chip(ACTIVE).parentElement!;
+    const ruimte = rij.clientWidth;
+    for (const el of Array.from(rij.children) as HTMLElement[]) {
+      expect(
+        el.getBoundingClientRect().width,
+        `chip "${el.textContent}" past niet in ${ruimte}px`,
+      ).toBeLessThanOrEqual(ruimte);
+    }
+    // En de rij breekt dus af in plaats van te schuiven.
+    expect(rij.scrollWidth, "rijbreedte").toBeLessThanOrEqual(rij.clientWidth);
+  } finally {
+    // Niet laten weglekken naar de volgende test/bestand — de screenshottests
+    // zetten hun eigen viewport, maar de assertietests hierboven niet.
+    await page.viewport(viewports.desktop.width, viewports.desktop.height);
+  }
+});
+
+// De focus-ring op de chips. Kit §11 eist "altijd zichtbaar" op elk interactief element;
+// de rij zit op het paginacanvas, dus --ring is hier de juiste token (blauw 7,1:1 in
+// light, teal 6,1:1 in dark — geen navy-balk-uitzondering nodig). De assertie is de
+// gerénderde randkleur en niet alleen "activeElement": de knopklassen komen uit
+// button.tsx, dus zonder deze meting zou een gesloopte `focus-visible:border-ring`
+// hier groen blijven. De screenshot is er om hem te kunnen bekíjken, niet als bewijs.
+const RING_KLEUR = {
+  light: "rgb(45, 90, 140)", // --ring #2D5A8C
+  dark: "rgb(27, 168, 154)", // --ring #1BA89A (O10)
+} as const;
+
+for (const theme of ["light", "dark"] as const) {
+  test(`filterrij ${theme}: focus verkleurt de rand naar --ring`, async () => {
+    await page.viewport(viewports.desktop.width, 240);
+    try {
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderFilter("estimate_gestuurd");
+      const el = chip(INACTIVE);
+      const rustKleur = getComputedStyle(el).borderTopColor;
+      el.focus();
+      expect(document.activeElement, "chip is focusbaar").toBe(el);
+      // :focus-visible wordt pas in het volgende frame doorgerekend.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await expect
+        .poll(() => getComputedStyle(el).borderTopColor)
+        .toBe(RING_KLEUR[theme]);
+      // En de focus-stand is echt een verandering t.o.v. de ruststand.
+      expect(rustKleur, "rand in rust ≠ rand bij focus").not.toBe(
+        RING_KLEUR[theme],
+      );
+      await page.screenshot({ path: `./projectfilter-focus.${theme}.test.png` });
+    } finally {
+      await page.viewport(viewports.desktop.width, viewports.desktop.height);
+    }
+  });
+}
 
 // Kop: status-dropdown met de zes statussen + XIS-fase-select met de tien NL-labels.
 test("projectkop: status-dropdown en XIS-fase-select met alle opties", async () => {
