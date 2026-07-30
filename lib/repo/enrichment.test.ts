@@ -23,7 +23,9 @@ import { runMatcher } from "@/lib/repo/matching";
 import {
   getSampleItems,
   getTier2Coverage,
+  chunk,
   getRunItems,
+  INSERT_CHUNK,
   listBrandLoadQueue,
   listEnrichmentRuns,
   markBrandLoaded,
@@ -88,6 +90,24 @@ test("start → parser vult enrichment_items met de specs uit de naam", async ()
     expect(it.applied).toBe(false);
     expect(it.inSample).toBe(true);
   }
+});
+
+// De insert-blokken: createRun deed één bulk-insert van alle voorstellen, en die faalt op de
+// neon-HTTP-driver zodra een merk groot is (gemeten: 1.000 rijen OK, 5.000 niet — en dat zijn
+// 35.000 bindparameters, ruim onder de Postgres-limiet, dus het is de payload die knelt).
+test("chunk: deelt precies op, met een restblok", () => {
+  expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  expect(chunk([1, 2, 3, 4], 2)).toEqual([[1, 2], [3, 4]]);
+  expect(chunk([], 2)).toEqual([]);
+  expect(chunk([1, 2, 3], 10)).toEqual([[1, 2, 3]]);
+  expect(() => chunk([1], 0)).toThrow();
+});
+
+test("chunk: de default blijft op de gemeten veilige grens", () => {
+  expect(INSERT_CHUNK).toBe(1000);
+  expect(chunk(Array.from({ length: 2500 }, (_, i) => i)).map((b) => b.length)).toEqual([
+    1000, 1000, 500,
+  ]);
 });
 
 // Het veldfilter (docs/plan-lege-speckolommen-xal.md): één veld tegelijk kunnen draaien maakt de

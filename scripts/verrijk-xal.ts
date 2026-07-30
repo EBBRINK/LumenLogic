@@ -23,6 +23,8 @@ import type { FIELDS as FieldNames } from "@/lib/enrichment/parser";
 import {
   getRunItems,
   getSampleItems,
+  listEnrichmentRuns,
+  rejectRun,
   nameShape,
   setSampleVerdict,
   startEnrichmentRun,
@@ -149,11 +151,35 @@ async function main() {
     return;
   }
 
+  // De afgesproken uitweg bij een fout oordeel — en de opruimknop voor een mislukte start.
+  if (cmd === "wijs-af") {
+    const id = rest[0];
+    if (!id) throw new Error("gebruik: wijs-af <runId>");
+    const run = await rejectRun(db, id, "timo (branch)");
+    if (!run) throw new Error(`run ${id} niet gevonden`);
+    console.log(`run ${id} → status '${run.status}'. Er is niets op products gewijzigd.`);
+    return;
+  }
+
+  if (cmd === "runs") {
+    const runs = await listEnrichmentRuns(db);
+    for (const r of runs.slice(0, 10)) {
+      const items = await getRunItems(db, r.id);
+      console.log(
+        `${r.id}  ${String(r.brandName).padEnd(14)} ${r.status.padEnd(13)} ` +
+          `items ${String(items.length).padStart(6)}  ${JSON.stringify(r.counts)}`,
+      );
+    }
+    return;
+  }
+
   console.log(
     "gebruik:\n" +
       "  verrijk-xal.ts start [--merk=XAL] [--veld=cri]\n" +
       "  verrijk-xal.ts toon <runId>\n" +
-      "  verrijk-xal.ts keur <runId> goed|fout <nr,nr,…|alles>",
+      "  verrijk-xal.ts keur <runId> goed|fout <nr,nr,…|alles>\n" +
+      "  verrijk-xal.ts wijs-af <runId>\n" +
+      "  verrijk-xal.ts runs",
   );
 }
 

@@ -102,6 +102,19 @@ uitschrijven en op de branch één keer uitvoeren wél.
 | B1 | Veldfilter: `startEnrichmentRun(db, brandId, actor, fields = FIELDS)` | ~4 regels in [enrichment.ts:203](lib/repo/enrichment.ts:203) | `fields: ["cri"]` levert uitsluitend cri-items; default-gedrag ongewijzigd |
 | B2 | `scripts/verrijk-xal.ts` — guard + start + steekproef-uitdraai | ~60 regels, nieuw | guard-tests bestaan al; script draait read-only tot de start-stap |
 | B3 | `scripts/publiceer-run.ts` — guard + `publishRun` met voortgang | ~40 regels, nieuw | idem |
+| B4 | **Insert in blokken** in `createRun` (bij de eerste run aan het licht gekomen) | ~10 regels | `chunk()` puur getest + de gemeten grens vastgelegd |
+
+**B4 was niet voorzien en is een echte bug.** `createRun` deed één bulk-insert van álle
+voorstellen. Bij XAL zijn dat er 13.407 en dan faalt de query met `NeonDbError: Database request
+failed`. Gemeten grens op de neon-HTTP-driver: **1.000 rijen gaat goed, 5.000 niet** — en 5.000
+rijen zijn 35.000 bindparameters, ruim onder de Postgres-limiet van 65.535. Het knelpunt is dus de
+payload van de HTTP-request, niet het aantal parameters.
+
+Let op wat dit betekent: **deze pijplijn is nooit op een groot merk gedraaid.** De bestaande
+XAL-run in de database is de optiekcode-run met 3.989 items; `&Tradition` had er 5. Alles boven de
+duizend viel buiten het bereik van wat ooit getest is. De eerste poging liet bovendien een lege
+run met status `steekproef` achter (de run-rij wordt vóór de items ingevoegd) — opgeruimd met
+`wijs-af`.
 
 Alle drie raken de bestaande pijplijnlogica niet, op de vier regels van B1 na. Geen wijziging aan
 `publishRun`, `pickSampleIndices` of de matcher.

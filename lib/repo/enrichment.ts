@@ -69,6 +69,22 @@ const REMATCHABLE = ["blauw", "open"] as const;
 //      één enkel item en publiceerde de rest — inclusief alle ongereviewde — gewoon mee.
 const SAMPLE_MAX = 100;
 
+// ── Insert in blokken (30 jul) ───────────────────────────────────────────────
+// createRun deed één bulk-insert van álle voorstellen. Bij XAL zijn dat er 13.407 (alleen CRI)
+// tot 90.660 (alle velden) en dan faalt de query met "NeonDbError: Database request failed".
+// Gemeten grens op de neon-HTTP-driver: 1.000 rijen gaat goed, 5.000 niet — en 5.000 rijen zijn
+// 35.000 bindparameters, ruim onder de Postgres-limiet van 65.535. Het is dus de payload van de
+// HTTP-request die knelt, niet het aantal parameters. 1.000 is de bewezen veilige maat.
+export const INSERT_CHUNK = 1000;
+
+// Deelt een lijst in blokken van `size`. Puur, zodat de grens testbaar is zonder database.
+export function chunk<T>(items: T[], size: number = INSERT_CHUNK): T[][] {
+  if (size < 1) throw new Error("chunkgrootte moet ≥ 1 zijn");
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 // De "vorm" van een productnaam: cijferreeksen → '#', kleinletters, witruimte genormaliseerd.
 // "SASSO 100 FL 27W" en "SASSO 60 FL 9W" krijgen zo dezelfde vorm en vallen in één stratum,
 // terwijl "ANDRO 160 LENS RD WF" een eigen stratum is. Zo koopt de steekproef breedte in
@@ -301,17 +317,19 @@ async function createRun(
     .returning();
 
   if (proposals.length > 0) {
-    await db.insert(enrichmentItems).values(
-      proposals.map((it, i) => ({
-        runId: run.id,
-        productId: it.productId,
-        productName: it.productName,
-        field: it.field,
-        value: it.value,
-        source,
-        inSample: sampleIdx.has(i),
-      })),
-    );
+    const rijen = proposals.map((it, i) => ({
+      runId: run.id,
+      productId: it.productId,
+      productName: it.productName,
+      field: it.field,
+      value: it.value,
+      source,
+      inSample: sampleIdx.has(i),
+    }));
+    // In blokken: één insert van alles faalt op de HTTP-driver zodra het merk groot is.
+    for (const blok of chunk(rijen)) {
+      await db.insert(enrichmentItems).values(blok);
+    }
   }
 
   await logEvent(db, {
