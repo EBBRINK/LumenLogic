@@ -1242,10 +1242,38 @@ zonder downtime kan, welke env-keys/DNS geraakt worden, volgorde + terugvalstap.
 uitvoeren.
 
 **2.4 — De twee liegende UI's uit sprint 0.1** (~1 u) — *naar voren gehaald uit het oude 2.5.*
-Twee UI's die aantoonbaar onwaarheid tonen: de maandcap-reden is hardgecodeerd
-(`app/projects/actions.ts:310-311`), en budget `0` toont "No monthly cap set" terwijl het juist
-een hard plafond is (`components/settings/llm-budget-block.tsx:24`). De DB heeft het in beide
-gevallen wél goed. De rest van de 0.1-hygiëne (zes punten, in `HANDOVER.md`) blijft bufferwerk.
+Twee UI's die aantoonbaar onwaarheid tonen. De DB/domeinlaag heeft het in beide gevallen wél goed.
+De rest van de 0.1-hygiëne (zes punten, in `HANDOVER.md`) blijft bufferwerk.
+*Regelverwijzingen gecorrigeerd 30 jul (sprintmaster, gemeten tegen `origin/main`) — het oude plan
+noemde `app/projects/actions.ts:310-311`, verschoven door het OCR-werk:*
+- **De stopreden wordt platgeslagen.** `lib/ai/leesroute.ts:247` onderscheidt **drie** redenen
+  (`no_key` · `budget_run` = plafond dit boek · `budget_month` = maandcap), maar
+  `app/projects/actions.ts:403` maakt daar `"budget"` van, waarna
+  `components/dossier/pdf-upload-card.tsx:299` **altijd** meldt dat het €1-boekbudget op is — ook
+  als de máándcap de oorzaak is. Andere oorzaak, andere oplossing.
+- **Budget 0 leest als "geen plafond".** `components/settings/llm-budget-block.tsx:24`
+  (`budgetEur > 0`) laat een cap van 0 in de else-tak vallen → "No monthly cap set", terwijl 0
+  juist betekent dat er niets uitgegeven mag worden.
+
+**2.5 — Afsluiting van sprint 2: reviewzwerm, dan snelheid** (besluit G25) — *ná alle andere items.*
+Twee fases, elk met dezelfde poort: **eerst een plan, Timo keurt goed, dán uitvoeren.**
+- *2.5a — reviewzwerm over alle code.* Meerdere agents die de codebase nakijken langs
+  gescheiden assen (correctheid · ijzeren regels 1–5 · tests/dekking · consistentie na de
+  huisstijl-omzetting), met adversariële verificatie: een bevinding telt pas als een tweede agent
+  hem niet kan weerleggen. Levert een gerangschikte bevindingenlijst — **geen fixes**. Timo bepaalt
+  wat er van de lijst gerepareerd wordt.
+- *2.5b — snelheid.* **Eerst meten, dan pas optimaliseren.** Er ligt al één gemeten kandidaat uit
+  2.0a: `getAllBrandCompleteness` scant de hele products-tabel (~210k rijen) met ~67
+  `count(...)`-expressies per rij plus een gecorreleerde subquery per merk — vandaar de trage
+  Brand-relations-pagina (gemeld, bewust niet gefixt in 2.0a). Plan = meet de echte trage paden,
+  rangschik op winst/risico, en leg voor. Pas daarna bouwen.
+- **Harde voorwaarde:** 2.5a start **pas als alle sprint-2-items op `origin/main` staan**. Een zwerm
+  die een bewegend doelwit reviewt, levert bevindingen op code die morgen anders is.
+- **Bekende schuld die de zwerm sowieso zal vinden** (nu al gemeten, zodat het geen "nieuwe"
+  bevinding lijkt): 26 bestanden met 163 hardgecodeerde Tailwind-statuskleuren (amber 72 ·
+  emerald 37 · slate 27 · sky 23 · orange 4) die de tokenwissel niet meepakken · 132 dode
+  NL-strings in `field-catalog.ts` · de drie flaky testbestanden · O8 (`#8E9BA8` onder WCAG AA,
+  bewuste afwijking — géén bug).
 
 **Naar week 3 verschoven (stond in het oude week 2):** merk-demo-pagina + demo-merkaccount +
 org-scoping (vereist organisaties en rollen die daar leven) · architect-analytics-ontwerpnotitie
