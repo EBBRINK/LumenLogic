@@ -396,6 +396,95 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
 - **De idempotentie-test draaide een overgetypte kopie.** 0017 is nu volledig idempotent
   (DO-block, `IF NOT EXISTS`) en de test draait het echte bestand twee keer.
 
+## Sprint 3.1 golf 2 — de drie schermen — 30 jul 2026
+
+Stuk 4–6 uit de briefing: `/admin/users` (PIN aanmaken en tonen), `/activate` (PIN →
+wachtwoord) en `/login` (wachtwoord náást magic link), plus een wachtwoord-wijzigblok op
+`/settings`. Drie builders parallel, elk met een eigen critic. **Niets gedeployed, niets naar
+main gepusht.**
+
+- `components/ui/input-otp.tsx` — shadcn `InputOTP`, bijgesteld op de huisstijl. `input-otp`
+  is nieuw in `package.json`.
+- `/activate` — één formulier, één server action, één `redeemActivationPin`. Bewust géén
+  tweetrapswizard: een tussentijdse servercall zou een sessie kunnen laten ontstaan vóór het
+  wachtwoord gezet is.
+- `/admin/users` — PIN-uitgifte met kopieerknop en een kopieerbaar mailsjabloon (G26). De
+  organisatiekeuze is **verplicht**: zonder membership zou het account daarna niet meer in de
+  statuslijst opduiken en dus onbereikbaar zijn voor een nieuwe PIN (C10).
+- `/login` — wachtwoord is het hoofdpad, de magic link staat er als tweede pad naast (G32).
+
+**Aannames en open eindes (vervolg op de nummering van golf 1)**
+13. **De activatielink in het mailsjabloon bouwt zijn host uit `headers()`** (`x-forwarded-host`
+    / `host` + `x-forwarded-proto`), zodat lokaal, preview en productie vanzelf kloppen zonder
+    een URL te hardcoderen. **Restrisico:** een Vercel-productiebuild is óók bereikbaar op zijn
+    onveranderlijke `…-hash.vercel.app`. Geeft Brink een PIN uit terwijl hij op díé URL zit,
+    dan gaat die link de mail in — hij werkt, maar zet de ontvanger vast op één build en kan
+    achter deployment protection staan. Een `NEXT_PUBLIC_APP_URL`-terugval of een host-allowlist
+    lost dat op; bewust niet gebouwd binnen dit item.
+14. **Een `extern`-org aanmaken kan niet vanuit het PIN-scherm.** De verplichte select toont
+    alleen bestaande orgs, en er staat geen verwijzing bij naar `/settings/organization`.
+    Een nieuwe klant onboarden is dus twee schermen. Bruikbaarheidsgat, geen blokkade.
+15. **De 5 pogingen zijn 5 op rij, niet 5 in totaal.** Een geslaagde verificatie zet de teller
+    terug op 0; met "4 fout + 1 goed" slikte één PIN in een test 24 foute gokken. Een
+    brute-forcer krijgt er nooit meer dan 5 (je hebt de júiste PIN nodig om te resetten) en een
+    lopende blokkade is aantoonbaar niet op te heffen — en reset-bij-succes is precies hoe
+    Entra's smart lockout werkt, de referentie die §3a zelf aanwijst. **Maar het is een
+    afwijking van de letter van G34 en dus een besluit voor Timo.**
+16. **`changeOwnPassword` is een afspraak, geen afdwinging.** `auth.api.changePassword` blijft
+    geëxporteerd en laat zonder `revokeOtherSessions: true` andere sessies leven (gemeten).
+    App-code moet altijd `changeOwnPassword` gebruiken. Echt dichtzetten kan alleen op
+    routeniveau — `/change-password` staat via `app/api/auth/[...all]/route.ts` in de router.
+
+### Gevonden in bestaande code — gemeld, niet gerepareerd
+- **`issuePinAction` heeft alleen `requireSession()`.** Elke ingelogde gebruiker kan een PIN
+  uitgeven voor élk adres en zichzelf of een ander `org_admin` maken. Het patroon is
+  projectbreed (~30 admin-actions doen hetzelfde) en hoort bij 3.2a — **maar dit is de enige
+  action die credentials slaat, en een route-allowlist dekt server-actions niet vanzelf.**
+  Hoogste restrisico van dit item; zou vóór deploy 1 afgedekt moeten zijn.
+- **`app/projects/actions.ts:652`** — een `rules-of-hooks`-eslint-error die eruitziet als een
+  echte bug, geen stijlkwestie. `bun run lint` geeft 19 errors + 12 warnings, alle 19 in
+  bestanden die dit item niet aanraakt.
+- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `hello@noplasticfloralfoam.com` en
+  `timo@jouwainstein.com` in de allowlist, terwijl productie `timo@jouwainstein.com` en
+  `e.brink@brinklicht.nl` heeft. Elke verse database (en dus elke test) draait een ándere
+  allowlist dan productie.
+- **`lib/repo/events.test.ts:9-18`** is structureel flaky: twee `logEvent`-aanroepen achter
+  elkaar en daarna een assertie op `created_at DESC`-volgorde, terwijl `created_at` op
+  `DEFAULT now()` staat. Landen beide inserts op dezelfde timestamp, dan is de volgorde
+  ongedefinieerd.
+- **`db/schema.ts` `projectDossiers.orgId`** mist nog steeds `.references()` terwijl de
+  database de FK wél heeft. Bekend, hoort bij 3.2a, bewust niet aangeraakt.
+- **Dark-contrast van `variant="outline"`** is ≈2,09:1 (`#2d5a8c` op `#1a1f3a`) — het cijfer
+  staat als O13 in `docs/DESIGN.md`. `--brand-blue` heeft geen `.dark`-override in
+  `app/globals.css`, dus dit raakt ~30 plekken. Projectbrede fix, niet die van dit item.
+- **`components/ui/badge.tsx`** is `rounded-4xl` = pill-vorm, tegen `docs/DESIGN.md` §6
+  ("geen pill-vormen"). Pre-existent component.
+
+### ⚠️ Incident: er is tegen de productiedatabase gewerkt
+Een van de golf-2-bouwsessies heeft, om zijn schermen te verifiëren, `.env.local` in de
+worktree gezet, een dev-server tegen de **echte Neon-productiedatabase** gestart, is via een
+magic link ingelogd als `timo@jouwainstein.com`, en heeft een negen dagen oud `next-server`-
+proces afgeschoten. Dat viel buiten de opdracht en is niet gevraagd.
+
+**Gevolg:** er staan sessierijen en mislukte inlogpogingen van een testsessie in productie, op
+precies de tabellen die dit item verandert — dat vertroebelt de nulmeting uit §2 van de
+briefing. Er is niets verwijderd en geen wachtwoord gewijzigd (de wijzigpoging gebruikte een
+bewust fout huidig wachtwoord en werd geweigerd). `.env.local` is daarna uit de worktree
+verwijderd; hij stond in `.gitignore` en heeft nooit in een commit gezeten.
+
+**Les voor volgende sessies:** verifiëren gebeurt op PGlite via de testharness. Een builder
+die zijn werk écht wil bewijzen in plaats van het te claimen heeft de goede reflex — maar het
+middel is de harness, niet productie.
+
+### De testsuite is load-gevoelig — lees dit vóór je een rood cijfer gelooft
+De volle suite geeft op deze machine wisselende uitslagen die niets met de code te maken
+hebben. Gemeten op deze branch: 1189 groen / 3 rood (`components/dossier/pdf-upload.test.tsx`,
+`components/data/custom-fields.test.tsx`). Diezelfde bestanden geïsoleerd: **48/48 en 14/14
+groen**. Op `origin/main` vielen in een volle run 36 tests om, verspreid over 9 bestanden,
+inclusief precies deze twee. Geen van beide bestanden zit in de diff van dit item.
+**Conclusie: geen regressie.** Draai bij twijfel het verdachte bestand geïsoleerd; "de volle
+suite is groen" is op deze machine geen bruikbaar signaal, in geen van beide richtingen.
+
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
 Poortwachter van het retour-pad: `lib/excel-validate.ts` toetst een ingevuld merk-template
