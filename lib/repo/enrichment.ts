@@ -37,6 +37,7 @@ import {
   products,
   specLines,
 } from "@/db/schema";
+import type { BrandLifecycle } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { runMatcher } from "./matching";
@@ -716,6 +717,10 @@ export type PriceListStatus = {
   productCount: number;
   daysLeft: number;
   bucket: "verlopen" | "7" | "14" | "30" | "ok";
+  // De levensfase van het merk rijdt mee in dezelfde select (nul extra queries), net als op
+  // /admin/brands: een lijst van een merk dat niet meer bestaat mag op /data/price-lists
+  // geen schone groene rij zijn (UX-audit 30 jul). null = geen merk aan de lijst gekoppeld.
+  lifecycle: BrandLifecycle | null;
 };
 
 // Gedeelde datum-helper: hele dagen (UTC) tussen vandaag en een 'YYYY-MM-DD'-datum.
@@ -744,11 +749,18 @@ export async function listPriceListStatus(
       brandName: brands.name,
       validUntil: priceLists.validUntil,
       productCount: sql<number>`count(${prices.id})`,
+      lifecycle: brands.lifecycle,
     })
     .from(priceLists)
     .leftJoin(brands, eq(brands.id, priceLists.brandId))
     .leftJoin(prices, eq(prices.priceListId, priceLists.id))
-    .groupBy(priceLists.id, priceLists.name, priceLists.validUntil, brands.name)
+    .groupBy(
+      priceLists.id,
+      priceLists.name,
+      priceLists.validUntil,
+      brands.name,
+      brands.lifecycle,
+    )
     .orderBy(asc(priceLists.validUntil));
 
   return rows.map((r) => {
@@ -771,6 +783,7 @@ export async function listPriceListStatus(
       productCount: Number(r.productCount),
       daysLeft,
       bucket,
+      lifecycle: (r.lifecycle as BrandLifecycle | null) ?? null,
     };
   });
 }

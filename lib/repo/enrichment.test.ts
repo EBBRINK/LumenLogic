@@ -12,6 +12,7 @@ import {
   seedBrandProduct,
 } from "@/db/test-db";
 import {
+  brands,
   enrichmentItems,
   priceLists,
   products,
@@ -28,6 +29,7 @@ import {
   INSERT_CHUNK,
   listBrandLoadQueue,
   listEnrichmentRuns,
+  listPriceListStatus,
   markBrandLoaded,
   nameShape,
   pickSampleIndices,
@@ -510,4 +512,47 @@ test("steekproef overspant de hele catalogus, niet alleen de alfabetische kop", 
   expect(chosen.length).toBe(100);
   expect(chosen[0]).toBeLessThan(10); // begin gedekt
   expect(chosen[chosen.length - 1]).toBeGreaterThan(390); // én het einde
+});
+
+// ── Prijslijst-dekking: de badge op /data/price-lists mag niet liegen ─────────
+//
+// UX-audit 30 jul (bug #3): het scherm gaf groen "154 d valid" bij 0 producten. Voor de
+// matcher is dat hetzelfde gat als een verlopen lijst — ijzeren regel 3. De weergave beslist
+// dat, maar ze kan het alleen als deze query dekking én levensfase meelevert. Twee dingen die
+// stil kunnen breken en daarom hier vastliggen: de count over een lijst zonder één prijs moet
+// 0 zijn (LEFT JOIN, geen INNER), en brands.lifecycle moet in de GROUP BY staan — vergeet je
+// dat, dan gooit Postgres en valt het scherm om.
+test("listPriceListStatus: 0 producten en de levensfase van het merk komen mee", async () => {
+  const db = await createTestDb();
+
+  // Een lijst met één product, op een merk dat niet meer bestaat — de brondata heeft dat
+  // vandaag als naamstring ('Lucente (BESTAAT NIET MEER)'), het schema als kolom.
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Lucente",
+    name: "Vela 20W 3000K",
+  });
+  await db
+    .update(brands)
+    .set({ lifecycle: "bestaat_niet_meer" })
+    .where(eq(brands.id, brandId));
+
+  // En een lijst die ruim geldig is maar geen énkele prijs draagt: nul zichtbare producten.
+  const { brandId: leegId } = await seedBrand(db, "Itre");
+  await db.insert(priceLists).values({
+    brandId: leegId,
+    name: "Prijslijst Itre",
+    validFrom: "2026-01-01",
+    validUntil: "2999-12-31",
+  });
+
+  const rows = await listPriceListStatus(db);
+
+  const dood = rows.find((r) => r.brandName === "Lucente");
+  expect(dood?.lifecycle).toBe("bestaat_niet_meer");
+  expect(dood?.productCount).toBe(1);
+
+  const leeg = rows.find((r) => r.brandName === "Itre");
+  expect(leeg?.productCount).toBe(0);
+  expect(leeg?.bucket).toBe("ok"); // de datum is niet het probleem, de dekking is het
+  expect(leeg?.lifecycle).toBe("actief"); // norm, dus geen badge op het scherm
 });

@@ -60,10 +60,16 @@ const queue: QueueRow[] = [
   { id: "q2", displayName: "Flos", frequency: 2, status: "ingeladen", loadedAt: "2026-07-02T09:00:00Z" },
 ];
 
+// UX-audit 30 jul (bug #3): pl4 en pl5 zijn de gevallen die de badge liet liegen — een lijst
+// met een prima datum maar 0 producten. Voor de matcher is dat exact hetzelfde gat als een
+// verlopen lijst (ijzeren regel 3). pl4 hangt bovendien aan een merk dat niet meer bestaat,
+// zoals 'Lucente (BESTAAT NIET MEER)' in de brondata.
 const priceLists: PriceListRow[] = [
   { id: "pl1", name: "Prijslijst Occhio", brandName: "Occhio", validUntil: "2026-06-01", productCount: 30, daysLeft: -36, bucket: "verlopen" },
   { id: "pl2", name: "Prijslijst XAL", brandName: "XAL", validUntil: "2026-07-10", productCount: 18, daysLeft: 3, bucket: "7" },
   { id: "pl3", name: "Prijslijst Delta", brandName: "Delta Light", validUntil: "2027-01-01", productCount: 42, daysLeft: 178, bucket: "ok" },
+  { id: "pl4", name: "Prijslijst Lucente", brandName: "Lucente", validUntil: "2026-12-01", productCount: 0, daysLeft: 124, bucket: "ok", lifecycle: "bestaat_niet_meer" },
+  { id: "pl5", name: "Prijslijst Itre", brandName: "Itre", validUntil: "2026-08-20", productCount: 0, daysLeft: 21, bucket: "30", lifecycle: "actief" },
 ];
 
 const evalLines: EvalLine[] = [
@@ -253,6 +259,54 @@ test("prijslijsten: de verlopen rij draagt de gedeelde verloop-waarschuwing met 
     )
     .toBeInTheDocument();
   expect(page.getByText(/extension/i).all()).toHaveLength(1); // alleen pl1 is verlopen
+});
+
+// UX-audit 30 jul, bug #3. Dit is de kern van de bevinding: de badge mocht niet langer
+// uitsluitend uit de datum volgen. Groen betekent "hier is niets aan de hand", en dat is
+// onwaar zodra de matcher nul producten uit de lijst haalt (ijzeren regel 3).
+test("prijslijsten: geldig met 0 producten is amber, niet groen", async () => {
+  await renderServer(
+    <Screen>
+      <PriceListStatusTable rows={priceLists} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("Valid · 0 products"))
+    .toBeInTheDocument();
+  // Bijna-verlopen én leeg: de dekking komt erbij, de datum verdwijnt niet uit het label.
+  await expect
+    .element(page.getByText("Expires in 21 d · 0 products"))
+    .toBeInTheDocument();
+
+  // De tint per rij, niet alleen de tekst: pl4 mag geen groene badge dragen en pl3 (42
+  // producten, ruim geldig) moet groen blijven.
+  const tintOf = (text: string) =>
+    [...document.querySelectorAll("td span")].find(
+      (el) => el.textContent === text,
+    )?.className ?? "";
+  expect(tintOf("Valid · 0 products")).toContain("bg-status-amber-tint");
+  expect(tintOf("Valid · 0 products")).not.toContain("bg-status-green-tint");
+  expect(tintOf("178 d valid")).toContain("bg-status-green-tint");
+
+  // De telling boven de tabel noemt beide gaten en telt niemand dubbel: pl5 is leeg én
+  // bijna verlopen, en staat alleen bij de gaten.
+  await expect
+    .element(page.getByText(/1 expired · 2 valid with 0 products — coverage gaps/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("1 expiring soon")).toBeInTheDocument();
+});
+
+// Eén presentatie voor de levensfase (components/admin/brand-lifecycle-badge.tsx), dezelfde
+// als /admin/brands: 'actief' krijgt géén badge, de afwijking wel.
+test("prijslijsten: een merk dat niet meer bestaat draagt zijn levensfase-badge", async () => {
+  await renderServer(
+    <Screen>
+      <PriceListStatusTable rows={priceLists} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("No longer exists")).toBeInTheDocument();
+  const badges = [...document.querySelectorAll('td [data-slot="badge"]')];
+  expect(badges).toHaveLength(1); // alleen pl4; pl5 is 'actief' en pl1–pl3 dragen niets
 });
 
 test("evaluatie toont de laatste score en per-regel-diff", async () => {

@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import type { BrandLifecycle } from "@/db/schema";
+import { BrandLifecycleBadge } from "@/components/admin/brand-lifecycle-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -27,13 +27,9 @@ export type BrandListRow = {
   productCount: number;
 };
 
-// De levensfase staat als BADGE in de naamkolom, niet als kolom en niet als tweede select
-// (plan §1): de rij draagt al genoeg om op 375px over te lopen. 'actief' is de norm
-// en krijgt dus géén badge — alleen de afwijking is nieuws.
-const LIFECYCLE_BADGE: Partial<Record<BrandLifecycle, string>> = {
-  slapend: "Dormant",
-  bestaat_niet_meer: "No longer exists",
-};
+// De levensfase staat als BADGE in de naamkolom (plan §1). De labels en de badge zelf staan
+// sinds de UX-audit van 30 jul in components/admin/brand-lifecycle-badge.tsx, omdat
+// /data/price-lists dezelfde badge toont — één presentatie, geen tweede kopie.
 
 // MERKENLIJST (sprint 2.0a, blok 3): het add/edit/delete-deel van merkbeheer. De
 // disclosure-tier en per-veld-uitzonderingen zijn verhuisd naar
@@ -77,11 +73,10 @@ export function BrandsListBlock({ brands }: { brands: BrandListRow[] }) {
                       >
                         {b.name}
                       </a>
-                      {LIFECYCLE_BADGE[b.lifecycle ?? "actief"] && (
-                        <Badge variant="outline" className="ml-2 align-middle">
-                          {LIFECYCLE_BADGE[b.lifecycle ?? "actief"]}
-                        </Badge>
-                      )}
+                      <BrandLifecycleBadge
+                        lifecycle={b.lifecycle}
+                        className="ml-2"
+                      />
                       {b.brandCode && (
                         <span className="block text-xs text-muted-foreground tabular-nums">
                           {b.brandCode}
