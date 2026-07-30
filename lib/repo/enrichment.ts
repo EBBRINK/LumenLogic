@@ -43,6 +43,7 @@ import { logEvent } from "./events";
 import { runMatcher } from "./matching";
 import { brandKeyOf } from "@/lib/matching/engine";
 import { FIELDS, parseProductName } from "@/lib/enrichment/parser";
+import { verdenkingen } from "@/lib/enrichment/verdenking";
 import { OPTIC_SOURCE, opticBeamAngle } from "@/lib/enrichment/optic-code";
 import { isUuid } from "@/lib/uuid";
 
@@ -70,6 +71,52 @@ const REMATCHABLE = ["blauw", "open"] as const;
 //      de héle steekproef een oordeel heeft. Voorheen blokkeerde alleen een expliciete 'fout'
 //      één enkel item en publiceerde de rest — inclusief alle ongereviewde — gewoon mee.
 const SAMPLE_MAX = 100;
+
+// ── De voorstelpoort (30 jul) ────────────────────────────────────────────────
+// `lib/enrichment/verdenking.ts` bestond al — 201 regels met een eigen testbestand — en hing aan
+// NUL productiepaden: de enige aanroeper was een meetscript. Er lag dus een deterministisch
+// voorfilter dat de pijplijn niet raadpleegde. Dat is nu aangesloten, maar NIET zoals het plan
+// voorstelde, en het verschil is gemeten.
+//
+// Onderdrukken is niet gratis: een voorstel dat hier sneuvelt vult de kolom niet, en de kolom
+// blijft leeg tot een andere bron hem claimt. Bij een VALSE verdenking gooien we dus een goede
+// waarde weg. Daarom telt alleen wat aantoonbaar onbetrouwbaar is.
+//
+// ── Waarom `accessoire-context` er NIET in staat, met de meting erbij ────────
+// Het is met 12.417 landende voorstellen verreweg de grootste vlag (87,7 % van alle 14.159), en
+// het is aantoonbaar overwegend een valse positief. `ACCESSOIRE` in verdenking.ts matcht onder
+// meer ADAPTER, DRIVER, INCL en EXCL ergens in de naam. Gemeten per merk
+// (scripts/meet-accessoire-context.ts):
+//   • Prado 1.870 vlaggen, waarvan **0,0 %** het onderdeel zélf is — 1.740 zijn "… - black
+//     adapter", een variantsuffix die zegt dat het armatuur mét railadapter geleverd wordt;
+//   • TossB 1.030 vlaggen, 2,7 % is het onderdeel zelf;
+//   • Kreon 2.162 vlaggen, 4,3 % — de rest zijn module-armaturen met "driver excl./incl.".
+// Onderdrukken op deze vlag zou dus duizenden juiste waarden weggooien. Hij blijft bestaan als
+// ROUTERING voor de agent-zwerm ("kijk hier eerst"), niet als filter.
+//
+// `meerdere-protocollen` (51) staat er om dezelfde reden niet in: judgeDimmable doet substring
+// in beide richtingen (lib/matching/tolerances.ts:119), dus een armatuur dat DALI én 0-10V kan,
+// is met beide protocollen correct beschreven.
+//
+// Wat er wél in staat, en waarom — samen ~1.791 landende voorstellen:
+//   bereik / tunable-white → de naam noemt een BEREIK; judgeKelvin eist exacte gelijkheid, dus
+//     één representant kiezen maakt van een product dat 4000 K kán leveren een rode kandidaat.
+//   meerdere-waarden      → de naam draagt twee verschillende getallen voor hetzelfde veld en de
+//     parser nam de eerste. Dat is een muntworp, geen meting.
+//   buiten-bereik         → "Board Time 360° 2.2K" levert beamAngle 360; dat is geen bundelhoek.
+//   kantelhoek            → Prado's "spot adjustable … 20°pc": de graden kunnen de kantelhoek
+//     zijn in plaats van de bundel.
+//   afgekapt              → de naam houdt halverwege op, dus de laatste waarde kan onvolledig zijn.
+//   onbekende-klasse      → "IP19"/"IP99" bestaat niet; een leesfout in de bron.
+export const ONDERDRUKKENDE_VERDENKINGEN = new Set([
+  "bereik",
+  "tunable-white",
+  "meerdere-waarden",
+  "buiten-bereik",
+  "kantelhoek",
+  "afgekapt",
+  "onbekende-klasse",
+]);
 
 // ── Insert in blokken (30 jul) ───────────────────────────────────────────────
 // createRun deed één bulk-insert van álle voorstellen. Bij XAL zijn dat er 13.407 (alleen CRI)
@@ -244,12 +291,26 @@ export async function startEnrichmentRun(
     value: string;
   }[] = [];
   const gekozen = new Set<string>(fields);
+  const onderdrukt: Record<string, number> = {};
   for (const p of prods) {
     const specs = parseProductName(p.name);
+    const vlaggen = verdenkingen(p.name, specs);
     for (const field of FIELDS) {
       if (!gekozen.has(field)) continue;
       const v = specs[field];
       if (v === undefined) continue;
+      // De voorstelpoort (zie ONDERDRUKKENDE_VERDENKINGEN): een aantoonbaar onbetrouwbaar
+      // voorstel wordt hier geweerd in plaats van in de parser, zodat het MATCHGEDRAG van
+      // spec-regels ongemoeid blijft — parseProductName voedt ook de aanvraagkant
+      // (lib/pdf/armaturenboek.ts:131) en die mag hier niet stil mee veranderen.
+      const blokkeer = vlaggen.find(
+        (x) => x.veld === field && ONDERDRUKKENDE_VERDENKINGEN.has(x.soort),
+      );
+      if (blokkeer) {
+        onderdrukt[`${field}:${blokkeer.soort}`] =
+          (onderdrukt[`${field}:${blokkeer.soort}`] ?? 0) + 1;
+        continue;
+      }
       parsed.push({
         productId: p.id,
         productName: p.name,
@@ -259,7 +320,9 @@ export async function startEnrichmentRun(
     }
   }
 
-  return createRun(db, brand, prods.length, parsed, "parsed-from-name", actor);
+  return createRun(db, brand, prods.length, parsed, "parsed-from-name", actor, {
+    onderdrukt,
+  });
 }
 
 // ── Start: gecureerde optiekcode → beam_angle voor één merk ──────────────────
@@ -317,6 +380,10 @@ async function createRun(
   proposals: Proposal[],
   source: string,
   actor?: string,
+  // Extra telwerk voor het runrapport (jsonb, dus geen migratie). Vandaag: hoeveel voorstellen
+  // de voorstelpoort geweerd heeft en om welke reden — een stil gefilterd voorstel moet
+  // zichtbaar zijn, anders is "minder voorstellen" niet te onderscheiden van "minder data".
+  extraCounts: Record<string, number | Record<string, number>> = {},
 ): Promise<EnrichmentRun> {
   const sampleIdx = pickSampleIndices(proposals);
 
@@ -330,7 +397,8 @@ async function createRun(
         producten: productCount,
         geparsed: proposals.length,
         steekproef: sampleIdx.size,
-      },
+        ...extraCounts,
+      } as Record<string, number>,
       actor: actor ?? null,
     })
     .returning();

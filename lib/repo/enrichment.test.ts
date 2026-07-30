@@ -981,3 +981,44 @@ test("na revertRun kan een andere bron de kolom alsnog claimen", async () => {
   const [p] = await db.select().from(products).where(eq(products.id, productId));
   expect(p.kelvin).toBe(3000);
 });
+
+// ── De voorstelpoort (30 jul) ────────────────────────────────────────────────
+
+test("voorstelpoort weert een kelvin-BEREIK maar laat de rest van dezelfde naam staan", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Poorttest",
+    name: "PANEL 40W 2700-6500K DALI",
+  });
+  const run = await startEnrichmentRun(db, brandId, "test");
+  const items = await getRunItems(db, run.id);
+  const velden = items.map((i) => i.field).sort();
+
+  // kelvin sneuvelt: judgeKelvin eist exacte gelijkheid, dus één representant uit een bereik
+  // maakt van een product dat 4000 K kán leveren een RODE kandidaat.
+  expect(velden).not.toContain("kelvin");
+  // watt en dimbaarheid staan los van dat bezwaar en blijven gewoon staan.
+  expect(velden).toContain("maxWattage");
+  expect(velden).toContain("dimmable");
+
+  // En het geweerde voorstel is geteld, niet stil verdwenen — anders is "minder voorstellen"
+  // niet te onderscheiden van "minder data".
+  expect((run.counts as Record<string, unknown>).onderdrukt).toMatchObject({
+    "kelvin:bereik": 1,
+  });
+});
+
+test("voorstelpoort laat accessoire-context WEL door", async () => {
+  const db = await createTestDb();
+  // Gemeten: bij Prado is 0,0% van de accessoire-vlaggen werkelijk een onderdeel — 1.740 van
+  // de 1.870 zijn "- black adapter", een variantsuffix van een armatuur. Onderdrukken op deze
+  // vlag zou duizenden juiste waarden weggooien, dus hij routeert de zwerm en filtert niet.
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Adaptertest",
+    name: "acrotrack mini long black ano 2700K 60°pc CRI90 - black adapter",
+  });
+  const run = await startEnrichmentRun(db, brandId, "test");
+  const velden = (await getRunItems(db, run.id)).map((i) => i.field);
+  expect(velden).toContain("kelvin");
+  expect(velden).toContain("cri");
+});
