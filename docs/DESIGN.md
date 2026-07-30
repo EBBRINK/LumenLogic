@@ -1,9 +1,13 @@
 # DESIGN.md — huisstijl-referentie voor developers
 
-> Vastgelegd 2026-07-30 door Timo. Bron: **`lumenlogic_brand_kit.md` v2.0 (juli 2026)** plus de
-> twee geleverde merkpakketten (`lumenlogic logo files.zip`, `logos lumenlogic deel 2.zip`).
-> De brand kit noemt deze plek zelf (§21, "CSS Variables: Maintain DESIGN.md for developer
-> reference").
+> Vastgelegd 2026-07-30 door Timo. Bron: **[`docs/brand/lumenlogic_brand_kit.md`](brand/lumenlogic_brand_kit.md)
+> v2.0 (juli 2026)** plus de twee geleverde merkpakketten (`lumenlogic logo files.zip`,
+> `logos lumenlogic deel 2.zip`). De brand kit noemt deze plek zelf (§21, "CSS Variables:
+> Maintain DESIGN.md for developer reference").
+>
+> De kit staat sinds 2026-07-30 als **read-only kopie** in de repo, byte-identiek aan het
+> origineel, zodat parallelle sessies erbij kunnen. Verwijzingen naar "§x" hieronder slaan op
+> paragrafen in dat bestand.
 >
 > **Twee harde regels:**
 > 1. De brand kit is leidend. Het MD-bestand wordt **nooit** gewijzigd — ook niet als er een
@@ -112,6 +116,25 @@ navy `#1A1F3A` (hero, premium, CTA-blokken). Zachte overgangen, geen harde knipp
 neutraal `#8E9BA8` · focus `#2D5A8C`.
 
 **Randen en velden:** rand `#E5E9F0` · invoerrand `#D0D6E0` · invoerachtergrond `#F5F7FA`.
+
+### Dark mode — verplicht
+
+Kit §14 noemt dark mode "optional future", maar **besluit G24: dark mode blijft verplicht.**
+Geen tegenspraak in de praktijk: de app ship al light én dark, `CLAUDE.md` eist screenshots in
+beide standen bij elke feature, en §14 lévert het dark-palet. Gebruik die tokens.
+
+| Element | Light | Dark |
+|---|---|---|
+| Achtergrond | `#FFFFFF` | `#0F1626` |
+| Vlak (kaarten) | `#FFFFFF` | `#1A1F3A` |
+| Zacht canvas | `#F5F7FA` | `#2A3145` |
+| Tekst primair | `#1A1A1A` | `#FFFFFF` |
+| Tekst secundair | `#8E9BA8` | `#B0B8C4` |
+| Rand | `#E5E9F0` | `#3A4254` |
+| Invoerachtergrond | `#F5F7FA` | `#2A3145` |
+
+Het logo hoeft in dark niet te wisselen: de kleurversie werkt direct op donker, de kleuren zijn
+helder genoeg. Alleen bij twijfel de mono-wit lockup.
 
 **Niet doen:** gradiënten maken (staan niet in het merk) · secundaire kleuren in primaire CTA's ·
 kleur puur decoratief inzetten · WCAG 4.5:1 negeren.
@@ -248,11 +271,11 @@ Niets hiervan zelf invullen. Alles hier gaat eerst langs Timo, en waar aangegeve
 |---|---|---|
 | **O1** | **Welk palet is canoniek** als logo (violet/magenta) en UI (navy/teal) verzoend moeten worden? Zie §1. | Te bevestigen met Eduard, ~21 aug 2026. Tot dan: logo zoals geleverd, UI per §3. |
 | **O2** | App draait op `Geist`/`Geist_Mono`, de kit schrijft Inter voor. | Wijziging staat gepland voor 2.0a, nog niet uitgevoerd. |
-| **O3** | Kit §14 noemt dark mode "optional future, niet vereist voor v1.0", maar de werkwijze in `CLAUDE.md` eist screenshots in light **én** dark bij elke feature. | Onopgelost. Vragen aan Timo vóór de eerste UI-bouw. |
+| **O3** | Kit §14 noemt dark mode "optional future, niet vereist voor v1.0", `CLAUDE.md` eist light **én** dark bij elke feature. | **Gesloten (besluit G24):** dark mode blijft verplicht, met de §14-dark-tokens. Zie §3. |
 | **O4** | Kit §2/§3 beschrijft het beeldmerk als translucente cirkels/ringen met opacity-lagen (100/65/35/15%). Het geleverde logo is twee L-vormen met vaste kleuren en expliciet géén transparantie. | Besluit: geleverde bestanden aanhouden, MD blijft ongewijzigd. Geen actie nodig, wel weten dat het er staat. |
 | **O5** | Kit §15 noemt mono-zwart "primary"; het merkpakket noemt de kleur-lockup het standaardlogo. | Besluit Timo: geleverde bestanden aanhouden — kleur-lockup is standaard, mono waar kleur niet kan. |
-| **O6** | Het canonieke `lumenlogic_brand_kit.md` staat buiten de repo (lokale Downloads-map). Andere sessies kunnen er niet bij. | Vragen aan Timo waar het bestand hoort. Niet zelf kopiëren of verplaatsen. |
-| **O7** | De logobestanden staan nog niet in de repo (`public/`). | Nog te doen, moment onbekend. Assets ongewijzigd overnemen. |
+| **O6** | Het canonieke `lumenlogic_brand_kit.md` stond buiten de repo. | **Gesloten:** byte-identieke read-only kopie op `docs/brand/lumenlogic_brand_kit.md`. Het origineel is niet aangeraakt. |
+| **O7** | De logobestanden staan nog niet in de repo (`public/`). | **Voorwaarde voor de 2.0b-bouwchip**, die pas ná 2.0a start. Nu niet doen. Assets ongewijzigd overnemen uit de twee merkpakket-zips. |
 
 ---
 
