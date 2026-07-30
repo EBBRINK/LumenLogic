@@ -23,11 +23,11 @@ export type PriceListRow = {
 };
 
 const BUCKET_TINT: Record<PriceListRow["bucket"], string> = {
-  verlopen: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  "7": "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  "14": "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  "30": "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
-  ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  verlopen: "bg-status-grey-tint text-status-grey-ink",
+  "7": "bg-status-amber-tint text-status-amber-ink",
+  "14": "bg-status-amber-tint text-status-amber-ink",
+  "30": "bg-status-blue-tint text-status-blue-ink",
+  ok: "bg-status-green-tint text-status-green-ink",
 };
 
 function bucketLabel(r: PriceListRow): string {

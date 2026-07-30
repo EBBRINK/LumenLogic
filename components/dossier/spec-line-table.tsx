@@ -128,9 +128,9 @@ export function SpecLineTable({
                             <span
                               className={
                                 d.verdict === "rood"
-                                  ? "text-rose-600 dark:text-rose-400"
+                                  ? "text-status-red-ink"
                                   : d.verdict === "geel"
-                                    ? "text-amber-600 dark:text-amber-400"
+                                    ? "text-status-amber-ink"
                                     : ""
                               }
                             >

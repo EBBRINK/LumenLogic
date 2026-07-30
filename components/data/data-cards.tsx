@@ -43,7 +43,7 @@ export function DataCards({ badge }: { badge: Record<string, number> }) {
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-medium">{c.title}</h2>
             {badge[c.href] > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-100 px-1.5 text-xs font-medium text-sky-800 tabular-nums dark:bg-sky-950 dark:text-sky-300">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-status-blue-tint px-1.5 text-xs font-medium text-status-blue-ink tabular-nums">
                 {badge[c.href]}
               </span>
             )}

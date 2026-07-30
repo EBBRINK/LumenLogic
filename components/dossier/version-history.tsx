@@ -146,7 +146,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
                     {c.location ? (
                       <span className="text-muted-foreground"> · {c.location}</span>
                     ) : null}
-                    <span className="text-amber-700 dark:text-amber-400">
+                    <span className="text-status-amber-ink">
                       {" "}
                       — {fieldLabels(c.fields)}
                     </span>
@@ -162,7 +162,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
               </p>
               <ul className="mt-1 flex flex-col gap-1">
                 {diff.added.map((r) => (
-                  <li key={r.fixtureCode} className="text-emerald-700 dark:text-emerald-400">
+                  <li key={r.fixtureCode} className="text-status-green-ink">
                     <span className="font-medium">{r.fixtureCode}</span>
                     {r.location ? (
                       <span className="opacity-80"> · {r.location}</span>

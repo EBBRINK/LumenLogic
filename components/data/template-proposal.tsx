@@ -64,12 +64,11 @@ const PRIJS_LABEL = veldLabel("list_price_excl_vat");
 type BadgeSoort = "new" | "changed" | "conflict";
 
 const BADGE_STIJL: Record<BadgeSoort, string> = {
-  new: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  changed: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
+  new: "bg-status-green-tint text-status-green-ink",
+  changed: "bg-status-blue-tint text-status-blue-ink",
   // Amber, geen rood: een conflict is geen fout van de lezer maar iets dat een besluit
   // vraagt. Rood zou suggereren dat er iets stuk is.
-  conflict:
-    "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  conflict: "bg-status-amber-tint text-status-amber-ink",
 };
 
 const BADGE_TEKST: Record<BadgeSoort, string> = {

@@ -77,14 +77,14 @@ export function LlmBudgetBlock({
                 <div
                   className={
                     over
-                      ? "h-full rounded-full bg-amber-500/70"
+                      ? "h-full rounded-full bg-status-amber-dot/70"
                       : "h-full rounded-full bg-foreground/70"
                   }
                   style={{ width: `${pct}%` }}
                 />
               </div>
               {over && (
-                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                <p className="mt-2 text-xs text-status-amber-ink">
                   Monthly cap exceeded — check the spend.
                 </p>
               )}

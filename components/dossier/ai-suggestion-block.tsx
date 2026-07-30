@@ -45,8 +45,8 @@ export function AiSuggestionBlock({
   if (shown.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 p-3 dark:border-sky-800 dark:bg-sky-950/30">
-      <p className="text-xs font-medium text-sky-800 dark:text-sky-300">
+    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-status-blue-border bg-status-blue-tint/50 p-3 dark:bg-status-blue-tint/30">
+      <p className="text-xs font-medium text-status-blue-ink">
         AI suggestion — found automatically in our own catalog. No verdict;
         choosing stays human work.
       </p>

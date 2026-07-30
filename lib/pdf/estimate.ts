@@ -46,14 +46,14 @@ const MUTED = rgb(0.45, 0.47, 0.51);
 const LINE = rgb(0.84, 0.85, 0.87);
 
 // Statuskleuren als rustige inkttinten (badge-taal overal gelijk, ook op papier).
-const STATUS_COLOR: Record<MatchStatus, RGB> = {
-  open: MUTED,
-  groen: rgb(0.02, 0.55, 0.38),
-  geel: rgb(0.75, 0.51, 0.05),
-  blauw: rgb(0.04, 0.51, 0.72),
-  rood: rgb(0.82, 0.26, 0.35),
-  paars: rgb(0.53, 0.36, 0.83),
-};
+// Sprint 2.0b: de waarden stonden hier als losse kopie naast die van het scherm,
+// waardoor de belofte "één bron van waarheid" in status.ts alleen voor het scherm
+// gold. Ze staan nu in STATUS[...].print — dezelfde floats, ongewijzigd. Het zijn
+// bewust dónkerdere tinten dan de schermkleuren (papier heeft geen backlight), dus
+// gelijktrekken is niet de bedoeling; op één plek zetten wel.
+const STATUS_COLOR: Record<MatchStatus, RGB> = Object.fromEntries(
+  (Object.keys(STATUS) as MatchStatus[]).map((s) => [s, rgb(...STATUS[s].print)]),
+) as Record<MatchStatus, RGB>;
 
 // pdf-lib's StandardFonts kunnen alleen WinAnsi aan. Onbekende tekens worden "?" in
 // plaats van een crash; de nl-NL-valutaspaties (NBSP/narrow) worden gewone spaties.

@@ -5,11 +5,9 @@ import { cn } from "@/lib/utils";
 export type RunStatus = "steekproef" | "gepubliceerd" | "afgewezen";
 
 const RUN_TINT: Record<RunStatus, string> = {
-  steekproef:
-    "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  gepubliceerd:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  afgewezen: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+  steekproef: "bg-status-amber-tint text-status-amber-ink",
+  gepubliceerd: "bg-status-green-tint text-status-green-ink",
+  afgewezen: "bg-status-grey-tint text-status-grey-ink",
 };
 
 const RUN_LABEL: Record<RunStatus, string> = {

@@ -48,10 +48,12 @@ export function PriceListExpiryNotice({
 
   let content: React.ReactNode;
   if (variant === "banner") {
+    // De rand heeft zijn eigen token: hij loopt de andere kant op dan de inkt
+    // (licht in light, donker in dark), dus amber-ink of -dot zou hem wijzigen.
     content = (
       <div
         role="note"
-        className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        className="rounded-xl border border-status-amber-border bg-status-amber-tint p-4 text-sm text-status-amber-ink"
       >
         <p className="font-medium">Price list expired</p>
         <p className="mt-1">{text}</p>
@@ -61,7 +63,7 @@ export function PriceListExpiryNotice({
     content = (
       <span
         title={text}
-        className="inline-flex max-w-[18rem] items-center rounded-md bg-amber-100 px-2 py-1 text-xs font-medium leading-snug text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+        className="inline-flex max-w-[18rem] items-center rounded-md bg-status-amber-tint px-2 py-1 text-xs font-medium leading-snug text-status-amber-ink"
       >
         {text}
       </span>
@@ -70,7 +72,7 @@ export function PriceListExpiryNotice({
     // "inline" — bewust het lichtste gewicht: een screen dat over lijsten gaat, niet
     // over merken, mag geen kaart of pil krijgen.
     content = (
-      <span className="text-xs text-amber-800 dark:text-amber-300">
+      <span className="text-xs text-status-amber-ink">
         {text}
       </span>
     );

@@ -71,7 +71,7 @@ function ResultCard({ item }: { item: CatalogResult }) {
           <p className="truncate font-medium">{item.name}</p>
           <p className="text-xs text-muted-foreground">{specs.join(" · ")}</p>
           {item.missing && item.missing.length > 0 && (
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               no data for: {item.missing.join(", ")}
             </p>
           )}

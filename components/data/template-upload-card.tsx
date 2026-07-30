@@ -113,7 +113,7 @@ export function TemplateUploadCard({
           <div
             role="alert"
             data-reden={state.reden.code}
-            className="mt-3 rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            className="mt-3 rounded-lg bg-status-amber-tint px-4 py-3 text-sm text-status-amber-ink"
           >
             <p className="font-medium text-foreground">
               This file was not accepted

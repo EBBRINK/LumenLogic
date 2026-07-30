@@ -209,7 +209,7 @@ function ArchiveerKnop({
         the column disappears from the brand Excel.
       </p>
       {melding && (
-        <p role="alert" className="mt-1 text-amber-700 dark:text-amber-300">
+        <p role="alert" className="mt-1 text-status-amber-ink">
           {melding}
         </p>
       )}

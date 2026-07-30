@@ -4,7 +4,7 @@ import type { AlternativeView, ComparedField } from "./types";
 
 function Verdict({ v }: { v: ComparedField["verdict"] }) {
   if (v === "better")
-    return <span className="font-medium text-emerald-600 dark:text-emerald-400">↑ better</span>;
+    return <span className="font-medium text-status-green-ink">↑ better</span>;
   if (v === "worse")
     return <span className="text-destructive">↓ worse</span>;
   if (v === "equal")
@@ -40,7 +40,7 @@ export function EquivalenceTable({ alt }: { alt: AlternativeView }) {
             </Badge>
           </div>
           <p className="font-medium">{alt.name}</p>
-          <p className="text-xs text-emerald-700 dark:text-emerald-400">
+          <p className="text-xs text-status-green-ink">
             {alt.rationale}
           </p>
         </div>

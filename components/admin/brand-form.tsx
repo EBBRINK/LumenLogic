@@ -152,7 +152,7 @@ export function BrandForm({
         <div
           role="alert"
           data-testid="brand-duplicate-warning"
-          className="rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 sm:col-span-2 dark:bg-amber-950 dark:text-amber-200"
+          className="rounded-lg bg-status-amber-tint px-4 py-3 text-sm text-status-amber-ink sm:col-span-2"
         >
           <p className="font-medium text-foreground">
             {duplicate.matches.length === 1

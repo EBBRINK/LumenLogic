@@ -65,7 +65,7 @@ function verdict(
 }
 
 function toneClass(tone: Tone): string {
-  if (tone === "good") return "text-emerald-600 dark:text-emerald-400";
+  if (tone === "good") return "text-status-green-ink";
   if (tone === "bad") return "text-destructive";
   return "text-muted-foreground";
 }
@@ -83,7 +83,7 @@ function Party({
     <div
       className={
         "rounded-lg border p-4 " +
-        (accent ? "border-emerald-600/40 bg-emerald-50/40 dark:bg-emerald-950/20" : "")
+        (accent ? "border-status-green-dot/40 bg-status-green-tint/40 dark:bg-status-green-tint/20" : "")
       }
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

@@ -60,7 +60,7 @@ export function BrandLoadQueue({
                   <span
                     className={cn(
                       "size-2 rounded-full",
-                      wachtend ? STATUS.blauw.dot : "bg-emerald-500",
+                      wachtend ? STATUS.blauw.dot : "bg-status-green-dot",
                     )}
                   />
                   {wachtend ? "Waiting" : "Loaded"}

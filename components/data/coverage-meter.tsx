@@ -29,10 +29,10 @@ export function CoverageMeter({
           className={cn(
             "h-full rounded-full transition-all",
             pct >= 66
-              ? "bg-emerald-500"
+              ? "bg-status-green-dot"
               : pct >= 33
-                ? "bg-sky-500"
-                : "bg-slate-400",
+                ? "bg-status-blue-dot"
+                : "bg-status-grey-dot",
           )}
           style={{ width: `${Math.max(pct, total === 0 ? 0 : 2)}%` }}
         />

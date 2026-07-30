@@ -78,7 +78,7 @@ function DeviationList({ deviations }: { deviations: Deviation[] }) {
   return (
     <ul className="flex flex-col gap-1 text-sm">
       {deviations.map((d) => (
-        <li key={d.field} className="text-amber-700 dark:text-amber-400">
+        <li key={d.field} className="text-status-amber-ink">
           <span className="font-medium">{d.field}</span>: requested {d.requested} →
           delivered {d.delivered ?? "—"}
         </li>
@@ -163,7 +163,7 @@ function CandidateChoice({
             {candidate.articleCode ?? "—"}
           </p>
           {devs.length > 0 && (
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-1 text-xs text-status-amber-ink">
               {devs.map((d) => d.note).join(" · ")}
             </p>
           )}
@@ -741,7 +741,7 @@ export function ReviewQueue({
                 key={item.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
               >
-                <IconCheck className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <IconCheck className="shrink-0 text-status-green-ink" />
                 <EntityLine item={item} />
                 <StatusBadge status={item.status} className="ml-auto" />
                 <span className="w-full text-xs text-muted-foreground sm:w-auto">

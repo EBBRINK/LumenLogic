@@ -297,6 +297,35 @@ const LIGHT_TOKENS = {
   "--nav-border": "#3a4254",
 } as const;
 
+// Statuskleuren staan APART van LIGHT_TOKENS/DARK_TOKENS, want ze komen niet uit de
+// brand kit: het zijn de bevroren Tailwind-hues die de code al gebruikte (besluit
+// Timo 2026-07-30, DESIGN.md O13). Die scheiding is de bedoeling — LIGHT_TOKENS is
+// "wat de kit voorschrijft", dit is "wat er staat tot Eduard een statusramp levert".
+// De waarden zijn letterlijk uit node_modules/tailwindcss/theme.css overgenomen, dus
+// deze test is tegelijk de controle dat er niets is verschoven bij het omzetten.
+const STATUS_TOKENS_LIGHT = {
+  "--status-green-tint": "oklch(95% 0.052 163.051)", // emerald-100
+  "--status-green-ink": "oklch(43.2% 0.095 166.913)", // emerald-800
+  "--status-green-dot": "oklch(69.6% 0.17 162.48)", // emerald-500
+  "--status-amber-tint": "oklch(96.2% 0.059 95.617)", // amber-100
+  "--status-amber-ink": "oklch(47.3% 0.137 46.201)", // amber-800
+  "--status-blue-tint": "oklch(95.1% 0.026 236.824)", // sky-100
+  "--status-blue-ink": "oklch(44.3% 0.11 240.79)", // sky-800
+  "--status-red-tint": "oklch(94.1% 0.03 12.58)", // rose-100
+  "--status-purple-tint": "oklch(94.3% 0.029 294.588)", // violet-100
+  "--status-grey-tint": "oklch(96.8% 0.007 247.896)", // slate-100
+  "--status-orange-ink": "oklch(47% 0.157 37.304)", // orange-800
+} as const;
+
+const STATUS_TOKENS_DARK = {
+  "--status-green-tint": "oklch(26.2% 0.051 172.552)", // emerald-950
+  "--status-green-ink": "oklch(84.5% 0.143 164.978)", // emerald-300
+  "--status-amber-tint": "oklch(27.9% 0.077 45.635)", // amber-950
+  "--status-blue-ink": "oklch(82.8% 0.111 230.318)", // sky-300
+  "--status-purple-ink": "oklch(81.1% 0.111 293.571)", // violet-300
+  "--status-grey-ink": "oklch(86.9% 0.022 252.894)", // slate-300
+} as const;
+
 const DARK_TOKENS = {
   "--background": "#0f1626", // §14
   "--foreground": "#ffffff",
@@ -330,6 +359,116 @@ test("tokenwaarden dark komen uit kit §14 plus de vastgelegde besluiten", async
   const root = getComputedStyle(document.documentElement);
   for (const [token, value] of Object.entries(DARK_TOKENS)) {
     expect(root.getPropertyValue(token).trim(), `${token} in dark`).toBe(value);
+  }
+});
+
+test("statuskleuren zijn de bevroren Tailwind-hues, niet bijgestemd (O13)", async () => {
+  // Besluit Timo 2026-07-30: het mechanisme ging om (paletklassen → tokens), de
+  // kleuren niet. Deze test is het bewijs dat de omzetting waardevrij was: elke
+  // waarde staat letterlijk in node_modules/tailwindcss/theme.css. Gaat hij om,
+  // dan is er iemand aan de statuskleuren gaan draaien — en dat is een besluit
+  // dat bij Eduard hoort, niet in een commit.
+  await render(controls, "Specimen — bediening");
+  let root = getComputedStyle(document.documentElement);
+  for (const [token, value] of Object.entries(STATUS_TOKENS_LIGHT)) {
+    expect(root.getPropertyValue(token).trim(), `${token} in light`).toBe(value);
+  }
+
+  document.documentElement.classList.add("dark");
+  await render(controls, "Specimen — bediening");
+  root = getComputedStyle(document.documentElement);
+  for (const [token, value] of Object.entries(STATUS_TOKENS_DARK)) {
+    expect(root.getPropertyValue(token).trim(), `${token} in dark`).toBe(value);
+  }
+});
+
+test("elk statustoken rendert identiek aan de Tailwind-klasse die het vervangt", async () => {
+  // Dit is het echte bewijs dat de omzetting niets veranderd heeft: niet de tokenstring
+  // vergelijken, maar de gerénderde kleur van de oude klasse naast die van het nieuwe
+  // token. Zakt hier iets weg, dan is er bij het vervangen een tint verschoven.
+  const PAIRS = [
+    ["bg-emerald-100", "bg-status-green-tint"],
+    ["bg-emerald-500", "bg-status-green-dot"],
+    ["bg-amber-100", "bg-status-amber-tint"],
+    ["bg-amber-500", "bg-status-amber-dot"],
+    ["bg-sky-100", "bg-status-blue-tint"],
+    ["bg-sky-500", "bg-status-blue-dot"],
+    ["bg-rose-100", "bg-status-red-tint"],
+    ["bg-rose-500", "bg-status-red-dot"],
+    ["bg-violet-100", "bg-status-purple-tint"],
+    ["bg-violet-500", "bg-status-purple-dot"],
+    ["bg-slate-100", "bg-status-grey-tint"],
+    ["bg-slate-400", "bg-status-grey-dot"],
+    ["bg-orange-100", "bg-status-orange-tint"],
+    // De randparen lopen de andere kant op dan de inkt: licht in light, donker in dark.
+    ["bg-sky-300", "bg-status-blue-border"],
+    ["bg-amber-300", "bg-status-amber-border"],
+  ] as const;
+
+  for (const theme of ["light", "dark"] as const) {
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    // De dark-tegenhangers zijn andere shades, dus de paren wisselen mee.
+    const pairs =
+      theme === "light"
+        ? PAIRS
+        : ([
+            ["bg-emerald-950", "bg-status-green-tint"],
+            ["bg-amber-950", "bg-status-amber-tint"],
+            ["bg-sky-950", "bg-status-blue-tint"],
+            ["bg-rose-950", "bg-status-red-tint"],
+            ["bg-violet-950", "bg-status-purple-tint"],
+            ["bg-slate-800", "bg-status-grey-tint"],
+            ["bg-orange-950", "bg-status-orange-tint"],
+            ["bg-sky-800", "bg-status-blue-border"],
+            ["bg-amber-900", "bg-status-amber-border"],
+          ] as const);
+
+    await renderServer(
+      <div>
+        <h1 className="sr-only">{`Specimen — tokenpariteit ${theme}`}</h1>
+        {pairs.map(([oud, nieuw]) => (
+          <div key={oud}>
+            <span data-testid={`oud-${oud}`} className={oud}>
+              x
+            </span>
+            <span data-testid={`nieuw-${oud}`} className={nieuw}>
+              x
+            </span>
+          </div>
+        ))}
+      </div>,
+    );
+    await expect
+      .element(
+        page.getByRole("heading", { level: 1, name: `Specimen — tokenpariteit ${theme}` }),
+      )
+      .toBeInTheDocument();
+
+    for (const [oud] of pairs) {
+      const a = document.querySelector<HTMLElement>(`[data-testid="oud-${oud}"]`)!;
+      const b = document.querySelector<HTMLElement>(`[data-testid="nieuw-${oud}"]`)!;
+      expect(
+        getComputedStyle(b).backgroundColor,
+        `${oud} (${theme}) is niet meer dezelfde kleur als zijn token`,
+      ).toBe(getComputedStyle(a).backgroundColor);
+    }
+    document.documentElement.classList.remove("dark");
+  }
+});
+
+test("de statuskleuren zijn geen kit-kleuren, en dat is expliciet", async () => {
+  // Vangnet tegen een goedbedoelde "opruimactie": iemand die de statustokens naar
+  // het kit-palet trekt. Dat kan niet zonder afgeleide kleuren (kit-blauw haalt op
+  // de navy kaart 2,09:1) én het maakt de geprinte statuswoorden onwaar — "Yellow"
+  // zou oranje worden. Zie DESIGN.md O13.
+  await render(controls, "Specimen — bediening");
+  const root = getComputedStyle(document.documentElement);
+  const kitColours = ["#1ba89a", "#ff9500", "#d84c4c", "#8e9ba8", "#2d5a8c"];
+  for (const token of Object.keys(STATUS_TOKENS_LIGHT)) {
+    expect(
+      kitColours,
+      `${token} staat op een kit-kleur — dat is een besluit voor Eduard, niet voor een commit`,
+    ).not.toContain(root.getPropertyValue(token).trim().toLowerCase());
   }
 });
 
@@ -421,7 +560,12 @@ test("het logo-palet zit niet in de interface-tokens", async () => {
   // Violet/magenta horen bij het logo, niet bij de UI (DESIGN.md §1). Als ze hier
   // opduiken, is het logo-palet de interface in gesijpeld.
   const logoColours = ["#7c5cff", "#ec5cd6", "#7321d6"];
-  for (const token of Object.keys(LIGHT_TOKENS)) {
+  // Ook over de statustokens: --status-purple-* is violet-500 (oklch 292,7°) en NIET
+  // het logo-violet #7C5CFF. Deze guard is precies de plek om dat vast te leggen.
+  for (const token of [
+    ...Object.keys(LIGHT_TOKENS),
+    ...Object.keys(STATUS_TOKENS_LIGHT),
+  ]) {
     expect(
       logoColours,
       `logo-kleur in ${token} — hoort alleen in de logobestanden`,

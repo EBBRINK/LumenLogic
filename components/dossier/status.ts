@@ -4,14 +4,28 @@
 // "actie bij de klant", niet een fout. Systeemfouten zijn het enige andere rood.
 // UI-taal: Engels (XIS-terminologie). De code-namen van de statussen blijven bewust NL
 // ("groen"/"geel"/… als DB/enum-waarde); alleen de zichtbare labels zijn Engels.
+//
+// Sprint 2.0b: de kleuren staan niet langer als Tailwind-paletklassen in dit bestand
+// maar als --status-*-tokens in app/globals.css. De wáárden zijn ongewijzigd (bevroren
+// Tailwind-hues, letterlijk overgenomen) — dit was een mechanische omzetting, geen
+// herkleuring. Waarom niet naar het kit-palet: zie de toelichting in globals.css en
+// DESIGN.md O13. Kort: de kit heeft vijf kleuren voor zes statussen, en de labels ZIJN
+// de kleurnamen — "Yellow" naar oranje zetten maakt het geprinte woord onwaar.
+//
+// `print` hoort hier en niet in lib/pdf/estimate.ts, want de belofte in regel 1 ("één
+// bron van waarheid") gold tot nu toe alleen voor het scherm: de PDF had zijn eigen,
+// losse kopie van het palet. Het zijn bewust dónkerdere varianten dan de schermkleuren
+// — papier heeft geen backlight — dus ze zijn niet gelijk te trekken, wel op één plek
+// te zetten. Waarden ongewijzigd overgenomen uit die kopie.
 
 export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars";
 
 export type StatusMeta = {
   label: string; // korte UI-tekst
   word: string; // los woord voor zwart-witprint (NFR 4)
-  dot: string; // Tailwind bg-* voor het gekleurde bolletje
-  tint: string; // subtiele pill-achtergrond + tekst (licht + donker)
+  dot: string; // bg-status-*-dot voor het gekleurde bolletje
+  tint: string; // subtiele pill-achtergrond + tekst; dark loopt via de tokens
+  print: readonly [number, number, number]; // PDF-inkt, zie toelichting hieronder
   meaning: string; // tooltip/uitleg
   countsInTotal: boolean; // telt mee in het projecttotaal? (groen+geel wel)
 };
@@ -20,48 +34,54 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   open: {
     label: "Open",
     word: "Open",
-    dot: "bg-slate-400",
-    tint: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    dot: "bg-status-grey-dot",
+    tint: "bg-status-grey-tint text-status-grey-ink",
+    print: [0.45, 0.47, 0.51],
     meaning: "Not matched yet.",
     countsInTotal: false,
   },
   groen: {
     label: "Green",
     word: "Green",
-    dot: "bg-emerald-500",
-    tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    dot: "bg-status-green-dot",
+    tint: "bg-status-green-tint text-status-green-ink",
+    print: [0.02, 0.55, 0.38],
     meaning: "We have the product; all specs within the green margin.",
     countsInTotal: true,
   },
   geel: {
     label: "Yellow",
     word: "Yellow",
-    dot: "bg-amber-500",
-    tint: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    dot: "bg-status-amber-dot",
+    tint: "bg-status-amber-tint text-status-amber-ink",
+    print: [0.75, 0.51, 0.05],
     meaning: "Same brand, deviation within the yellow margin. Brink reviews and proposes.",
     countsInTotal: true,
   },
   blauw: {
     label: "Blue",
     word: "Blue",
-    dot: "bg-sky-500",
-    tint: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+    dot: "bg-status-blue-dot",
+    tint: "bg-status-blue-tint text-status-blue-ink",
+    print: [0.04, 0.51, 0.72],
     meaning: "Brand not in the catalog yet — data gap, our action (load the brand).",
     countsInTotal: false,
   },
   rood: {
     label: "Red",
     word: "Red",
-    dot: "bg-rose-500",
-    tint: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
+    dot: "bg-status-red-dot",
+    tint: "bg-status-red-tint text-status-red-ink",
+    print: [0.82, 0.26, 0.35],
     meaning: "Brand yes, this product no. Action on the customer's side.",
     countsInTotal: false,
   },
   paars: {
     label: "Purple",
     word: "Purple",
-    dot: "bg-violet-500",
-    tint: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    dot: "bg-status-purple-dot",
+    tint: "bg-status-purple-tint text-status-purple-ink",
+    print: [0.53, 0.36, 0.83],
     meaning: "Outside the assortment (not lighting). Report explicitly, never omit.",
     countsInTotal: true, // wél getoond op de estimate, maar als p.m. (niet opgeteld)
   },

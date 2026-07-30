@@ -128,8 +128,8 @@ export function EvaluationPanel({
                           className={cn(
                             "text-sm font-medium",
                             r.hit
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-rose-600 dark:text-rose-400",
+                              ? "text-status-green-ink"
+                              : "text-status-red-ink",
                           )}
                         >
                           {r.hit ? "hit" : "miss"}

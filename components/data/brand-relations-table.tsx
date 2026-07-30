@@ -61,12 +61,10 @@ const INDICATOR_LABEL: Record<PriceIndicator, string> = {
 };
 
 const INDICATOR_TINT: Record<PriceIndicator, string> = {
-  aanwezig_geldig:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  verloopt_binnenkort:
-    "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  verlopen: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  ontbreekt: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
+  aanwezig_geldig: "bg-status-green-tint text-status-green-ink",
+  verloopt_binnenkort: "bg-status-amber-tint text-status-amber-ink",
+  verlopen: "bg-status-grey-tint text-status-grey-ink",
+  ontbreekt: "bg-status-red-tint text-status-red-ink",
 };
 
 function daysSince(iso: string, todayIso: string): number {
@@ -191,7 +189,7 @@ export function BrandRelationsTable({
                   )}
                   {r.sharedBrandCode && (
                     <span
-                      className="ml-2 inline-flex h-5 items-center rounded-full bg-orange-100 px-2 text-xs font-medium text-orange-800 dark:bg-orange-950 dark:text-orange-300"
+                      className="ml-2 inline-flex h-5 items-center rounded-full bg-status-orange-tint px-2 text-xs font-medium text-status-orange-ink"
                       title="Multiple brands share this code — don't approach twice"
                     >
                       duplicate code

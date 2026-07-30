@@ -86,9 +86,11 @@ function CandidateRow({
               {unknown.map((f) => (
                 <span
                   key={f}
-                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  className="inline-flex items-center gap-1 rounded-full bg-status-grey-tint px-2 py-0.5 text-[11px] text-status-grey-ink"
                 >
-                  <span className="text-amber-500" aria-hidden>
+                  {/* -dot en niet -ink: dit is het hélder gele driehoekje (amber-500). De
+                      ink-waarde is amber-800 en zou er een bruin vlekje van maken. */}
+                  <span className="text-status-amber-dot" aria-hidden>
                     ⚠
                   </span>
                   {f}: no data

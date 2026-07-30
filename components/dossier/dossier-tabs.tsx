@@ -74,7 +74,7 @@ export function DossierTabs({
                 className={cn(
                   "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs tabular-nums",
                   reviewPending > 0
-                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                    ? "bg-status-amber-tint text-status-amber-ink"
                     : "bg-muted text-muted-foreground",
                 )}
               >
