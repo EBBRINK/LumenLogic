@@ -126,7 +126,22 @@ const WATT_TYPECODE = /[A-Za-z]\d+(?:[.,]\d+)?\s+W\b/;
 // zet een vermogen naast het woord.
 const WATT_VAN_DRIVER = /\bincl\.?\s*(?:\d+\s*x\s*)?drivers?\s*$/i;
 // Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
-const WATT_PER_BRON = /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*W\b/i;
+//
+// De tweede vorm kwam uit de vierde zwermronde: "SNEAK CEILING REC 2.0 … 2X6/9W 350/500mA".
+// Daar zit een vermenigvuldiging én een bereik door elkaar, en de eerste regel miste hem omdat
+// hij een W direct achter het getal eist ("2x6" wordt gevolgd door "/9W"). De parser las 9,
+// terwijl het armatuur er twee draagt en dus 18 W is — structureel de helft te laag. Gemeten:
+// 122 producten, alle Wever & Ducré, 340 landende veldvullingen. Bij de 1.0-varianten ("6/9W",
+// zonder vermenigvuldiging) is 9 juist wél correct, en die blijven staan.
+const WATT_PER_BRON =
+  /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*(?:\/\s*\d+(?:[.,]\d+)?\s*)?W\b/i;
+
+// Vermogen PER METER: "JANE 2000 IP40 LIGHT ROPE 14,4W/M LED 3000K", "ILANE … 15W/m". Het
+// totaal hangt af van de lengte — een strip van 5 m trekt 50 W bij 10 W/m — dus dit is geen
+// armatuurvermogen. Gemeten: 147 producten (Kreon 113, W&D 20, XAL 14), 185 landende
+// veldvullingen. Vaste-lengtevarianten van hetzelfde profiel dragen wél een totaal ("30W bij
+// 2 m") en die blijven staan.
+const WATT_PER_METER = /\d+(?:[.,]\d+)?\s*W\s*\/\s*m\b/i;
 
 // Is de match op deze plek een TYPECODE of TYPEMAAT in plaats van een vermogen?
 function isValseWatt(name: string, index: number, treffer: string): boolean {
@@ -157,7 +172,7 @@ function isValseWatt(name: string, index: number, treffer: string): boolean {
 // Twee lagen die onafhankelijk over hetzelfde teken oordelen, geven vroeg of laat tegengestelde
 // antwoorden op twee namen die hetzelfde product zijn.
 export function wattKandidaten(name: string): string[] {
-  if (!name || WATT_PER_BRON.test(name)) return [];
+  if (!name || WATT_PER_BRON.test(name) || WATT_PER_METER.test(name)) return [];
   const globaal = new RegExp(WATT_RE.source, "gi");
   const uit: string[] = [];
   let m: RegExpExecArray | null;
@@ -169,7 +184,7 @@ export function wattKandidaten(name: string): string[] {
 }
 
 function parseWatt(name: string): number | undefined {
-  if (WATT_PER_BRON.test(name)) return undefined;
+  if (WATT_PER_BRON.test(name) || WATT_PER_METER.test(name)) return undefined;
 
   // ── Per SPAN beoordelen, niet per naam (30 jul, tweede versie) ─────────────
   // De eerste versie wees de hele naam af zodra er ergens een typemaat-W in stond. Gemeten

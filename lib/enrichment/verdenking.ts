@@ -150,7 +150,7 @@ const LAMP_FITTING_BREED =
 // is een draadloze besturingsmodule. Gemeten 48 namen, 4 met een landend wattage, alle vier W&D.
 // Het KALE woord CONTROL mag niet: dat raakt 128 namen waaronder TossB's "ROUND CONTROL MINI Arm
 // 550mm - 6W LED 2700K", en dat is gewoon een armatuur.
-const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b|\bWIRELESS\b[^|]*\bCONTROL\b/i;
+const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b|\bWIRELESS\b[^|]*\bCONTROL\b|\bDIMMING\s+MODULE\b/i;
 
 // ── Railadapter, connectorset, voedingsstekker en lader ─────────────────────
 // Alle drie klein en alle drie door de derde zwermronde aangewezen.

@@ -257,3 +257,24 @@ test("de lampbelasting bij een fitting blijft gewoon staan", () => {
   expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage).toBe(12);
   expect(parseProductName("BISHOP CEILING SUSP 4.0 E27 W max. 25W A60/G95").maxWattage).toBe(25);
 });
+
+// ── Vermenigvuldiging mét bereik, en vermogen per meter (vierde zwermronde) ──
+test("2x6/9W levert niets: 9 is het vermogen per module, niet van het armatuur", () => {
+  // Gemeten 122 producten, alle W&D. Het 2.0-armatuur draagt er twee, dus 18 W — de parser las
+  // 9 en dat is structureel de helft te laag. De 1.0-variant zonder vermenigvuldiging klopt wél.
+  expect(
+    parseProductName("RON CEILING REC 2.0 LED 2700K B 2X6/9W 350/500mA 17V CRI90").maxWattage,
+  ).toBeUndefined();
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 LED 2700K B 6/9W 350/500mA 17V").maxWattage,
+  ).toBe(9);
+});
+
+test("een vermogen per meter is geen armatuurvermogen", () => {
+  // 147 producten (Kreon 113, W&D 20, XAL 14). Het totaal hangt van de lengte af.
+  expect(
+    parseProductName("JANE 2000 IP40 LIGHT ROPE 14,4W/M LED 3000K 48VDC").maxWattage,
+  ).toBeUndefined();
+  // Vaste-lengtevarianten dragen wél een totaal en blijven staan.
+  expect(parseProductName("ILANE CEILING REC 2.0m LED 3000K 30W 48V CRI90").maxWattage).toBe(30);
+});
