@@ -159,3 +159,33 @@ test("de reparatie raakt gewone namen niet", () => {
   expect(parseProductName("EASY KAP 80 FIX RND BLACK PAR 16 GZ10 Max 8W").maxWattage).toBe(8);
   expect(parseProductName("ENTERO 24W DALI 2700K 36deg").maxWattage).toBe(24);
 });
+
+// ── De losse W is bijna nooit een eenheid (30 jul, zwerm op Wever & Ducré) ───
+// Eén regel voor een familie die eerder als losse uitzonderingen groeide. Gemeten vóór het
+// bouwen: 140 landende voorstellen catalogusbreed (W&D 134, Sylvania 4, Marset 2).
+test("een typecode gevolgd door een losse W is geen wattage", () => {
+  // Het gevaarlijkste geval: de JUISTE waarde staat tien tekens verderop in dezelfde naam.
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage,
+  ).toBeUndefined();
+  expect(parseProductName("EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W").maxWattage).toBeUndefined();
+  expect(parseProductName("GINGER A XL42 W.CANOPY OAK").maxWattage).toBeUndefined();
+  // Een IP-KLASSE als vermogen — dit vond de zwerm en het stond op geen enkele lijst.
+  expect(parseProductName("LIFESAFE PRO TS 700 IP65 W EM3 NM DA").maxWattage).toBeUndefined();
+});
+
+test("een decimale typemaat met een losse W is geen wattage", () => {
+  // Een écht decimaal vermogen schrijft de eenheid VAST ("17,9W"), nooit los.
+  expect(parseProductName("ODREY SHADE 4.0 W").maxWattage).toBeUndefined();
+  expect(parseProductName("ILANE CEILING SURF 2.0 W 2.0m").maxWattage).toBeUndefined();
+  expect(parseProductName("1-PHASE TRACK ADAPTER 1.0 W for suspended").maxWattage).toBeUndefined();
+});
+
+test("de regel raakt de twee vormen NIET waar het getal wél het vermogen is", () => {
+  // De letter vóór het getal is hier de vermenigvuldigings-x: 10 W is het vermogen van één
+  // lichtbron. 87 gevallen, TossB 84 — zwijgen zou die allemaal kosten.
+  expect(parseProductName("Works IP65 1x10W LED | Batten Light Fitting").maxWattage).toBe(10);
+  // En hier zit de W VAST aan het getal, dus is hij de eenheid: een T5-buis van 13 W.
+  expect(parseProductName("F13W T5 fluorscentie lamp 840 Aircraft").maxWattage).toBe(13);
+  expect(parseProductName("Molla Vetri Componi200W").maxWattage).toBe(200);
+});

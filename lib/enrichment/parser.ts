@@ -84,19 +84,51 @@ function toNumber(raw: string): number {
 // armatuur, of een set van 12?) en dat is precies wat de ijzeren regel ontbrekend ≠ fout
 // verbiedt. Zwijgen laat de kolom leeg, en een lege kolom kan een betere bron later nog vullen.
 
-// Een getal gevolgd door een losse W die géén vermogen is: "C90 W" (CRI + kleurcode),
-// "80 W-W" (typemaat + dim-to-warm), "GX5.3 W" / "QR-CBC51 W" (lampvoet).
+// ── De losse W is bijna nooit een eenheid ───────────────────────────────────
+// Eén regel voor een hele familie, en hij is gemeten voordat hij gebouwd werd. `WATT_RE` staat
+// een spatie toe tussen het getal en de W (`(\d+)\s*(?:watt|w)\b`), en juist die spatie is het
+// probleem: een W die LOS staat is in deze catalogi meestal de kleurcode "wit", niet de eenheid
+// watt. Staat er dan vlak vóór het getal een letter, dan is het getal een TYPECODE:
+//
+//   RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10   → las 16   (lamptype; 12W staat ernaast!)
+//   EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W            → las 5.3  (lampvoet)
+//   GINGER A XL42 W.CANOPY OAK                          → las 42   (typemaat)
+//   LIFESAFE PRO TS 700 IP65 W EM3 NM DA                → las 65   (IP-KLASSE als vermogen)
+//   UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W            → las 90   (CRI)
+//
+// Gemeten catalogusbreed: 140 landende voorstellen, Wever & Ducré 134 · Sylvania 4 · Marset 2.
+// Bij PAR16 is het extra schadelijk: de júiste waarde (`max. 12W`) staat tien tekens verderop in
+// dezelfde naam, dus de verkeerde verdringt een goede.
+//
+// ── Twee dingen die de regel bewust NIET raakt, allebei nagemeten ────────────
+// • `1x10W` (87 gevallen, TossB 84): de letter ervoor is de vermenigvuldigings-x en 10 is dan het
+//   juiste vermogen van één lichtbron. De maal-vorm wordt apart afgehandeld (WATT_PER_BRON).
+// • `F13W`, `F36W`, `Componi200W` (12 gevallen): daar zit de W VAST aan het getal, en dan is hij
+//   wél de eenheid — een T5-buis van 13 W. Vandaar de eis dat de W los staat.
 const WATT_VALS: RegExp[] = [
-  /\bC\d{2,3}\s+W\b/i, // CRI-notatie met kleurcode erachter
-  /\b\d+\s+W-W\b/i, // typemaat gevolgd door de kleurcode W-W
-  /\b(?:GX|GU|GZ|G|QR-CBC)\s*\d+(?:[.,]\d+)?\s+W\b/i, // lampvoet gevolgd door kleurcode
+  /\b\d+\s+W-W\b/i, // typemaat gevolgd door de kleurcode W-W ("EASY KAP 80 W-W")
+  // Decimale typemaat plus losse kleurcode: "ODREY SHADE 4.0 W", "ILANE CEILING SURF 2.0 W 2.0m".
+  // Een écht decimaal vermogen schrijft de eenheid vast ("17,9W", "38.4W"), nooit los.
+  /\b\d+\.\d\s+W\b/i,
 ];
+
+// Een getal dat DIRECT achter een letter staat en gevolgd wordt door een LOSSE W: typecode.
+// Twee voorwaarden, want elk apart is te grof — zie de meting hierboven.
+const WATT_TYPECODE = /[A-Za-z]\d+(?:[.,]\d+)?\s+W\b/;
 // Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
 const WATT_PER_BRON = /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*W\b/i;
 
 function parseWatt(name: string): number | undefined {
   if (WATT_PER_BRON.test(name)) return undefined;
   if (WATT_VALS.some((re) => re.test(name))) return undefined;
+  // De typecode-toets kijkt naar de plek die WATT_RE zou pakken, niet naar de hele naam:
+  // "1x10W … PAR16 W" mag zijn 10 houden.
+  const m = WATT_RE.exec(name);
+  if (m && m.index > 0 && WATT_TYPECODE.test(name.slice(Math.max(0, m.index - 1)))) {
+    const kop = name.slice(0, m.index);
+    // niet de vermenigvuldigings-x: daar is het getal wél het vermogen van één lichtbron
+    if (!/\d[xX*]$/.test(kop) && /[A-Za-z]$/.test(kop)) return undefined;
+  }
   const raw = firstCapture(name, WATT_RE);
   if (raw == null) return undefined;
   const w = toNumber(raw);
