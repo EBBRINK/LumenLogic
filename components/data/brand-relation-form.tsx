@@ -3,7 +3,7 @@
 // Relatievelden bewerken op de detailpagina (stap 5): status, contactpersoon,
 // e-mail, laatste contact en notities — één save via dezelfde server action als
 // het overzicht (upsertBrandRelation blijft de enige schrijver, K2).
-import { STATUS_LABEL, type RelationStatus } from "./brand-relations-table";
+import { STATUS_LABEL, type RelationStatus } from "@/lib/brand-relations-view";
 
 export type BrandRelationFormValues = {
   brandId: string;

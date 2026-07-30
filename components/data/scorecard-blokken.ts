@@ -1,5 +1,7 @@
 // Pure vertaling van een BucketScore naar een mini-scorecard-blokje. Apart van
 // mini-scorecard.tsx (client) zodat RSC-pagina's hem server-side kunnen aanroepen.
+// ⚠️ Zonder aanroeper sinds 30 jul, samen met MiniScorecard — zie de kop van
+// mini-scorecard.tsx voor waarom die niet weggegooid zijn.
 import type { BucketScore, CatalogBucket } from "@/lib/field-catalog";
 import type { BucketBlok } from "./mini-scorecard";
 

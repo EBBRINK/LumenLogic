@@ -1,6 +1,12 @@
 // White-box RSC-tests van het merkrelaties-overzicht (stap 3/4) met fixture-data:
-// default-status zichtbaar, filters (status + "geen reactie"), kaart-badge op /data,
-// mini-scorecard. Screenshots licht/donker × mobiel/desktop.
+// default-status zichtbaar, filters (status + "geen reactie"), kaart-badge op /data.
+// Screenshots licht/donker × mobiel/desktop.
+//
+// Herbouw 30 jul (UX-audit bak 2 item 10): de vier punten van die herbouw hebben elk hun
+// eigen assertie — badge-die-op-klik-editeert, paginering met de stand in de URL, bulkactie
+// via ConfirmActionDialog, en wat er met de drie informatieloze kolommen gebeurd is.
+// Het filteren zit niet langer in de component maar in lib/brand-relations-view.ts; dat
+// wordt hier puur getoetst, zónder browser.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -9,8 +15,23 @@ import {
   BrandRelationsTable,
   type BrandRelationTableRow,
 } from "./brand-relations-table";
+import {
+  BrandRelationsPager,
+  BrandRelationsToolbar,
+} from "./brand-relations-controls";
+import {
+  BRAND_RELATIONS_PAGE_SIZE,
+  brandRelationsHref,
+  filterBrandRelationRows,
+  pageSlice,
+  pageWindow,
+  parseBrandRelationsQuery,
+  type BrandRelationBaseRow,
+  type BrandRelationsQuery,
+} from "@/lib/brand-relations-view";
+import { niveauLabel } from "@/lib/niveau-labels";
 import { DataCards } from "./data-cards";
-import { blokKleur, type BucketBlok } from "./mini-scorecard";
+import { blokKleur } from "./mini-scorecard";
 import { BrandRelationForm } from "./brand-relation-form";
 import { BrandScorecard } from "./brand-scorecard";
 import { PriceListExpiryNotice } from "./price-list-expiry-notice";
@@ -152,15 +173,7 @@ const viewports = {
 
 const TODAY = "2026-07-14";
 
-// Mini-scorecard-fixture: 10 blokjes met oplopende dekking + één grijs blokje.
-const blokken: BucketBlok[] = Array.from({ length: 10 }, (_, i) => ({
-  key: `b${i + 1}`,
-  labelEn: `Bucket ${i + 1}`,
-  ratio: i === 8 ? null : i / 9, // bucket 9 = nog niet meetbaar (grijs)
-  mustComplete: i === 9,
-}));
-
-const rows: BrandRelationTableRow[] = [
+const basisRijen: BrandRelationBaseRow[] = [
   {
     brandId: "b-flos",
     brandName: "Flos",
@@ -170,7 +183,6 @@ const rows: BrandRelationTableRow[] = [
     productCount: 42,
     priceListIndicator: "aanwezig_geldig",
     sharedBrandCode: false,
-    scorecard: blokken,
   },
   {
     brandId: "b-occhio",
@@ -181,7 +193,6 @@ const rows: BrandRelationTableRow[] = [
     productCount: 30,
     priceListIndicator: "verlopen",
     sharedBrandCode: true,
-    scorecard: blokken,
   },
   {
     brandId: "b-xal",
@@ -192,7 +203,6 @@ const rows: BrandRelationTableRow[] = [
     productCount: 18,
     priceListIndicator: "verloopt_binnenkort",
     sharedBrandCode: true,
-    scorecard: blokken,
   },
   {
     brandId: "b-kaal",
@@ -203,9 +213,27 @@ const rows: BrandRelationTableRow[] = [
     productCount: 0,
     priceListIndicator: "ontbreekt",
     sharedBrandCode: false,
-    scorecard: null, // 0 producten → n/a
   },
 ];
+
+const dekking: Record<string, number | null> = {
+  "b-flos": 0.62,
+  "b-occhio": 0.07,
+  "b-xal": 1,
+  "b-kaal": null, // 0 producten → n/a
+};
+
+const rows: BrandRelationTableRow[] = basisRijen.map((r) => ({
+  ...r,
+  completeness: dekking[r.brandId] ?? null,
+}));
+
+const ALLES: BrandRelationsQuery = {
+  q: "",
+  status: "alle",
+  noResponse: false,
+  page: 1,
+};
 
 function Screen({ children }: { children: React.ReactNode }) {
   return (
@@ -215,11 +243,56 @@ function Screen({ children }: { children: React.ReactNode }) {
   );
 }
 
-const overzicht = (
-  <Screen>
-    <BrandRelationsTable rows={rows} todayIso={TODAY} updateAction={noopAction} />
-  </Screen>
-);
+// Het scherm zoals de RSC het samenstelt: werkbalk (server) + tabel (client) + pager.
+// De actions blijven `noopAction`: een gewone functie mag de rendergrens niet over
+// ("Functions cannot be passed directly to Client Components"), dus een spy die de
+// FormData afvangt kan hier niet. Wat er naar de server gaat is daarom wit-op-zwart in
+// de DOM gepind (de verborgen velden van de bevestigingsdialoog) en aan de schrijfkant in
+// lib/repo/brand-relations.test.ts.
+function Overzicht({
+  query = ALLES,
+  paginaRijen = rows,
+  totaal = rows.length,
+  gefilterd = rows.length,
+}: {
+  query?: BrandRelationsQuery;
+  paginaRijen?: BrandRelationTableRow[];
+  totaal?: number;
+  gefilterd?: number;
+}) {
+  const window = pageWindow(gefilterd, query.page);
+  return (
+    <Screen>
+      <div className="space-y-4">
+        <BrandRelationsToolbar
+          query={query}
+          window={window}
+          totalCount={totaal}
+        />
+        <BrandRelationsTable
+          rows={paginaRijen}
+          updateAction={noopAction}
+          bulkAction={noopAction}
+        />
+        <BrandRelationsPager query={query} window={window} />
+      </div>
+    </Screen>
+  );
+}
+
+const overzicht = <Overzicht />;
+
+// renderServer() geeft terug vóór de client-tabel er staat; een synchrone DOM-telling
+// meteen daarna telt nul. Alle tests die zélf in de DOM kijken wachten hierop.
+async function wachtOpTabel() {
+  await expect
+    .element(page.getByLabelText("Select all brands on this page"))
+    .toBeInTheDocument();
+}
+
+function selects(): NodeListOf<HTMLSelectElement> {
+  return document.querySelectorAll("tbody select");
+}
 
 afterEach(() => {
   document.documentElement.classList.remove("dark");
@@ -232,7 +305,9 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(overzicht);
       // Wacht op echte content vóór de capture — een kale body-assert gaf blanco PNG's.
-      await expect.element(page.getByText("4 of 4 brands")).toBeInTheDocument();
+      await expect
+        .element(page.getByText("Showing 1–4 of 4 brands"))
+        .toBeInTheDocument();
       await expect.element(page.getByText("Occhio")).toBeInTheDocument();
       await page.screenshot({
         path: `./data-merkrelaties.${theme}.${device}.test.png`,
@@ -243,34 +318,283 @@ for (const theme of ["light", "dark"] as const) {
 
 test("default-status 'Niet benaderd' zichtbaar; dubbele-code-badge en prijslijst-badges", async () => {
   await renderServer(overzicht);
-  const flosStatus = page.getByLabelText("Status of Flos");
-  await expect.element(flosStatus).toHaveValue("niet_benaderd");
+  await expect
+    .element(page.getByLabelText("Change status of Flos"))
+    .toHaveTextContent("Not approached");
   // K8: beide L052-merken dragen de badge.
   expect(page.getByText("duplicate code").all()).toHaveLength(2);
   await expect.element(page.getByText("Expired")).toBeInTheDocument();
   await expect.element(page.getByText("Missing")).toBeInTheDocument();
-  await expect.element(page.getByText("4 of 4 brands")).toBeInTheDocument();
+  await expect
+    .element(page.getByText("Showing 1–4 of 4 brands"))
+    .toBeInTheDocument();
 });
 
-test("statusfilter en zoeken beperken de lijst", async () => {
-  await renderServer(overzicht);
-  await page.getByLabelText("Filter by status").selectOptions("Data received");
-  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
-  await expect.element(page.getByText("XAL")).toBeInTheDocument();
-  expect(page.getByText("Flos").query()).toBeNull();
+// ── Punt 1: badge die op klik editeerbaar wordt ──────────────────────────────
 
-  await page.getByLabelText("Filter by status").selectOptions("All statuses");
-  await page.getByLabelText("Search by brand name").fill("occ");
-  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
-  await expect.element(page.getByText("Occhio")).toBeInTheDocument();
+test("punt 1: geen enkele combobox in rust; klikken op de badge levert er precies één", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  // Dit is de kern van de bevinding: 438 rijen × een gemonteerde <select>. Vier rijen,
+  // nul comboboxen — de status staat er als badge.
+  expect(selects()).toHaveLength(0);
+  await expect
+    .element(page.getByLabelText("Change status of Flos"))
+    .toHaveTextContent("Not approached");
+
+  await page.getByLabelText("Change status of Flos").click();
+  await expect
+    .element(page.getByLabelText("Status of Flos"))
+    .toHaveValue("niet_benaderd");
+  // Eén open editor op de hele pagina, niet één per rij.
+  expect(selects()).toHaveLength(1);
 });
 
-test("'geen reactie'-filter: alléén benaderd + laatste contact ouder dan de drempel", async () => {
+test("punt 1: de editor houdt exact de bestaande statusvocabulaire", async () => {
   await renderServer(overzicht);
-  await page.getByText(/No response/).click();
-  await expect.element(page.getByText("1 of 4 brands")).toBeInTheDocument();
-  await expect.element(page.getByText("Occhio")).toBeInTheDocument();
-  expect(page.getByText("Merk Kaal").query()).toBeNull(); // recent contact
+  await wachtOpTabel();
+  await page.getByLabelText("Change status of Occhio").click();
+  const editor = selects()[0];
+  expect([...editor.options].map((o) => o.value)).toEqual([
+    "niet_benaderd",
+    "benaderd",
+    "wacht_op_data",
+    "data_ontvangen",
+    "verwerkt",
+    "afgewezen",
+  ]);
+  expect([...editor.options].map((o) => o.textContent)).toEqual([
+    "Not approached",
+    "Approached",
+    "Awaiting data",
+    "Data received",
+    "Processed",
+    "Declined",
+  ]);
+});
+
+test("punt 1: kiezen sluit de editor weer — de badge is de ruststand", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  await page.getByLabelText("Change status of Flos").click();
+  await page.getByLabelText("Status of Flos").selectOptions("Awaiting data");
+  await expect.poll(() => selects().length).toBe(0);
+});
+
+// ── Punt 2: paginering, met de stand in de URL ───────────────────────────────
+
+test("punt 2: 438 merken leveren 25 rijen op de pagina, niet 438", async () => {
+  const veel: BrandRelationTableRow[] = Array.from({ length: 438 }, (_, i) => ({
+    brandId: `b-${i}`,
+    brandName: `Brand ${String(i).padStart(3, "0")}`,
+    brandCode: `L${String(i).padStart(3, "0")}`,
+    status: "niet_benaderd",
+    lastContactAt: null,
+    productCount: i,
+    priceListIndicator: "aanwezig_geldig",
+    sharedBrandCode: false,
+    completeness: null,
+  }));
+  const window = pageWindow(veel.length, 1);
+  expect(window.pageCount).toBe(18);
+  const pagina = pageSlice(veel, window);
+  expect(pagina).toHaveLength(BRAND_RELATIONS_PAGE_SIZE);
+
+  await renderServer(
+    <Overzicht paginaRijen={pagina} totaal={438} gefilterd={438} />,
+  );
+  await wachtOpTabel();
+  // Meting, geen schatting: 25 datarijen in de body, en nul comboboxen.
+  expect(document.querySelectorAll("tbody tr")).toHaveLength(25);
+  expect(selects()).toHaveLength(0);
+  await expect
+    .element(page.getByText("Showing 1–25 of 438 brands"))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("Page 1 of 18")).toBeInTheDocument();
+});
+
+test("punt 2: pager en filters dragen de hele stand in de URL", () => {
+  const query: BrandRelationsQuery = {
+    q: "occ",
+    status: "benaderd",
+    noResponse: true,
+    page: 3,
+  };
+  // Bladeren houdt zoekterm én filters vast.
+  expect(brandRelationsHref(query, { page: 4 })).toBe(
+    "/data/brand-relations?q=occ&status=benaderd&noresponse=1&page=4",
+  );
+  // Een andere selectie zet de pagina terug op 1 — anders sta je op pagina 3 van 1.
+  expect(brandRelationsHref(query, { status: "verwerkt" })).toBe(
+    "/data/brand-relations?q=occ&status=verwerkt&noresponse=1",
+  );
+  // Heen en weer: de URL is de enige bron van waarheid.
+  expect(
+    parseBrandRelationsQuery({
+      q: "occ",
+      status: "benaderd",
+      noresponse: "1",
+      page: "3",
+    }),
+  ).toEqual(query);
+  // Onzin uit de URL valt terug op de veilige stand, hij crasht niet.
+  expect(
+    parseBrandRelationsQuery({ status: "bestaat_niet", page: "-4" }),
+  ).toEqual(ALLES);
+});
+
+test("punt 2: de pagerknoppen staan er echt en wijzen naar de buurpagina's", async () => {
+  const query: BrandRelationsQuery = {
+    q: "",
+    status: "alle",
+    noResponse: false,
+    page: 2,
+  };
+  await renderServer(
+    <Overzicht query={query} paginaRijen={rows} totaal={438} gefilterd={438} />,
+  );
+  await expect.element(page.getByText("Page 2 of 18")).toBeInTheDocument();
+  await expect
+    .element(page.getByRole("link", { name: "Previous", exact: true }))
+    .toHaveAttribute("href", "/data/brand-relations");
+  await expect
+    .element(page.getByRole("link", { name: "Next", exact: true }))
+    .toHaveAttribute("href", "/data/brand-relations?page=3");
+});
+
+test("statusfilter en zoeken beperken de lijst (puur, zoals de RSC het doet)", () => {
+  const alleen = filterBrandRelationRows(
+    basisRijen,
+    { ...ALLES, status: "data_ontvangen" },
+    TODAY,
+  );
+  expect(alleen.map((r) => r.brandName)).toEqual(["XAL"]);
+
+  const gezocht = filterBrandRelationRows(basisRijen, { ...ALLES, q: "occ" }, TODAY);
+  expect(gezocht.map((r) => r.brandName)).toEqual(["Occhio"]);
+
+  // Zoeken op merkcode werkt ook — L052 wordt door twee merken gedeeld (K8).
+  const opCode = filterBrandRelationRows(basisRijen, { ...ALLES, q: "l052" }, TODAY);
+  expect(opCode.map((r) => r.brandName)).toEqual(["Occhio", "XAL"]);
+});
+
+test("'geen reactie'-filter: alléén benaderd + laatste contact ouder dan de drempel", () => {
+  const geenReactie = filterBrandRelationRows(
+    basisRijen,
+    { ...ALLES, noResponse: true },
+    TODAY,
+  );
+  expect(geenReactie.map((r) => r.brandName)).toEqual(["Occhio"]);
+});
+
+test("de werkbalk toont het statusfilter als links met aria-current", async () => {
+  await renderServer(
+    <Overzicht query={{ ...ALLES, status: "benaderd" }} gefilterd={2} />,
+  );
+  await expect
+    .element(page.getByRole("link", { name: "Approached", exact: true }))
+    .toHaveAttribute("aria-current", "page");
+  await expect
+    .element(page.getByRole("link", { name: "Data received", exact: true }))
+    .toHaveAttribute("href", "/data/brand-relations?status=data_ontvangen");
+});
+
+// ── Punt 3: bulkactie met één bevestiging ────────────────────────────────────
+
+test("punt 3: selectie + bulkstatus gaat via één bevestiging, met de juiste lading", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  // Geen selectie → geen bulkbalk (het scherm blijft een lijst, geen formulier).
+  expect(page.getByText(/selected/).query()).toBeNull();
+
+  await page.getByLabelText("Select Flos").click();
+  await page.getByLabelText("Select XAL").click();
+  await expect.element(page.getByText("2 selected")).toBeInTheDocument();
+
+  await page
+    .getByLabelText("Status for the selected brands")
+    .selectOptions("Processed");
+  await page.getByRole("button", { name: "Apply to 2" }).click();
+
+  // Eén bevestiging, en die noemt het doel bij naam — aantal én doelstatus.
+  await expect
+    .element(page.getByText(/Set 2 brands to “Processed”\?/))
+    .toBeInTheDocument();
+  // De lading die straks de server-action in gaat, wit-op-zwart in de DOM.
+  const dialoog = document.querySelector('[role="dialog"]')!;
+  expect(
+    dialoog.querySelector<HTMLInputElement>('input[name="brandIds"]')!.value,
+  ).toBe("b-flos,b-xal");
+  expect(
+    dialoog.querySelector<HTMLInputElement>('input[name="status"]')!.value,
+  ).toBe("verwerkt");
+  // Precies één bevestigknop — geen tweede pad langs de dialoog om.
+  await expect
+    .element(page.getByRole("button", { name: "Set 2 to Processed" }))
+    .toBeInTheDocument();
+
+  // Bevestigen sluit de dialoog én maakt de selectie leeg: één handeling, één gevolg.
+  // (Dit is precies waarvoor ConfirmActionDialog een `onDone` gekregen heeft — de drie
+  // oudere aanroepers laten hun trigger verdwijnen en sloten daardoor vanzelf.)
+  await page.getByRole("button", { name: "Set 2 to Processed" }).click();
+  await expect.poll(() => page.getByText("2 selected").query()).toBeNull();
+  await expect
+    .poll(() => document.querySelector('[role="dialog"]'))
+    .toBeNull();
+});
+
+test("punt 3: 'alles op deze pagina' selecteert precies de zichtbare rijen", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  await page.getByLabelText("Select all brands on this page").click();
+  await expect.element(page.getByText("4 selected")).toBeInTheDocument();
+  await page.getByRole("button", { name: "Clear selection" }).click();
+  await expect.poll(() => page.getByText("4 selected").query()).toBeNull();
+});
+
+// ── Punt 4: de drie kolommen zonder informatie ───────────────────────────────
+
+test("punt 4: 'Last contact' is geen kolom meer maar staat onder de statusbadge", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  // De kop is weg (was 438× "—")...
+  expect(
+    page.getByRole("columnheader", { name: "Last contact" }).query(),
+  ).toBeNull();
+  // ...maar de datum zelf is niet verdwenen: hij staat bij de status waar hij bij hoort,
+  // en alleen bij merken die écht contact hebben gehad.
+  await expect
+    .element(page.getByText("Last contact 01-06-2026"))
+    .toBeInTheDocument();
+  expect(page.getByText(/Last contact/).all()).toHaveLength(3); // Flos heeft er geen
+});
+
+test("punt 4: 'Price list' tint alleen de uitzonderingen, niet de 437× 'Valid'", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  const valid = page.getByText("Valid").element();
+  const expired = page.getByText("Expired").element();
+  // Geldig = stille tekst zonder tint; de uitzonderingen dragen wél een badge.
+  expect(valid.className).not.toContain("status-green-tint");
+  expect(valid.className).toContain("text-muted-foreground");
+  expect(expired.className).toContain("status-grey-tint");
+  expect(page.getByText("Missing").element().className).toContain(
+    "status-red-tint",
+  );
+});
+
+test("punt 4: 'Completeness' is een percentage met link naar de scorecard, geen blokjesdiagram", async () => {
+  await renderServer(overzicht);
+  await wachtOpTabel();
+  // Geen micro-diagram meer in de rij.
+  expect(document.querySelectorAll("tbody .size-3")).toHaveLength(0);
+  const pct = page.getByRole("link", { name: "62%" });
+  await expect.element(pct).toBeInTheDocument();
+  await expect
+    .element(pct)
+    .toHaveAttribute("href", "/data/brand-relations/b-flos");
+  // 0 producten blijft "n/a" — geen 0% dat als slecht rapportcijfer leest.
+  await expect.element(page.getByText("n/a")).toBeInTheDocument();
 });
 
 test("kaart op /data: 'Event log' aanwezig; Loading en Brand relations niet meer", async () => {
@@ -285,10 +609,9 @@ test("kaart op /data: 'Event log' aanwezig; Loading en Brand relations niet meer
   expect(page.getByText("Brand relations").query()).toBeNull();
 });
 
-test("mini-scorecard: n/a bij 0 producten en donkergroen bij 100% must", async () => {
-  await renderServer(overzicht);
-  await expect.element(page.getByText("n/a")).toBeInTheDocument();
-  // Kleurfunctie (pure): donkergroen alleen bij mustComplete + ratio 1.
+test("mini-scorecard-kleurfunctie blijft gelden voor het detailscherm", () => {
+  // De blokjes zijn uit de OVERZICHTSRIJ verdwenen (punt 4), de kleurregel niet: het
+  // detailscherm tekent de scorecard nog steeds op dezelfde gradient.
   expect(blokKleur({ key: "x", labelEn: "x", ratio: 1, mustComplete: true }))
     .toBe("hsl(142 72% 26%)");
   expect(blokKleur({ key: "x", labelEn: "x", ratio: 0.5, mustComplete: false }))
@@ -487,8 +810,11 @@ test("detail-scorecard (G9-G12): categorie 1-10 met percentage, categorie 11 apa
     .element(page.getByText(/66 fields requested in the brand Excel/))
     .toBeInTheDocument();
   // G11: drie totalen onderaan, veldgewogen over 1-10 — niet over 11.
-  for (const niveau of ["must", "wanna", "nice"]) {
-    const total = page.getByLabelText(`Total ${niveau}`);
+  // Het aria-label draagt sinds UX-audit-item 4 het WEERGAVELABEL (Required/Requested/
+  // Optional), niet de opgeslagen enum; deze assertie stond nog op de enum en was daardoor
+  // al rood vóór deze herbouw. Gerepareerd langs dezelfde map die de component gebruikt.
+  for (const niveau of ["must", "wanna", "nice"] as const) {
+    const total = page.getByLabelText(`Total ${niveauLabel(niveau)}`);
     await expect.element(total).toBeInTheDocument();
     await expect.element(total).toHaveTextContent(/%/);
   }

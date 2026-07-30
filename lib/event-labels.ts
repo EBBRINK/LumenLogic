@@ -70,6 +70,9 @@ export const ACTION_LABEL: Record<string, string> = {
   brand_message_prepared: "Brand message prepared",
   brand_relation_status_changed: "Brand relation status changed",
   brand_relation_updated: "Brand relation updated",
+  // Bulkactie op het merkrelaties-overzicht (30 jul). Staat NAAST de per-merk-events, niet
+  // in plaats daarvan: dit is de handeling, die zijn de gevolgen.
+  brand_relation_status_bulk_set: "Brand relation status set in bulk",
   brand_template_downloaded: "Brand template downloaded",
   brand_upload_approved: "Brand upload approved",
   brand_upload_rejected: "Brand upload rejected",

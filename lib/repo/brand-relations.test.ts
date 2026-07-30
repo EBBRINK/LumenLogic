@@ -8,6 +8,7 @@ import { brandRelations, brands, events, products } from "@/db/schema";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { archiveEigenVeld, createEigenVeld } from "@/lib/repo/custom-fields";
 import {
+  bulkSetBrandRelationStatus,
   getAllBrandCompleteness,
   getBrandCompleteness,
   listBrandRelations,
@@ -407,4 +408,83 @@ test("1.8: een GEARCHIVEERD eigen veld verdwijnt uit de scorecard", async () => 
   const na = await getBrandCompleteness(db, brandId);
   expect(na.aggregate.templateFieldCount).toBe(66);
   expect(na.filledByField[eigenVeldKey(def)]).toBeUndefined();
+});
+
+// ── UX-audit 30 jul, bak 2 item 10 ───────────────────────────────────────────
+
+test("getAllBrandCompleteness met brandIds: alleen die merken, met identieke cijfers", async () => {
+  const db = await createTestDb();
+  const a = await seedBrandProduct(db, {
+    brand: "Merk Een", name: "P1", kelvin: 3000, color1: "wit",
+  });
+  const b = await seedBrandProduct(db, {
+    brand: "Merk Twee", name: "P2", cri: 80,
+  });
+
+  const beperkt = await getAllBrandCompleteness(db, undefined, [a.brandId]);
+  expect([...beperkt.keys()]).toEqual([a.brandId]);
+  // De grens mag de UITKOMST niet veranderen — alleen hoeveel er gescand wordt.
+  const alles = await getAllBrandCompleteness(db);
+  expect(beperkt.get(a.brandId)).toEqual(alles.get(a.brandId));
+  expect(beperkt.has(b.brandId)).toBe(false);
+
+  // Lege selectie raakt de database niet en levert een lege map (geen kale `in ()`).
+  expect(await getAllBrandCompleteness(db, undefined, [])).toEqual(new Map());
+});
+
+test("bulkSetBrandRelationStatus: één schrijfronde, per merk een event én één bulk-event", async () => {
+  const db = await createTestDb();
+  const a = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
+  const b = await seedBrandProduct(db, { brand: "Merk B", name: "P2" });
+  const c = await seedBrandProduct(db, { brand: "Merk C", name: "P3" });
+  // C staat al op de doelstatus: die telt niet als wijziging en krijgt geen event.
+  await upsertBrandRelation(db, c.brandId, { status: "benaderd" }, "tester");
+
+  const res = await bulkSetBrandRelationStatus(
+    db,
+    // Dubbele id erin: de ON CONFLICT-clausule mag niet twee keer dezelfde rij raken.
+    [a.brandId, b.brandId, c.brandId, a.brandId],
+    "benaderd",
+    "tester",
+  );
+  expect(res).toEqual({ changed: 2, unchanged: 1 });
+
+  const statussen = await db
+    .select({ brandId: brandRelations.brandId, status: brandRelations.status })
+    .from(brandRelations);
+  expect(statussen).toHaveLength(3);
+  expect(statussen.every((r) => r.status === "benaderd")).toBe(true);
+
+  // Regel 5 op twee niveaus: per merk het gewone status-event (zodat de merkgeschiedenis
+  // niet afhangt van wélk pad de wijziging nam), plus één event voor de handeling zelf.
+  const perMerk = await eventsFor(db, a.brandId);
+  expect(perMerk.map((e) => e.action)).toEqual(["brand_relation_status_changed"]);
+  expect(perMerk[0].payload).toEqual({
+    from: "niet_benaderd",
+    to: "benaderd",
+    bulk: true,
+  });
+  expect(await eventsFor(db, c.brandId)).toHaveLength(1); // alleen de losse upsert
+
+  const bulk = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "brand_relation_status_bulk_set"));
+  expect(bulk).toHaveLength(1);
+  expect(bulk[0].payload).toEqual({
+    status: "benaderd",
+    requested: 3,
+    changed: 2,
+  });
+  expect(bulk[0].actor).toBe("tester");
+});
+
+test("bulkSetBrandRelationStatus met een lege selectie doet niets — ook geen event", async () => {
+  const db = await createTestDb();
+  expect(await bulkSetBrandRelationStatus(db, [], "verwerkt")).toEqual({
+    changed: 0,
+    unchanged: 0,
+  });
+  expect(await db.select().from(events)).toHaveLength(0);
+  expect(await db.select().from(brandRelations)).toHaveLength(0);
 });
