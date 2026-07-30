@@ -3857,3 +3857,34 @@ regels met code `Lw101`, in drie dossiers, met drie verschillende armaturen (Axo
 het maatwerk-armatuur hierboven, en een lege "Maatwerk wandarmatuur"). Wie een regel aanhaalt,
 moet het dossier erbij noemen — anders kijken twee mensen naar een andere regel en denken ze
 elkaar tegen te spreken.
+
+---
+
+## 2026-07-30 — De les uit vier valstrikken op één dag: de generalisatie is de fout
+
+Vier keer op één dag wilde ik een onderdeel-filter bouwen op een woord dat in de productnaam
+stond. Vier keer bleek datzelfde woord ook in échte armaturen te staan, en vier keer redde
+dezelfde gewoonte het: **eerst tellen wát de regel raakt, en dan naar de namen kijken in plaats
+van naar het getal.**
+
+| term | wilde ik weren | maar het raakt óók | het onderscheid dat wél werkt |
+|---|---|---|---|
+| `^LAMP` | losse vervanglampen (91) | Egoluce's `LAMP. SOSP./PAR./TAVOLO` — Italiaanse armatuurtypes (27) | eist óók een fitting of lamptype in de naam |
+| `SHADE` | losse kappen | `ROOMOR … PAR16 B NO SHADE max. 15W GU10` (31 armaturen) | eist een `max.`-opgave **en** géén fitting |
+| `CONTROL` | Casambi-besturingsmodules (4) | TossB's `ROUND CONTROL MINI Arm 550mm - 6W LED` (128 namen) | alleen in de samenstelling `WIRELESS … CONTROL` |
+| `TRACK ADAPTER` | railadapters (22) | **192 XAL-armaturen** waar het een montage-optie aan het regeleinde is | de POSITIE: niet aan het eind van de naam |
+
+Die laatste was de gevaarlijkste: die 192 XAL-producten dragen CRI, kelvin en wattage die al op
+productie staan. Een kale term-regel had ze alle drie afgenomen.
+
+**Twee bijvangsten van dezelfde soort.** De typecode-regel werkte eerst op NAAMniveau en wees de
+hele naam af zodra er ergens een typemaat-`W` in stond; gemeten kostte dat 16 namen een aanwezige
+juiste waarde (`SIRRO SPOT INSET 1.0 W max. 12W` → niets in plaats van 12). En de kap-regel paste
+de fitting-uitzondering toe op de héle klasse, terwijl alleen `SHADE` hem nodig had —
+`BOX MINI PAR16 INNER REFLECTOR B max. 10W` glipte daardoor door, want die `PAR16` slaat op de
+lamp waarvoor de reflector bedoeld is.
+
+**De vorm is steeds dezelfde:** een regel die op de hele naam werkt in plaats van op de plek waar
+de waarde vandaan komt, of op een hele klasse in plaats van op de term die de uitzondering nodig
+heeft. Wie hier een nieuwe onderdeel-term toevoegt: meet eerst hoeveel namen hij raakt, print de
+namen uit, en splits pas daarna.
