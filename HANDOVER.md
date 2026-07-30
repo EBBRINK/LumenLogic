@@ -3744,3 +3744,76 @@ archivering zonder VERSE telling"` faalt óók op een kale `origin/main` (nageme
 wegwerp-worktree op 1f0fb7e: 1 rood van 1500). In isolatie is hij 3 van de 3 keer groen —
 hij valt alleen om onder de volle-suite-belasting. Bestaande bevinding, hoort bij de sessie
 die `custom-fields` bezit. De overige rode tests wisselden per run en zijn in isolatie groen.
+---
+
+## 2026-07-30 — Spec-kolommen 28 merken: ronde 0 af, ronde 3 begonnen
+
+Werkbranch: `claude/relaxed-tereshkova-c27ac7`. **Niets gepusht, productie onaangeraakt.**
+Alles op de Neon-branch `enrichment-serien` (`ep-rapid-credit-at806lp6`), achter
+`scripts/branch-guard.ts`. Probleem: `docs/probleem-speckolommen-28-merken.md`, plan:
+`docs/plan-speckolommen-28-merken.md`.
+
+### Wat er nu staat en werkt
+
+- **`publishRun` bundelt.** Was drie round-trips per product (135–152 ms elk, 12,6 uur voor de
+  catalogus), nu één select + één `UPDATE … FROM (VALUES …)` per blok van 500. Twee dingen
+  werden er veiliger van: "nooit overschrijven" wordt nu door de database afgedwongen
+  (`coalesce(nullif(p.kolom,''), v.kolom)`, race-vrij) en `tier2_source` krijgt per veld dezelfde
+  voorwaarde als de vulling. `applied` telt wat de database teruggeeft.
+- **Drempel op de foutratio.** `errorRate` werd berekend en nergens vergeleken; één 'fout'
+  blokkeert nu de hele run (`DEFAULT_MAX_SAMPLE_ERROR_RATE = 0`, uitzondering expliciet te typen).
+  De UI zet de publiceerknop uit en zegt waarom.
+- **`revertRun`.** "Onomkeerbaar" was een eigenschap van de code, niet van de data. Draait alleen
+  terug wat nog exact onze waarde is én ons herkomststempel draagt.
+- **Voorstelpoort.** `verdenking.ts` hing aan nul productiepaden en is aangesloten in
+  `startEnrichmentRun` (niet in de parser — die voedt ook de aanvraagkant). Weert nu ~2.100 van
+  ~146.000; geweerde voorstellen staan geteld in `enrichment_runs.counts.onderdrukt`.
+- **Zwerm-gereedschap**: `scripts/zwerm-export.ts` (cellen + vallen + tegenproef + manifesthash)
+  en `scripts/zwerm-lees.ts` (fail-closed verwerker). `zwerm/` staat in `.gitignore`.
+
+### Parser-reparaties, alle vier gemeten vóór en ná
+
+| wat | gemeten omvang |
+|---|---|
+| `NON DIM` las als dimbaar | 3.164 landende producten kregen de OMGEKEERDE waarde; XAL's dimbaarheidsrun ging van 3.449 naar 649 voorstellen |
+| `C90 W` / `nn W-W` / `GX5.3 W` / `NxMW` als wattage | samen 1.442 van 71.883 → 0. `1x10W` blijft 10 |
+| het product ís een voeding | naam-begin-anker + drie samenstellingen die overal mogen; 453 producten, 3.700 valse positieven vermeden |
+| wattage boven 999 W | 16 voorstellen: 15 railprofielen, 1 typefout in de bron |
+
+### Runs op de branch
+
+- `99872733` Flos Architectural · cri — **gepubliceerd**, 27/27, elk met herkomststempel.
+- `500d0b4f`, `683d047f`, `f46b7678` — Flos · maxWattage, **afgewezen** (zwerm/verouderd).
+- `572e6baa` — Flos · maxWattage, 188 voorstellen, **wacht op Timo's steekproefoordeel**.
+
+### Open eindes
+
+1. **Prado en TossB-lumen zijn bevroren** (besluit Timo): Prado's kelvin/cri/beamAngle/dimmable
+   (23.392 vullingen) wacht op de kolomroute, want Prado is het enige merk waar beide routes over
+   hetzelfde veld iets zeggen — de enige onafhankelijke kruiscontrole die dit project heeft.
+2. **Ronde 1 moet herbouwd** met een gecureerd `rijfilter` in plaats van de Serien-specifieke
+   boolean `alleenGeintegreerdeLed`. `stap1Klaar` uit het zwerm-onderzoek is géén werklijst: vier
+   van de elf ingangen dragen in hun eigen kanttekening een gemeten defect.
+3. **Muuto verhuist naar ronde 2.** Gemeten op de geïntegreerde-LED-populatie (152 rijen): de
+   typografische grens levert 41 waarden, de betekenisgrens 435.
+4. **Negen Marset-sleutels spreken zichzelf tegen** in de bron (dubbele sleutel, afwijkende
+   tekst). Flos en Lombardo hebben óók duplicaten maar die dragen identieke tekst; de overzetting
+   heeft een dedup-stap nodig met die negen bij naam in het runrapport.
+5. **Eén bekend lek dat bewust open blijft**: een onderdeel waarvan het onderdeelwoord niet
+   vooraan staat én geen sterke samenstelling is. Gemeten omvang: nul, na de BELT-reparatie.
+   De zwerm is daar het vangnet, niet de regex.
+6. **De meetlat ziet dit werk maar deels.** 9 van de 28 merken worden gevraagd, 70 spec-regels,
+   waarvan 5 blauw/open. Per ronde hoort hardop in het rapport wélke merken per constructie
+   onmeetbaar zijn — anders leest "0 verschil" als "geen effect" terwijl het "niet gevraagd" is.
+
+### Twee lessen die geld waard zijn
+
+- **Kies je repetitiemerk niet op grootte.** Flos Architectural was klein en volledig te
+  overzien, en bleek het vuilste merk van de catalogus: 21,3 % van zijn wattage-voorstellen staat
+  op een onderdeelnaam, tegen 0,08 % bij Lombardo en 0,00 % bij Prado. De 38,6 % afkeur uit de
+  eerste zwermronde zei iets over Flos, niet over ronde 3 — en ik had dat bijna als
+  catalogusbrede conclusie gerapporteerd.
+- **Een voorfilter met 87,7 % valse positieven is geen poort maar een prioriteitenlijst.**
+  `accessoire-context` vlagt 12.417 landende voorstellen waarvan het overgrote deel gewone
+  armaturen zijn die hun driver alleen vermelden. Onderdrukken daarop zou duizenden juiste
+  waarden weggooien. De vlag bepaalt wélke cellen als eerste langskomen, niet wélke sneuvelen.
