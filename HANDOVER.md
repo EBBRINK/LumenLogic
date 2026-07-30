@@ -1,20 +1,14 @@
 # HANDOVER — Lumen Logic (runs 1–3)
 
-> ## ⚠ VASTE STAP BIJ ELKE INGREEP IN HET MEETGEREEDSCHAP
+> ## ⚠ TWEE LESSEN VAN 30 JULI 2026 — verschillende fouten, allebei drie keer toegeslagen
 >
-> **Na elke wijziging aan de zwerm-export, de verwerker, de poort of de parser: herhaal één
-> bekende meting en bevestig dat de uitkomst onveranderd is.** Pas daarna agents inzetten.
+> | **1. Toets het GEREEDSCHAP na elke ingreep** | **2. Een meting draagt alleen de vraag die hij LETTERLIJK stelde** |
+> |---|---|
+> | Na elke wijziging aan de zwerm-export, de verwerker, de poort of de parser: herhaal één bekende meting en bevestig dat de uitkomst onveranderd is. Pas daarna agents inzetten. | Voordat je een uitslag als bewijs gebruikt: lees de prompt van díé ronde terug. Beantwoordt hij de vraag die je nu stelt, of een aangrenzende? |
+> | Zes lekken in de meetopzet op één dag — valvoorvoegsel, vaste stap, tweeling, klontering, restscherf-als-magneet, en een hint in de agent-opdracht die de promptHash niet dekte. **Vier ervan ontstonden door de reparatie van het vorige.** Alle zes zichtbaar aan de uitkomst, geen enkele aan de code. Kosten: twee volledige rondes. | Drie keer een antwoord gelezen dat er niet in stond: bij **TAL** (verklaring verzonnen voor een uitkomst die van een verkeerd merk kwam), bij de **light engines** en bij de **LED-modules** (een ronde die vroeg of de waarde het PRODUCT beschrijft, gebruikt als bewijs over het ARMATUUR). |
+> | De tests die er telkens bij kwamen dekken de fout die al gezien wás; geen ervan zou de volgende gevonden hebben. Een test op de data is iets anders dan een regressietest op het instrument. | Het gereedschap kan onberispelijk zijn en het antwoord nog steeds op de verkeerde vraag slaan. Deze fout laat geen spoor na in de code. |
 >
-> Op 30 juli 2026 zaten er zes lekken in de meetopzet — valvoorvoegsel, vaste stap, tweeling,
-> klontering, restscherf-als-magneet, en een hint in de agent-opdracht die de promptHash niet
-> dekte. **Vier daarvan ontstonden door de reparatie van het vorige.** Alle zes werden zichtbaar
-> aan wat eruit kwam, geen enkele aan de code, en ze kostten twee volledige rondes.
->
-> De tests die er telkens bij kwamen dekken de fout die al gezien wás; geen van hen zou de
-> volgende gevonden hebben. Een test op de data is iets anders dan een regressietest op het
-> instrument. Dit is de enige les van die dag die de vólgende zes lekken vangt in plaats van de
-> vorige zes te verklaren.
-
+> Ze vangen verschillende dingen en vervangen elkaar niet.
 
 _Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de oorspronkelijke run-1-opdracht._
 _2026-07-07: eindbeeld + roadmap runs 4–8 vastgelegd in `docs/MASTERPLAN.md` (plansessie,
@@ -4518,7 +4512,19 @@ Kreons 358 zijn geen modules maar zijn **downlightfamilie**:
 `Module` is bij Kreon de PRODUCTNAAM van een inbouwspotsysteem. Een regel op `^module` zou
 minstens 232 echte armaturen hun waarden afnemen.
 
-**Het besluit gaat dus over 96 producten van Wever & Ducré, niet over ruim vierhonderd.** De
+**Het besluit gaat dus over 96 producten van Wever & Ducré, niet over ruim vierhonderd.** En ook
+die 96 zijn niet één stapel:
+
+| wat het werkelijk is | namen | landend | voorbeeld |
+|---|---:|---:|---|
+| module MET lichtspec | 93 | **93** | `LED MOD HV DIM LOW FLICKER 3000K W 8W 220-240V CRI90` |
+| kabel/connector | 3 | 0 | `LED MODULE CABLE 1000mm with connector on 1 end` |
+
+De drie kabels dragen geen waarde en landen dus toch al niet — die vallen buiten het besluit.
+**Timo beslist over 93 producten**, allemaal van dezelfde vorm: een LED-module met kelvin, CRI en
+wattage in de naam. Dat is één homogene vraag en geen stapel met drie soorten erin.
+
+De
 sprintmaster kwam op 419/391 met Kreon 323 erin; ook dat cijfer telt Kreons downlights mee. W&D
 is in alle drie de tellingen 96 en dat is het getal dat telt.
 
