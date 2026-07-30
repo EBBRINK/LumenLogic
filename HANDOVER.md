@@ -2147,7 +2147,13 @@ het beeldmerk op navy) · statuskleuren "mechanisme om, hues bevriezen" · de AA
    Off-kit hues, en het is kleur als enige drager. Buiten O13 gelaten: dit is een ontwerpvraag,
    geen find-replace.
 6. **`price-list-status.tsx` buckets `"7"` en `"14"` hebben een identieke tint** — twee toestanden,
-   één uiterlijk. Pre-existent.
+   één uiterlijk. Pre-existent. **Bijgewerkt 30 jul:** het is inmiddels erger. Commit `0067427`
+   voegde een vijfde stand `leeg` toe (geldige lijst, 0 producten) en gaf die óók
+   `bg-status-amber-tint`, dus **vier van de zes standen** zijn nu amber: `"7"`, `"14"`, `leeg`
+   met een prima datum, en `leeg` binnen 30 dagen. De labels verschillen wel ("Expires in 3 d"
+   vs. "Valid · 0 products"), dus kleur is niet de enige drager — het onderscheid is alleen
+   volledig naar de tekst verschoven. Vraag voor Timo, zie de sectie hieronder van 30 jul over
+   de kleursemantiek van dekkingsgaten.
 7. **`enrichment-status.tsx`** heeft een comment "bewust niet de STATUS-kleuren" die nu verwarrend
    leest, omdat het bestand `bg-status-*`-tokens gebruikt. Feitelijk nog juist (het gaat over de
    `STATUS`-constante, niet over de CSS-tokens), maar het vraagt een herformulering.
@@ -2362,3 +2368,60 @@ getal vraagt een telling van distinct producten met ≥1 landend voorstel; die i
 Wie dit wil terugbrengen: één bulk-`update ... from (values ...)` per blok van 1.000 producten
 haalt er twee ordes af. Dat is een wijziging aan beproefde code en hoort niet in dezelfde run als
 een datavulling — eerst apart bewijzen op een branch.
+
+## 2026-07-30 — Twee besluiten voor Timo na de prijslijst-badge (bug #3)
+
+Commit `0067427` maakte de badge op `/data/price-lists` waar (geen groen meer bij 0 producten);
+een reparatiepas erna trok de hub-badge, de tellers en de precedentie recht (zie de commit die
+hierbij hoort). Wat overblijft zijn **geen defecten maar keuzes** — DESIGN.md harde regel 2:
+wijkt iets af van de brand kit of ontbreekt het erin, dan gaat het naar Timo en vult niemand het
+zelf in.
+
+### 1. Kleursemantiek: het bestaande gat is stiller dan het potentiële
+
+`components/data/price-list-status.tsx` telt sinds `0067427` zes standen. De commit betoogt in
+zijn eigen kopcommentaar dat "voor de matcher een geldige lijst met 0 producten exact hetzelfde
+is als een verlopen lijst" — maar hij verft ze verschillend:
+
+| Stand | Tint | Betekenis |
+|---|---|---|
+| `verlopen` | grijs | gat, **nu al** |
+| `leeg` (datum ok) | amber | gat, **nu al** |
+| `leeg` (binnen 30 d) | amber | gat, nu al + verloopt |
+| `"7"` / `"14"` | amber | nog geen gat, dreigt |
+| `"30"` | blauw | nog geen gat, dreigt |
+| `ok` | groen | niets aan de hand |
+
+Twee dingen die een besluit vragen, niet een patch:
+
+1. **Grijs voor verlopen is zachter dan amber voor leeg**, terwijl beide hetzelfde gat zijn. De
+   luidste tint van de tabel (amber) hangt nu deels aan een gat dat er nog niet is (`"7"`/`"14"`)
+   en de stilste (grijs) aan een gat dat er wél is. Grijs is verdedigbaar ("dit is een feit, geen
+   alarm"), maar dan hoort `leeg` er ook grijs bij — en dat is precies de vraag.
+2. **Amber is de tint van vier van de zes standen.** Zie ook punt 6 in de bevindingenlijst van
+   sprint 2.0b hierboven, dat hiermee is bijgewerkt. De labels verschillen wel, dus kleur is niet
+   de enige drager (Kit §11 / DESIGN.md §7 blijven gehaald), maar de kleur draagt zo goed als
+   geen informatie meer.
+
+Niet zelf opgelost: er is geen zesde tint bij te maken zonder O13 te heropenen (hues bevroren),
+en welke van de twee gaten de luidere plek verdient is een ontwerpbesluit. De route die O13 al
+noemt — een zes-kleuren-statusramp met tint/inkt-paren voor Eduard — is de enige waarin dit
+netjes past.
+
+### 2. Bug #3 is niet gefixt op mobiel
+
+Op 375px (effectief ~333px in de testviewport) staat de **hele Status-kolom buiten beeld** — de
+kolom die het onderwerp ván bug #3 is. Nagemeten op de opnieuw gegenereerde
+`components/data/data-prijslijsten.light.mobile.test.png`: de kop knipt af midden in "Products",
+en de `colSpan`-uitlegregel onder de verlopen rij eindigt op "What's …". De tabel zit in
+`overflow-x-auto`, dus het is bereikbaar door te vegen, maar er is geen enkele affordance die
+zegt dat er nog vier kolommen naar rechts liggen.
+
+Grotendeels pre-existent (dezelfde tabel deed dit vóór `0067427` ook), en het is dezelfde klasse
+als de overlopende navbalk uit sprint 2.0b: IA-/layoutwerk, geen huisstijlwerk. Wel met een
+gevolg dat benoemd moet worden: **wie het scherm op zijn telefoon opent, ziet de gerepareerde
+badge niet.** De kopregel boven de tabel ("1 expired · 2 with 0 products — coverage gaps · 2
+expiring soon") is daar de énige plek waar het gat zichtbaar is — hij loopt op 375px over twee
+regels, maar staat er wel. Opties, geen van beide gekozen: de tabel op smal in kaarten laten omslaan
+(zoals de dossierregels), of de Status-kolom als tweede kolom zetten zodat hij binnen de eerste
+schermbreedte valt.

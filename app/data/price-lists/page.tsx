@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
-import {
-  PriceListStatusTable,
-  type PriceListRow,
-} from "@/components/data/price-list-status";
+import { PriceListStatusTable } from "@/components/data/price-list-status";
 import { listPriceListStatus } from "@/lib/repo/enrichment";
 import { requireSession } from "@/lib/session";
 
 export default async function PrijslijstenPage() {
   await requireSession();
-  const rows = (await listPriceListStatus(db)) as PriceListRow[];
+  // Geen cast: PriceListStatus is structureel toewijsbaar aan PriceListRow. Dat is precies de
+  // bedoeling — dit is de énige plek waar de compiler nog controleert dat de query alle velden
+  // levert die het scherm toont (o.a. lifecycle). Een `as PriceListRow[]` zou die controle
+  // uitzetten en een vergeten kolom in de select stil laten passeren.
+  const rows = await listPriceListStatus(db);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">

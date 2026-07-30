@@ -32,24 +32,47 @@ export type PriceListRow = {
   productCount: number;
   daysLeft: number;
   bucket: "verlopen" | "7" | "14" | "30" | "ok";
-  // Optioneel, en dat is opzet — zelfde afweging als BrandListRow in
-  // components/admin/brands-list-block.tsx: bestaande tests die deze rijen zelf bouwen horen
-  // niet te breken op een veld dat het scherm alleen maar extra toont. Ontbreekt het, dan
-  // geldt de norm ('actief') en verschijnt er dus geen badge.
-  lifecycle?: BrandLifecycle | null;
+  // Verplicht, mét `| null`. Eerst stond hier `lifecycle?:`, maar dan is het scherm de enige
+  // die dit veld nodig heeft en niemand die het eist: haal `lifecycle: brands.lifecycle` uit
+  // de select in lib/repo/enrichment.ts en zowel de compiler als de fixtures blijven groen,
+  // terwijl de badge stil verdwijnt. Nu breekt dat op de toewijzing in
+  // app/data/price-lists/page.tsx. null = geen merk aan de lijst gekoppeld (LEFT JOIN) en
+  // geldt als de norm ('actief'), dus geen badge.
+  lifecycle: BrandLifecycle | null;
 };
 
 // De zichtbare stand van een rij = de datum-bucket, plus één extra stand 'leeg' voor een
-// geldige lijst zonder producten. De vier standen sluiten elkaar uit, zodat de tellingen
-// boven de tabel optellen tot rows.length en niemand dubbel geteld wordt.
+// geldige lijst zonder producten. De standen sluiten elkaar uit, want een rij heeft één
+// tint en één label. Let op: dat geldt voor de PRESENTATIE, niet voor de tellingen boven de
+// tabel — zie de `soon`-teller hieronder, die bewust weer uit `bucket` komt.
 type RowState = PriceListRow["bucket"] | "leeg";
 
-function rowState(r: PriceListRow): RowState {
+/**
+ * De zichtbare stand van één rij. Geëxporteerd omdat /data (de hub) hetzelfde oordeel nodig
+ * heeft voor zijn badge; dupliceerde die de predicate, dan liep de badge weer uit de pas met
+ * het scherm waar hij naar linkt (UX-audit 30 jul: badge "1" naast een scherm dat 31 gaten
+ * meldde). Eén presentatie, één bron — zelfde afweging als BrandLifecycleBadge.
+ */
+export function rowState(r: PriceListRow): RowState {
   // Verlopen wint altijd: die rij draagt al zijn eigen uitleg en is het sterkste signaal.
+  // Deze volgorde is dragend — draai je de twee ifs om, dan leest een verlopen lege lijst
+  // "Expires in -36 d · 0 products" (negatieve dagen), verkleurt hij grijs → amber en
+  // verdwijnt de colSpan-uitleg eronder. Vastgepind in data-screens.test.tsx.
   if (r.bucket === "verlopen") return "verlopen";
   // Datum in orde, dekking niet. Dit is het gat dat de badge tot 30 jul verzweeg.
   if (r.productCount === 0) return "leeg";
   return r.bucket;
+}
+
+/**
+ * Dekkingsgat = de matcher haalt nul producten uit deze lijst. Verlopen of leeg, dat maakt
+ * voor de matcher geen verschil (ijzeren regel 3). Dit is de predicate achter zowel de amber/
+ * grijze tint hier als de badge op /data — precies één definitie, zodat de twee schermen
+ * elkaar niet meer kunnen tegenspreken.
+ */
+export function isCoverageGap(r: PriceListRow): boolean {
+  const s = rowState(r);
+  return s === "verlopen" || s === "leeg";
 }
 
 const STATE_TINT: Record<RowState, string> = {
@@ -91,13 +114,19 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
   const states = rows.map(rowState);
   const gaps = states.filter((s) => s === "verlopen").length;
   const empty = states.filter((s) => s === "leeg").length;
-  const soon = states.filter(
-    (s) => s === "7" || s === "14" || s === "30",
+  // Bewust uit `bucket` en NIET uit de samengevouwen stand: een lijst die over 21 dagen
+  // verloopt én 0 producten heeft, verloopt nog steeds over 21 dagen. Rekende deze teller mee
+  // met de tint, dan zei de kop "1 expiring soon" terwijl de badge één regel lager
+  // "Expires in 21 d · 0 products" las — het scherm sprak zichzelf tegen en wie verlengingen
+  // plande telde te laag. Tints sluiten elkaar uit, tellingen hoeven dat niet.
+  const soon = rows.filter(
+    (r) => r.bucket === "7" || r.bucket === "14" || r.bucket === "30",
   ).length;
-  // Beide standen zijn hetzelfde soort gat: de matcher ziet er nul producten van.
+  // Beide standen zijn hetzelfde soort gat: de matcher ziet er nul producten van. Géén
+  // "valid" in deze tekst — een lijst die binnen 30 dagen verloopt staat er ook tussen.
   const gapParts = [
     gaps > 0 ? `${gaps} expired` : null,
-    empty > 0 ? `${empty} valid with 0 products` : null,
+    empty > 0 ? `${empty} with 0 products` : null,
   ].filter((s): s is string => s !== null);
 
   return (
@@ -143,8 +172,16 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
                 {/* De verlopen rij verliest zijn onderrand: hij vormt samen met de
                     uitlegregel eronder één blok. Zonder dat loopt er een streep tussen de
                     badge en zijn eigen verklaring, en hoort de uitleg optisch bij de
-                    VOLGENDE rij. */}
-                <TableRow className={state === "verlopen" ? "border-b-0" : undefined}>
+                    VOLGENDE rij. Ook de hover van TableRow gaat eraf (op beide <tr>'s):
+                    die kleurt per <tr> en lichtte dus alleen de bovenste helft van het blok
+                    op — precies de scheiding die border-b-0 weghaalt. */}
+                <TableRow
+                  className={
+                    state === "verlopen"
+                      ? "border-b-0 hover:bg-transparent"
+                      : undefined
+                  }
+                >
                   <TableCell className="font-medium">
                     {r.brandName ?? "—"}
                     {/* Dezelfde badge als /admin/brands (één presentatie, geen tweede
@@ -188,7 +225,7 @@ export function PriceListStatusTable({ rows }: { rows: PriceListRow[] }) {
                     rij al draagt, en met meerdere verlopen lijsten zou dat de tabel boven de
                     tabel worden. */}
                 {state === "verlopen" && (
-                  <TableRow>
+                  <TableRow className="hover:bg-transparent">
                     {/* whitespace-normal overschrijft TableCell's whitespace-nowrap
                         (components/ui/table.tsx) — anders knipt de regel niet af maar rekt
                         hij de tabel op. */}

@@ -14,7 +14,9 @@ import {
   type SampleItem,
 } from "./enrichment-panels";
 import { BrandLoadQueue, type QueueRow } from "./brand-load-queue";
+import { DataCards } from "./data-cards";
 import {
+  isCoverageGap,
   PriceListStatusTable,
   type PriceListRow,
 } from "./price-list-status";
@@ -65,11 +67,19 @@ const queue: QueueRow[] = [
 // verlopen lijst (ijzeren regel 3). pl4 hangt bovendien aan een merk dat niet meer bestaat,
 // zoals 'Lucente (BESTAAT NIET MEER)' in de brondata.
 const priceLists: PriceListRow[] = [
-  { id: "pl1", name: "Prijslijst Occhio", brandName: "Occhio", validUntil: "2026-06-01", productCount: 30, daysLeft: -36, bucket: "verlopen" },
-  { id: "pl2", name: "Prijslijst XAL", brandName: "XAL", validUntil: "2026-07-10", productCount: 18, daysLeft: 3, bucket: "7" },
-  { id: "pl3", name: "Prijslijst Delta", brandName: "Delta Light", validUntil: "2027-01-01", productCount: 42, daysLeft: 178, bucket: "ok" },
+  { id: "pl1", name: "Prijslijst Occhio", brandName: "Occhio", validUntil: "2026-06-01", productCount: 30, daysLeft: -36, bucket: "verlopen", lifecycle: null },
+  { id: "pl2", name: "Prijslijst XAL", brandName: "XAL", validUntil: "2026-07-10", productCount: 18, daysLeft: 3, bucket: "7", lifecycle: "actief" },
+  { id: "pl3", name: "Prijslijst Delta", brandName: "Delta Light", validUntil: "2027-01-01", productCount: 42, daysLeft: 178, bucket: "ok", lifecycle: "actief" },
   { id: "pl4", name: "Prijslijst Lucente", brandName: "Lucente", validUntil: "2026-12-01", productCount: 0, daysLeft: 124, bucket: "ok", lifecycle: "bestaat_niet_meer" },
   { id: "pl5", name: "Prijslijst Itre", brandName: "Itre", validUntil: "2026-08-20", productCount: 0, daysLeft: 21, bucket: "30", lifecycle: "actief" },
+];
+
+// Verlopen ÉN 0 producten — het geval dat de precedentie in rowState() vastlegt. Losse
+// fixture, want in `priceLists` hierboven hangt "alleen pl1 is verlopen" aan meerdere tests.
+// pl3 rijdt mee als controle: één rij die niets aan de hand heeft.
+const verlopenEnLeeg: PriceListRow[] = [
+  { id: "pl6", name: "Prijslijst Kreon", brandName: "Kreon", validUntil: "2026-06-01", productCount: 0, daysLeft: -36, bucket: "verlopen", lifecycle: "actief" },
+  priceLists[2],
 ];
 
 const evalLines: EvalLine[] = [
@@ -288,12 +298,84 @@ test("prijslijsten: geldig met 0 producten is amber, niet groen", async () => {
   expect(tintOf("Valid · 0 products")).not.toContain("bg-status-green-tint");
   expect(tintOf("178 d valid")).toContain("bg-status-green-tint");
 
-  // De telling boven de tabel noemt beide gaten en telt niemand dubbel: pl5 is leeg én
-  // bijna verlopen, en staat alleen bij de gaten.
+  // De telling boven de tabel noemt beide gaten. Bewust géén "valid" in die tekst: pl5
+  // verloopt over 21 dagen en is dus niet "valid with 0 products", alleen "with 0 products".
   await expect
-    .element(page.getByText(/1 expired · 2 valid with 0 products — coverage gaps/))
+    .element(page.getByText(/1 expired · 2 with 0 products — coverage gaps/))
     .toBeInTheDocument();
-  await expect.element(page.getByText("1 expiring soon")).toBeInTheDocument();
+});
+
+// UX-audit 30 jul, vervolg op bug #3: de kop mag de badges één regel lager niet tegenspreken.
+// pl5 draagt "Expires in 21 d · 0 products"; zei de kop dan "1 expiring soon" (alleen pl2),
+// dan verdween pl5 uit de verlengplanning terwijl zijn eigen badge zegt dat hij verloopt. De
+// tint van een rij is exclusief, de tellingen zijn dat niet.
+test("prijslijsten: de bijna-verlopen-telling laat een lege lijst niet vallen", async () => {
+  await renderServer(
+    <Screen>
+      <PriceListStatusTable rows={priceLists} />
+    </Screen>,
+  );
+  // pl2 (7 dagen) + pl5 (30 dagen, 0 producten) = 2. Uit `bucket`, niet uit de tint.
+  await expect.element(page.getByText("2 expiring soon")).toBeInTheDocument();
+  expect(page.getByText("1 expiring soon").query()).toBeNull();
+  // ...en die lege bijna-verlopen lijst staat óók bij de dekkingsgaten. Dubbel geteld in de
+  // twee tellers, precies één keer in de tabel — dat is de bedoeling.
+  await expect
+    .element(page.getByText(/2 with 0 products/))
+    .toBeInTheDocument();
+});
+
+// De precedentie in rowState() is dragend en stond tot 30 jul in geen enkele test: geen fixture
+// was verlopen ÉN leeg. Draai de twee ifs om en deze rij wordt 'leeg' — label "Expires in -36 d
+// · 0 products" (negatieve dagen), tint amber i.p.v. grijs, en de colSpan-uitlegregel eronder
+// verdwijnt omdat die op state === "verlopen" hangt. Alle 28 tests bleven daarbij groen.
+test("prijslijsten: verlopen wint van leeg — grijs, dagen positief, uitleg blijft staan", async () => {
+  await renderServer(
+    <Screen>
+      <PriceListStatusTable rows={verlopenEnLeeg} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("Expired (36 d ago)")) // niet "Expires in -36 d · 0 products"
+    .toBeInTheDocument();
+  const badge = [...document.querySelectorAll("td span")].find(
+    (el) => el.textContent === "Expired (36 d ago)",
+  );
+  expect(badge?.className).toContain("bg-status-grey-tint");
+  expect(badge?.className).not.toContain("bg-status-amber-tint");
+
+  // De vervolgrij met de gedeelde verloop-uitleg hoort er nog te staan — over de volle breedte.
+  await expect
+    .element(
+      page.getByText(/Kreon delivered prices — the list expired on 01-06-2026/),
+    )
+    .toBeInTheDocument();
+  expect(document.querySelector('td[colspan="5"]')).not.toBeNull();
+
+  // En de kop telt deze rij één keer, als verlopen — niet ook als lege lijst.
+  await expect
+    .element(page.getByText("1 expired — coverage gap"))
+    .toBeInTheDocument();
+});
+
+// UX-audit 30 jul, vervolg op bug #3: /data en /data/price-lists mogen niet uit elkaar lopen.
+// De hub-badge telde alleen `bucket === "verlopen"` en las op productiedata "1", terwijl het
+// scherm waar hij naar linkt 31 dekkingsgaten meldde. Hij gebruikt nu isCoverageGap uit
+// price-list-status.tsx — dezelfde predicate als de tint van de rij, geen tweede kopie.
+test("data-hub: de prijslijst-badge telt élk dekkingsgat, niet alleen de verlopen lijsten", async () => {
+  const gaps = priceLists.filter(isCoverageGap).length;
+  expect(gaps).toBe(3); // pl1 verlopen + pl4/pl5 met 0 producten
+  // De oude, liegende telling — bewijs dat de badge hier echt van afwijkt.
+  expect(priceLists.filter((p) => p.bucket === "verlopen").length).toBe(1);
+
+  await renderServer(
+    <Screen>
+      <DataCards badge={{ "/data/price-lists": gaps }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("3", { exact: true }))
+    .toBeInTheDocument();
 });
 
 // Eén presentatie voor de levensfase (components/admin/brand-lifecycle-badge.tsx), dezelfde

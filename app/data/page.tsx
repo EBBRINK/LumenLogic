@@ -3,6 +3,7 @@
 import { db } from "@/db/client";
 import { CoverageMeter } from "@/components/data/coverage-meter";
 import { DataCards } from "@/components/data/data-cards";
+import { isCoverageGap } from "@/components/data/price-list-status";
 import {
   getTier2Coverage,
   listEnrichmentRuns,
@@ -19,11 +20,15 @@ export default async function DataPage() {
   ]);
 
   const openRuns = runs.filter((r) => r.status === "steekproef").length;
-  const expired = priceLists.filter((p) => p.bucket === "verlopen").length;
+  // Dezelfde predicate als de tint van de rij op /data/price-lists — geïmporteerd, niet
+  // nagebouwd. Tot 30 jul telde deze badge alleen `bucket === "verlopen"` en las hij dus "1"
+  // naast een scherm dat "1 expired · 30 with 0 products — coverage gaps" meldde. Twee
+  // schermen, één definitie van een dekkingsgat; anders lopen ze weer uit elkaar.
+  const gaps = priceLists.filter(isCoverageGap).length;
 
   const badge: Record<string, number> = {
     "/data/enrichment": openRuns,
-    "/data/price-lists": expired,
+    "/data/price-lists": gaps,
   };
 
   return (
