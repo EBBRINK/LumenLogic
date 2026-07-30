@@ -1274,6 +1274,14 @@ Twee fases, elk met dezelfde poort: **eerst een plan, Timo keurt goed, dán uitv
   emerald 37 · slate 27 · sky 23 · orange 4) die de tokenwissel niet meepakken · 132 dode
   NL-strings in `field-catalog.ts` · de drie flaky testbestanden · O8 (`#8E9BA8` onder WCAG AA,
   bewuste afwijking — géén bug).
+- **⚠️ Sterkste kandidaat, gevonden én geverifieerd 30 jul (uit 2.4, bewust niet daar gefixt):
+  de AI-leesroute laat dezelfde stopreden vallen.** `lib/repo/leesroute.ts:51` kent
+  `gestopt: "budget_run" | "budget_month" | "no_key" | null`, maar `app/projects/actions.ts:236`
+  stopt die alleen in de event-payload; de `redirect()` eronder draagt hem niet. Gevolg: **een
+  halverwege afgekapte import presenteert zich als een geslaagde, kleinere import** — dezelfde
+  bugklasse als 2.4's bug 1, één laag verderop. Zeven verwante bevindingen staan met bewijs in
+  `HANDOVER.md` (o.a.: hervatten na een budgetstop kost dubbel én dupliceert regels, en een
+  maandcap is nooit meer te wissen).
 
 **Naar week 3 verschoven (stond in het oude week 2):** merk-demo-pagina + demo-merkaccount +
 org-scoping (vereist organisaties en rollen die daar leven) · architect-analytics-ontwerpnotitie
