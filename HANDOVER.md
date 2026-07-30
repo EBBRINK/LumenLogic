@@ -319,8 +319,9 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
   de factory wil struikelde erover. `emailAndPassword` staat aan mét `disableSignUp: true`;
   de magic link + allowlist-poort staat er ongewijzigd naast (G32, deploy 1).
 - `lib/repo/activation.ts` — PIN-datamodel: 8 cijfers, scrypt-hash, 7 dagen, eenmalig,
-  5 pogingen, één actieve PIN per adres. `lib/auth-activation.ts` — `redeemActivationPin`:
-  wachtwoord zetten en pas dáárna een sessie.
+  5 pogingen (atomair afgeschreven vóór de verificatie), één actieve PIN per adres.
+  `lib/auth-activation.ts` — `redeemActivationPin` (wachtwoord zetten, sessies intrekken en
+  pas dáárna een nieuwe sessie) en `changeOwnPassword`.
 - Migratie `0017_org_type_activatie.sql` — `organizations.type` (G31), de Brink-org, backfill
   van dossiers zonder org en memberships voor bestaande users, plus `activation_pins`.
 - Eerste tests die dit project op Better Auth heeft: `lib/auth-activation.test.ts` (hele flow
@@ -354,6 +355,46 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
 8. **`nextCookies()` staat alleen in de productie-instantie**, niet in de testfactory (er is
    geen request-scope in een test). Golf 2 kan in een server action dus gewoon
    `auth.api.signInEmail(...)` aanroepen; de cookie wordt vanzelf gezet.
+9. **`redeemActivationPin` gooit als `signInEmail` faalt.** Op dat moment is de PIN al
+   verbruikt en het wachtwoord al gezet. Golf 2 moet die worp opvangen en de gebruiker naar
+   `/login` sturen met "je wachtwoord is ingesteld, log in" — niet naar "PIN ongeldig".
+10. **`organizations.type` is nergens in de UI instelbaar.** `createOrganization`
+    (`lib/repo/orgs.ts`) en het formulier in `components/org/org-list.tsx` kennen het veld
+    niet, dus een `brand`- of `intern`-org kan alleen via SQL ontstaan. Buiten golf 1
+    gehouden; hoort bij het orgbeheer van 3.2a.
+11. **`activation_pins` wordt nooit opgeruimd.** Gebruikte en verlopen rijen blijven staan
+    (één per adres, dus de tabel groeit met het aantal ooit uitgenodigde mensen — geen
+    probleem op deze schaal). Een opruimklus hoort bij hetzelfde onderhoudspad als
+    `price-archive`.
+12. **Geen rate limit op `/activate` en `/login` — bewust doorgeschoven naar 3.2a.** Een
+    PIN-controle kost ~46 ms en ~32 MB (scrypt), en het dummy-pad dat de timing gelijk houdt
+    is per definitie onbegrensd. Wat wél begrensd is: een échte verificatie kost hoogstens 5
+    per PIN (atomair slot), een verkeerd gevormde PIN kost niets, en in Node draait scrypt op
+    de libuv-threadpool (4 threads). Wat níét begrensd is: het aantal aanvragen. Een teller
+    in het proces zou op Vercel schijnveiligheid zijn (elke invocatie is een eigen isolate),
+    en Better Auth' eigen rate limiter dekt alleen zijn router — dus ook niet de
+    `auth.api.*`-aanroepen vanuit een server action, en ook niet het bestaande
+    `/sign-in/email`. **De rem hoort op de route/edge en geldt dan voor beide schermen.**
+
+### Critic-ronde 1 (30 jul 2026) — wat er is teruggekomen en hoe het is opgelost
+- **Blokkerend: de pogingenteller was niet atomair.** `checkActivationPin` las de rij, deed
+  ~46 ms scrypt en toetste de teller pas daarna; 60 parallelle gokken werden alle 60
+  beoordeeld (gemeten: teller op 60, lat zegt 5). Nu wordt het slot afgeschreven in één
+  UPDATE mét alle doodsoorzaken in de WHERE, vóór de verificatie. Bewijs: de test faalt op de
+  oude code met "expected 60 to be 5".
+- **Zwaar: een wachtwoordwissel trok geen sessies in.** Zowel `redeemActivationPin`
+  (`deleteUserSessions`) als de nieuwe `changeOwnPassword` (altijd `revokeOtherSessions`)
+  doen dat nu wel.
+- **`issueActivationPin` had geen transactie** — en kán die ook niet hebben: de
+  neon-http-driver ondersteunt geen transacties. Opgelost met volgorde + conflict-tolerantie:
+  org eerst valideren (geen spookgebruiker meer), user-insert `onConflictDoNothing` (geen
+  rauwe unique-violation naar de aanroeper).
+- **Magic link kon nog accounts maken** via `/magic-link/verify`; `disableSignUp: true` staat
+  er nu ook op de plugin, náást de allowlist.
+- **De memberships-backfill in 0017 was een cross join over de hele user-tabel.** Nu een
+  expliciete adreslijst.
+- **De idempotentie-test draaide een overgetypte kopie.** 0017 is nu volledig idempotent
+  (DO-block, `IF NOT EXISTS`) en de test draait het echte bestand twee keer.
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 

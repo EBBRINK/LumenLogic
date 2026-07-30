@@ -21,7 +21,7 @@
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import * as authSchema from "@/db/auth-schema";
-import { activationPins, type MembershipRole } from "@/db/schema";
+import { activationPins, organizations, type MembershipRole } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { addMembership } from "./orgs";
@@ -59,6 +59,25 @@ export function generatePin(): string {
 // Eén dummy-hash per proces, lui berekend. Nodig voor de timing-gelijkheid bij een onbekend
 // adres: zonder deze verificatie is "adres bestaat niet" meetbaar sneller dan "verkeerde
 // PIN", en dan verraadt de responstijd alsnog of een e-mailadres bestaat.
+//
+// ⚠️ Bewuste afweging, expliciet gemaakt omdat hij twee kanten heeft. Deze verificatie kost
+// ~46 ms en ~32 MB (scrypt N=16384, r=16), en het dummy-pad is per definitie onbegrensd: er
+// is geen rij die dood kan gaan, dus een ongeauthenticeerde beller kan er onbeperkt werk
+// mee opstoken. Waarom hier tóch géén rem in deze laag zit:
+//   • De dúre kant is nu wél begrensd waar dat kan: een échte verificatie kost hoogstens
+//     PIN_MAX_ATTEMPTS per PIN (het slot hierboven), en een PIN met een verkeerde vórm
+//     kost helemaal niets meer (PIN_FORMAT).
+//   • In Node/Bun draait scrypt op de libuv-threadpool (4 threads by default), dus het
+//     gelijktijdige geheugengebruik binnen één instance is inherent begrensd op ~128 MB.
+//   • Een teller in dit proces zou op Vercel schijnveiligheid zijn: elke invocatie is een
+//     eigen isolate, dus een vloed start gewoon nieuwe instances met elk een verse teller.
+//     Een comment die suggereert dat het beschermd is, is erger dan geen comment.
+//   • Exact dezelfde blootstelling heeft Better Auth' eigen /sign-in/email al: die doet óók
+//     een volledige verificatie per foute poging. Better Auth' rate limiter dekt alleen zijn
+//     eigen router (node_modules/better-auth/dist/api/rate-limiter/index.mjs), dus zodra je
+//     auth.api.* vanuit een server action aanroept, geldt hij daar net zo min.
+// De echte rem hoort dus één laag hoger, op de route/edge, en geldt dan voor /activate én
+// /login tegelijk. Staat als openstaand punt voor 3.2a in HANDOVER.md.
 let dummyHashPromise: Promise<string> | null = null;
 function dummyPinHash(): Promise<string> {
   dummyHashPromise ??= hashPassword("0".repeat(PIN_LENGTH));
@@ -117,16 +136,46 @@ export async function issueActivationPin(
   }
   const now = input.now ?? new Date();
 
+  // ⚠️ Géén transactie mogelijk: de neon-http-driver kent er geen
+  // (node_modules/drizzle-orm/neon-http/session.js:151 gooit "No transactions support").
+  // De vier schrijfacties hieronder staan dus los van elkaar, en de volgorde is gekozen op
+  // wat er overblijft als er halverwege iets misgaat:
+  //   1. de organisatie controleren — een goedkope SELECT vóór er iets geschreven wordt,
+  //      zodat een verkeerde orgId geen spookgebruiker achterlaat die daarna niet meer als
+  //      nieuw herkend wordt;
+  //   2. de user-rij, conflict-tolerant, zodat twee gelijktijdige uitgiftes voor hetzelfde
+  //      adres geen rauwe unique-violation naar de aanroeper laten lekken;
+  //   3. het membership (idempotent, upsert op org+e-mail);
+  //   4. de PIN zelf, als laatste — mislukt er iets eerder, dan is er simpelweg geen PIN.
+  if (input.orgId) {
+    const [org] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, input.orgId))
+      .limit(1);
+    if (!org) {
+      throw new Error("issueActivationPin: onbekende organisatie");
+    }
+  }
+
   const existing = await findUserByEmail(db, email);
+  let userCreated = false;
   if (!existing) {
-    await db.insert(authSchema.user).values({
-      id: crypto.randomUUID(),
-      name: input.name?.trim() || email.split("@")[0],
-      email,
-      // Nog niet geverifieerd: dat wordt hij pas als hij de PIN verzilvert, want daarmee
-      // bewijst hij dat hij het mailtje van Brink echt heeft ontvangen.
-      emailVerified: false,
-    });
+    // onConflictDoNothing: verliest deze aanroep de race met een gelijktijdige uitgifte,
+    // dan komt er geen rij bij en geen fout uit — de ander heeft hem al gemaakt.
+    const inserted = await db
+      .insert(authSchema.user)
+      .values({
+        id: crypto.randomUUID(),
+        name: input.name?.trim() || email.split("@")[0],
+        email,
+        // Nog niet geverifieerd: dat wordt hij pas als hij de PIN verzilvert, want daarmee
+        // bewijst hij dat hij het mailtje van Brink echt heeft ontvangen.
+        emailVerified: false,
+      })
+      .onConflictDoNothing()
+      .returning({ id: authSchema.user.id });
+    userCreated = inserted.length > 0;
   }
 
   if (input.orgId) {
@@ -172,7 +221,7 @@ export async function issueActivationPin(
     payload: { email, orgId: input.orgId ?? null, expiresAt: expiresAt.toISOString() },
   });
 
-  return { email, pin, expiresAt, userCreated: !existing };
+  return { email, pin, expiresAt, userCreated };
 }
 
 /** Status van een PIN zónder de hash — dit is alles wat een beheerscherm mag zien. */
@@ -244,10 +293,18 @@ export async function getActivationPinStatus(
  * ongeacht of het adres onbekend is, de PIN fout, verlopen, al gebruikt of doodgelopen.
  * De aanroeper heeft geen reden om méér te weten en de gebruiker mag het niet weten.
  *
- * Verhoogt de pogingenteller alléén als de PIN verder nog levend is — een verkeerde poging
- * op een al verlopen of al gebruikte PIN verandert niets meer.
+ * ⚠️ De volgorde hieronder is de veiligheidsgarantie, niet een stijlkeuze. Het pogingen-slot
+ * wordt AFGESCHREVEN VÓÓR de verificatie, in één UPDATE waarin alle doodsoorzaken van een
+ * PIN (gebruikt, verlopen, teller vol) in de WHERE staan. Lees-verifieer-schrijf zou hier
+ * fataal zijn: scrypt duurt ~46 ms, en in dat venster leest élke gelijktijdige aanroep
+ * dezelfde stale teller en passeert de poort. Gemeten op de vorige versie: 200 parallelle
+ * gokken werden alle 200 beoordeeld en de teller eindigde op 200. De lat zegt 5.
+ * Bewijs dat dit nu klopt: "parallel gokken" in lib/repo/activation.test.ts — sequentieel
+ * aftellen kan deze fout per constructie niet vangen.
  */
 export type PinCheck = { ok: true; email: string } | { ok: false };
+
+const PIN_FORMAT = /^[0-9]{8}$/;
 
 export async function checkActivationPin(
   db: AppDb,
@@ -256,32 +313,43 @@ export async function checkActivationPin(
   now = new Date(),
 ): Promise<PinCheck> {
   const normalized = normalizeEmail(email);
-  const [row] = normalized
+
+  // Vormcontrole vóór al het rekenwerk. Dit gaat uitsluitend over wat de béller instuurde,
+  // niet over wat er in de database staat, dus het verraadt niets over welke adressen
+  // bestaan — en het scheelt een scrypt-verificatie bij elke onzin-invoer.
+  if (!PIN_FORMAT.test(pin)) return { ok: false };
+
+  // Het slot claimen: teller +1, maar alleen als de PIN op dit moment nog levend is.
+  // Geen rij terug = geen slot = geweigerd, wat de reden ook was.
+  const [claimed] = normalized
     ? await db
-        .select()
-        .from(activationPins)
-        .where(eq(activationPins.email, normalized))
-        .limit(1)
+        .update(activationPins)
+        .set({ attempts: sql`${activationPins.attempts} + 1` })
+        .where(
+          and(
+            eq(activationPins.email, normalized),
+            isNull(activationPins.usedAt),
+            lt(activationPins.attempts, PIN_MAX_ATTEMPTS),
+            gt(activationPins.expiresAt, now),
+          ),
+        )
+        .returning({ pinHash: activationPins.pinHash })
     : [];
 
-  // Altijd exact één scrypt-verificatie, ook zonder rij: het dummy-pad kost hetzelfde als
-  // het echte pad, dus de responstijd verraadt niet of dit adres bestaat.
-  const hash = row?.pinHash ?? (await dummyPinHash());
+  // Altijd exact één scrypt-verificatie, ook zonder slot: het dummy-pad kost hetzelfde als
+  // het echte pad, dus de responstijd verraadt niet of dit adres bestaat (§3a).
+  const hash = claimed?.pinHash ?? (await dummyPinHash());
   const matches = await verifyPassword({ hash, password: pin });
 
-  if (!row) return { ok: false };
-  if (row.usedAt) return { ok: false };
-  if (row.attempts >= PIN_MAX_ATTEMPTS) return { ok: false };
-  if (row.expiresAt.getTime() <= now.getTime()) return { ok: false };
-  if (!matches) {
-    // Teller in SQL ophogen, niet in JS: twee gelijktijdige pogingen mogen niet dezelfde
-    // waarde overschrijven — dat zou van 5 pogingen stilletjes 6 maken.
-    await db
-      .update(activationPins)
-      .set({ attempts: sql`${activationPins.attempts} + 1` })
-      .where(eq(activationPins.email, normalized));
-    return { ok: false };
-  }
+  if (!claimed) return { ok: false };
+  if (!matches) return { ok: false };
+
+  // Geslaagd: de zojuist afgeschreven poging wordt teruggegeven. Wie zich eerst vertypt en
+  // het daarna goed doet, houdt zijn volle tegoed — de teller straft alleen fouten.
+  await db
+    .update(activationPins)
+    .set({ attempts: 0 })
+    .where(eq(activationPins.email, normalized));
   return { ok: true, email: normalized };
 }
 

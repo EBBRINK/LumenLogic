@@ -119,9 +119,68 @@ test("verkeerde PIN faalt en telt één poging", async () => {
   const na = await getActivationPinStatus(db, email);
   expect(na.attempts).toBe(1);
   expect(na.attemptsLeft).toBe(PIN_MAX_ATTEMPTS - 1);
-  // De goede PIN werkt daarna gewoon nog.
+  // De goede PIN werkt daarna gewoon nog, en geeft het tegoed terug: de teller straft
+  // alleen fouten.
   expect(await checkActivationPin(db, email, pin)).toEqual({ ok: true, email });
+  expect((await getActivationPinStatus(db, email)).attempts).toBe(0);
 });
+
+test("een PIN met een verkeerde vorm wordt geweigerd zonder de teller aan te raken", async () => {
+  const db = await createTestDb();
+  const { email } = await issueActivationPin(db, { email: "vorm@extern.nl" });
+
+  for (const onzin of ["", "1234567", "123456789", "abcdefgh", "1234 567"]) {
+    expect(await checkActivationPin(db, email, onzin)).toEqual({ ok: false });
+  }
+  // Onzin-invoer kost geen poging: de vormcontrole gaat over wat de béller stuurt, niet
+  // over wat er in de database staat, en er wordt geen scrypt voor gedraaid.
+  expect((await getActivationPinStatus(db, email)).attempts).toBe(0);
+});
+
+test("PARALLEL gokken: hoogstens 5 pogingen worden beoordeeld (het slot is atomair)", async () => {
+  const db = await createTestDb();
+  const { pin, email } = await issueActivationPin(db, { email: "parallel@extern.nl" });
+  const fout = pin === "00000000" ? "11111111" : "00000000";
+
+  // Dit is de test die sequentieel aftellen per constructie niet kan geven. De vorige
+  // versie las de rij, deed ~46 ms scrypt en toetste de teller pas daarná: elke van deze
+  // 60 aanroepen las dezelfde stale `attempts` en passeerde de poort. Gemeten op die
+  // versie: alle 60 beoordeeld, teller op 60.
+  const uitslagen = await Promise.all(
+    Array.from({ length: 60 }, () => checkActivationPin(db, email, fout)),
+  );
+  expect(uitslagen.every((u) => !u.ok)).toBe(true);
+
+  // Precies 5 slots afgeschreven, geen enkele meer — de overige 55 kwamen niet eens tot
+  // een verificatie.
+  const status = await getActivationPinStatus(db, email);
+  expect(status.attempts).toBe(PIN_MAX_ATTEMPTS);
+  expect(status.state).toBe("geblokkeerd");
+
+  // En de PIN is daarna dood, ook met de juiste code.
+  expect(await checkActivationPin(db, email, pin)).toEqual({ ok: false });
+}, 60_000);
+
+test("PARALLEL gokken met de juiste code ertussen: hoogstens één slaagt", async () => {
+  const db = await createTestDb();
+  const { pin, email } = await issueActivationPin(db, { email: "parallel2@extern.nl" });
+  const fout = pin === "00000000" ? "11111111" : "00000000";
+
+  // 40 pogingen, waarvan 4 met de juiste code. Ook als die alle vier een slot krijgen mag
+  // de PIN daarna maar één keer verzilverd worden — dat bewaakt claimActivationPin.
+  const invoer = Array.from({ length: 40 }, (_, i) => (i % 10 === 0 ? pin : fout));
+  const uitslagen = await Promise.all(
+    invoer.map((p) => checkActivationPin(db, email, p)),
+  );
+  const geslaagd = uitslagen.filter((u) => u.ok);
+  // Er zijn maar 5 slots; de juiste code kan er hoogstens 5 van pakken.
+  expect(geslaagd.length).toBeLessThanOrEqual(PIN_MAX_ATTEMPTS);
+
+  const claims = await Promise.all(
+    Array.from({ length: 10 }, () => claimActivationPin(db, email)),
+  );
+  expect(claims.filter(Boolean).length).toBeLessThanOrEqual(1);
+}, 60_000);
 
 test("max 5 foute pogingen: daarna is de PIN dood, ook mét de juiste code", async () => {
   const db = await createTestDb();
@@ -263,9 +322,12 @@ test("geen account-enumeratie: onbekend adres geeft hetzelfde antwoord en kost d
   };
   const onbekend = await meet("bestaatniet@extern.nl");
   const bekend = await meet(email);
-  // Ruim gekozen: het gaat erom dat het onbekende pad niet ORDES sneller is (een kale
-  // vroege return zou ~1 ms kosten tegen ~50 ms voor een scrypt-verificatie).
-  expect(onbekend).toBeGreaterThan(bekend * 0.3);
+  // Tweezijdig. Een eenzijdige ondergrens ("onbekend > bekend * 0,3") kán bijna niet falen:
+  // het bekende pad doet een UPDATE méér en is per constructie de tragere, dus die
+  // assertie bewijst niets. Hier moet het verschil in BEIDE richtingen klein blijven — een
+  // vroege return op het onbekende pad (~1 ms tegen ~46 ms) valt daar hard doorheen.
+  const verschil = Math.abs(onbekend - bekend);
+  expect(verschil).toBeLessThan(Math.max(onbekend, bekend) * 0.5);
 });
 
 test("issueActivationPin weigert een leeg of vormloos adres", async () => {
@@ -276,6 +338,61 @@ test("issueActivationPin weigert een leeg of vormloos adres", async () => {
   await expect(issueActivationPin(db, { email: "geenapenstaartje" })).rejects.toThrow(
     /ongeldig e-mailadres/,
   );
+});
+
+test("issueActivationPin: onbekende organisatie faalt met een leesbare fout en laat geen spookgebruiker achter", async () => {
+  const db = await createTestDb();
+  await expect(
+    issueActivationPin(db, {
+      email: "spook@extern.nl",
+      orgId: "00000000-0000-4000-8000-000000000000",
+    }),
+  ).rejects.toThrow(/onbekende organisatie/);
+
+  // Er is niets geschreven: geen user-rij, geen membership, geen PIN. De volgende poging
+  // met een geldige org herkent het adres dus nog steeds als nieuw.
+  expect(
+    await db
+      .select()
+      .from(authSchema.user)
+      .where(eq(authSchema.user.email, "spook@extern.nl")),
+  ).toHaveLength(0);
+  expect((await getActivationPinStatus(db, "spook@extern.nl")).state).toBe("geen");
+
+  const goed = await issueActivationPin(db, {
+    email: "spook@extern.nl",
+    orgId: await brinkOrgId(db),
+  });
+  expect(goed.userCreated).toBe(true);
+});
+
+test("issueActivationPin: twee gelijktijdige uitgiftes voor hetzelfde nieuwe adres botsen niet", async () => {
+  const db = await createTestDb();
+  const orgId = await brinkOrgId(db);
+
+  // Zonder onConflictDoNothing lekt hier een rauwe unique-violation op user.email naar
+  // buiten, die een server action als 500 doorgeeft.
+  const [a, b] = await Promise.all([
+    issueActivationPin(db, { email: "gelijk@extern.nl", orgId }),
+    issueActivationPin(db, { email: "gelijk@extern.nl", orgId }),
+  ]);
+  expect(a.email).toBe("gelijk@extern.nl");
+  expect(b.email).toBe("gelijk@extern.nl");
+  // Precies één van de twee heeft de user-rij daadwerkelijk gemaakt.
+  expect([a.userCreated, b.userCreated].filter(Boolean)).toHaveLength(1);
+  expect(
+    await db
+      .select()
+      .from(authSchema.user)
+      .where(eq(authSchema.user.email, "gelijk@extern.nl")),
+  ).toHaveLength(1);
+  // Eén PIN-rij, en één van de twee uitgegeven PIN's is de geldige.
+  expect(await db.select().from(activationPins)).toHaveLength(1);
+  const werkend = await Promise.all([
+    checkActivationPin(db, "gelijk@extern.nl", a.pin),
+    checkActivationPin(db, "gelijk@extern.nl", b.pin),
+  ]);
+  expect(werkend.filter((u) => u.ok)).toHaveLength(1);
 });
 
 test("status van een adres zonder PIN is 'geen'", async () => {

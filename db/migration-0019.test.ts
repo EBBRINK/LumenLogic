@@ -122,25 +122,33 @@ test("0019 is idempotent: tweemaal draaien verandert niets meer", async () => {
     "timo@jouwainstein.com",
   ]);
 
+  // Twee keer de ÉCHTE migratie, niet een met de hand overgetypte kopie van het
+  // datagedeelte: die kopie zou groen blijven staan terwijl 0019 zelf verandert.
   await client.exec(orgTypeActivatieSql);
-  // De tweede keer valt over CREATE TYPE / ADD COLUMN, dus alleen het datagedeelte —
-  // dát is het stuk dat op productie per ongeluk een tweede keer zou kunnen lopen.
-  await client.exec(`
-    INSERT INTO organizations (name, slug, type, plan)
-    SELECT 'Brink Licht', 'brink-licht', 'intern', 'intern'
-    WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE slug = 'brink-licht');
-    UPDATE project_dossiers
-    SET org_id = (SELECT id FROM organizations WHERE slug = 'brink-licht')
-    WHERE org_id IS NULL;
-    INSERT INTO memberships (org_id, email, roles)
-    SELECT o.id, lower(btrim(u.email)), ARRAY['org_admin']::membership_role[]
-    FROM organizations o, "user" u
-    WHERE o.slug = 'brink-licht'
-    ON CONFLICT (org_id, email) DO NOTHING;
-  `);
+  await client.exec(orgTypeActivatieSql);
 
   expect(await db.select().from(organizations)).toHaveLength(1);
   expect(await db.select().from(memberships)).toHaveLength(1);
+  const dossiers = await db.select().from(projectDossiers);
+  expect(dossiers).toHaveLength(1);
+  expect(dossiers[0].orgId).toBe((await db.select().from(organizations))[0].id);
+});
+
+test("0019 promoveert alleen de drie gemeten adressen, niet zomaar elke user-rij", async () => {
+  const { client, db } = await dbTot0018();
+  // Een externe installateur die al een user-rij heeft vóórdat deploy 1 landt.
+  for (const email of ["timo@jouwainstein.com", "installateur@externebv.nl"]) {
+    await client.query(`INSERT INTO "user" (id, name, email) VALUES ($1, $2, $3)`, [
+      crypto.randomUUID(),
+      email.split("@")[0],
+      email,
+    ]);
+  }
+
+  await client.exec(orgTypeActivatieSql);
+
+  const leden = await db.select().from(memberships);
+  expect(leden.map((m) => m.email)).toEqual(["timo@jouwainstein.com"]);
 });
 
 test("een dossier dat al aan een andere org hangt wordt niet verplaatst", async () => {

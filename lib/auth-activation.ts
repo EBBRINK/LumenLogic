@@ -101,6 +101,14 @@ export async function redeemActivationPin(
     await ctx.internalAdapter.updateUser(found.user.id, { emailVerified: true });
   }
 
+  // ⚠️ Álle bestaande sessies eruit, vóór de nieuwe wordt aangemaakt. C10 maakt "nieuwe PIN"
+  // het énige herstelmechanisme in dit product: gestolen laptop, gelekt cookie, vertrokken
+  // medewerker — Brink heeft geen andere knop. Zonder deze regel is die knop aantoonbaar
+  // geen remedie, want de oude sessie overleeft de wachtwoordwissel gewoon. NIST SP 800-63B
+  // §5.1.1.2 en Entra TAP (de twee referenties die §3a zelf aanwijst) eisen intrekking bij
+  // een credentialwijziging.
+  await ctx.internalAdapter.deleteUserSessions(found.user.id);
+
   // Pas hier ontstaat de sessie: via de gewone inlogroute, met het zojuist gezette
   // wachtwoord. Er is dus geen apart, zwakker pad naar een sessie dat de PIN zou kunnen
   // openzetten — lukt het inloggen niet, dan is er ook geen sessie.
@@ -124,4 +132,35 @@ export async function redeemActivationPin(
     token: signedIn.response.token,
     headers: signedIn.headers,
   };
+}
+
+/**
+ * Zelf je wachtwoord wijzigen, mét opgave van het huidige (besluit G34).
+ *
+ * Bestaat als eigen functie en niet als "roep `auth.api.changePassword` aan" omdat Better
+ * Auth andere sessies alléén intrekt met `revokeOtherSessions: true`, en die vlag vergeten
+ * is precies de fout die je nooit ziet: het wachtwoord wijzigt, de oude sessie leeft door,
+ * en de wijziging voelt als een remedie zonder er één te zijn. Hier staat de vlag altijd
+ * aan — dat is een garantie van deze laag, geen keuze van de aanroeper.
+ *
+ * De sessie van de aanroeper zelf blijft geldig: Better Auth geeft er een verse voor terug.
+ * Zet het cookie uit `headers` (in een server action doet nextCookies dat vanzelf).
+ *
+ * Gooit een Better Auth `APIError` bij een verkeerd huidig wachtwoord of een te kort nieuw —
+ * bewust doorgelaten: dat zijn allebei meldingen die de gebruiker moet zien.
+ */
+export async function changeOwnPassword(
+  auth: LumenAuth,
+  input: { currentPassword: string; newPassword: string; headers: Headers },
+): Promise<{ headers: Headers }> {
+  const res = await auth.api.changePassword({
+    body: {
+      currentPassword: input.currentPassword,
+      newPassword: input.newPassword,
+      revokeOtherSessions: true,
+    },
+    headers: input.headers,
+    returnHeaders: true,
+  });
+  return { headers: res.headers };
 }

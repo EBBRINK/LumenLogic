@@ -11,7 +11,7 @@ import { createTestDb, type TestDb } from "@/db/test-db";
 import * as authSchema from "@/db/auth-schema";
 import { organizations } from "@/db/schema";
 import { MIN_PASSWORD_LENGTH, createAuth } from "@/lib/auth-factory";
-import { redeemActivationPin } from "@/lib/auth-activation";
+import { changeOwnPassword, redeemActivationPin } from "@/lib/auth-activation";
 import {
   PIN_MAX_ATTEMPTS,
   checkActivationPin,
@@ -334,15 +334,17 @@ test("een ingelogde gebruiker wijzigt zelf zijn wachtwoord, mét opgave van het 
 
   // Zonder het juiste huidige wachtwoord gaat er niets om.
   await expect(
-    auth.api.changePassword({
-      body: { currentPassword: "verkeerdhuidigww", newPassword: NIEUW_WACHTWOORD },
+    changeOwnPassword(auth, {
+      currentPassword: "verkeerdhuidigww",
+      newPassword: NIEUW_WACHTWOORD,
       headers,
     }),
   ).rejects.toThrow();
 
   // Met het juiste huidige wachtwoord wél.
-  await auth.api.changePassword({
-    body: { currentPassword: WACHTWOORD, newPassword: NIEUW_WACHTWOORD },
+  const na = await changeOwnPassword(auth, {
+    currentPassword: WACHTWOORD,
+    newPassword: NIEUW_WACHTWOORD,
     headers,
   });
 
@@ -355,6 +357,113 @@ test("een ingelogde gebruiker wijzigt zelf zijn wachtwoord, mét opgave van het 
     returnHeaders: true,
   });
   expect(opnieuw.response.user.email).toBe(email);
+
+  // De wijzigende sessie zelf blijft bruikbaar — Better Auth geeft er een verse voor terug.
+  expect(
+    (await auth.api.getSession({ headers: cookieHeaders(na.headers) }))?.user.email,
+  ).toBe(email);
+});
+
+test("B1: wachtwoord wijzigen trekt élke andere sessie in, niet alleen het oude wachtwoord", async () => {
+  const db = await createTestDb();
+  const auth = testAuth(db);
+  const { pin, email } = await issueActivationPin(db, { email: "sessies@extern.nl" });
+  const activatie = await redeemActivationPin(auth, db, {
+    email,
+    pin,
+    newPassword: WACHTWOORD,
+  });
+  expect(activatie.ok).toBe(true);
+  if (!activatie.ok) return;
+
+  // Sessie A: de gestolen laptop / het gelekte cookie.
+  const gestolen = await auth.api.signInEmail({
+    body: { email, password: WACHTWOORD },
+    returnHeaders: true,
+  });
+  const gestolenHeaders = cookieHeaders(gestolen.headers);
+  expect(await auth.api.getSession({ headers: gestolenHeaders })).not.toBeNull();
+
+  // Sessie B: de eigenaar, die zijn wachtwoord wijzigt.
+  const eigen = cookieHeaders(activatie.headers);
+  const na = await changeOwnPassword(auth, {
+    currentPassword: WACHTWOORD,
+    newPassword: NIEUW_WACHTWOORD,
+    headers: eigen,
+  });
+
+  // Sessie A is dood. Dít is wat "wachtwoord wijzigen" moet betekenen; een test op het
+  // wachtwoord alleen zou hier groen blijven terwijl de dief gewoon binnen is.
+  expect(await auth.api.getSession({ headers: gestolenHeaders })).toBeNull();
+  expect(
+    (await auth.api.getSession({ headers: cookieHeaders(na.headers) }))?.user.email,
+  ).toBe(email);
+});
+
+test("B1: een nieuwe PIN verzilveren trekt bestaande sessies in (C10 is het énige herstelpad)", async () => {
+  const db = await createTestDb();
+  const auth = testAuth(db);
+  const eerste = await issueActivationPin(db, { email: "herstel@extern.nl" });
+  const activatie = await redeemActivationPin(auth, db, {
+    email: eerste.email,
+    pin: eerste.pin,
+    newPassword: WACHTWOORD,
+  });
+  expect(activatie.ok).toBe(true);
+  if (!activatie.ok) return;
+  const oudeSessie = cookieHeaders(activatie.headers);
+  expect(await auth.api.getSession({ headers: oudeSessie })).not.toBeNull();
+
+  // Brink geeft een nieuwe PIN (de enige knop die het product heeft), de eigenaar zet een
+  // nieuw wachtwoord.
+  const tweede = await issueActivationPin(db, { email: "herstel@extern.nl" });
+  const opnieuw = await redeemActivationPin(auth, db, {
+    email: tweede.email,
+    pin: tweede.pin,
+    newPassword: NIEUW_WACHTWOORD,
+  });
+  expect(opnieuw.ok).toBe(true);
+  if (!opnieuw.ok) return;
+
+  // De oude sessie is weg — anders is "nieuwe PIN" aantoonbaar geen remedie.
+  expect(await auth.api.getSession({ headers: oudeSessie })).toBeNull();
+  // Precies één sessie over: de verse.
+  expect(await db.select().from(authSchema.session)).toHaveLength(1);
+  expect(
+    (await auth.api.getSession({ headers: cookieHeaders(opnieuw.headers) }))?.user.email,
+  ).toBe("herstel@extern.nl");
+});
+
+test("B5: /magic-link/verify maakt geen account aan voor een onbekend adres", async () => {
+  const db = await createTestDb();
+  const auth = testAuth(db);
+
+  // timo@ staat in de allowlist (migratie 0004) maar heeft in een verse database géén
+  // user-rij. Zonder disableSignUp op de magic-link-plugin zou het uitklikken van de link
+  // hem alsnog aanmaken — mét emailVerified: true en meteen een sessie.
+  const regels: string[] = [];
+  const echteLog = console.log;
+  console.log = (...args: unknown[]) => {
+    regels.push(args.map(String).join(" "));
+    echteLog(...args);
+  };
+  try {
+    await auth.api.signInMagicLink({
+      body: { email: "timo@jouwainstein.com", callbackURL: "/" },
+      headers: new Headers(),
+    });
+  } finally {
+    console.log = echteLog;
+  }
+  const url = regels
+    .find((r) => r.includes("[auth] magic link"))
+    ?.match(/https?:\/\/\S+/)?.[0];
+  expect(url).toBeTruthy();
+
+  await auth.handler(new Request(url!, { method: "GET", redirect: "manual" }));
+
+  expect(await db.select().from(authSchema.user)).toHaveLength(0);
+  expect(await db.select().from(authSchema.session)).toHaveLength(0);
 });
 
 test("G32: de magic link staat nog náást het wachtwoordpad, mét de allowlist-poort", async () => {

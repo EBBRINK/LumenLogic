@@ -49,6 +49,13 @@ export type CreateAuthOptions = {
 
 export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
   const magicLinkPlugin = magicLink({
+    // Tweede slot op dezelfde deur. `/magic-link/verify` maakt bij een onbekend adres
+    // anders zélf een user aan, mét emailVerified: true en meteen een sessie
+    // (node_modules/better-auth/dist/plugins/magic-link/index.mjs, "if (!opts.disableSignUp)").
+    // De allowlist in sendMagicLink hieronder is de eigenlijke poort, maar dan hangt de
+    // garantie "accounts ontstaan alleen via een PIN" aan één laag — terwijl dit één regel
+    // is. Veilig voor de bestaande gebruikers: timo@ en e.brink@ hébben een user-rij.
+    disableSignUp: true,
     sendMagicLink: async ({ email, url }) => {
       // Allowlist-poort (L-02): staat het adres niet in de lijst, dan gebeurt er
       // niets — geen link, geen log. De login-UI toont altijd dezelfde neutrale
