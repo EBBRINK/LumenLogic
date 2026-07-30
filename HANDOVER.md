@@ -4090,3 +4090,55 @@ vóór er één agent leest:
 
 De test bouwt alle vier de historische bugs na. Eén functie, twee gebruikers — geen vijfde geval
 van twee lagen die apart over hetzelfde oordelen.
+
+---
+
+## 2026-07-30 — TossB, en de stand van vier merken op een rij
+
+Run `a72e9fc6-9f6d-4395-8614-35891b892854`, 186 echte cellen, 2 scherven.
+**180 goed · 6 `nee-hoort-bij-onderdeel` (19 producten) · 0 onzeker · val-recall 9/9.**
+Ook hier tegenproef 0/0: geen geweerde onderdelen om mee te mengen, dus het anker is niet getoetst.
+
+De zes afkeuringen zijn twee soorten: 4× `LED bulb AR70/AR111` (losse lamp) en 2× `Base Rond SB
+100mm … - Driver 350mA - 10W … base black` (voetstuk mét driver).
+
+### De vier merken samen
+
+| merk | run | cellen | goed | afgekeurd | onzeker | val-recall | tegenproef |
+|---|---|---:|---:|---:|---:|---|---|
+| Kreon | `22c6aa67` | 197 | 194 | 3 | 0 | 9/9 ⚠ | 0/0 — niet getoetst |
+| Lombardo | `d7dbd69a` | 3.933 | 3.908 | 18 | 7 | 196/196 ⚠ | 12/12 ✓ |
+| XAL | `ef2a0071` | 228 | 228 | 0 | 0 | 11/11 | 0/0 — niet getoetst |
+| TossB | `a72e9fc6` | 186 | 180 | 6 | 0 | 9/9 | 0/0 — niet getoetst |
+
+⚠ = de val-recall van Kreon en Lombardo kwam tot stand vóór het vierde slot; lees hem als
+ondergrens. XAL en TossB zijn de eerste rondes met alle vier de sloten actief.
+
+**Alleen Lombardo heeft het ankerfilter werkelijk getoetst.** Bij de andere drie waren er geen
+geweerde onderdelen om als tegenproef mee te mengen, dus daar meet de zwerm uitsluitend wat het
+filter doorlaat.
+
+### De poortlekken bij elkaar — wat de meting wél en niet rechtvaardigt
+
+| term | gevonden bij | door de poort | grove regel raakt | oordeel |
+|---|---|---:|---|---|
+| `Alim.` vooraan | Lombardo | 37 | niets — de 486 met `ALIM` middenin blijven staan | **bouwen** |
+| `led/halogen bulb` vooraan | TossB | 26 | niets — Kreons 150 `sphere bulb`-pendels en TossB' `Bulb included` blijven staan | **bouwen** |
+| `Base` vooraan | TossB | 4 (alleen TossB) | 44 andere `Base …`-namen dragen geen waarde, dus 0 | **bouwen, smal** |
+| `cob` | Lombardo | 6.235 | **6.164 XAL-armaturen** waarvan de CRI al op productie staat | niet bouwen |
+| `molla` | Lombardo | 4 | `MOLLA W LED 3000K WHITE` is een Artemide-familienaam | niet bouwen |
+| `drive` (zonder r) | Lombardo | 6 | 3 daarvan zijn `FARETTO DRIVE` — een Egoluce-spot | niet bouwen |
+| `light engine` | Kreon | 15 | de 5 `Module 60 for light engine` zijn behuizingen | niet bouwen |
+
+Drie kandidaten die de meting draagt, vier die hem niet dragen. Geen van zeven is gebouwd.
+
+### Nieuw, en géén poortkwestie: meerkanaals-armaturen
+
+De TossB-agent zag dat `TIBO Wall indoor - 8W+4W LED` als maxWattage **8** krijgt en niet 12. De
+waarde staat letterlijk in de naam en beschrijft een echt kanaal — de zwerm noemt hem dus terecht
+`goed` — maar het armatuur trekt 12 W en dat is wat een bestek vraagt. Catalogusbreed:
+
+    namen met "xW + yW" : 34   (Kreon 24, TossB 10)   waarde ≠ som: 34 van 34
+
+Alle 34 rapporteren te laag. Klein genoeg om te laten liggen, maar het is een systematische
+onderschatting en geen leesfout — dus het hoort niet in de "afgekeurd"-stapel maar op deze lijst.
