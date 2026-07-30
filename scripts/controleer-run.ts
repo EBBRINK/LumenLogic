@@ -25,9 +25,15 @@ for (const x of rows) {
     ? Number(geland) === Number(bedoeld) : geland === bedoeld);
   if (!gelijk) { mis++; fout.push(`kolom="${geland}" ≠ voorstel="${bedoeld}"  ${x.name}`); } else ok++;
   if (x.herkomst !== "parsed-from-name") geenStempel++;
-  // staat de waarde letterlijk in de naam? (spaties weg, dan zoeken)
+  // Staat de waarde letterlijk in de naam? Spaties weg, en de bron schrijft decimalen met een
+  // KOMMA ("1,2W") terwijl wij ze met een punt opslaan ("1.2") — beide vormen toestaan, anders
+  // meldt deze toets 10 valse afwijkingen op een run die klopt. (Zelf ingelopen, 30 jul.)
   const plat = String(x.name).replace(/\s+/g, "").toUpperCase();
-  if (!plat.includes(bedoeld.toUpperCase())) { nietInNaam++; fout.push(`waarde niet in naam: ${bedoeld} ← ${x.name}`); }
+  const vormen = [bedoeld, bedoeld.replace(".", ","), bedoeld.replace(",", ".")];
+  if (!vormen.some((v) => plat.includes(v.toUpperCase()))) {
+    nietInNaam++;
+    fout.push(`waarde niet in naam: ${bedoeld} ← ${x.name}`);
+  }
 }
 console.log(`\nrun ${runId} · veld ${veld} · ${rows.length} items`);
 console.log(`  kolomwaarde == voorstel        : ${ok}`);
