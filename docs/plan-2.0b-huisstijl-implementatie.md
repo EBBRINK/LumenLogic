@@ -9,7 +9,8 @@
 > Guardrails: kit is leidend (G23) · dark mode verplicht (G24) · brand-kit-MD niet aanraken ·
 > geen web-assets ophalen.
 >
-> **Status: papier. Wacht op Timo's go én op de antwoorden in §6. Er is geen regel code gewijzigd.**
+> **Status: papier. Er is geen regel code gewijzigd.** De vier blockers zijn op 2026-07-30 door
+> Timo beantwoord (§6); stap 1 en 3 van §8 zijn daarmee vrij. De bouw wacht op zijn go.
 
 ---
 
@@ -73,7 +74,7 @@ conversies (beide agents kwamen op identieke waarden) beschikbaar in de agent-ra
 | `--primary-hover` *(nieuw)* | `#0F1626` | §7 hover |
 | `--primary-active` *(nieuw)* | `#0A0E18` | §7 active |
 | `--secondary` / `--secondary-foreground` | `#F0F2F5` / `#1A1F3A` | §3 Light Neutral — zie §3.1 |
-| `--muted` / `--muted-foreground` | `#F5F7FA` / `#8E9BA8` | §3 Soft Grey / Text Secondary — ⚠ **V1** |
+| `--muted` / `--muted-foreground` | `#F5F7FA` / `#8E9BA8` | §3 Soft Grey / Text Secondary — **besloten V1: kit-letterlijk**, ⚠ 2,8:1 = bewuste AA-afwijking |
 | `--accent` / `--accent-foreground` | `#F0F2F5` / `#1A1F3A` | hover-vlak. Let op: shadcn-"accent" ≠ kit-"Accent Teal" |
 | `--destructive` | `#D84C4C` | §3 Negative — ⚠ **V5** |
 | `--border` | `#E5E9F0` | §3 |
@@ -125,12 +126,14 @@ secundaire actie"), en `--secondary` blijft een neutraal grijs vlak. Dit is een 
 | `--muted` / `--muted-foreground` | `#2A3145` / `#B0B8C4` | §14 (9:1 ✓) |
 | `--border` | `#3A4254` | §14 — **solide**, vervangt de huidige `oklch(1 0 0 / 10%)` |
 | `--input` | `#3A4254` | rand; achtergrond via `bg-muted` = `#2A3145` = exact §14 Input Bg ✓ |
+| `--primary` / `--primary-foreground` | `#FFFFFF` / `#1A1F3A` | **besloten V3.** §14 geeft geen primary; §3 zegt dat wit voor "CTA's op donker" is. Navy-op-navy is ≈1:1 |
+| `--ring` | `#1BA89A` | **besloten V4.** Blauw haalt 2,25:1 op kaart-navy en faalt §11; teal haalt 5,4:1 en is een kit-kleur |
 | `--destructive`, `--chart-*`, `--success`, `--warning`, `--brand-*` | gelijk aan light | §14 geeft geen dark-varianten — niets verzinnen |
-| `--sidebar` | `#1A1F3A`, border `#3A4254`, rest analoog | afgeleid van surface |
+| `--sidebar` | `#1A1F3A`, border `#3A4254`, ring `#1BA89A`, rest analoog | afgeleid van surface |
 
-**Twee gaten die §14 niet dekt en die niet zelf ingevuld worden: `--primary` en `--ring` in
-dark.** Zie **V3** en **V4** — dit zijn de enige twee punten waarop de agents inhoudelijk
-verschillen.
+De twee gaten die §14 niet dekt (`--primary` en `--ring`) zijn met V3 en V4 gedicht, allebei met
+een kleur die de kit zelf levert. Dark-hover en -active blijven ongedefinieerd: niet verzinnen,
+maar afleiden via `color-mix(in oklch, var(--primary), black 12%)` op een kit-kleur.
 
 Dat de dark-randen van translucent naar solide gaan is een bewuste kit-keuze. Op gekleurde
 vlakken (navy kaart op donker canvas) gedraagt solide zich anders — beoordelen op de
@@ -186,7 +189,8 @@ Alle zes primitives zijn ≤ ~170 regels.
   hover:underline`.
 - `secondary`: geen edit, kleurt via tokens naar grijs vlak + navy tekst.
 - `size.default`: `h-8 px-2.5` → `h-11 px-4` (44px, 16px horizontaal); `lg` → `h-12`.
-  ⚠ **Geblokkeerd op V2** — er zijn 56× `size="sm"`, 4× `icon-sm`, 2× `xs`.
+  **Besloten V2:** `sm` (56×), `xs` (2×) en `icon-*` (4×) blijven compact — bewuste, vastgelegde
+  afwijking voor dense tabellen en toolbars. Niet aanraken.
 
 **`input.tsx`**
 - `bg-transparent` → `bg-muted focus-visible:bg-background`; de `dark:bg-input/30`-hacks
@@ -228,17 +232,17 @@ een off-brand default-accent `#6b7280` voor per-org-branding → **V16**.
 
 ## 6. Openstaande vragen
 
-**Vier blokkeren de bouw** (V1–V4). De rest kan tijdens de bouw beantwoord worden, maar geen
-ervan mag door een bouwer zelf worden ingevuld.
+### Beantwoord door Timo, 2026-07-30 — de vier blockers zijn dicht
 
-### Blockers
-
-| # | Vraag | Waarom het blokkeert |
+| # | Besluit | Consequentie |
 |---|---|---|
-| **V1** | `--muted-foreground`: kit-`#8E9BA8` (**2,8:1** op wit, faalt de kit-eigen 4.5:1-eis) of kit-`#3F4A5C` (veilig, donkerder)? Idem KPI-labels en tabelkoppen. | `muted-foreground` staat op vrijwel elke pagina. Verkeerd kiezen = óf een bleke app, óf een AA-falende app. |
-| **V2** | Geldt de 44px minimumhoogte ook voor `size="sm"` (56×), `xs` (2×) en `icon-sm` (4×), of alleen voor default/CTA's en formulieren? | Grootste visuele gok van het plan. 44px overal maakt dense tabel- en admin-schermen zichtbaar ruimer. Moet vóór de component-stap vastliggen. |
-| **V3** | Primaire knop in dark: §14 geeft er geen. Wit vlak + navy tekst (kit §3: "Wit: CTA's op donker") of `#2D5A8C` + wit (7,1:1)? | Navy-op-navy is onzichtbaar (≈1:1). Er moet iets gekozen worden en de kit zwijgt. |
-| **V4** | Focus-ring in dark: `#2D5A8C` haalt **2,25:1** op kaart-navy en faalt daarmee de kit-eis "altijd zichtbaar" + 3:1. Teal `#1BA89A` (5,4:1) toegestaan als dark-ring? | Toegankelijkheid, en het raakt elk interactief element. |
+| **V1** | `--muted-foreground` blijft **kit-letterlijk `#8E9BA8`**. Instructie: de kit is leidend. | ⚠ **De MD spreekt zichzelf hier tegen** — §3 schrijft de kleur voor, §11 eist 4.5:1, en 2,8:1 haalt zelfs de 3:1-drempel voor grote tekst niet. Er is geen lezing waarin beide kloppen. De app gaat dus bewust live met secundaire tekst onder AA, op vrijwel elke pagina. Vastgelegd als bekende afwijking voor Eduard (DESIGN.md O8), niet als vergissing. |
+| **V2** | 44px geldt voor **`default`, `lg` en formuliervelden**. `sm` (56×), `xs` (2×) en `icon-*` (4×) blijven compact. | Bewuste afwijking van §7 voor dense tabellen en toolbars. Vastgelegd in DESIGN.md O9 zodat een latere bouwer ze niet "corrigeert". |
+| **V3** | Primaire CTA in dark = **wit vlak, navy tekst**. | Kit-conform (§3: wit is voor CTA's op donker), maximaal contrast, geen verzonnen kleur. |
+| **V4** | Focus-ring in dark = **teal `#1BA89A`**. | 5,4:1 op navy, ruim boven de eis. Light blijft blauw `#2D5A8C`; je ziet nooit beide standen tegelijk. |
+
+Stap 1 en 3 van §8 zijn hiermee ontgrendeld. De vragen hieronder blokkeren de bouw niet, maar
+**geen ervan mag door een bouwer zelf worden ingevuld** — ook niet "even snel" tijdens een commit.
 
 ### Overige
 
@@ -310,9 +314,9 @@ naar productie.
 | # | Stap | Gate |
 |---|---|---|
 | 0 | **Specimen-test eerst.** Nieuw `components/huisstijl.test.tsx`: rendert via `renderServer` één stylesheet-pagina (alle button-varianten en -maten, input default/focus/invalid/disabled, Card default+sm, Badge-varianten, tabelfragment, dialog-content), screenshots light/dark × 375×812 en 1280×800 volgens het patroon van `site-nav.test.tsx`. Plus white-box-assertions op computed styles (`getPropertyValue('--primary')`, hoogte `44px`, radius `6px`). Draai hem vóór elke wijziging: dat zijn de before-beelden. | — |
-| 1 | **Token-flip** in `app/globals.css`: §3 light + dark + radius-schaal + nieuwe tokens. Nul componentwijzigingen, app blijft werken. Volledige testrun, alle 27 screenshot-testbestanden regenereren en beoordelen — goedkoopste plek om tokenfouten te vangen. | V1 |
+| 1 | **Token-flip** in `app/globals.css`: §3 light + dark + radius-schaal + nieuwe tokens. Nul componentwijzigingen, app blijft werken. Volledige testrun, alle 27 screenshot-testbestanden regenereren en beoordelen — goedkoopste plek om tokenfouten te vangen. | ✅ vrij (V1/V3/V4 besloten) |
 | 2 | **Fonts**: `app/layout.tsx` + de `--font-mono`-regel in globals.css. Aparte commit, los revertbaar. Screenshots veranderen niet (zie §1-3) — typografie handmatig checken in `bun dev`. | V8, V9 |
-| 3 | **`button.tsx` + `input.tsx`** (geometrie, gewichten, states) + specimen-assertions bijwerken. Hier wordt 44px zichtbaar; alle schermscreenshots opnieuw beoordelen op kapotte dense layouts. | **V2**, V10, V11 |
+| 3 | **`button.tsx` + `input.tsx`** (geometrie, gewichten, states) + specimen-assertions bijwerken. Hier wordt 44px zichtbaar; alle schermscreenshots opnieuw beoordelen op kapotte dense layouts. | ✅ vrij (V2 besloten) · V10, V11 |
 | 4 | **`card.tsx` + `dialog.tsx`** (+ `badge.tsx` zodra V7 er is). | V7 |
 | 5 | **Sweep**: ad-hoc textareas, de 46 `rounded-*`-bestanden nalopen op de nieuwe schaal, `grep` op resterende hardgecodeerde hex/palet-utilities. | — |
 | 6 | **Statuskleuren-migratie** (26 bestanden, 163 voorkomens → semantic tokens). Volledig gescheiden; mag doorschuiven zonder dat 1–5 erop wachten. | V13, V14 |
@@ -333,8 +337,10 @@ een schoon tussenstation in plaats van een half karwei.
 
 **Het WCAG-mijnenveld zit in de kit zelf.** Vier voorgeschreven combinaties falen de eis die de
 kit zelf stelt: `#8E9BA8` op wit 2,8:1 · `#D84C4C` op wit 4,15:1 · wit op teal 2,95:1 · blauwe
-ring op dark-navy 2,25:1. (Nagerekend, niet overgenomen.) Dit is niet oplosbaar zonder
-Timo/Eduard — V1, V4, V5 en V6 zijn er de neerslag van.
+ring op dark-navy 2,25:1. (Nagerekend, niet overgenomen.) Twee daarvan zijn met V1 en V4
+afgehandeld — de dark-ring wordt teal (opgelost), en `#8E9BA8` blijft staan als **bewust
+geaccepteerde afwijking**. V5 en V6 liggen nog open. Dit is een kit-probleem, geen
+implementatieprobleem: alleen Eduard kan het bij de bron repareren.
 
 **Wat we expliciet niet doen:** een `tailwind.config.js` introduceren (CSS-first is de
 Tailwind-4-weg en werkt) · tokens hernoemen of het `@theme inline`-blok herstructureren ·

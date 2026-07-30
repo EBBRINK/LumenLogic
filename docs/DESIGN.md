@@ -133,6 +133,10 @@ beide standen bij elke feature, en §14 lévert het dark-palet. Gebruik die toke
 | Rand | `#E5E9F0` | `#3A4254` |
 | Invoerachtergrond | `#F5F7FA` | `#2A3145` |
 
+Twee dingen die §14 níét geeft en die zijn vastgelegd (zie O10): de **primaire CTA op donker**
+is een wit vlak met navy tekst, en de **focus-ring op donker** is teal `#1BA89A` in plaats van
+blauw. In light blijft de focus-ring blauw `#2D5A8C`.
+
 Het logo hoeft in dark niet te wisselen: de kleurversie werkt direct op donker, de kleuren zijn
 helder genoeg. Alleen bij twijfel de mono-wit lockup.
 
@@ -276,6 +280,9 @@ Niets hiervan zelf invullen. Alles hier gaat eerst langs Timo, en waar aangegeve
 | **O5** | Kit §15 noemt mono-zwart "primary"; het merkpakket noemt de kleur-lockup het standaardlogo. | Besluit Timo: geleverde bestanden aanhouden — kleur-lockup is standaard, mono waar kleur niet kan. |
 | **O6** | Het canonieke `lumenlogic_brand_kit.md` stond buiten de repo. | **Gesloten:** byte-identieke read-only kopie op `docs/brand/lumenlogic_brand_kit.md`. Het origineel is niet aangeraakt. |
 | **O7** | De logobestanden staan nog niet in de repo (`public/`). | **Voorwaarde voor de 2.0b-bouwchip**, die pas ná 2.0a start. Nu niet doen. Assets ongewijzigd overnemen uit de twee merkpakket-zips. |
+| **O8** | **De kit spreekt zichzelf tegen over secundaire tekst.** §3 schrijft `#8E9BA8` voor, §11 eist 4.5:1 contrast. Op wit haalt die kleur 2,8:1 — zelfs onder de 3:1-drempel voor grote tekst. Er is geen lezing waarin beide kloppen. | **Besluit Timo 2026-07-30: kit-letterlijk, `#8E9BA8` blijft.** De app gaat dus bewust live met secundaire tekst onder WCAG AA, op vrijwel elke pagina. Dit is een geaccepteerde afwijking, géén bug — niet "opruimen". Bij Eduard neerleggen samen met O1. |
+| **O9** | **44px minimumhoogte geldt niet overal.** Kit §7 eist min. 44px voor knoppen; de codebase heeft 56× `size="sm"` (28px), 2× `xs` en 4× `icon-*` in dense tabellen en admin-toolbars. | **Besluit Timo 2026-07-30:** 44px voor `default`, `lg` en formuliervelden; de compacte maten blijven zoals ze zijn. Bewuste afwijking van §7 — niet later stilzwijgend naar 44px trekken. |
+| **O10** | Kit §14 dekt dark mode niet volledig: er is geen primaire knop en geen focus-ring voor donker. | **Besluit Timo 2026-07-30:** primaire CTA op donker = wit vlak met navy tekst (§3: "Wit: CTA's op donker"). Focus-ring op donker = teal `#1BA89A` (5,4:1); blauw haalt daar maar 2,25:1. Beide kit-kleuren, niets verzonnen. |
 
 ---
 
