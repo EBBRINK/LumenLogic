@@ -10,11 +10,20 @@
 // op een lege <div>. Vandaar de splitsing — hier alleen de poort, geen render.
 import { afterEach, expect, test, vi } from "vitest";
 
-// De sessielaag is de enige afhankelijkheid van de pagina; de echte versie trekt
-// better-auth plus de database mee en kent in een test geen cookie.
+// De sessielaag; de echte versie trekt better-auth plus de database mee en kent in een
+// test geen cookie.
 const sessie = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock("@/lib/session", () => ({
   getSession: async () => sessie.value,
+}));
+
+// Sinds sprint 3.1 geeft de pagina ook `signInAction` door aan het wachtwoordformulier.
+// Die action importeert @/lib/auth → @/db/client, en dát bestand gooit al bij import als
+// DATABASE_URL ontbreekt — in deze test dus altijd. De poort die hier getoetst wordt staat
+// helemaal vóór de action, dus een lege stub volstaat; zónder deze mock faalt de test op
+// "DATABASE_URL ontbreekt" in plaats van op de poort.
+vi.mock("./actions", () => ({
+  signInAction: async () => ({ ok: false as const, message: "" }),
 }));
 
 afterEach(() => {
