@@ -1,6 +1,6 @@
 // De valpositie mag de val niet verraden. Zie de toelichting in zwerm-meng.ts.
 import { describe, expect, it } from "vitest";
-import { meng, scheidTweelingen } from "./zwerm-meng";
+import { controleerVallen, meng, scheidTweelingen } from "./zwerm-meng";
 
 /** Deterministische pseudo-hash; de suite draait in de browser, dus geen node:crypto. */
 function hash(s: string): Uint8Array {
@@ -180,5 +180,40 @@ describe("scheidTweelingen — de verhuisde val mag niet vooraan klonteren", () 
     // niet allemaal in de eerste tien plekken van hun scherf
     expect(binnenScherf.filter((p) => p < 10).length).toBeLessThan(binnenScherf.length);
     expect(Math.max(...binnenScherf)).toBeGreaterThan(10);
+  });
+});
+
+describe("controleerVallen — de vier lekken die we al een keer gemist hebben", () => {
+  const cel = (id: string, vorm = id) => ({ id, vorm });
+  const isVal = (c: { id: string }) => c.id.startsWith("v");
+  const sleutel = (c: { vorm: string }) => c.vorm;
+  /** n cellen waarvan die op de posities in `valOp` een val zijn. */
+  const bouw = (n: number, valOp: number[], vormVan?: (i: number) => string) =>
+    Array.from({ length: n }, (_, i) => cel(valOp.includes(i) ? `v${i}` : `e${i}`, vormVan?.(i) ?? `vorm${i}`));
+
+  it("zwijgt bij een gezonde scherf", () => {
+    expect(controleerVallen([bouw(120, [7, 23, 44, 71, 103])], isVal, sleutel)).toEqual([]);
+  });
+
+  it("ziet de vaste stap terug (de Kreon-bug)", () => {
+    const k = controleerVallen([bouw(200, [19, 39, 59, 79, 99])], isVal, sleutel);
+    expect(k.join(" ")).toMatch(/VASTE STAP van 20/);
+  });
+
+  it("ziet de klontering vooraan (de XAL-bug)", () => {
+    const k = controleerVallen([bouw(120, [0, 1, 2, 3, 4, 5])], isVal, sleutel);
+    expect(k.join(" ")).toMatch(/klonteren/);
+  });
+
+  it("ziet de tweeling in dezelfde scherf (de Lombardo-bug)", () => {
+    // v10 en e11 delen dezelfde vorm: dat is de val naast zijn origineel.
+    const rij = bouw(120, [10, 30, 60, 95], (i) => (i === 10 || i === 11 ? "zelfde" : `vorm${i}`));
+    const k = controleerVallen([rij], isVal, sleutel);
+    expect(k.join(" ")).toMatch(/naast een cel met dezelfde naam en vorm/);
+  });
+
+  it("ziet een scherf zonder enkele val", () => {
+    const k = controleerVallen([bouw(50, [])], isVal, sleutel);
+    expect(k.join(" ")).toMatch(/geen enkele val/);
   });
 });

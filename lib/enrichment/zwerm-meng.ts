@@ -144,3 +144,42 @@ export function scheidTweelingen<T>(
   }
   return { rij, geruild, rest };
 }
+
+// ── Zelfcontrole op de scherven vóór er een agent leest ─────────────────────
+// Elk van de vier sloten op de valdeur is pas gaan opvallen aan de UITKOMST, nooit aan de code:
+// het `v`-voorvoegsel, de vaste stap van 19, de tweeling ernaast, en de klontering vooraan die de
+// tweeling-reparatie zélf veroorzaakte. Steeds meldde een agent het, en steeds was de ronde toen
+// al gedraaid. Deze functie stelt dezelfde vragen aan de scherven zoals ze op schijf komen.
+export function controleerVallen<T>(
+  scherven: T[][],
+  isVal: (c: T, scherfIndex: number, positie: number) => boolean,
+  sleutelVan: (c: T) => string,
+): string[] {
+  const klachten: string[] = [];
+  scherven.forEach((cellen, i) => {
+    const posities = cellen.flatMap((c, j) => (isVal(c, i, j) ? [j] : []));
+    if (posities.length === 0) {
+      klachten.push(`scherf ${i + 1}: geen enkele val — val-recall zegt niets over deze scherf`);
+      return;
+    }
+    if (posities.length > 2) {
+      const afstanden = posities.slice(1).map((x, k) => x - posities[k]);
+      if (new Set(afstanden).size === 1) {
+        klachten.push(`scherf ${i + 1}: de vallen staan op een VASTE STAP van ${afstanden[0]}`);
+      }
+      const spanwijdte = posities[posities.length - 1] - posities[0];
+      if (spanwijdte < cellen.length / 4) {
+        klachten.push(
+          `scherf ${i + 1}: de vallen klonteren (positie ${posities[0]}–${posities[posities.length - 1]} van ${cellen.length})`,
+        );
+      }
+    }
+    const telling = new Map<string, number>();
+    for (const c of cellen) telling.set(sleutelVan(c), (telling.get(sleutelVan(c)) ?? 0) + 1);
+    const tweelingen = cellen.filter((c, j) => isVal(c, i, j) && (telling.get(sleutelVan(c)) ?? 0) > 1).length;
+    if (tweelingen > 0) {
+      klachten.push(`scherf ${i + 1}: ${tweelingen} val(len) staan naast een cel met dezelfde naam en vorm`);
+    }
+  });
+  return klachten;
+}

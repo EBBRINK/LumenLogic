@@ -51,7 +51,7 @@ import { assertBranchDb, logGuard } from "./branch-guard";
 import { getRunItems, getEnrichmentRun, nameShape } from "@/lib/repo/enrichment";
 import { parseProductName, specSpans } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
-import { meng, scheidTweelingen } from "@/lib/enrichment/zwerm-meng";
+import { controleerVallen, meng, scheidTweelingen } from "@/lib/enrichment/zwerm-meng";
 
 const [, , runId, ...rest] = process.argv;
 const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) ?? 40);
@@ -306,8 +306,10 @@ async function main() {
   const scherven: string[] = [];
   const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
 
+  const scherfCellen: Cel[][] = [];
   for (let s = 0; s * maat < alles.length; s++) {
     const deel = alles.slice(s * maat, (s + 1) * maat);
+    scherfCellen.push(deel);
     // Het scherfbestand draagt GEEN val-markering — anders is de val geen val.
     const cellen = deel.map(({ val: _val, bron: _bron, ...c }) => c);
     const hash = createHash("sha256")
@@ -359,6 +361,19 @@ async function main() {
       (maat !== scherfMaat ? `, opgesplitst omdat één scherf de vallen naast hun tweeling zet` : "") +
       `)`,
   );
+  // Zelfcontrole vóór er ook maar één agent leest — zie `controleerVallen` in zwerm-meng.ts.
+  const klachten = controleerVallen(
+    scherfCellen,
+    (_c, i, j) => soortVan.get(`${i * maat + j}`) === "val",
+    (c) => `${c.veld}|${c.naamvorm}|${c.productnamen.join("\u241f")}`,
+  );
+  console.log(
+    klachten.length === 0
+      ? `  valcontrole : ✓ gespreid, geen vaste stap, geen tweeling in dezelfde scherf`
+      : `  valcontrole : ✗ ${klachten.length} bezwaar(en) — deze scherven meten patroonherkenning, niet zorgvuldigheid`,
+  );
+  for (const k of klachten) console.log(`      ${k}`);
+
   console.log(
     `  tweelingen  : ${gescheiden.geruild} val(len) naar een andere scherf geruild` +
       (gescheiden.rest > 0
