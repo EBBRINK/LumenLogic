@@ -7,9 +7,15 @@
 // (Next 16.2.10, zelfde URL met en zonder het bestand): een root
 // loading-boundary commit de HTTP-status vóór de pagina resolveert, dus
 // /products/<geen-uuid> gaf 200 in plaats van 404 en een uitgelogde /projects
-// 200 in plaats van 307. Dat sloopt precies wat deze bug repareert. Wachtstand
-// voor de trage schermen (/data/brand-relations scant ~210k rijen) hoort dus
-// gescopeerd in een route-group, niet in de root.
+// 200 in plaats van 307. Dat sloopt precies wat deze bug repareert.
+//
+// CORRECTIE op het vorige advies hier ("dan gescopeerd in een route-group"): dat
+// werkt niet. Zowel requireUuid() als requireSession() (die redirect("/login")
+// doet) draaien BINNEN de pagina, dus ónder elke loading-boundary op layout-niveau
+// — een route-group-loading.tsx loopt tegen exact dezelfde muur en commit de status
+// net zo hard. Wachtstand voor de trage schermen (/data/brand-relations scant ~210k
+// rijen) hoort daarom in een <Suspense>-grens BINNEN de pagina, ná de sessie- en
+// uuid-check: dan staat de status al vast voordat de fallback in beeld komt.
 //
 // Screenshots licht/donker × mobiel/desktop, zoals elke feature. De belangrijkste
 // assertie staat bij error.tsx: de foutmelding zelf mag NIET in beeld komen.
@@ -29,6 +35,7 @@ import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import ErrorBoundary from "./error";
+import GlobalError from "./global-error";
 import NotFound from "./not-found";
 
 const viewports = {
@@ -126,6 +133,76 @@ test("error: de databasefout lekt niet naar de gebruiker, de digest wél", async
 test("error: zonder digest blijft de referentieregel weg", async () => {
   await renderServer(
     canvas(<ErrorBoundary error={{ name: "E", message: "x" } as Error} reset={GEEN_RESET} />),
+  );
+  await expect
+    .element(page.getByRole("heading", { name: "Something went wrong" }))
+    .toBeInTheDocument();
+  expect(document.body.textContent ?? "").not.toContain("Reference:");
+});
+
+// ── Foutgrens boven de root-layout ───────────────────────────────────────────
+//
+// app/error.tsx hangt ÓNDER app/layout.tsx en vangt die layout dus niet. Klapt de layout
+// zelf — en die haalt next/font/google over het netwerk op — of klapt error.tsx, dan gaf
+// Next zonder global-error.tsx alsnog zijn eigen kale ongestileerde 500-pagina: precies
+// het symptoom waar bug #1 over gaat, één niveau hoger. Deze grens ontbrak in de eerste
+// ronde en is er nu.
+//
+// DERDE HARNASGRENS, gemeten op 30 jul (vitest-plugin-rsc 0.2.3), en de reden dat hier
+// GEEN licht/donker-paar staat maar twee opnamen. global-error VERVANGT de root-layout en
+// rendert dus zijn eigen <html>/<body> — Next eist dat daar. Wat de harnas ermee doet:
+//  · renderServer hangt de boom in een container-<div>; React laat <html> en <body> dan
+//    VALLEN. Na de render staat er geen genest <html>/<body> meer in de DOM (nagemeten met
+//    querySelector), alleen hun kinderen. React logt daarbij "In HTML, <html> cannot be a
+//    child of <div>" — console-ruis van de harnas, geen defect: de inhoud rendert en alle
+//    assertions hieronder draaien er overheen. Ga die melding dus NIET "oplossen" door het
+//    <html> uit global-error.tsx te halen; daar is het verplicht.
+//  · Met de <body> vallen ook zijn klassen weg (bg-background text-foreground), dus de
+//    donkere stand is hier niet op te wekken: een `dark`-opname wás een lichte opname met
+//    een donkere bestandsnaam. Nagemeten: --background op de buitenste html stond wél op
+//    #0f1626, de inhoud pakte hem alleen niet meer op.
+//  · canvas() eromheen zetten als plaatsvervangend <body> lost dat NIET op — dan rendert
+//    React de boom helemaal niet meer en lopen alle zes tests in een timeout. Ook gemeten;
+//    niet opnieuw proberen.
+// Twee eerlijke opnamen dus, mobiel + desktop, in de stand die de harnas kan tonen. De
+// donkere stand van dit scherm is één-op-één die van error.tsx — zelfde markup, zelfde
+// tokens — en die staat hierboven wél in vier opnamen.
+for (const [device, viewport] of Object.entries(viewports)) {
+  test(`global-error: eigen shell, zelfde uitwegen (${device})`, async () => {
+    await page.viewport(viewport.width, viewport.height);
+    await renderServer(<GlobalError error={DB_FOUT} reset={GEEN_RESET} />);
+
+    await expect
+      .element(page.getByRole("heading", { name: "Something went wrong" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .toBeInTheDocument();
+    const terug = page.getByRole("link", { name: "Back to projects" });
+    await expect.element(terug).toBeInTheDocument();
+    expect(terug.element().getAttribute("href")).toBe("/projects");
+
+    await page.screenshot({ path: `./global-error.${device}.test.png` });
+  });
+}
+
+test("global-error: lekt net zo min als error.tsx — digest wél, melding niet", async () => {
+  // Dezelfde regressie als bij error.tsx ("even de melding erbij voor het debuggen"),
+  // en juist hier verleidelijker: dit is het scherm waarop niets meer werkt.
+  await renderServer(<GlobalError error={DB_FOUT} reset={GEEN_RESET} />);
+  await expect
+    .element(page.getByRole("heading", { name: "Something went wrong" }))
+    .toBeInTheDocument();
+
+  const tekst = document.body.textContent ?? "";
+  expect(tekst).not.toContain("invalid input syntax");
+  expect(tekst).not.toContain("uuid");
+  expect(tekst).toContain("3068925283");
+});
+
+test("global-error: zonder digest blijft de referentieregel weg", async () => {
+  await renderServer(
+    <GlobalError error={{ name: "E", message: "x" } as Error} reset={GEEN_RESET} />,
   );
   await expect
     .element(page.getByRole("heading", { name: "Something went wrong" }))

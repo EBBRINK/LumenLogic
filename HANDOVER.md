@@ -2425,3 +2425,96 @@ expiring soon") is daar de énige plek waar het gat zichtbaar is — hij loopt o
 regels, maar staat er wel. Opties, geen van beide gekozen: de tabel op smal in kaarten laten omslaan
 (zoals de dossierregels), of de Status-kolom als tweede kolom zetten zodat hij binnen de eerste
 schermbreedte valt.
+
+## 2026-07-30 — Open eind: de tekst-fallback van de OCR-kaart stuurt naar modeluitvoer
+
+Bij het repareren van de brontekst op de reviewkaart (reviewronde 2 op `2e8492c`) bleef één ding
+staan dat een besluit vraagt en dus niet in die pas is meegenomen.
+
+Heeft een OCR-regel géén paginabeeld van zijn eigen pagina, dan linkt `OcrCard`
+(`components/dossier/review-queue.tsx`) naar `/projects/[id]/import/[runId]`. Dat scherm toont
+`import_runs.raw_markdown` — en `finishOcrRun` (`lib/repo/ocr.ts`) zet daar zelf boven: "OCR
+transcript (model output) … not the source document". De reviewer die de lezing van het model
+moet controleren, wordt daar dus naar de uitvoer van datzelfde model gestuurd. Voor een
+leesroute-run (AI-tekstroute, stap 3 fase B) is dat nog te verdedigen — er is geen beeld, het
+transcript is het enige dat er is — maar voor een OCR-run is het een controle tegen de verdachte.
+
+De tak bestaat sinds `f02e382`; `2e8492c` maakte hem voor OCR-runs pas écht bereikbaar door de
+beeldvlag per pagina te correleren (een run met gedeeltelijke beelddekking valt nu terug in plaats
+van naar een 404 te linken). Niet gefixt in deze pas: de keuzes lopen uiteen (de tak verbergen bij
+`source = 'ocr'` en alleen het paginanummer als tekst laten staan; het paginabeeld opnieuw
+renderen; of het transcript op dat scherm expliciet als "modeluitvoer, geen bron" labelen naast de
+review-link) en raken zowel de kaart als het importscherm.
+
+## 2026-07-30 — Foutgrenzen en uuid-guards: aannames en open eindes (bug #1, reparatiepas)
+
+Commit `4280f2f` zette `not-found.tsx`, `error.tsx` en de gedeelde `isUuid`/`requireUuid`
+neer; een adversariële verificatie erna vond dat de kopregel ("een kapot id geeft 404, niet
+500") nog niet waar was. De reparatiepas daarop staat in de bijbehorende commit. Wat hier
+hoort — de commit zelf raakte geen doc, tegen de werkwijze in — zijn de twee aannames die hij
+declareerde plus wat deze pas eraan heeft toegevoegd.
+
+### 1. Er komt bewust GEEN root `loading.tsx`, en ook geen route-group-variant
+
+Gemeten op de dev-server (Next 16.2.10, dezelfde URL met en zonder het bestand): een root
+loading-boundary **commit de HTTP-status voordat de pagina resolveert**. `/products/<geen-uuid>`
+gaf daarmee **200 in plaats van 404**, en een uitgelogde `/projects` **200 in plaats van 307**.
+Dat sloopt precies wat bug #1 repareert, dus het bestand is er niet.
+
+De remedie die daar eerst bij stond ("dan scoped in een route-group") is **fout** en is in
+`app/fallbacks.test.tsx` gecorrigeerd. Zowel `requireUuid()` als `requireSession()` (die
+`redirect("/login")` doet) draaien *binnen* de pagina, dus ónder elke loading-boundary op
+layout-niveau — een `loading.tsx` in een route-group loopt tegen exact dezelfde muur en commit
+de status net zo hard. Wachtstand voor de trage schermen (`/data/brand-relations` scant ~210k
+rijen) hoort daarom in een **`<Suspense>`-grens binnen de pagina, ná de sessie- en uuid-check**:
+dan staat de status al vast voordat de fallback in beeld komt. Nog te bouwen; niet gemeten.
+
+### 2. Drie harnasgrenzen bij de foutschermen (vitest-plugin-rsc 0.2.3)
+
+Gemeten op 30 jul, zodat een volgende bouwer ze niet nóg eens uitzoekt. De eerste twee stonden
+al in de testfile, de derde komt uit deze pas:
+
+1. Een **server**-component die `next/link` importeert is niet in te laden — de
+   react-server-build van `Link` klapt met "client reference export is called on server".
+   Daarom staat er in `not-found.tsx` een kale `<a>`.
+2. `renderServer` stuurt props van een **client**-component door een RSC-payload, dus ze moeten
+   serialiseerbaar zijn. Een echte `Error` en een `reset`-closure zijn dat niet — het scherm
+   rendert dan leeg. Gevolg: **dat de Try again-knop `reset()` aanroept is met deze harnas niet
+   te testen.** Die ene regel (`onClick={reset}` in `app/error.tsx`, en nu ook in
+   `app/global-error.tsx`) staat onbewaakt. Alles eromheen — de kop, de twee uitwegen, en dat de
+   foutmelding níét lekt — is wel gedekt.
+3. `app/global-error.tsx` (nieuw in deze pas) rendert zijn eigen `<html>`/`<body>`, want het
+   vervángt de root-layout — Next eist dat daar. De harnas hangt de boom in een container-`<div>`
+   en React laat die twee elementen dan **vallen**: er staat na de render geen genest
+   `<html>`/`<body>` meer in de DOM. Daarmee vallen ook `bg-background text-foreground` weg, dus
+   de **donkere stand van dit ene scherm is hier niet op te wekken** — een `dark`-opname was
+   letterlijk een lichte opname met een donkere bestandsnaam. Er staan daarom twee eerlijke
+   opnamen (mobiel + desktop) in plaats van vier. `canvas()` eromheen zetten als plaatsvervangend
+   `<body>` lost het níét op: dan rendert React de boom helemaal niet meer en lopen alle tests in
+   een timeout. Ook gemeten — niet opnieuw proberen. Het donkere beeld van dit scherm is
+   één-op-één dat van `error.tsx` (zelfde markup, zelfde tokens) en staat daar wél in vier opnamen.
+
+### 3. Waarom de guard-dekking nu een test is en geen discipline
+
+De eerste ronde miste drie van de vier `?brand=`-resolvers en drie van de drie route handlers.
+Oorzaak was geen slordigheid maar structuur: `resolveBrand` stond **vier keer byte-identiek** in
+de boom (`app/brand/{,data/,dashboard/,price-lists/}page.tsx`). Die vier zijn nu één
+`resolveBrandFromParam` in `lib/repo/brand-portal.ts`, en `lib/uuid.test.ts` scant sindsdien de
+app-boom (`import.meta.glob` + `?raw`, want de testrun staat in de browser en heeft geen
+`node:fs`) op vier regels: elke dynamische route handler filtert met `isUuid`, geen `?brand=`-
+pagina raakt `brands.id` nog zelf aan, elke dynamische pagina/layout roept `requireUuid`, en het
+losse `/^[0-9a-f-]{36}$/i` bestaat nergens meer. Nieuwe pagina's vallen daar automatisch in.
+
+De regel zelf staat één keer opgeschreven, bij `requireUuid` in `lib/uuid.ts`: **elke
+render-eenheid die een route-param in een uuid-kolom stopt, guardt hem zelf.** Layout en pagina
+renderen concurrent en dekken elkaar dus niet (wie het eerst gooit bepaalt het antwoord, béide
+kanten op), en een route handler draait helemaal geen layout — dat laatste was het gat waardoor
+`/projects/nope/quote/pdf` nog 500 gaf.
+
+### Open eind: twee bestanden konden niet mee
+
+`app/projects/[id]/quote/page.tsx` en `app/projects/[id]/review/page.tsx` waren tijdens deze pas
+in handen van parallelle sessies en hebben nog geen eigen `requireUuid(id)`. Ze staan als
+`NOG_TE_DOEN` in `lib/uuid.test.ts`; zodra de guard erin staat horen die twee regels weg en dekt
+de test ze vanzelf. Tot dan leunen ze op de layout-guard — dat werkt meestal, maar het is de race
+die hierboven beschreven staat, plus een losse afgewezen DB-promise per request.

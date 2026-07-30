@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
+import { requireUuid } from "@/lib/uuid";
 import { getActor, requireSession } from "@/lib/session";
 import { generateSubstitutionAction } from "../substitution/actions";
 
@@ -18,6 +19,11 @@ export default async function WerkvoorbereidingPage({
 }) {
   await requireSession();
   const { id } = await params;
+  // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. Deze tab leunde op
+  // de guard in de dossier-layout, maar layout en pagina renderen concurrent: zonder deze
+  // regel is het een race wie er als eerste gooit, en de ruwe cast-fout hieronder wint van
+  // een nette 404. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
 

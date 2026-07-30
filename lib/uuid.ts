@@ -31,6 +31,27 @@ export function isUuid(value: unknown): value is string {
 // Voor server-componenten: één regel per pagina, direct na het uitpakken van params
 // en vóór de eerste query. Route handlers gebruiken isUuid() zelf — die kunnen
 // not-found.tsx niet renderen en geven een kale 404-Response.
+//
+// DE REGEL, één keer opgeschreven omdat de eerste reparatieronde er twee
+// tegenstrijdige varianten van in de boom liet staan:
+//
+//   Elke render-eenheid die een route-param in een uuid-kolom stopt, guardt hem ZELF.
+//
+// Geen enkele eenheid dekt een andere:
+//  · Een layout en zijn pagina renderen CONCURRENT en zijn losse notFound/error-units.
+//    Wie het eerst gooit bepaalt het antwoord, dus een ruwe cast-fout in de één wint van
+//    een nette notFound() in de ander. Dat geldt béide kanten op: de guard in
+//    app/projects/[id]/layout.tsx maakt de guard in de pagina's dus NIET overbodig, en
+//    omgekeerd. Beide zijn dezelfde regel, toegepast op twee eenheden.
+//  · Een route handler draait helemaal geen layout — daar bestaat de layout-guard niet.
+//    (app/projects/[id]/quote/pdf/route.ts was precies dát gat: 500, niet 404.)
+//  · Bijeffect zonder guard: de sub-pagina vuurt zijn query alsnog af en die rejectt,
+//    dus elk zo'n request laat een losse afgewezen DB-promise achter — óók als de
+//    layout al netjes 404 had geantwoord.
+//
+// De dekking is afgedwongen in lib/uuid.test.ts ("guard-dekking"), niet door discipline:
+// vier byte-identieke kopieën van dezelfde resolver zijn de reden dat één fix drie
+// pagina's oversloeg.
 export function requireUuid(...values: string[]): void {
   for (const value of values) {
     if (!isUuid(value)) notFound();

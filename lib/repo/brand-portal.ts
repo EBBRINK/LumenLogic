@@ -8,6 +8,7 @@
 // worden meegeleverd, maar sorteert nooit — getBrandData geeft producten zonder ranking.
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { brandUploads, brands, products } from "@/db/schema";
+import { isUuid } from "@/lib/uuid";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 
@@ -60,6 +61,28 @@ export async function listBrandUploads(db: AppDb, brandId?: string) {
     ? await q.where(eq(brandUploads.brandId, brandId)).orderBy(desc(brandUploads.createdAt))
     : await q.orderBy(desc(brandUploads.createdAt));
   return rows;
+}
+
+// Welk merk het portaal toont, komt (voorlopig) uit `?brand=<id>`; anders het eerste merk
+// op naam. De echte merk-scoping via membership komt met de integratie-laag.
+//
+// ÉÉN plek, want dit stond in VIER pagina's byte-identiek (app/brand/page.tsx +
+// /data + /dashboard + /price-lists) en dat is precies waarom de uuid-guard uit de
+// UX-audit (30 jul, bug #1) er maar in één van de vier landde: `?brand=nope` ging als
+// ruwe queryparam in eq(brands.id, …), een uuid-kolom, dus Postgres gooide
+// `invalid input syntax for type uuid` en de drie andere pagina's gaven een 500.
+//
+// De guard valt TERUG op het eerste merk en doet géén notFound(): die terugval bestond
+// al ("anders het eerste merk"), en een kapotte queryparam hoort niet strenger te zijn
+// dan een geldige die niets vindt. Bij een route-PARAM is dat andersom — daar is de
+// hele pagina onvindbaar en gebruikt de aanroeper requireUuid().
+export async function resolveBrandFromParam(db: AppDb, brandId?: string) {
+  if (isUuid(brandId)) {
+    const [b] = await db.select().from(brands).where(eq(brands.id, brandId)).limit(1);
+    if (b) return b;
+  }
+  const [first] = await db.select().from(brands).orderBy(asc(brands.name)).limit(1);
+  return first ?? null;
 }
 
 export type BrandAggregate = {

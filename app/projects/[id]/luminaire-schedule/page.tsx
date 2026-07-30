@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { ArmaturenboekView } from "@/components/dossier/armaturenboek-view";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { PrintButton } from "./print-button";
 
@@ -15,6 +16,10 @@ export default async function ArmaturenboekPage({
 }) {
   await requireSession();
   const { id } = await params;
+  // Eigen guard, niet die van de dossier-layout: die rendert concurrent met deze pagina,
+  // dus wie het eerst gooit bepaalt het antwoord. Zie de regel bij requireUuid in
+  // lib/uuid.ts.
+  requireUuid(id);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const lines = await getSpecLines(db, id);

@@ -1,23 +1,16 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { brands } from "@/db/schema";
 import { PricelistUpload } from "@/components/merk/pricelist-upload";
 import type { UploadRow } from "@/components/merk/pricelist-upload";
-import { listBrandUploads } from "@/lib/repo/brand-portal";
+import { listBrandUploads, resolveBrandFromParam } from "@/lib/repo/brand-portal";
 import { requireSession } from "@/lib/session";
 import { submitUploadAction } from "../actions";
 
 // Prijslijst-upload (H-11): verplichte valid_until → staging. Buiten de dossier-layout.
-async function resolveBrand(brandId?: string) {
-  if (brandId) {
-    const [b] = await db.select().from(brands).where(eq(brands.id, brandId)).limit(1);
-    if (b) return b;
-  }
-  const [first] = await db.select().from(brands).orderBy(asc(brands.name)).limit(1);
-  return first ?? null;
-}
+// Welk merk, beslist resolveBrandFromParam — inclusief de uuid-guard op ?brand=. Deze
+// pagina had zijn eigen kopie van die resolver zónder guard, dus
+// /brand/price-lists?brand=nope gaf een 500 (UX-audit 30 jul, bug #1).
 
 export default async function MerkPrijslijstenPage({
   searchParams,
@@ -26,7 +19,7 @@ export default async function MerkPrijslijstenPage({
 }) {
   await requireSession();
   const { brand: brandParam } = await searchParams;
-  const brand = await resolveBrand(brandParam);
+  const brand = await resolveBrandFromParam(db, brandParam);
   const uploads = brand ? await listBrandUploads(db, brand.id) : [];
 
   const rows: UploadRow[] = uploads.map((u) => {

@@ -33,6 +33,11 @@ export default async function DossierLayout({
   // getDossier + getStatusCounts + getReviewCounts op de ruwe param en rendert
   // parallel met zijn pagina. Zonder deze regel gooit de layout de uuid-cast-fout
   // terwijl de pagina netjes notFound() doet, en wint de 500 alsnog.
+  //
+  // Let op: dat argument geldt béide kanten op, en de eerste reparatieronde trok daar de
+  // verkeerde conclusie uit ("de layout dekt de tabs"). Deze layout is NIET gezaghebbend —
+  // elke tab guardt zijn eigen param, precies omdat de race twee kanten heeft. De regel
+  // staat bij requireUuid in lib/uuid.ts en de dekking is getest in lib/uuid.test.ts.
   requireUuid(id);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();

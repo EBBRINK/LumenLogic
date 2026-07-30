@@ -40,6 +40,7 @@ import {
 import type { AppDb } from "@/lib/repo/db";
 import { logEvent } from "@/lib/repo/events";
 import { getLlmSpend, getSetting } from "@/lib/repo/settings";
+import { isUuid } from "@/lib/uuid";
 import {
   CALL_TIMEOUT_MS,
   envApiKey,
@@ -350,7 +351,12 @@ async function toolProductDetail(
   input: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const id = typeof input.id === "string" ? input.id.trim() : "";
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return { fout: "ongeldig product-id" };
+  // Laatste kopie van het losse `/^[0-9a-f-]{36}$/i`-patroon (UX-audit 30 jul, bug #1):
+  // dat liet o.a. 36 streepjes door en die string bereikte eq(visibleProducts.id, …) →
+  // uuid-cast-fout. Geen 500 (de per-regel-catch in runVangnet logt hem als
+  // `ai_vangnet_failed`), maar het kost wel een betaalde modelcall en de uitkomst van
+  // die regel. lib/uuid.ts is nu écht de enige definitie.
+  if (!isUuid(id)) return { fout: "ongeldig product-id" };
   const [row] = await db
     .select({
       id: visibleProducts.id,

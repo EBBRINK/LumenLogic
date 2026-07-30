@@ -15,7 +15,7 @@ import {
   listVersions,
   type ArmatuurSnapshotRow,
 } from "@/lib/repo/armaturenboek-versions";
-import { isUuid } from "@/lib/uuid";
+import { isUuid, requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { snapshotAction } from "./actions";
 
@@ -49,6 +49,11 @@ export default async function VersiesPage({
   await requireSession();
   const { id } = await params;
   const sp = await searchParams;
+  // De route-param krijgt requireUuid (de pagina bestaat niet), ?from=/?to= alleen isUuid
+  // hieronder (de pagina bestaat wél, alleen de gevraagde diff niet). Eigen guard en niet
+  // die van de dossier-layout: die rendert concurrent met deze pagina. Zie de regel bij
+  // requireUuid in lib/uuid.ts.
+  requireUuid(id);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
 
