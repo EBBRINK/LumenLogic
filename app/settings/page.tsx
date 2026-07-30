@@ -1,11 +1,14 @@
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { db } from "@/db/client";
 import { AllowedEmailsBlock } from "@/components/settings/allowed-emails-block";
 import { LlmBudgetBlock } from "@/components/settings/llm-budget-block";
 import { XisBlock } from "@/components/settings/xis-block";
 import type { XisEnvironment } from "@/components/settings/xis-block";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getLlmSpend,
-  getLlmSpendForPurpose,
+  getLlmSpendByPurpose,
   getSetting,
   listAllowedEmails,
 } from "@/lib/repo/settings";
@@ -24,13 +27,14 @@ export default async function InstellingenPage() {
   // zodat je jezelf niet kunt uitsluiten (UX-audit bug #5).
   const session = await requireSession();
 
-  const [emails, budget, spent, vangnetSpent, ocrSpent, xisEnv, xisKey] =
+  const [emails, budget, spent, spendByPurpose, xisEnv, xisKey] =
     await Promise.all([
       listAllowedEmails(db),
       getSetting<number>(db, "llm_budget_eur"),
       getLlmSpend(db),
-      getLlmSpendForPurpose(db, "vangnet"), // uitsplitsing AI-vangnet (B4/stap 8)
-      getLlmSpendForPurpose(db, "ocr"), // uitsplitsing OCR beeld-PDF (plan-ocr B4)
+      // Volledige uitsplitsing (UX-audit 30 jul, bug #10): eerder twee losse queries op
+      // 'vangnet' en 'ocr', waardoor 'leesroute' stil in het totaal bleef zitten.
+      getLlmSpendByPurpose(db),
       getSetting<string>(db, "xis_environment"),
       getSetting<string>(db, "xis_api_key"),
     ]);
@@ -45,7 +49,7 @@ export default async function InstellingenPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Users, LLM budget and the XIS connection.
+          Login access, LLM budget and the XIS connection.
         </p>
       </header>
 
@@ -61,8 +65,7 @@ export default async function InstellingenPage() {
         <LlmBudgetBlock
           budgetEur={budget}
           spentEur={spent}
-          vangnetEur={vangnetSpent}
-          ocrEur={ocrSpent}
+          breakdown={spendByPurpose}
           saveAction={saveBudgetAction}
         />
         <XisBlock
@@ -70,6 +73,25 @@ export default async function InstellingenPage() {
           keyIsSet={keyIsSet}
           saveAction={saveXisAction}
         />
+        {/* UX-audit 30 jul (bug #11): /settings/organization had nul inkomende links —
+            gebouwd, maar alleen via de URL te bereiken. Dit is de ingang. */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Organizations</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Organizations, their members and the roles those members come in
+              with. A role sets the default view, never what the engine shows.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/settings/organization"
+              className="inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+            >
+              Manage organizations <ArrowRight className="size-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </main>
   );

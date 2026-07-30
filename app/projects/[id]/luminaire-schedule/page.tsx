@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { ArmaturenboekView } from "@/components/dossier/armaturenboek-view";
@@ -26,7 +27,16 @@ export default async function ArmaturenboekPage({
 
   return (
     <>
-      <div className="mb-4 flex justify-end print:hidden">
+      {/* UX-audit 30 jul (bug #11): de versiegeschiedenis was alleen via work-prep te
+          bereiken, en die tab bestaat pas als het project gegund is — in tender-stand was
+          het scherm dus onbereikbaar. Secundaire link naast de printknop. */}
+      <div className="mb-4 flex items-center justify-end gap-4 print:hidden">
+        <Link
+          href={`/projects/${id}/luminaire-schedule/versions`}
+          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Version history →
+        </Link>
         <PrintButton />
       </div>
       <ArmaturenboekView

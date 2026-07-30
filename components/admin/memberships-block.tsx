@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -33,14 +33,9 @@ export function MembershipsBlock({
 }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Users across organizations</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Members and their roles per organization. A role sets the default view,
-          never what the engine shows.
-        </p>
-      </CardHeader>
-      <CardContent>
+      {/* Geen eigen kop meer (UX-audit 30 jul, bug #10): de paginakop zei letterlijk
+          hetzelfde, één regel hoger. De beleidszin staat nu daar. */}
+      <CardContent className="pt-6">
         {memberships.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No members in any organization yet.

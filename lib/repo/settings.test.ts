@@ -7,6 +7,7 @@ import { llmUsage } from "@/db/schema";
 import {
   addAllowedEmail,
   getLlmSpend,
+  getLlmSpendByPurpose,
   getSetting,
   isAllowed,
   listAllowedEmails,
@@ -106,4 +107,34 @@ test("LLM-verbruik: telt alleen de huidige kalendermaand", async () => {
 
   // 1.25 + 0.75 = 2.00 (de rij van vorige maand telt niet mee).
   expect(await getLlmSpend(db, now)).toBeCloseTo(2.0, 4);
+});
+
+// UX-audit 30 jul (bug #10): het scherm vroeg twee vaste doelen op ('vangnet', 'ocr') en
+// liet de rest stil in het totaal zitten — "€ 2,40 besteed" met € 0,33 verklaard. Deze
+// test pint de invariant die dat onmogelijk maakt: de uitsplitsing sómmeert tot de teller.
+test("LLM-verbruik: de uitsplitsing per doel telt op tot het maandtotaal", async () => {
+  const db = await createTestDb();
+
+  const now = new Date();
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15, 12, 0, 0);
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15, 12, 0, 0);
+
+  await db.insert(llmUsage).values([
+    { purpose: "vangnet", costEur: "0.2300", createdAt: thisMonth },
+    { purpose: "ocr", costEur: "0.1000", createdAt: thisMonth },
+    // Het doel dat eerder onzichtbaar bleef.
+    { purpose: "leesroute", costEur: "2.0700", createdAt: thisMonth },
+    { purpose: "leesroute", costEur: "5.0000", createdAt: lastMonth },
+  ]);
+
+  const rows = await getLlmSpendByPurpose(db, now);
+  expect(rows.map((r) => r.purpose)).toEqual(["leesroute", "vangnet", "ocr"]);
+  const listed = rows.reduce((sum, r) => sum + r.eur, 0);
+  expect(listed).toBeCloseTo(await getLlmSpend(db, now), 4);
+  expect(listed).toBeCloseTo(2.4, 4);
+});
+
+test("LLM-verbruik: zonder rijen is de uitsplitsing leeg, niet undefined", async () => {
+  const db = await createTestDb();
+  expect(await getLlmSpendByPurpose(db)).toEqual([]);
 });

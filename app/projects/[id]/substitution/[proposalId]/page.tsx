@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { SubstitutionDoc } from "@/components/dossier/substitution-doc";
+import { formatDate } from "@/lib/format";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getSubstitution } from "@/lib/repo/substitution";
 import { requireUuid } from "@/lib/uuid";
@@ -38,17 +39,15 @@ export default async function SubstitutiePage({
         </Link>
         <PrintButton />
       </div>
+      {/* UX-audit 30 jul (bug #9): createdAt was een kale ISO-slice (`2026-07-30`) — een
+          derde datumformaat naast de twee die de app al had. Nu de gedeelde formatter. */}
       <SubstitutionDoc
         dossierName={dossier.name}
         reference={proposal.reference}
         alternative={proposal.alternative}
         fields={proposal.fields}
         savingNote={proposal.savingNote}
-        createdAt={
-          proposal.createdAt
-            ? new Date(proposal.createdAt).toISOString().slice(0, 10)
-            : null
-        }
+        createdAt={proposal.createdAt ? formatDate(proposal.createdAt) : null}
       />
     </>
   );

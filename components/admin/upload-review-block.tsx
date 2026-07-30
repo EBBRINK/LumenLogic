@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDate } from "@/lib/format";
 
 export type UploadReviewRow = {
   id: string;
@@ -22,15 +23,8 @@ export type UploadReviewRow = {
 // De merken waaraan een PDL-import gehangen kan worden (voor de stub-import-selectie).
 export type PdlBrandOption = { id: string; name: string };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("nl-NL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+// UX-audit 30 jul (bug #9): hier stond een eigen `toLocaleDateString("nl-NL")` ("1 jul
+// 2026"). Eén datumformatter voor de hele app, in lib/format.ts.
 
 const KIND_LABEL: Record<string, string> = {
   pricelist: "Price list",

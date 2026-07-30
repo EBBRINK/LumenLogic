@@ -1,5 +1,6 @@
 // Tier-2-dekkingsmeter (H-09): welk deel van de catalogus heeft ≥1 gevuld matchveld?
 // Rustige tint, geen alarm — een laag percentage is een kans (meer verrijken), geen fout.
+import { formatInt } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type CoverageMeterProps = {
@@ -38,7 +39,10 @@ export function CoverageMeter({
         />
       </div>
       <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-        {covered} of {total} products with at least one technical field filled.
+        {/* Duizendtalgroepering (UX-audit 30 jul, bug #9): "74608 of 211317" was één
+            ononderbroken cijferbrij. */}
+        {formatInt(covered)} of {formatInt(total)} products with at least one
+        technical field filled.
       </p>
     </div>
   );

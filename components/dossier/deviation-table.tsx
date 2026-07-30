@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { fieldLabel } from "@/lib/matching/tolerances";
 import { STATUS } from "./status";
 import type { Deviation } from "./types";
 
@@ -60,7 +61,9 @@ export function DeviationTable({
           const missing = d.verdict === "onbekend" && d.delivered == null;
           return (
             <TableRow key={d.field}>
-              <TableCell className="font-medium">{d.field}</TableCell>
+              <TableCell className="font-medium">
+                {fieldLabel(d.field)}
+              </TableCell>
               <TableCell className="tabular-nums">
                 {showValue(d.requested)}
               </TableCell>
@@ -85,7 +88,11 @@ export function DeviationTable({
                   />
                   {v.label}
                 </span>
-                {d.note && (
+                {/* UX-audit 30 jul (bug #8): bij "onbekend" luidde de note "no data for
+                    beam angle" — dat herhaalt de badge ernaast én de Field-kolom in
+                    dezelfde rij. Eén keer "no data" is genoeg; de volle note blijft in
+                    het title-attribuut van de badge staan. */}
+                {d.note && d.verdict !== "onbekend" && (
                   <span className="ml-2 text-xs text-muted-foreground">
                     {d.note}
                   </span>

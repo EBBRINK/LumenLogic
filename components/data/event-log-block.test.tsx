@@ -86,13 +86,67 @@ test("events: recente handelingen zijn zichtbaar met leesbaar label en actor", a
   await expect.element(page.getByText("timo").first()).toBeInTheDocument();
 });
 
-test("events: payload-snippet verschijnt als die er is, anders een streepje", async () => {
+// UX-audit 30 jul (bug #8): de Details-kolom drukte ruwe JSON af. Nu een sleutel/waarde-
+// lijst met leesbare labels — de assert pint bewust béide kanten: het paar staat er, de
+// accolades staan er niet meer.
+test("events: payload staat als sleutel/waarde-lijst, niet als ruwe JSON", async () => {
   await renderServer(
     <Screen>
       <EventsBlock events={events} />
     </Screen>,
   );
-  await expect.element(page.getByText(/"status":"rood"/)).toBeInTheDocument();
+  await expect.element(page.getByText("Status:")).toBeInTheDocument();
+  await expect.element(page.getByText("rood")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('{"status"');
+});
+
+// UX-audit 30 jul (bug #8): de kern van de fix is de FALLBACK. `ocr_page_done` staat niet
+// als handgeschreven label in de map — zonder eventLabel() lekte de ruwe sleutel als pil
+// op het scherm. Deze test gebruikt daarom expres een actie die NIET in ACTION_LABEL staat.
+test("events: een onbekende actie lekt niet ruw maar wordt een zin", async () => {
+  await renderServer(
+    <Screen>
+      <EventsBlock
+        events={[
+          {
+            id: "e9",
+            entity: "import_run",
+            action: "iets_geheel_nieuws",
+            actor: "systeem",
+            createdAt: "2026-07-06T09:00:00Z",
+            payload: null,
+          },
+          // En een sleutel die met een afkorting begint: "Ocr page ..." zou fout staan.
+          {
+            id: "e10",
+            entity: "import_run",
+            action: "ocr_iets_nieuws",
+            actor: "systeem",
+            createdAt: "2026-07-06T09:01:00Z",
+            payload: null,
+          },
+        ]}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Iets geheel nieuws")).toBeInTheDocument();
+  await expect.element(page.getByText("OCR iets nieuws")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("iets_geheel_nieuws");
+  expect(document.body.textContent).not.toContain("ocr_iets_nieuws");
+});
+
+// UX-audit 30 jul (bug #9): het log droeg zijn eigen nl-NL-formatter zónder jaar
+// ("6 jul, 11:00") terwijl het log over maanden loopt. Eén formatter, mét jaar.
+test("events: het moment draagt een jaartal en is Engels", async () => {
+  await renderServer(
+    <Screen>
+      <EventsBlock events={events} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("06 Jul 2026, 11:00"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("jul,");
 });
 
 test("event-log-view: tellingen-kop toont het totaal en de per-actie-badges", async () => {

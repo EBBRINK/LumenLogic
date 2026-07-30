@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ACTION_LABEL } from "@/lib/event-labels";
+import { eventLabel } from "@/lib/event-labels";
 import type { EventActionCount } from "@/lib/repo/events";
 import { EventsBlock, type EventRow } from "./event-log-block";
 
@@ -48,7 +48,7 @@ export function EventLogView({
             ) : (
               actionCounts.map((a) => (
                 <Badge key={a.action} variant="secondary" className="gap-1">
-                  {ACTION_LABEL[a.action] ?? a.action}
+                  {eventLabel(a.action)}
                   <span className="tabular-nums font-semibold">{a.count}</span>
                 </Badge>
               ))

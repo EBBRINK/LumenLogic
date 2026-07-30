@@ -5,20 +5,33 @@ import { formatEur } from "@/lib/format";
 
 // LLM-BUDGET (L-06): de maandcap plus de verbruiksteller. Een teller, geen alarm —
 // bij overschrijding een rustige amberkleur, nooit een rood alarm (esthetiek = eerlijkheid).
+// Leesbare namen voor de doelen in llm_usage.purpose. Een doel dat hier ontbreekt valt
+// terug op zijn eigen sleutel — het verdwijnt nooit uit de optelling.
+const PURPOSE_LABEL: Record<string, string> = {
+  vangnet: "AI fallback",
+  ocr: "OCR (image PDFs)",
+  leesroute: "AI reading route",
+  import: "Import",
+  "zoek-fallback": "Search fallback",
+  verrijking: "Enrichment",
+  eval: "Evaluation",
+};
+
+export type LlmSpendBreakdownRow = { purpose: string; eur: number };
+
 export function LlmBudgetBlock({
   budgetEur,
   spentEur,
-  vangnetEur,
-  ocrEur,
+  breakdown,
   saveAction,
 }: {
   budgetEur: number | null;
   spentEur: number;
-  // Uitsplitsing: het deel van de teller dat het AI-vangnet (B4/stap 8) verbruikte.
-  vangnetEur?: number;
-  // Uitsplitsing: het deel dat OCR van beeld-PDF's verbruikte (plan-ocr B4; het
-  // €1-per-boek-plafond leeft daarnaast, per importrun).
-  ocrEur?: number;
+  // UX-audit 30 jul (bug #10): dit waren twee losse props (vangnetEur/ocrEur), dus de
+  // uitsplitsing toonde "AI fallback € 0,23 / OCR € 0,10" onder een totaal van € 2,40 en
+  // liet € 2,07 onverklaard. Nu de volledige group-by over llm_usage.purpose plus een
+  // expliciete Other-restpost: wat op het scherm staat telt op tot de teller erboven.
+  breakdown?: LlmSpendBreakdownRow[];
   saveAction: (formData: FormData) => void | Promise<void>;
 }) {
   // Een cap van 0 is géén "geen cap" maar de strengste: de domeinlaag blokkeert er
@@ -39,6 +52,14 @@ export function LlmBudgetBlock({
         : 0;
   // Strikt groter dan: bij cap 0 en €0,00 verbruik is er niets overschreden.
   const over = budgetEur != null && spentEur > budgetEur;
+
+  // De restpost. De group-by dekt het totaal al, maar een afrondingsverschil of een rij
+  // die buiten de uitsplitsing valt mag niet stil verdwijnen — dan staat hij als "Other".
+  // Onder een cent tonen we hem niet: dat is ruis, geen gat.
+  const rows = breakdown ?? [];
+  const listed = rows.reduce((sum, r) => sum + r.eur, 0);
+  const other = spentEur - listed;
+  const showOther = rows.length > 0 && Math.abs(other) >= 0.005;
 
   return (
     <Card>
@@ -100,17 +121,21 @@ export function LlmBudgetBlock({
               No monthly cap set.
             </p>
           )}
-          {vangnetEur != null && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Of which AI fallback:{" "}
-              <span className="tabular-nums">{formatEur(vangnetEur)}</span>
-            </p>
-          )}
-          {ocrEur != null && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Of which OCR (image PDFs):{" "}
-              <span className="tabular-nums">{formatEur(ocrEur)}</span>
-            </p>
+          {rows.length > 0 && (
+            <dl className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+              {rows.map((r) => (
+                <div key={r.purpose} className="flex justify-between gap-3">
+                  <dt>{PURPOSE_LABEL[r.purpose] ?? r.purpose}</dt>
+                  <dd className="tabular-nums">{formatEur(r.eur)}</dd>
+                </div>
+              ))}
+              {showOther && (
+                <div className="flex justify-between gap-3">
+                  <dt>Other</dt>
+                  <dd className="tabular-nums">{formatEur(other)}</dd>
+                </div>
+              )}
+            </dl>
           )}
         </div>
 

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatEur } from "@/lib/format";
+import { fieldLabel } from "@/lib/matching/tolerances";
 import { StatusBadge } from "./status-badge";
 import type {
   Deviation,
@@ -79,8 +80,9 @@ function DeviationList({ deviations }: { deviations: Deviation[] }) {
     <ul className="flex flex-col gap-1 text-sm">
       {deviations.map((d) => (
         <li key={d.field} className="text-status-amber-ink">
-          <span className="font-medium">{d.field}</span>: requested {d.requested} →
-          delivered {d.delivered ?? "—"}
+          {/* Leesbaar veldlabel, geen code-identifier (UX-audit 30 jul, bug #8). */}
+          <span className="font-medium">{fieldLabel(d.field)}</span>: requested{" "}
+          {d.requested} → delivered {d.delivered ?? "—"}
         </li>
       ))}
     </ul>

@@ -5,6 +5,7 @@
 // strengste telt).
 import { expect, test } from "vitest";
 import {
+  fieldLabel,
   judgeWatt,
   judgeLumen,
   judgeBeamAngle,
@@ -139,4 +140,27 @@ test("SKU-normalisatie: interpunctie/spaties/case genegeerd", () => {
   expect(normalizeSku("SAS100-BK")).toBe("sas100bk");
   expect(normalizeSku("SAS100.BK")).toBe("sas100bk");
   expect(normalizeSku("sas 100 bk")).toBe("sas100bk");
+});
+
+// ── UX-audit 30 jul (bug #8): veldlabels voor de UI ──────────────────────────
+// FIELD_LABELS bestond al, maar was privé en werd alleen gebruikt om note-zinnen te
+// bouwen — de schermen toonden de ruwe sleutel. De fallback is de kern: een sleutel die
+// hier ontbreekt mag NOOIT als camelCase-identifier op het scherm belanden.
+test("fieldLabel: bekende sleutels krijgen hun vastgelegde label", () => {
+  expect(fieldLabel("beamAngle")).toBe("beam angle");
+  expect(fieldLabel("dimmable")).toBe("dimmability");
+  expect(fieldLabel("cri")).toBe("CRI");
+  expect(fieldLabel("ip")).toBe("IP");
+});
+
+test("fieldLabel: een onbekende sleutel wordt een zin, geen identifier", () => {
+  // camelCase valt uit elkaar…
+  expect(fieldLabel("kleurWeergaveIndex")).toBe("Kleur weergave index");
+  // …net als snake_case en kebab-case.
+  expect(fieldLabel("nieuw_veld")).toBe("Nieuw veld");
+  expect(fieldLabel("nieuw-veld")).toBe("Nieuw veld");
+  // Cijfers blijven bij hun woord staan.
+  expect(fieldLabel("tier2Source")).toBe("Tier2 source");
+  // Degenereerde invoer valt terug op zichzelf in plaats van op een lege cel.
+  expect(fieldLabel("")).toBe("");
 });

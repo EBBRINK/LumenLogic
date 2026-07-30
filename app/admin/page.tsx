@@ -35,7 +35,11 @@ export default async function AdminOverviewPage() {
     },
     {
       href: "/admin/users",
-      title: "Users",
+      // UX-audit 30 jul (bug #10): heette "Users", net als het allowlist-blok op
+      // /settings — twee schermen met dezelfde titel en tegenstrijdige aantallen
+      // (org-lidmaatschappen hier, inlog-adressen daar). De cijfers klopten allebei,
+      // de labels niet. Hier: org-lidmaatschappen. Daar: toegang tot de inlog.
+      title: "Organization members",
       count: `${memberships.length} members`,
       desc: "Roles across all organizations.",
     },
@@ -46,7 +50,7 @@ export default async function AdminOverviewPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
         <p className="text-sm text-muted-foreground">
-          Brink admin: brands, uploads and users.
+          Brink admin: brands, uploads and organization members.
         </p>
       </header>
 

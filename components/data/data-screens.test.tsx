@@ -60,6 +60,10 @@ const sampleItems: SampleItem[] = [
 const queue: QueueRow[] = [
   { id: "q1", displayName: "Occhio", frequency: 5, status: "wachtend", loadedAt: null },
   { id: "q2", displayName: "Flos", frequency: 2, status: "ingeladen", loadedAt: "2026-07-02T09:00:00Z" },
+  // UX-audit 30 jul (bug #12): dít is de vervuiling waar de bevinding over gaat — een
+  // Nederlandse zonenaam die de importparser als merk las. "Mark as loaded" zou voor deze
+  // rij een leugen zijn; er valt niets in te laden.
+  { id: "q3", displayName: "Vergaderruimte", frequency: 9, status: "wachtend", loadedAt: null },
 ];
 
 // UX-audit 30 jul (bug #3): pl4 en pl5 zijn de gevallen die de badge liet liegen — een lijst
@@ -146,7 +150,11 @@ const screens = {
   ),
   inladen: (
     <Screen>
-      <BrandLoadQueue rows={queue} markLoadedAction={noopAction} />
+      <BrandLoadQueue
+        rows={queue}
+        markLoadedAction={noopAction}
+        dismissAction={noopAction}
+      />
     </Screen>
   ),
   prijslijsten: (
@@ -191,6 +199,55 @@ test("dekkingsmeter toont het percentage en de telling", async () => {
   await expect
     .element(page.getByText(/78 of 120 products/))
     .toBeInTheDocument();
+});
+
+// UX-audit 30 jul (bug #9): op productie staan hier zes cijfers ("74608 of 211317") —
+// één ononderbroken brij. De kleine fixture hierboven kon dat niet laten zien, deze wel.
+test("dekkingsmeter: grote tellingen krijgen duizendtalgroepering", async () => {
+  await renderServer(
+    <Screen>
+      <CoverageMeter total={211317} covered={74608} ratio={0.353} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/74\.608 of 211\.317 products/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("74608");
+});
+
+// ── UX-audit 30 jul, bug #12: een eerlijke actie voor rijen die nooit een merk waren ──
+test("inlaadwachtrij: elke wachtende rij biedt óók 'Not a brand'", async () => {
+  await renderServer(
+    <Screen>
+      <BrandLoadQueue
+        rows={queue}
+        markLoadedAction={noopAction}
+        dismissAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Vergaderruimte")).toBeInTheDocument();
+  // Twee wachtende rijen (q1, q3) → twee knoppen; de ingeladen rij (q2) krijgt er geen.
+  expect(
+    page.getByRole("button", { name: "Not a brand" }).elements().length,
+  ).toBe(2);
+  const dismissForms = document.querySelectorAll("form");
+  const queueIds = Array.from(dismissForms)
+    .map((f) => f.querySelector<HTMLInputElement>('input[name="queueId"]')?.value)
+    .filter(Boolean);
+  expect(queueIds).toContain("q3");
+});
+
+// Zonder de actie mag de knop er niet zijn — het blok blijft bruikbaar voor aanroepers
+// die hem (nog) niet meegeven, zonder een dode knop te tonen.
+test("inlaadwachtrij: zonder dismissAction verschijnt de knop niet", async () => {
+  await renderServer(
+    <Screen>
+      <BrandLoadQueue rows={queue} markLoadedAction={noopAction} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Vergaderruimte")).toBeInTheDocument();
+  expect(page.getByRole("button", { name: "Not a brand" }).query()).toBeNull();
 });
 
 // De steekproefpoort (20 jul): zolang één rij geen oordeel heeft weigert publishRun, dus de

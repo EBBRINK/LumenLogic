@@ -33,6 +33,16 @@ const pending: ReviewItem[] = [
         verdict: "geel",
         note: "300K koeler dan gevraagd",
       },
+      // UX-audit 30 jul (bug #8): de DeviationList op de geel-kaart toonde de ruwe
+      // veldsleutel. `Kelvin` ziet er per ongeluk goed uit, `beamAngle` niet — vandaar
+      // deze tweede regel, die wél door de fix moet worden opgevangen.
+      {
+        field: "beamAngle",
+        requested: 24,
+        delivered: 36,
+        verdict: "geel",
+        note: "12° breder dan gevraagd",
+      },
     ],
     candidates: [
       {
@@ -375,6 +385,12 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
   await expect
     .element(page.getByText(/eduard@brinklicht\.nl/))
     .toBeInTheDocument();
+
+  // UX-audit 30 jul (bug #8): de afwijkingenlijst op de kaart droeg de ruwe veldsleutel.
+  await expect
+    .element(page.getByText(/beam angle: requested 24 → delivered 36/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("beamAngle");
 });
 
 // OcrCard (bouwstap 7/8): paginanummer + link naar het opgeslagen paginabeeld in een

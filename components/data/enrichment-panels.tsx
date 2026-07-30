@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { IconCheck } from "@/components/dossier/icons";
+import { formatDate, formatInt } from "@/lib/format";
 import { RunStatusBadge, type RunStatus } from "./enrichment-status";
 
 type FormAction = (formData: FormData) => void | Promise<void>;
@@ -48,8 +49,8 @@ export function BrandPicker({
         >
           {brands.map((b) => (
             <option key={b.id} value={b.id} disabled={b.productCount === 0}>
-              {b.name} — {b.productCount} prod.
-              {b.enriched > 0 ? ` (${b.enriched} enriched)` : ""}
+              {b.name} — {formatInt(b.productCount)} prod.
+              {b.enriched > 0 ? ` (${formatInt(b.enriched)} enriched)` : ""}
             </option>
           ))}
         </select>
@@ -70,14 +71,8 @@ export type EnrichRunRow = {
   createdAt: string | Date;
 };
 
-function fmtDate(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("nl-NL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
+// UX-audit 30 jul (bug #9): hier stond een eigen `toLocaleDateString("nl-NL")` (09-07-2026).
+// Eén datumformatter voor de hele app, in lib/format.ts.
 
 export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
   if (runs.length === 0) {
@@ -111,13 +106,13 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
             <TableRow key={r.id}>
               <TableCell className="font-medium">{r.brandName}</TableCell>
               <TableCell className="text-muted-foreground tabular-nums">
-                {fmtDate(r.createdAt)}
+                {formatDate(r.createdAt)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {c.geparsed ?? 0}
+                {formatInt(c.geparsed ?? 0)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {c.steekproef ?? 0}
+                {formatInt(c.steekproef ?? 0)}
               </TableCell>
               <TableCell className="text-right tabular-nums text-muted-foreground">
                 {err}

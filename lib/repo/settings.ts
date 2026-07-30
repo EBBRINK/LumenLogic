@@ -101,6 +101,30 @@ export async function getLlmSpend(db: AppDb, now = new Date()): Promise<number> 
   return Number(row?.total ?? 0);
 }
 
+// Uitsplitsing van diezelfde teller over ÁLLE doelen (UX-audit 30 jul, bug #10). Het
+// scherm vroeg eerder twee vaste doelen op ('vangnet', 'ocr') en liet de rest — vandaag
+// 'leesroute' — stil in het totaal zitten, waardoor de uitsplitsing niet optelde. Een
+// group-by kan dat niet: elke euro die de teller haalt, haalt ook de uitsplitsing, ook
+// als er morgen een nieuw doel bij komt.
+export type LlmSpendByPurpose = { purpose: string; eur: number };
+
+export async function getLlmSpendByPurpose(
+  db: AppDb,
+  now = new Date(),
+): Promise<LlmSpendByPurpose[]> {
+  const rows = (await db
+    .select({
+      purpose: llmUsage.purpose,
+      total: sql<string>`coalesce(sum(${llmUsage.costEur}), 0)`,
+    })
+    .from(llmUsage)
+    .where(gte(llmUsage.createdAt, startOfMonth(now)))
+    .groupBy(llmUsage.purpose)) as { purpose: string; total: string }[];
+  return rows
+    .map((r) => ({ purpose: r.purpose, eur: Number(r.total ?? 0) }))
+    .sort((a, b) => b.eur - a.eur || a.purpose.localeCompare(b.purpose));
+}
+
 // Zelfde teller, gefilterd op één doel (bv. 'vangnet' — het AI-vangnet van stap 8/B4).
 // Voor de uitsplitsing op de instellingenpagina; de cap blijft op het totaal gelden.
 export async function getLlmSpendForPurpose(

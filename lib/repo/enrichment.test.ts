@@ -14,6 +14,7 @@ import {
 import {
   brands,
   enrichmentItems,
+  events,
   priceLists,
   products,
   projectDossiers,
@@ -22,6 +23,7 @@ import {
 import { addSpecLines } from "@/lib/repo/dossiers";
 import { runMatcher } from "@/lib/repo/matching";
 import {
+  dismissBrandLoad,
   getSampleItems,
   getTier2Coverage,
   chunk,
@@ -317,6 +319,69 @@ test("markBrandLoaded hermatcht blauwe regels van de wachtrij", async () => {
     .from(specLines)
     .where(eq(specLines.id, line.id));
   expect(afterRow.status).not.toBe("blauw");
+});
+
+// UX-audit 30 jul (bug #12): de wachtrij raakt vervuild met zoneteksten die de parser als
+// merk las ('Divers', 'Vergaderruimte', 'Toilet'). Voor die rijen was "Mark as loaded" de
+// enige actie — en die is onwaar. dismissBrandLoad voert de rij af én laat een spoor na
+// (ijzeren regel 5). Wat NIET verandert: de spec-regel zelf blijft blauw staan, want er is
+// niets ingeladen; alleen de wachtrij is opgeschoond.
+test("dismissBrandLoad haalt een niet-merk van de wachtrij en logt dat", async () => {
+  const db = await createTestDb();
+
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Vervuild dossier", phase: "tender" })
+    .returning();
+  const [line] = await addSpecLines(db, dossier.id, [
+    {
+      fixtureCode: "Lz001",
+      quantity: 1,
+      brandText: "Vergaderruimte", // zonenaam, geen merk
+      productText: "downlight",
+    },
+  ]);
+  await runMatcher(db, line.id); // blauw → zonenaam belandt op de wachtrij
+
+  const before = await listBrandLoadQueue(db);
+  const junk = before.find((q) => q.displayName === "Vergaderruimte");
+  expect(junk).toBeDefined();
+
+  const res = await dismissBrandLoad(db, junk!.id, "tester");
+  expect(res?.displayName).toBe("Vergaderruimte");
+
+  // De rij is weg uit de wachtrij.
+  const after = await listBrandLoadQueue(db);
+  expect(after.find((q) => q.id === junk!.id)).toBeUndefined();
+
+  // …en het spoor staat in de events-tabel, mét de merksleutel en de reden.
+  const logged = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "brand_load_dismissed"));
+  expect(logged).toHaveLength(1);
+  expect(logged[0].actor).toBe("tester");
+  expect(logged[0].payload).toMatchObject({
+    displayName: "Vergaderruimte",
+    reason: "not_a_brand",
+  });
+
+  // De regel is niet stilletjes "opgelost": hij blijft blauw.
+  const [afterLine] = await db
+    .select({ status: specLines.status })
+    .from(specLines)
+    .where(eq(specLines.id, line.id));
+  expect(afterLine.status).toBe("blauw");
+});
+
+test("dismissBrandLoad op een onbekend id doet niets en gooit niet", async () => {
+  const db = await createTestDb();
+  const res = await dismissBrandLoad(
+    db,
+    "00000000-0000-0000-0000-000000000000",
+    "tester",
+  );
+  expect(res).toBeNull();
 });
 
 // O5: de hermatch is alias-aware. Een regel met boek-woord 'Intralight' krijgt via de

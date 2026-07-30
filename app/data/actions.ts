@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import {
+  dismissBrandLoad,
   markBrandLoaded,
   publishRun,
   rejectRun,
@@ -58,6 +59,17 @@ export async function markLoadedAction(formData: FormData) {
   const queueId = String(formData.get("queueId") ?? "").trim();
   if (!queueId) return;
   await markBrandLoaded(db, queueId, await getActor());
+  revalidatePath("/data/loading");
+  revalidatePath("/data");
+}
+
+// "Not a brand" (UX-audit 30 jul, bug #12): zoneteksten die de parser als merk las horen
+// niet op de inlaadwachtrij. Afvoeren, niet als ingeladen markeren — dat zou onwaar zijn.
+export async function dismissBrandLoadAction(formData: FormData) {
+  await requireSession();
+  const queueId = String(formData.get("queueId") ?? "").trim();
+  if (!queueId) return;
+  await dismissBrandLoad(db, queueId, await getActor());
   revalidatePath("/data/loading");
   revalidatePath("/data");
 }

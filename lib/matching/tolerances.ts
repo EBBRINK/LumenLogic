@@ -175,6 +175,23 @@ const FIELD_LABELS: Record<string, string> = {
   dimmable: "dimmability",
 };
 
+// UX-audit 30 jul (bug #8): deze map bestond al, maar alleen om `note`-zinnen mee te
+// bouwen — de schermen toonden de ruwe sleutel (`beamAngle`, `dimmable`). Nu geëxporteerd,
+// mét fallback: een veld dat hier ontbreekt komt als "Beam angle"-achtige zin op het
+// scherm, nooit meer als camelCase-identifier. Nieuwe sleutels kunnen dus niet lekken.
+export function fieldLabel(key: string): string {
+  const known = FIELD_LABELS[key];
+  if (known) return known;
+  // camelCase → woorden, dan de eerste letter groot ("beamAngle" → "Beam angle").
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!words) return key;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 // Élk gevuld gevraagd veld krijgt een oordeel + benoemde afwijking (C-07:
 // transparantieregel — ook binnen groen wordt het verschil benoemd).
 export function judgeCandidate(
@@ -188,7 +205,7 @@ export function judgeCandidate(
     delivered: string | number | null,
     verdict: FieldVerdict,
   ) => {
-    const label = FIELD_LABELS[field] ?? field;
+    const label = fieldLabel(field);
     let note: string | undefined;
     if (verdict === "onbekend") note = `no data for ${label}`;
     else if (String(requested) !== String(delivered))

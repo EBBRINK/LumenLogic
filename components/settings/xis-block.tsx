@@ -71,8 +71,14 @@ export function XisBlock({
               }
               className="sm:max-w-xs"
             />
+            {/* UX-audit 30 jul (bug #10): de tweede zin stond er onvoorwaardelijk, dus
+                een sleutel die "not set yet" is vertelde je óók hem leeg te laten "om de
+                huidige te behouden". Er ís dan geen huidige. Nu volgt de hulptekst de
+                stand van keyIsSet, net als het label en de placeholder erboven. */}
             <p className="text-xs text-muted-foreground">
-              The stored key is never shown. Leave empty to keep the current key.
+              {keyIsSet
+                ? "The stored key is never shown. Leave empty to keep the current key."
+                : "The key is stored server-side and never shown again after saving."}
             </p>
           </div>
 

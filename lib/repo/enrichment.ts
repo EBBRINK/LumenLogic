@@ -627,6 +627,44 @@ export async function listBrandLoadQueue(db: AppDb): Promise<BrandLoadItem[]> {
     );
 }
 
+// "Not a brand" (UX-audit 30 jul, bug #12). De wachtrij bevat rijen die nooit een merk
+// waren — de importparser leest zoneteksten (`Divers`, `Vergaderruimte`, `Toilet`) als
+// merknaam. Voor zo'n rij is "Mark as loaded" een onwaarheid: er is niets ingeladen. Deze
+// actie voert de rij áf in plaats van hem groen te liegen.
+//
+// Bewust een echte delete, geen extra status: `brand_load_queue` heeft geen eigen scherm
+// voor afgevoerde rijen, en de analytics-tegel leest de tabel ongefilterd (die query is
+// van een parallelle sessie) — een nieuwe statuswaarde zou daar als vreemde rij opduiken.
+// Het spoor blijft in de events-tabel (ijzeren regel 5): wie, wanneer, welke merksleutel.
+// De parser zelf is hiermee NIET gerepareerd; dezelfde zonetekst kan via enqueueBrandLoad
+// opnieuw in de wachtrij belanden. Dat is een aparte bevinding, geen regressie van deze.
+export async function dismissBrandLoad(
+  db: AppDb,
+  queueId: string,
+  actor?: string,
+): Promise<{ displayName: string } | null> {
+  const [q] = await db
+    .select()
+    .from(brandLoadQueue)
+    .where(eq(brandLoadQueue.id, queueId))
+    .limit(1);
+  if (!q) return null;
+  await db.delete(brandLoadQueue).where(eq(brandLoadQueue.id, queueId));
+  await logEvent(db, {
+    entity: "brand",
+    entityId: null,
+    action: "brand_load_dismissed",
+    actor,
+    payload: {
+      brandKey: q.brandKey,
+      displayName: q.displayName,
+      frequency: q.frequency,
+      reason: "not_a_brand",
+    },
+  });
+  return { displayName: q.displayName };
+}
+
 // Merk als ingeladen markeren → alle blauwe/open regels van dat merk opnieuw matchen.
 export async function markBrandLoaded(
   db: AppDb,

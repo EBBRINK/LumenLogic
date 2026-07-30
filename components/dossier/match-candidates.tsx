@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { StatusBadge } from "./status-badge";
 import { cn } from "@/lib/utils";
 import { formatEur } from "@/lib/format";
+import { fieldLabel } from "@/lib/matching/tolerances";
 import type { Candidate } from "./types";
 
 // Regel-detail, kandidatenkant (functioneel ontwerp §3.6 / C-08). Twee gescheiden lijsten:
@@ -93,7 +94,9 @@ function CandidateRow({
                   <span className="text-status-amber-dot" aria-hidden>
                     ⚠
                   </span>
-                  {f}: no data
+                  {/* Leesbaar veldlabel, geen code-identifier (UX-audit 30 jul, bug #8):
+                      hier stond "beamAngle: no data". */}
+                  {fieldLabel(f)}: no data
                 </span>
               ))}
             </p>

@@ -8,7 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ACTION_LABEL } from "@/lib/event-labels";
+import { eventLabel } from "@/lib/event-labels";
+import { formatDateTime } from "@/lib/format";
+import { fieldLabel } from "@/lib/matching/tolerances";
 
 export type EventRow = {
   id: string;
@@ -19,32 +21,44 @@ export type EventRow = {
   payload?: Record<string, unknown> | null;
 };
 
-function formatMoment(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("nl-NL", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+// UX-audit 30 jul (bug #9): hier stond een eigen `toLocaleString("nl-NL", …)` zónder jaar
+// — "30 jul, 12:24" terwijl het log over maanden loopt. Eén datumformatter voor de hele
+// app, in lib/format.ts.
+
+// Hoeveel payload-paren er hooguit in de cel passen voordat het een blok tekst wordt.
+const MAX_PAYLOAD_PAIRS = 4;
+
+type PayloadPair = { key: string; label: string; value: string };
+
+function showPayloadValue(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  // Genest object/array: compact serialiseren en afkappen — beter dan niets tonen.
+  const text = JSON.stringify(v);
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
 
-// Korte, leesbare weergave van de payload — geen parsing, alleen een scanbare snippet.
-// Leeg/ontbrekend payload toont niets (geen "{}"-ruis in de tabel).
-function payloadSnippet(
+// UX-audit 30 jul (bug #8): de Details-kolom drukte ruwe JSON af (`{"brandKey":"xal",…}`),
+// afgekapt met een ellips. Nu een compacte sleutel/waarde-lijst met dezelfde leesbare
+// veldlabels als de rest van de app; leeg/ontbrekend payload toont niets ("—", geen
+// "{}"-ruis in de tabel).
+function payloadPairs(
   payload: Record<string, unknown> | null | undefined,
-): string | null {
-  if (!payload || Object.keys(payload).length === 0) return null;
-  const text = JSON.stringify(payload);
-  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+): PayloadPair[] {
+  if (!payload) return [];
+  return Object.entries(payload).map(([key, value]) => ({
+    key,
+    label: fieldLabel(key),
+    value: showPayloadValue(value),
+  }));
 }
 
 // EVENT-INZAGE (§3.16, ijzeren regel 5): elke zoekactie, match, keuze en beheerhandeling is
 // gelogd. Verhuisd van components/admin/events-block.tsx naar Data (sprint 2.0a) — het log
 // is ruwe data, geen beheerhandeling; zie HANDOVER.md "Event-log = ruwe data → onder Data".
 // Alleen-lezen: het log is de bron, niet iets om te bewerken. De actie krijgt hier een
-// leesbaar label (lib/event-labels.ts) en een payload-snippet als die er is.
+// leesbaar label (lib/event-labels.ts) en de payload als sleutel/waarde-lijst als die er is.
 export function EventsBlock({ events }: { events: EventRow[] }) {
   return (
     <Card>
@@ -70,23 +84,43 @@ export function EventsBlock({ events }: { events: EventRow[] }) {
             </TableHeader>
             <TableBody>
               {events.map((e) => {
-                const snippet = payloadSnippet(e.payload);
+                const pairs = payloadPairs(e.payload);
+                const shown = pairs.slice(0, MAX_PAYLOAD_PAIRS);
+                const rest = pairs.length - shown.length;
                 return (
                   <TableRow key={e.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatMoment(e.createdAt)}
+                      {formatDateTime(e.createdAt)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{e.entity}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {ACTION_LABEL[e.action] ?? e.action}
+                      {eventLabel(e.action)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {e.actor}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-xs text-muted-foreground">
-                      {snippet ?? "—"}
+                    <TableCell className="max-w-xs text-xs text-muted-foreground">
+                      {pairs.length === 0 ? (
+                        "—"
+                      ) : (
+                        <dl className="flex flex-col gap-0.5">
+                          {shown.map((p) => (
+                            <div key={p.key} className="flex gap-1.5">
+                              <dt className="shrink-0">{p.label}:</dt>
+                              <dd className="min-w-0 truncate text-foreground/80">
+                                {p.value}
+                              </dd>
+                            </div>
+                          ))}
+                          {rest > 0 && (
+                            <div className="text-muted-foreground">
+                              +{rest} more
+                            </div>
+                          )}
+                        </dl>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

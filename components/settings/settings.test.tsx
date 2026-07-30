@@ -367,3 +367,74 @@ test("XIS: de echte sleutel wordt nooit gerenderd — alleen de aanwezigheid", a
   const input = document.querySelector<HTMLInputElement>("#xis-key");
   expect(input?.value).toBe("");
 });
+
+// ── UX-audit 30 jul, bug #10: copy die zichzelf tegensprak ───────────────────
+// De hulptekst onder het sleutelveld stond er onvoorwaardelijk: een sleutel die "not set
+// yet" is vertelde je óók hem leeg te laten "om de huidige te behouden". Er ís er dan geen.
+test("XIS: 'leave empty to keep' staat er alleen als er écht een sleutel is", async () => {
+  await renderServer(
+    <Screen>
+      <XisBlock environment="sandbox" keyIsSet saveAction={noopAction} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("set")).toBeInTheDocument();
+  expect(document.body.textContent).toContain(
+    "Leave empty to keep the current key.",
+  );
+});
+
+test("XIS: zonder sleutel belooft de hulptekst geen 'huidige sleutel'", async () => {
+  await renderServer(
+    <Screen>
+      <XisBlock environment="sandbox" keyIsSet={false} saveAction={noopAction} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("not set yet")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain(
+    "Leave empty to keep the current key.",
+  );
+});
+
+// De budgetuitsplitsing telde niet op: alleen 'vangnet' en 'ocr' stonden op het scherm,
+// terwijl 'leesroute' stil in het totaal meeliep. De uitsplitsing komt nu uit één
+// group-by, en wat niet in die lijst zit valt zichtbaar onder "Other".
+test("LLM-budget: de uitsplitsing telt op tot de teller erboven", async () => {
+  await renderServer(
+    <Screen>
+      <LlmBudgetBlock
+        budgetEur={50}
+        spentEur={2.4}
+        breakdown={[
+          { purpose: "leesroute", eur: 2.07 },
+          { purpose: "vangnet", eur: 0.23 },
+          { purpose: "ocr", eur: 0.1 },
+        ]}
+        saveAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("AI reading route")).toBeInTheDocument();
+  await expect.element(page.getByText("€ 2,07")).toBeInTheDocument();
+  // "AI fallback" staat ook in de kaartbeschrijving erboven — vandaar de dt-selector.
+  await expect
+    .element(page.getByRole("term").filter({ hasText: "AI fallback" }))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("OCR (image PDFs)")).toBeInTheDocument();
+  // 2,07 + 0,23 + 0,10 = 2,40 → geen restpost.
+  expect(document.body.textContent).not.toContain("Other");
+});
+
+test("LLM-budget: een gat tussen teller en uitsplitsing wordt zichtbaar als 'Other'", async () => {
+  await renderServer(
+    <Screen>
+      <LlmBudgetBlock
+        budgetEur={50}
+        spentEur={2.4}
+        breakdown={[{ purpose: "vangnet", eur: 0.23 }]}
+        saveAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Other")).toBeInTheDocument();
+  await expect.element(page.getByText("€ 2,17")).toBeInTheDocument();
+});

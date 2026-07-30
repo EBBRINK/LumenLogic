@@ -25,9 +25,14 @@ export type QueueRow = {
 export function BrandLoadQueue({
   rows,
   markLoadedAction,
+  dismissAction,
 }: {
   rows: QueueRow[];
   markLoadedAction: FormAction;
+  // UX-audit 30 jul (bug #12): de parser leest zoneteksten (`Divers`, `Vergaderruimte`,
+  // `Toilet`) als merknaam. Voor die rijen was "Mark as loaded" de énige actie, en die is
+  // niet waar — er valt niets in te laden. "Not a brand" voert de rij af.
+  dismissAction?: FormAction;
 }) {
   if (rows.length === 0) {
     return (
@@ -68,12 +73,27 @@ export function BrandLoadQueue({
               </TableCell>
               <TableCell className="text-right">
                 {wachtend ? (
-                  <form action={markLoadedAction}>
-                    <input type="hidden" name="queueId" value={r.id} />
-                    <Button type="submit" size="sm" variant="outline">
-                      Mark as loaded
-                    </Button>
-                  </form>
+                  <div className="flex items-center justify-end gap-2">
+                    <form action={markLoadedAction}>
+                      <input type="hidden" name="queueId" value={r.id} />
+                      <Button type="submit" size="sm" variant="outline">
+                        Mark as loaded
+                      </Button>
+                    </form>
+                    {dismissAction && (
+                      <form action={dismissAction}>
+                        <input type="hidden" name="queueId" value={r.id} />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="ghost"
+                          title={`Remove ${r.displayName} from the load queue — it is not a brand`}
+                        >
+                          Not a brand
+                        </Button>
+                      </form>
+                    )}
+                  </div>
                 ) : (
                   <span className="text-xs text-muted-foreground">
                     handled

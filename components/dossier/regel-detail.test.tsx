@@ -70,6 +70,20 @@ const incomplete: RegelCandidate[] = [
     deviations: [
       { field: "cri", requested: 90, delivered: null, verdict: "onbekend" },
       { field: "ip", requested: "IP44", delivered: null, verdict: "onbekend" },
+      // UX-audit 30 jul (bug #8): dit zijn de twee velden waarvan de camelCase-sleutel
+      // letterlijk op het scherm stond. Ze horen in élke fixture die de pillen rendert.
+      {
+        field: "beamAngle",
+        requested: 24,
+        delivered: null,
+        verdict: "onbekend",
+      },
+      {
+        field: "dimmable",
+        requested: "DALI",
+        delivered: null,
+        verdict: "onbekend",
+      },
     ],
   },
 ];
@@ -78,6 +92,15 @@ const deviations: Deviation[] = [
   { field: "kelvin", requested: 2700, delivered: 2700, verdict: "groen", note: "exact" },
   { field: "straalhoek", requested: 12, delivered: 13, verdict: "geel", note: "1° breder" },
   { field: "ip", requested: "IP44", delivered: null, verdict: "onbekend" },
+  // Idem voor de transparantietabel: de Field-kolom toonde `beamAngle`, en de Verdict-cel
+  // zei twee keer "no data" (badge + note).
+  {
+    field: "beamAngle",
+    requested: 24,
+    delivered: null,
+    verdict: "onbekend",
+    note: "no data for beam angle",
+  },
 ];
 
 function Screen({ children }: { children: React.ReactNode }) {
@@ -162,8 +185,23 @@ test("MatchCandidates: prijzen worden getoond (nooit gesorteerd)", async () => {
 
 test("MatchCandidates: onvolledige kandidaat toont 'geen data' per onbekend veld", async () => {
   await renderServer(candidatesScreen);
-  await expect.element(page.getByText("cri: no data")).toBeInTheDocument();
-  await expect.element(page.getByText("ip: no data")).toBeInTheDocument();
+  await expect.element(page.getByText("CRI: no data")).toBeInTheDocument();
+  await expect.element(page.getByText("IP: no data")).toBeInTheDocument();
+});
+
+// UX-audit 30 jul (bug #8): de pillen droegen de ruwe veldsleutel. NB: page.getByText is
+// case-insensitive substring, dus alleen een positieve assert bewijst hier niets over de
+// vorm — de negatieve gaat daarom over de rauwe DOM-tekst.
+test("MatchCandidates: de pillen dragen een leesbaar label, geen code-identifier", async () => {
+  await renderServer(candidatesScreen);
+  await expect
+    .element(page.getByText("beam angle: no data"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText("dimmability: no data"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("beamAngle");
+  expect(document.body.textContent).not.toContain("dimmable");
 });
 
 test("MatchCandidates: afrondings-knoppen (rood/blauw/paars) + dagprijs aanwezig", async () => {
@@ -220,6 +258,23 @@ test("DeviationTable: kolommen + een afwijking (gevraagd 12, geleverd 13) zichtb
   await expect.element(page.getByText("13", { exact: true })).toBeInTheDocument();
   // Onbekend veld = eerlijke grijze vlag "geen data", nooit stil weggelaten.
   await expect.element(page.getByText("no data", { exact: true }).first()).toBeInTheDocument();
+});
+
+// UX-audit 30 jul (bug #8), twee dingen in één rij:
+//  1. de Field-kolom toonde `beamAngle`, nu "beam angle";
+//  2. de Verdict-cel zei "no data" (badge) én "no data for beam angle" (grijze note) —
+//     twee keer hetzelfde in één cel. De note blijft in het title-attribuut van de badge.
+test("DeviationTable: leesbaar veldlabel en 'no data' maar één keer per cel", async () => {
+  await renderServer(deviationScreen);
+  await expect
+    .element(page.getByText("beam angle", { exact: true }))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("beamAngle");
+  expect(document.body.textContent).not.toContain("no data for beam angle");
+  const badge = document.querySelector<HTMLElement>(
+    '[title="no data for beam angle"]',
+  );
+  expect(badge).not.toBeNull();
 });
 
 test("DeviationTable: leeg → eerlijke uitleg i.p.v. niets", async () => {
