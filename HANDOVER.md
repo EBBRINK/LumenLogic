@@ -4292,3 +4292,40 @@ de merkverwarring hierboven). Stand nu: **15 runs over 15 merken, precies één 
 ⚠ Eén run is bewust ongemoeid gelaten: `902ba6e9` (&Tradition, 9 juli). Die komt niet uit deze
 sessie en het is niet aan mij om andermans werk af te wijzen — maar hij staat wél open, dus hij
 verschijnt in het tekenoverzicht. Timo moet weten dat die van vóór alles van vandaag is.
+
+---
+
+## 2026-07-30 — De restscherf werd een valmagneet (vijfde lek, derde zelfgemaakte)
+
+Wever & Ducré, verse run: 1.764 cellen bij scherfmaat 250 gaf **7 × 250 + 1 × 14**. Die laatste
+scherf van veertien had per definitie het laagste AANTAL vallen, dus `scheidTweelingen` verhuisde
+ze er allemaal naartoe:
+
+| scherf | cellen | vallen |
+|---|---:|---:|
+| 1–6 | 250 | 11–12 (4–5 %) |
+| 7 | 250 | **1** |
+| 8 | **14** | **11 (79 %)** |
+
+De agent van scherf 8 hoefde niet te lezen om te weten dat daar iets was: elf van zijn veertien
+cellen waren fout. En scherf 7 kreeg één val op 250 cellen, dus daar zei de recall niets.
+
+**Twee reparaties.** De doelscherf wordt gekozen op val-DICHTHEID (vallen per cel) in plaats van
+aantal, en de exporteur verdeelt de maat over het aantal scherven zodat er geen restscherf meer
+ontstaat — `Math.ceil(1764 / 8) = 221`, dus 8 × 221 in plaats van 7 × 250 + 1 × 14.
+
+### De tel loopt nu op vijf, en drie ervan maakte ik zelf
+
+| # | het lek | ontdekt door |
+|---|---|---|
+| 1 | celId-voorvoegsel `v` / `t` | een agent |
+| 2 | vaste stap tussen de vallen (elke 20e) | een agent |
+| 3 | de val naast zijn tweeling | vijf agents |
+| 4 | verhuisde vallen klonterden vooraan — **veroorzaakt door de fix voor 3** | een agent |
+| 5 | restscherf werd valmagneet — **veroorzaakt door de fix voor 3** | een agent |
+
+Alle vijf zijn zichtbaar geworden aan de UITKOMST, geen enkele aan de code, en `controleerVallen`
+ving 4 en 5 niet omdat hij per scherf kijkt en niet naar de verdeling tússen scherven. Dat is nu
+óók gedekt: de dichtheidstoets zit in de reparatie zelf. Wie hier nog iets verandert: **draai de
+export en kijk naar de valposities vóór je agents inzet** — dat kost een minuut en het heeft
+vandaag twee volledige rondes gekost om die gewoonte te leren.
