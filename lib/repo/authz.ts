@@ -98,7 +98,8 @@ export type DenyReason =
   | "org_admin_rol" // regel 2: org_admin toekennen mag hij niet
   | "vreemd_doeladres" // regel 2: iemand die niet (alleen) van zijn org is
   | "doel_is_org_admin" // regel 2: een collega-beheerder overnemen mag niet
-  | "geen_org"; // regel 2: nieuw adres zonder organisatie
+  | "geen_org" // regel 2: nieuw adres zonder organisatie
+  | "rollen_zonder_org"; // rollen gevraagd zonder org — daar wordt niets van geschreven
 
 export type Denial = { allowed: false; reason: DenyReason; message: string };
 
@@ -114,6 +115,7 @@ const MSG_DENIED =
 const MSG_INVALID_EMAIL = "Enter a valid email address.";
 const MSG_UNKNOWN_ORG =
   "That organization no longer exists — refresh the page and try again.";
+const MSG_ROLES_NEED_ORG = "Pick an organization for those roles.";
 
 function deny(reason: DenyReason, message: string): Denial {
   return { allowed: false, reason, message };
@@ -236,6 +238,17 @@ export function decidePinIssue(input: {
   const roles = uniqueRoles(input.roles);
   const kern = decideMembershipAuthority({ ...input, roles });
   if (!kern.allowed) return kern;
+
+  // Rollen zonder organisatie: weigeren, niet stil weglaten. Zonder orgId schrijft
+  // issueActivationPin géén membership (lib/repo/activation.ts), dus die rollen zouden
+  // nergens landen — terwijl het antwoord ze wél zou noemen en het scherm ze zou tonen.
+  // Dat is precies het misverstand dat regel 2a hierboven met zoveel woorden weigert te
+  // maken ("stil de rol weglaten zou hem laten geloven dat…"); dan mag het interne pad het
+  // ook niet maken. Via de UI onbereikbaar (de org-keuze is verplicht), maar het antwoord
+  // van deze laag hoort waar te zijn, niet toevallig-waar.
+  if (input.orgId === null && roles.length > 0) {
+    return deny("rollen_zonder_org", MSG_ROLES_NEED_ORG);
+  }
   return {
     allowed: true,
     email: normalizeEmail(input.target.email),

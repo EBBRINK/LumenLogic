@@ -11,7 +11,13 @@
 import { expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import * as authSchema from "@/db/auth-schema";
-import { activationPins, memberships, organizations } from "@/db/schema";
+import {
+  activationPins,
+  events,
+  memberships,
+  organizations,
+  type MembershipRole,
+} from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
 import { addMembership, createOrganization } from "@/lib/repo/orgs";
 
@@ -453,6 +459,142 @@ test("intern mag via het organisatiescherm wél een beheerder aanwijzen in elke 
   const leden = await ledenVan(db, "eigenaar-b@extern.nl");
   expect(leden).toHaveLength(1);
   expect([...leden[0].roles].sort()).toEqual(["org_admin", "projectleider"]);
+});
+
+test("het antwoord noemt precies de rollen die in de database staan — of er wordt niets uitgegeven", async () => {
+  const { db, orgA } = await opzet();
+  alsActor("intern@brinklicht.nl");
+
+  // Mét organisatie: antwoord en database zijn hetzelfde.
+  const met = await issuePinAction({
+    email: "met-org@extern.nl",
+    orgId: orgA,
+    roles: ["org_admin", "calculator"],
+  });
+  expect(met.ok).toBe(true);
+  if (!met.ok) return;
+  const leden = await ledenVan(db, "met-org@extern.nl");
+  expect([...met.roles].sort()).toEqual([...leden[0].roles].sort());
+
+  // Zónder organisatie schrijft issueActivationPin géén membership. Het antwoord mag dan
+  // ook geen rollen noemen — dus wordt de hele uitgifte geweigerd in plaats van de rollen
+  // stil te laten vallen. (De critic mat hier eerder: ANTWOORD ["projectleider"],
+  // MEMBERSHIPS 0.)
+  const zonder = await issuePinAction({
+    email: "zonder-org@extern.nl",
+    roles: ["projectleider"],
+  });
+  expect(zonder.ok).toBe(false);
+  if (zonder.ok) return;
+  expect(zonder.error).toBe("Pick an organization for those roles.");
+  await nietsAangemaakt(db, "zonder-org@extern.nl");
+
+  // En de reissue zonder rollen (C10: vergeten wachtwoord) blijft gewoon werken.
+  const opnieuw = await issuePinAction({ email: "met-org@extern.nl" });
+  expect(opnieuw.ok).toBe(true);
+  if (!opnieuw.ok) return;
+  expect(opnieuw.roles).toEqual([]);
+  // Het bestaande membership is niet aangeraakt.
+  expect([...(await ledenVan(db, "met-org@extern.nl"))[0].roles].sort()).toEqual([
+    "calculator",
+    "org_admin",
+  ]);
+});
+
+// ── De dragende zin van G39: identiteit komt UITSLUITEND uit de sessie ─────────
+// De critic mutantte hier één regel — `actorEmail: session.user?.email` werd
+// `actorEmail: String(formData.get("actorEmail") ?? session.user?.email)` — en 31 tests
+// bleven groen terwijl een gewone gebruiker zich als intern kon voordoen. Dat is precies de
+// zin waar G39 uit bestaat: niets van wat de aanroeper meestuurt mag meewegen in "mag hij
+// dit". Deze twee tests zijn er om die mutant te doden, voor beide deuren.
+//
+// Ze werken met een positieve controle erbij: dezelfde aanroep, alleen een andere sessie,
+// moet wél slagen. Zonder die controle zou de test ook groen blijven als de handeling om
+// een heel andere reden mislukte.
+
+test("G39, tweede deur: een vervalst actor-veld in de FormData wordt genegeerd — de sessie beslist", async () => {
+  const { db, internOrgId } = await opzet();
+
+  function post(): FormData {
+    const fd = new FormData();
+    fd.append("orgId", internOrgId);
+    fd.append("email", "calculator-a@extern.nl");
+    // Elk veld waarmee een aanvaller zou proberen zich voor te doen als iemand anders.
+    // Geen daarvan hoort de action te bereiken; ze staan hier allemaal omdat de mutant net
+    // zo goed `actor` of `session` had kunnen heten.
+    fd.append("actorEmail", "intern@brinklicht.nl");
+    fd.append("actor", "intern@brinklicht.nl");
+    fd.append("session", "intern@brinklicht.nl");
+    fd.append("user", "intern@brinklicht.nl");
+    return fd;
+  }
+
+  // Sessie = gewone gebruiker (mag per G36 niets), invoer = "ik ben intern".
+  alsActor("calculator-a@extern.nl");
+  await orgActions.addMemberAction(post());
+
+  const internLeden = await db
+    .select()
+    .from(memberships)
+    .where(eq(memberships.orgId, internOrgId));
+  expect(internLeden.map((l) => l.email)).toEqual(["intern@brinklicht.nl"]);
+
+  // De weigering staat op naam van de sessie, niet van het vervalste adres.
+  const geweigerd = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "membership_change_denied"));
+  expect(geweigerd).toHaveLength(1);
+  expect(geweigerd[0].actor).toBe("calculator-a@extern.nl");
+
+  // Positieve controle: exact dezelfde FormData, maar nu mét een interne sessie. Slaagt hij
+  // hier niet, dan bewees de weigering hierboven niets.
+  alsActor("intern@brinklicht.nl");
+  await orgActions.addMemberAction(post());
+  const naIntern = await db
+    .select()
+    .from(memberships)
+    .where(eq(memberships.orgId, internOrgId));
+  expect(naIntern.map((l) => l.email).sort()).toEqual([
+    "calculator-a@extern.nl",
+    "intern@brinklicht.nl",
+  ]);
+});
+
+test("G39, PIN-deur: een vervalst actor-veld in de invoer wordt genegeerd — de sessie beslist", async () => {
+  const { db, orgB } = await opzet();
+
+  // De action typeert deze velden niet, dus ze horen er per definitie niet in — precies
+  // zoals een aanvaller ze wél zou meesturen. De cast is de enige manier om dat na te doen.
+  const verzoek = {
+    email: "marionet@extern.nl",
+    orgId: orgB,
+    roles: ["org_admin"] as MembershipRole[],
+    actorEmail: "intern@brinklicht.nl",
+    actor: "intern@brinklicht.nl",
+    session: { user: { email: "intern@brinklicht.nl" } },
+  };
+
+  alsActor("calculator-a@extern.nl");
+  const uitslag = await issuePinAction(
+    verzoek as unknown as Parameters<typeof issuePinAction>[0],
+  );
+  expect(uitslag.ok).toBe(false);
+  if (uitslag.ok) return;
+  expect(uitslag.error).toBe(GEWEIGERD);
+  await nietsAangemaakt(db, "marionet@extern.nl");
+
+  // Positieve controle: hetzelfde verzoek met een interne sessie slaagt wél.
+  alsActor("intern@brinklicht.nl");
+  const alsIntern = await issuePinAction(
+    verzoek as unknown as Parameters<typeof issuePinAction>[0],
+  );
+  expect(alsIntern.ok).toBe(true);
+  if (!alsIntern.ok) return;
+  // En de PIN staat op naam van de sessie, niet van het meegestuurde adres — dat zou hier
+  // toevallig hetzelfde zijn, dus we toetsen het bij de geweigerde poging hierboven.
+  const [pin] = await pinRijen(db, "marionet@extern.nl");
+  expect(pin.createdBy).toBe("intern@brinklicht.nl");
 });
 
 // ── Geen weg omheen, en geen lek in de melding ──────────────────────────────────
