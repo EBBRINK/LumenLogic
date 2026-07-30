@@ -55,7 +55,7 @@ async function main() {
   const rijen: Array<{
     merk: string; runId: string; status: string; cellen: number; goed: number; afgekeurd: number;
     onzeker: number; producten: number; productenAf: number; val: string; anker: string;
-    schoon: boolean; ongeldig: number;
+    schoon: boolean; ongeldig: number; poortversie: string;
   }> = [];
 
   for (const runId of mappen) {
@@ -73,6 +73,15 @@ async function main() {
       merk,
       runId: runId.slice(0, 8),
       status: String((run as { status?: string }).status ?? "?"),
+      // ── Poortversie: is deze run van ná de reparaties van 30 jul? ──────────
+      // Machinaal te toetsen: `startEnrichmentRun` schrijft sinds de leeg-kolomreparatie
+      // `counts.kolomAlGevuld`. Ontbreekt dat, dan is de run ouder en kunnen er voorstellen in
+      // zitten die inmiddels zijn ingetrokken. Dit hoort als KOLOM in het overzicht en niet als
+      // waarschuwing in proza: wie om negen uur 's ochtends per merk tekent, leest geen voetnoot.
+      poortversie:
+        (run.counts as Record<string, unknown> | null)?.kolomAlGevuld !== undefined
+          ? "30 jul"
+          : "OUD ⚠",
       ongeldig: u.ongeldigeScherven,
       cellen: u.echteCellen,
       goed: u.perOordeel["goed"] ?? 0,
@@ -87,12 +96,12 @@ async function main() {
   }
 
   rijen.sort((a, b) => b.producten - a.producten);
-  const kop = ["merk", "run", "stand", "cellen", "goed", "afgekeurd", "onzeker", "voorstellen", "producten in bezwaar", "val-recall", "ankerfilter", ""];
+  const kop = ["merk", "run", "stand", "poortversie", "cellen", "goed", "afgekeurd", "onzeker", "voorstellen", "producten in bezwaar", "val-recall", "ankerfilter", ""];
   console.log(`\n| ${kop.join(" | ")} |`);
   console.log(`|${kop.map(() => "---").join("|")}|`);
   for (const r of rijen) {
     console.log(
-      `| ${r.merk} | \`${r.runId}\` | ${r.status}${r.ongeldig ? ` ⚠${r.ongeldig} scherf(en) zonder antwoord` : ""} | ` +
+      `| ${r.merk} | \`${r.runId}\` | ${r.status}${r.ongeldig ? ` ⚠${r.ongeldig} scherf(en) zonder antwoord` : ""} | ${r.poortversie} | ` +
         `${r.cellen} | ${r.goed} | ${r.afgekeurd} | ${r.onzeker} | ` +
         `${r.producten} | ${r.productenAf} | ${r.val} | ${r.anker} | ${r.schoon ? "✓ schoon" : "✗ bezwaar"} |`,
     );
@@ -107,6 +116,13 @@ async function main() {
     console.log(
       `  ⚠ die totalen tellen RUNS, niet unieke producten: sommige merken staan er meer dan één\n` +
         `    keer in (afgewezen runs en hun opvolger). Tel per merk, niet de kolom op.`,
+    );
+  }
+  const oud = rijen.filter((r) => r.poortversie !== "30 jul");
+  if (oud.length) {
+    console.log(
+      `\n⚠ poortversie OUD bij: ${oud.map((r) => `${r.merk} (${r.runId})`).join(", ")} — die run is van\n` +
+        `  vóór de reparaties van 30 jul en kan voorstellen bevatten die sindsdien zijn ingetrokken.`,
     );
   }
   const zonderAnker = rijen.filter((r) => r.anker === "NIET getoetst").map((r) => r.merk);
