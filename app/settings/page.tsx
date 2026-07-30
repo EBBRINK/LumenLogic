@@ -56,12 +56,27 @@ async function changePasswordAction(input: {
       newPassword: input.newPassword,
       headers: await headers(),
     });
-  } catch {
-    // Better Auth's APIError bij een verkeerd huidig wachtwoord (INVALID_PASSWORD), en
-    // bij elke andere reden die hier zou landen — de wachtwoordlengte is hierboven al
-    // apart afgevangen, dus alles wat híer misgaat is in de praktijk het huidige
-    // wachtwoord.
-    return { error: "wrong_current_password" };
+  } catch (e) {
+    // Better Auth's APIError draagt de reden in body.code (better-call/error.mjs, via
+    // @better-auth/core APIError.from). Alleen de twee redenen die hier kunnen horen
+    // vertalen we naar een eigen melding; alles anders (netwerkfout, DB-fout, iets
+    // onvoorziens) gooien we door — de client vangt dat via callAction() al correct op
+    // als "failed" en toont de échte oorzaak (lib/next-action-result.ts), in plaats van
+    // een verzonnen "je wachtwoord is fout" (golf-2-critic ronde 1: een kale catch
+    // meldde élke fout als wrong_current_password, ook fouten die daar niets mee te
+    // maken hebben).
+    const code = (e as { body?: { code?: string } })?.body?.code;
+    if (code === "CREDENTIAL_ACCOUNT_NOT_FOUND") {
+      // Deploy 1: 0 van de 3 huidige users hebben een wachtwoord (briefing §2). Wie via
+      // de magic link binnenkomt en hier zijn EERSTE wachtwoord probeert te zetten, heeft
+      // geen "huidig wachtwoord" om tegen te vergelijken — "incorrect" zou hier gewoon
+      // onwaar zijn en de gebruiker geen bruikbare vervolgstap geven.
+      return { error: "no_password_yet" };
+    }
+    if (code === "INVALID_PASSWORD") {
+      return { error: "wrong_current_password" };
+    }
+    throw e;
   }
 
   return { ok: true };

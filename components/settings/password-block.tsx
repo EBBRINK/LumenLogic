@@ -14,14 +14,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { callAction, failureDetail } from "@/lib/next-action-result";
 
-// "wrong_current_password": het huidige wachtwoord klopt niet — de enige weigering die
-// hier een reden mag noemen, want de gebruiker is al ingelogd; dit is geen
-// account-enumeratie-oppervlak zoals /login. "weak_password" dekt zowel de client-check
+// "wrong_current_password": het huidige wachtwoord klopt niet — geen account-enumeratie-
+// oppervlak zoals /login, want de gebruiker is al ingelogd. "no_password_yet": het account
+// heeft nog HELEMAAL geen wachtwoord (deploy 1 — 0 van de 3 huidige users hebben er een,
+// briefing §2), dus "incorrect" zou hier onwaar zijn — dit vraagt om een andere melding
+// mét vervolgstap (golf-2-critic ronde 1). "weak_password" dekt zowel de client-check
 // hieronder (voor de aanroep) als Better Auth's eigen lengtecontrole in de action, voor
 // het geval die twee ooit uit de pas lopen.
 export type ChangePasswordResult =
   | { ok: true }
-  | { error: "wrong_current_password" | "weak_password" };
+  | {
+      error: "wrong_current_password" | "no_password_yet" | "weak_password";
+    };
 export type ChangePasswordAction = (input: {
   currentPassword: string;
   newPassword: string;
@@ -33,6 +37,7 @@ type FormStatus =
   | { kind: "idle" }
   | { kind: "pending" }
   | { kind: "wrong_current_password" }
+  | { kind: "no_password_yet" }
   | { kind: "weak_password" }
   | { kind: "mismatch" }
   | { kind: "success" }
@@ -55,7 +60,9 @@ export function PasswordBlock({
   const [status, setStatus] = useState<FormStatus>({ kind: "idle" });
 
   const busy = status.kind === "pending";
-  const currentInvalid = status.kind === "wrong_current_password";
+  const currentInvalid =
+    status.kind === "wrong_current_password" ||
+    status.kind === "no_password_yet";
   const newInvalid = status.kind === "weak_password";
   const confirmInvalid = status.kind === "mismatch";
 
@@ -147,7 +154,9 @@ export function PasswordBlock({
                 role="alert"
                 className="text-xs text-destructive"
               >
-                Current password is incorrect.
+                {status.kind === "no_password_yet"
+                  ? "This account doesn't have a password yet — ask Brink for an activation code."
+                  : "Current password is incorrect."}
               </p>
             )}
           </div>

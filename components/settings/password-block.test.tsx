@@ -23,6 +23,7 @@ import type { AllowedEmailRow } from "./allowed-emails-block";
 import { LlmBudgetBlock } from "./llm-budget-block";
 import {
   PasswordBlockIdle,
+  PasswordBlockNoPasswordYet,
   PasswordBlockSuccess,
   PasswordBlockWrongCurrent,
 } from "./password-block-test-stubs";
@@ -197,6 +198,36 @@ test("verkeerd huidig wachtwoord: geweigerd met een duidelijke, veldgebonden mel
       newPassword: "een-heel-lang-nieuw-wachtwoord",
     },
   ]);
+});
+
+// Golf-2-critic ronde 1: een account zonder wachtwoord (deploy 1 — 0 van de 3 huidige
+// users hebben er een, briefing §2) mag NOOIT "Current password is incorrect." te horen
+// krijgen — dat is onwaar en geeft geen vervolgstap. Dit is de regressietest daarop.
+test("account zonder wachtwoord: eigen melding met vervolgstap, niet 'incorrect'", async () => {
+  await renderServer(
+    <Screen>
+      <PasswordBlockNoPasswordYet />
+    </Screen>,
+  );
+  await wachtOpHydratatie();
+  await vulFormulierIn();
+  await page.getByRole("button", { name: "Change password" }).click();
+
+  await expect
+    .element(
+      page.getByText(
+        "This account doesn't have a password yet — ask Brink for an activation code.",
+      ),
+    )
+    .toBeInTheDocument();
+  // De kern van deze fix: het woord "incorrect" mag hier nergens staan.
+  expect(document.body.textContent).not.toContain("incorrect");
+
+  const current = document.querySelector<HTMLInputElement>("#current-password");
+  expect(current?.getAttribute("aria-invalid")).toBe("true");
+  expect(current?.getAttribute("aria-describedby")).toBe(
+    "current-password-error",
+  );
 });
 
 test("wachtwoorden komen niet overeen: client-side melding, de server wordt niet aangeroepen", async () => {

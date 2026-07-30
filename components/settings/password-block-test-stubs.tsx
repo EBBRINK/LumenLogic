@@ -44,6 +44,15 @@ const altijdWrongCurrent = async (input: {
   return { error: "wrong_current_password" };
 };
 
+// Deploy-1-scenario (briefing §2): het account heeft nog helemaal geen wachtwoord.
+const altijdNoPasswordYet = async (input: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<ChangePasswordResult> => {
+  telAanroep(input);
+  return { error: "no_password_yet" };
+};
+
 const altijdSuccess = async (input: {
   currentPassword: string;
   newPassword: string;
@@ -72,6 +81,17 @@ export function PasswordBlockWrongCurrent() {
       minPasswordLength={MIN}
       maxPasswordLength={MAX}
       changePasswordAction={altijdWrongCurrent}
+    />
+  );
+}
+
+export function PasswordBlockNoPasswordYet() {
+  if (typeof window !== "undefined") window.__changePasswordCalls = [];
+  return (
+    <PasswordBlock
+      minPasswordLength={MIN}
+      maxPasswordLength={MAX}
+      changePasswordAction={altijdNoPasswordYet}
     />
   );
 }

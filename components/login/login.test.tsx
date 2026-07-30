@@ -8,10 +8,14 @@
 // commentaar daar): deze testfile draait server-side onder vitest-plugin-rsc en mag zelf
 // géén kale functies als action-prop aan PasswordLoginForm meegeven — dat is precies wat de
 // RSC-brug weigert ("Functions cannot be passed directly to Client Components").
-import { page, userEvent } from "vitest/browser";
+//
+// LoginChrome komt uit ./login-chrome.tsx — dezelfde component die app/login/page.tsx
+// gebruikt, geen handkopie. Golf-2-critic ronde 1 ving een handkopie die al binnen één
+// ronde uit de pas liep (de focus-ring-klassen van de echte summary ontbraken hier).
+import { cdp, page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
-import { MagicLinkForm } from "./magic-link-form";
+import { LoginChrome } from "./login-chrome";
 import {
   PasswordLoginFormGenericError,
   PasswordLoginFormIdle,
@@ -21,31 +25,6 @@ const viewports = {
   mobile: { width: 375, height: 812 },
   desktop: { width: 1280, height: 800 },
 } as const;
-
-// Zelfde omlijsting en schikking als app/login/page.tsx: wachtwoord open en eerst, de
-// magic link achter een <details>-onthulling. `children` is gewone React-compositie (geen
-// action-prop), dus dit stuit niet op de RSC-functiegrens.
-function LoginChrome({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-6 px-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Lumen Logic</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Spec, calculation and quotation tool — Brink Licht.
-        </p>
-      </div>
-      {children}
-      <details className="rounded-lg border border-foreground/10 px-3 py-2.5 text-sm">
-        <summary className="cursor-pointer list-none font-medium text-brand-blue">
-          Use a magic link instead
-        </summary>
-        <div className="mt-3">
-          <MagicLinkForm />
-        </div>
-      </details>
-    </main>
-  );
-}
 
 const idleScreen = (
   <LoginChrome>
@@ -107,19 +86,57 @@ test("beide inlogpaden staan er: wachtwoord (hoofdpad) én magic link (secundair
   expect(magicLinkButton?.getAttribute("data-variant")).toBe("outline");
 });
 
-// De onthulling werkt: na het openklappen is het e-mailveld van de magic link bereikbaar.
-test("magic link wordt zichtbaar na het openklappen van de onthulling", async () => {
+// De onthulling is een echt bedieningselement (≥44px, DESIGN.md §6/§7): dit meet de
+// werkelijke hoogte van de <summary>, niet alleen dat hij "er is". Golf-2-critic ronde 1
+// mat 20px op productie — dit is de regressietest daarop.
+test("de summary-knop is minimaal 44px hoog (DESIGN.md §6/§7)", async () => {
+  const { container } = await renderServer(idleScreen);
+  // Wachten tot de RSC-stream écht geschilderd heeft — zonder deze wait is de container
+  // soms nog leeg vlak na renderServer(), en querySelector("summary") geeft dan null.
+  await expect
+    .element(page.getByRole("heading", { name: "Lumen Logic" }))
+    .toBeInTheDocument();
+  const summary = container.querySelector("summary") as HTMLElement;
+  const height = summary.getBoundingClientRect().height;
+  expect(height).toBeGreaterThanOrEqual(44);
+});
+
+// De onthulling werkt écht: een klik (geen programmatische .open = true) klapt hem open
+// en het e-mailveld van de magic link wordt bereikbaar. Native <details>-gedrag heeft geen
+// React-hydratatie nodig, dus geen wachtOpHydratatie() hier — wel wachten tot de RSC-stream
+// geschilderd heeft (zelfde reden als hierboven).
+test("magic link wordt zichtbaar na een klik op de onthulling", async () => {
   const { container } = await renderServer(idleScreen);
   await expect
     .element(page.getByRole("heading", { name: "Lumen Logic" }))
     .toBeInTheDocument();
   const details = container.querySelector("details") as HTMLDetailsElement;
   expect(details.open).toBe(false);
-  details.open = true;
+  await page.getByText("Use a magic link instead").click();
+  expect(details.open).toBe(true);
   await expect
     .element(page.getByLabelText("Email").nth(1))
     .toBeInTheDocument();
 });
+
+// Screenshots met het paneel open — vóór deze ronde was de magic-link-vorm zelf op geen
+// enkele opname te zien.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`login met magic link open (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(idleScreen);
+      await page.getByText("Use a magic link instead").click();
+      await expect
+        .element(page.getByRole("button", { name: "Send magic link" }))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./login-magic-link-open.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
 
 // Hydration-wachtlus (zelfde patroon als components/dossier/pdf-upload.test.tsx en
 // components/activate/activate.test.tsx): vóór hydratatie zou een klik op "Sign in" een
@@ -197,3 +214,62 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// G32-bewijs, écht: niet alleen dat de knop "Send magic link" in de DOM staat, maar dat
+// een klik daadwerkelijk Better Auth's eigen route raakt met de juiste body. Dit is de
+// duurste fout die deze sprint kan maken (G32) en verdient een test die faalt zodra iemand
+// het magic-link-pad breekt, ook als de DOM-structuur toevallig intact blijft.
+//
+// ⚠️ Onderschept op CDP-netwerkniveau (Network.requestWillBeSent), NIET via
+// vi.spyOn(window, "fetch")/vi.stubGlobal("fetch", …). Aantoonbaar geprobeerd: de mock
+// bleef via beide routes correct als window.fetch/globalThis.fetch staan (bevestigd met
+// identity-checks vlak vóór en ná de klik), maar authClient.signIn.magicLink() riep hem
+// nooit aan — de aanroep landt ergens buiten het JS-realm dat dit testbestand kan pat
+// chen, ook al delen ze dezelfde DOM. CDP zit op browserprocesniveau, onder elk realm.
+test("magic link doet écht een POST naar Better Auth: precies één aanroep, juiste body", async () => {
+  const session = cdp();
+  const requests: { url: string; postData?: string }[] = [];
+  const onRequest = (params: {
+    request: { url: string; postData?: string };
+  }) => {
+    if (params.request.url.includes("/sign-in/magic-link")) {
+      requests.push({
+        url: params.request.url,
+        postData: params.request.postData,
+      });
+    }
+  };
+  await session.send("Network.enable");
+  session.on("Network.requestWillBeSent", onRequest);
+
+  try {
+    await renderServer(idleScreen);
+    await wachtOpHydratatie();
+    await page.getByText("Use a magic link instead").click();
+    await expect
+      .element(page.getByRole("button", { name: "Send magic link" }))
+      .toBeInTheDocument();
+    await userEvent.type(
+      page.getByLabelText("Email").nth(1),
+      "timo@jouwainstein.com",
+    );
+    await page.getByRole("button", { name: "Send magic link" }).click();
+
+    await vi.waitFor(
+      () => {
+        if (requests.length === 0) throw new Error("nog geen aanroep");
+      },
+      { timeout: 10_000, interval: 100 },
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toContain("/api/auth/sign-in/magic-link");
+    const body = JSON.parse(requests[0].postData ?? "{}");
+    expect(body).toMatchObject({
+      email: "timo@jouwainstein.com",
+      callbackURL: "/projects",
+    });
+  } finally {
+    session.off("Network.requestWillBeSent", onRequest);
+  }
+});
