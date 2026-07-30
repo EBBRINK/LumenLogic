@@ -41,8 +41,11 @@ export function MagicLinkForm() {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
+        {/* "Email for magic link" en niet "Email": zodra dit paneel openstaat, staan er twee
+            e-mailvelden op het scherm. Visueel scheelt de kaart eromheen ze, maar een
+            schermlezer krijgt anders twee keer hetzelfde label achter elkaar. */}
         <label htmlFor="magic-link-email" className="text-sm font-medium">
-          Email
+          Email for magic link
         </label>
         <Input
           id="magic-link-email"

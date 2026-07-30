@@ -434,6 +434,40 @@ main gepusht.**
     geëxporteerd en laat zonder `revokeOtherSessions: true` andere sessies leven (gemeten).
     App-code moet altijd `changeOwnPassword` gebruiken. Echt dichtzetten kan alleen op
     routeniveau — `/change-password` staat via `app/api/auth/[...all]/route.ts` in de router.
+17. **⚠️ `dark:text-brand-teal` op de magic-link-onthulling is een nieuw ontwerpbesluit dat om
+    Timo's ratificatie vraagt.** Het lost een echte fout op: dat label haalde in dark 2,54:1,
+    tegen de 4,5:1 die §7 eist; met teal is het 5,47:1 (gemeten tegen `bg-card`, niet tegen
+    `--background` — de bouwsessie rekende 6,1:1 en zat daarmee 12% te gunstig). De redenering
+    volgt Timo's eigen lijn in O10 (blauw→teal op donker, want blauw haalt daar maar 2,25:1),
+    **maar O10 gaat over de focus-ring en O12 over een accentlijn — geen van beide over de
+    tekstkleur van een bedieningslabel.** Dit is de enige `dark:text-brand-teal` in de hele
+    codebase. `docs/DESIGN.md` §11 opent met "Niets hiervan zelf invullen"; daarom staat het
+    hier als besluit en niet als voldongen feit. Gevolg als het blijft: één label is teal op
+    donker terwijl ~30 outline-knoppen blauw blijven.
+
+### De gauntlet-loop: wat de critics hebben tegengehouden
+Vier onderdelen, elk met een builder en een aparte critic. Wat de critics vonden en wat dat
+waard was — het patroon dat steeds terugkwam is **een groene test die iets anders bewijst dan
+zijn naam belooft**:
+- **Fundament, ronde 1: afgekeurd.** De pogingenteller was niet atomair — 200 parallelle
+  gokken werden alle 200 beoordeeld. De builder-test telde sequentieel af en kón het dus niet
+  vinden; de enige parallelle test stond op de functie die het al goed deed.
+- **`/activate`, ronde 1: visueel afgekeurd.** `aria-invalid` stond op presentatie-divs die
+  hulpsoftware niet ziet; het echte invoerelement had `aria-invalid: null`. De test asserteerde
+  op diezelfde divs. Daarnaast was de foutstaat — de staat die een gebruiker het vaakst ziet —
+  nooit gescreenshot.
+- **`/admin/users`, ronde 1: visueel afgekeurd.** De mobiele statuslijst viel uit elkaar én
+  stond niet op de screenshots: de test schreef de PNG weg zodra hij de kóp "PIN status" zag,
+  terwijl de rijen onder de vouw bleven. Het mailsjabloon stuurde een relatief pad, noemde het
+  in te vullen adres niet, en adviseerde een onverwachte mail te negeren — wat een levende PIN
+  zeven dagen open laat staan.
+- **`/login`, ronde 1: visueel afgekeurd.** De magic-link-onthulling was 20px hoog met 11px
+  dode zone (de padding stond op de `<details>` in plaats van op de `<summary>`) — precies het
+  bedieningselement waar G32 op leunt. En de test rendeerde een handkopie van `page.tsx` die al
+  uit de pas was gelopen, dus de screenshots toonden niet het verscheepte scherm.
+- **Alle vier daarna geslaagd**, met de reparaties door dezelfde critic nagemeten in plaats van
+  aangenomen. De G32-test is met drie mutanten geverifieerd (aanroep eruit met intacte DOM,
+  `callbackURL` stil gewijzigd, `MagicLinkForm` verwijderd) — alle drie maken hem rood.
 
 ### Gevonden in bestaande code — gemeld, niet gerepareerd
 - **`issuePinAction` heeft alleen `requireSession()`.** Elke ingelogde gebruiker kan een PIN
