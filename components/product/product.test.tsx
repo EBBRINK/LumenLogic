@@ -44,7 +44,7 @@ const baseSpec: ProductSpec = {
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
-      <div className="mx-auto w-full max-w-6xl">{children}</div>
+      <div className="mx-auto w-full max-w-7xl">{children}</div>
     </div>
   );
 }

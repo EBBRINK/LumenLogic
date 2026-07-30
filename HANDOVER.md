@@ -2741,3 +2741,43 @@ zegt dat er nu bij ("Showing 2 of 7 projects under "Won" matching …").
 matches …" terwijl het project bestaat. Dat is het bestaande archief-besluit, geen nieuwe
 regressie; als het hindert is de goedkoopste vorm een regel "…also search Archived" onder
 het lege resultaat.
+
+## 2026-07-30 — Eén lege toestand voor de hele app (UX-audit A6 + A7)
+
+**Wat er stond.** Vijf visuele dialecten voor "hier staat niets", over ~vijftien plekken,
+zonder gedeeld component. Op twee schermen stond het aanmaak-formulier bovendien bóven de
+lege toestand die naar dat formulier terugwees ("Create one above").
+
+**Wat er nu staat.** `components/ui/empty-state.tsx` — dialect 1 (gecentreerd gestreept
+kader, titel + gemaximeerde uitleg) gepromoveerd tot het enige component. API bewust smal:
+
+- **geen `className`.** De aanroeper mag zijn eigen kader niet meer tekenen; dat is precies
+  hoe de vijf dialecten zijn ontstaan.
+- **`variant` is een gesloten unie van twee**, en de grens is één vraag: wie tekent het
+  vlak. `"framed"` (default) tekent zelf een kader op het kale canvas; `"inline"` tekent
+  níets omdat de aanroeper al ín een `<Card>` zit. Dat was de echte reden dat dialect 4
+  bestond: een kader in een kader wilde niemand, dus werd het maar een kale grijze regel.
+- **`action` is verplicht, óók als er geen actie is** — dan schrijf je `action={null}`.
+  De audit's klacht bij dialect 2 en 4 was "de actie mist altijd"; een lege toestand zonder
+  uitweg is soms terecht (alleen-lezen logboek, alleen-lezen adminlijst) maar mag nooit per
+  ongeluk ontstaan. `action={null}` is greppable bewijs dat het bewust was.
+
+**A7 — de volgordebug.** `VersionHistory` en `OrgList` renderen bij leeg **alleen** de lege
+toestand, met het formulier erín; het formulier keert terug op zijn oude plek zodra er één
+item is. `"No organizations yet. Create one above."` werd onwaar en is vervangen door de
+zin die al bij het formulier hoorde ("A customer organization with its own members, roles
+and branding") — geen nieuwe copy verzonnen. Vastgepind in
+`components/org/org.test.tsx` en `components/dossier/version-history.test.tsx`: precies één
+aanmaak-formulier op het scherm, en dat zit in de lege toestand (`empty.contains(form)`);
+in de gevulde stand géén `[data-slot="empty-state"]` en het formulier in zijn kaart.
+
+**Bewust niet gemigreerd — vraag aan Timo.** Dialect 5, de drie kale nullen op
+`/brand/dashboard` (Considered 0 / Chosen 0 / Choice rate —). Een KPI-tegel met een nul is
+een dátastand, geen lege lijst, en er is geen bestaande zin om als uitleg te gebruiken.
+Migreren vraagt dus nieuwe copy; die moet van Timo komen, niet van een bouwsessie.
+
+**Ook niet aangeraakt:** `app/error.tsx`, `app/not-found.tsx`, `app/global-error.tsx` delen
+het gestreepte kader maar zijn foutschermen, geen lege toestanden. En een handvol lege
+regels buiten de audit-lijst (`spec-line-table`, `werkvoorbereider-view`,
+`enrichment-panels`, `deviation-table`, `price-list-status`, `custom-fields-table`,
+`analytics-*`) staan nog op hun eigen zin — kandidaat voor een volgende veegbeurt.

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { IconTrash } from "@/components/dossier/icons";
@@ -47,9 +48,13 @@ export function AllowedEmailsBlock({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {emails.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No addresses yet. Add one below.
-          </p>
+          // Het toevoeg-formulier staat ín dezelfde kaart, direct hieronder — de zin
+          // wijst naar beneden en klopt, dus geen tweede knop hier.
+          <EmptyState
+            variant="inline"
+            title="No addresses yet. Add one below."
+            action={null}
+          />
         ) : (
           <ul className="flex flex-col divide-y divide-foreground/10">
             {emails.map((e) => {

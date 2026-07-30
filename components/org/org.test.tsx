@@ -51,7 +51,7 @@ const orgs: OrgWithMembers[] = [
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
-      <main className="mx-auto w-full max-w-6xl">
+      <main className="mx-auto w-full max-w-7xl">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">
           Organisaties
         </h1>
@@ -137,6 +137,92 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
   expect(badges).toContain("Work preparer");
   // Piet (calculator + org_admin) + Sanne (werkvoorbereider) = 3 rol-badges
   expect(badges).toHaveLength(3);
+});
+
+// A7 (UX-audit 30 jul): het Create-formulier stond bóven "No organizations yet. Create
+// one above." — de lege toestand wees naar boven. Deze twee tests pinnen de volgorde:
+// bij leeg is er géén formulier buiten de lege toestand, en de zin "Create one above"
+// bestaat niet meer; zodra er één organisatie is, staat het formulier terug in zijn kaart.
+test("A7 — lege organisatielijst: alleen de lege toestand, met het Create-formulier erín", async () => {
+  await renderServer(
+    <Screen>
+      <OrgList
+        orgs={[]}
+        createAction={noopAction}
+        addMemberAction={noopAction}
+        removeMemberAction={noopAction}
+        saveBrandingAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("No organizations yet."))
+    .toBeInTheDocument();
+
+  // De tekst die naar boven wees is weg.
+  expect(document.body.textContent).not.toContain("Create one above");
+  // De kaart "New organization" staat er niet — anders had je twee ingangen.
+  expect(document.body.textContent).not.toContain("New organization");
+
+  const empty = document.querySelector('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  // Precies één aanmaak-formulier, en dat zit binnen de lege toestand.
+  const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="name"]'),
+  );
+  expect(forms).toHaveLength(1);
+  expect(empty!.contains(forms[0])).toBe(true);
+});
+
+// Het formulier ín een gecentreerd kader is de riskantste layout van deze wijziging:
+// drie velden plus een knop moeten op 375px net zo netjes vallen als op 1280px.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`organisatie leeg (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <OrgList
+            orgs={[]}
+            createAction={noopAction}
+            addMemberAction={noopAction}
+            removeMemberAction={noopAction}
+            saveBrandingAction={noopAction}
+          />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText("No organizations yet."))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./organisatie-leeg.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
+test("A7 — met organisaties: het formulier staat terug in zijn kaart, geen lege toestand", async () => {
+  await renderServer(
+    <Screen>
+      <OrgList
+        orgs={orgs}
+        createAction={noopAction}
+        addMemberAction={noopAction}
+        removeMemberAction={noopAction}
+        saveBrandingAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("New organization")).toBeInTheDocument();
+
+  const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="name"]'),
+  );
+  expect(forms).toHaveLength(1);
+  // Het formulier zit in de kaart, niet in een lege toestand.
+  expect(forms[0].closest('[data-slot="empty-state"]')).toBeNull();
+  expect(forms[0].closest('[data-slot="card"]')).not.toBeNull();
 });
 
 test("rol-uitleg en default-landing kloppen; de rol kiest de VIEW, niet de engine", async () => {

@@ -2,6 +2,7 @@
 // evaluatieset tegen de huidige catalogus, toont de score + per-regel-diff, en de vorige
 // runs eronder (score over tijd). Puur presentational; measureAction komt als prop binnen.
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -87,22 +88,30 @@ export function EvaluationPanel({
       </div>
 
       {isEmpty ? (
-        <div className="rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
-          <p className="font-medium">The evaluation set is empty</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A line is a real spec line from a project plus the status a human
-            expects the matcher to give it. Without lines there is nothing to
-            measure, so measuring is switched off here.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            There is no screen yet that adds a line to the set — today it is
-            filled straight in the database (table{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              evaluation_lines
-            </code>
-            ). Adding lines from a spec line is still an open design decision.
-          </p>
-        </div>
+        // Bewuste `action={null}`: de tweede alinea zégt waarom er geen knop is —
+        // er ís nog geen scherm dat een regel toevoegt. Een knop verzinnen zou hier
+        // een uitweg suggereren die niet bestaat.
+        <EmptyState
+          title="The evaluation set is empty"
+          description={
+            <>
+              <p>
+                A line is a real spec line from a project plus the status a human
+                expects the matcher to give it. Without lines there is nothing to
+                measure, so measuring is switched off here.
+              </p>
+              <p>
+                There is no screen yet that adds a line to the set — today it is
+                filled straight in the database (table{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  evaluation_lines
+                </code>
+                ). Adding lines from a spec line is still an open design decision.
+              </p>
+            </>
+          }
+          action={null}
+        />
       ) : latest ? (
         <div className="rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
           <div className="flex items-baseline justify-between gap-4">
@@ -162,10 +171,14 @@ export function EvaluationPanel({
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          No measurement run yet. Click &ldquo;Measure hit-rate&rdquo; to run the
-          evaluation set against the current catalog.
-        </p>
+        // Geen actie in het kader: de knop "Measure hit-rate" staat in de kop van
+        // dit paneel en is hier zichtbaar — de zin wijst naar iets dat op het scherm
+        // staat, niet naar een knop die ontbreekt.
+        <EmptyState
+          title="No measurement run yet."
+          description="Click “Measure hit-rate” to run the evaluation set against the current catalog."
+          action={null}
+        />
       )}
 
       {runs.length > 1 && (

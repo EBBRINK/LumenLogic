@@ -67,7 +67,7 @@ const memberships: MembershipRow[] = [
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
-      <main className="mx-auto w-full max-w-6xl">
+      <main className="mx-auto w-full max-w-7xl">
         <div className="grid gap-6">{children}</div>
       </main>
     </div>

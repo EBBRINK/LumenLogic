@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 
 // Prijslijst aanleveren (H-11): één publicatiepad. De aanlevering gaat naar 'staging' en
@@ -94,9 +95,13 @@ export function PricelistUpload({
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold tracking-tight">Submitted</h2>
         {uploads.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing submitted yet.
-          </p>
+          // Het aanleverformulier staat in de kaart hierboven; deze lijst is de
+          // uitkomst daarvan, niet een tweede ingang. Bewuste `action={null}`.
+          <EmptyState
+            variant="inline"
+            title="Nothing submitted yet."
+            action={null}
+          />
         ) : (
           <ul className="flex flex-col divide-y divide-foreground/10">
             {uploads.map((u) => (

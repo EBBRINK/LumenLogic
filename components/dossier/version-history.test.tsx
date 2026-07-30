@@ -171,7 +171,10 @@ test("version-history toont snapshot-knop, versienummers, diff, locatie en datas
     .toBeInTheDocument();
 });
 
-test("version-history lege staat nodigt uit tot een eerste versie", async () => {
+// A7 (UX-audit 30 jul): bij leeg staat het formulier ÍN de lege toestand, niet erboven.
+// Dit pint de volgorde vast, niet alleen de aanwezigheid: er is precies één
+// snapshot-formulier en dat zit binnen het lege-toestand-blok.
+test("version-history lege staat: het snapshot-formulier staat ín de lege toestand", async () => {
   await renderServer(
     <Screen>
       <VersionHistory
@@ -186,7 +189,38 @@ test("version-history lege staat nodigt uit tot een eerste versie", async () => 
   await expect
     .element(page.getByText(/No versions saved yet/))
     .toBeInTheDocument();
+
+  const empty = document.querySelector('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  // Precies één "Save new version"-knop op het scherm — geen tweede boven het kader.
+  const buttons = Array.from(
+    document.querySelectorAll("button[type=submit]"),
+  ).filter((b) => /Save new version/.test(b.textContent ?? ""));
+  expect(buttons).toHaveLength(1);
+  // …en die ene zit binnen de lege toestand.
+  expect(empty!.contains(buttons[0])).toBe(true);
+
+  await page.screenshot({ path: "./version-history-leeg.light.desktop.test.png" });
+});
+
+test("version-history met versies: het formulier staat terug in de kop, geen lege toestand", async () => {
+  await renderServer(
+    <Screen>
+      <VersionHistory
+        dossierId="d1"
+        versions={versions}
+        latest={{ version: 2, lines: latestLines }}
+        diff={diff}
+        snapshotAction={noopAction}
+      />
+    </Screen>,
+  );
   await expect
     .element(page.getByRole("button", { name: /Save new version/ }))
     .toBeInTheDocument();
+  expect(document.querySelector('[data-slot="empty-state"]')).toBeNull();
+  const buttons = Array.from(
+    document.querySelectorAll("button[type=submit]"),
+  ).filter((b) => /Save new version/.test(b.textContent ?? ""));
+  expect(buttons).toHaveLength(1);
 });

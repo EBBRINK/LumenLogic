@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -59,9 +60,13 @@ export function UploadReviewBlock({
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {uploads.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No pending uploads.
-          </p>
+          // Zit al in een <Card>: inline. Geen actie — deze wachtrij vult zichzelf
+          // vanuit de merkportalen; de admin start hier niets.
+          <EmptyState
+            variant="inline"
+            title="No pending uploads."
+            action={null}
+          />
         ) : (
           <Table>
             <TableHeader>

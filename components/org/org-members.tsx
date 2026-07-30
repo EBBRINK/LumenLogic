@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { IconTrash } from "@/components/dossier/icons";
 import { defaultLandingForRoles } from "@/lib/repo/orgs";
@@ -119,9 +120,15 @@ export function OrgMembers({
       <div>
         <h3 className="text-sm font-medium">Members</h3>
         {members.length === 0 ? (
-          <p className="mt-1 text-sm text-muted-foreground">
-            No members yet. Add one below.
-          </p>
+          // Geen actie in de lege toestand: het toevoeg-formulier staat al ín dezelfde
+          // kaart, direct hieronder — de zin wijst dus naar beneden en klopt.
+          <div className="mt-1">
+            <EmptyState
+              variant="inline"
+              title="No members yet. Add one below."
+              action={null}
+            />
+          </div>
         ) : (
           <ul className="mt-2 flex flex-col divide-y divide-foreground/10">
             {members.map((m) => (

@@ -20,6 +20,12 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   return (
+    // BEWUSTE UITZONDERING op de 1280px-paginacontainer (DESIGN.md §5). Dit is geen
+    // inhoudspagina met een linkerrand die met de navbalk moet uitlijnen, maar een
+    // gecentreerde doodlopende staat: één kop, één zin, twee knoppen, alles
+    // `text-center` in een gecentreerde kaart. Op 1280px wordt dat een lege bak van
+    // ruim een meter met een zinnetje in het midden. Vastgelegd in de allowlist van
+    // components/container-breedte.test.ts — niet stilzwijgend naar max-w-7xl trekken.
     <main className="mx-auto flex w-full max-w-3xl flex-1 items-center px-6 py-16">
       <div className="w-full rounded-lg border border-dashed p-8 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">

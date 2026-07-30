@@ -1,5 +1,6 @@
 import { IconSearch } from "./dossier/icons";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { formatEur } from "@/lib/format";
 import type { Candidate } from "./dossier/types";
@@ -192,17 +193,18 @@ export function CatalogSearch({
       </form>
 
       {!searched ? (
-        <p className="text-sm text-muted-foreground">
-          Choose a brand or type free text and search the catalog.
-        </p>
+        // Geen actie: de zoekknop staat direct hierboven in hetzelfde formulier — een
+        // tweede knop zou naar zichzelf wijzen.
+        <EmptyState
+          title="Choose a brand or type free text and search the catalog."
+          action={null}
+        />
       ) : total === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-center">
-          <p className="font-medium">No products found</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            No visible product matches this search. That's an honest status, not an
-            error.
-          </p>
-        </div>
+        <EmptyState
+          title="No products found"
+          description="No visible product matches this search. That's an honest status, not an error."
+          action={null}
+        />
       ) : (
         <div className="flex flex-col gap-8">
           <ResultList title="Provably compliant" items={aantoonbaar} />

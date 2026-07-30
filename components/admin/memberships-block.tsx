@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -37,9 +38,13 @@ export function MembershipsBlock({
           hetzelfde, één regel hoger. De beleidszin staat nu daar. */}
       <CardContent className="pt-6">
         {memberships.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No members in any organization yet.
-          </p>
+          // Alleen-lezen inzage over org-grenzen: leden beheren doet de org-admin op
+          // /settings/organization. Bewuste `action={null}`.
+          <EmptyState
+            variant="inline"
+            title="No members in any organization yet."
+            action={null}
+          />
         ) : (
           <Table>
             <TableHeader>

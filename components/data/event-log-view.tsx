@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { eventLabel } from "@/lib/event-labels";
 import type { EventActionCount } from "@/lib/repo/events";
 import { EventsBlock, type EventRow } from "./event-log-block";
@@ -44,7 +45,7 @@ export function EventLogView({
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {actionCounts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No events yet.</p>
+              <EmptyState variant="inline" title="No events yet." action={null} />
             ) : (
               actionCounts.map((a) => (
                 <Badge key={a.action} variant="secondary" className="gap-1">

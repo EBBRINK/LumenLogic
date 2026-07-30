@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -185,7 +186,8 @@ export function EventsBlock({ events }: { events: EventRow[] }) {
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No activity yet.</p>
+          // Alleen-lezen logboek (ijzeren regel 5): er valt hier niets te starten.
+          <EmptyState variant="inline" title="No activity yet." action={null} />
         ) : (
           <Table>
             <TableHeader>

@@ -16,6 +16,7 @@
 import { fieldVisible, type Disclosure } from "@/lib/repo/disclosure";
 import { formatEur } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
 // Structurele subset van een visible_specs-rij — de pagina geeft de volledige rij door
@@ -213,7 +214,13 @@ export function ProductCard({
             ))}
           </dl>
         ) : disclosure.showSpecs ? (
-          <p className="text-sm text-muted-foreground">No specifications available.</p>
+          // Zit al in een <Card>: inline. Specs komen van het merk, niet van deze
+          // pagina — bewuste `action={null}`.
+          <EmptyState
+            variant="inline"
+            title="No specifications available."
+            action={null}
+          />
         ) : null}
       </CardContent>
     </Card>

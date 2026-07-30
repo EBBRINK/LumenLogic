@@ -154,4 +154,9 @@ test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
     .element(page.getByText("Choose a brand or type free text and search the catalog."))
     .toBeInTheDocument();
   expect(page.getByText("Provably compliant").query()).toBeNull();
+  // A6: geen kale grijze zin meer op een verder wit scherm — de gedeelde lege toestand.
+  const empty = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  expect(empty!.dataset.variant).toBe("framed");
+  await page.screenshot({ path: "./catalog-nog-niet-gezocht.light.desktop.test.png" });
 });

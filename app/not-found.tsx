@@ -16,6 +16,10 @@ import { Button } from "@/components/ui/button";
 // CLIENT-component en heeft dat probleem niet; die gebruikt next/link wél.
 export default function NotFound() {
   return (
+    // BEWUSTE UITZONDERING op de 1280px-paginacontainer (DESIGN.md §5) — zelfde
+    // redenering als app/error.tsx: gecentreerde doodlopende staat, geen linkerrand
+    // die moet uitlijnen. De twee horen als één paar te lezen, dus ze houden dezelfde
+    // breedte. Zie de allowlist in components/container-breedte.test.ts.
     <main className="mx-auto flex w-full max-w-3xl flex-1 items-center px-6 py-16">
       <div className="w-full rounded-lg border border-dashed p-8 text-center">
         <p className="text-sm text-muted-foreground tabular-nums">404</p>

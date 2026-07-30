@@ -317,6 +317,45 @@ test("MatchCandidates: zonder kandidaten verschijnt de 'draai de matcher'-knop",
   await expect
     .element(page.getByRole("button", { name: "Run the matcher" }))
     .toBeInTheDocument();
+  // A6: de "draai de matcher"-knop zit ín de lege toestand, niet ernaast.
+  const empty = document.querySelector('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  expect(empty!.querySelector("form")).not.toBeNull();
+});
+
+// A6 (UX-audit 30 jul): één lege kolom gebruikte een eigen "gestreept kadertje" — het
+// derde dialect. Die kolom draagt nu dezelfde lege toestand als de rest.
+test("MatchCandidates: een lege kolom draagt de gedeelde lege toestand", async () => {
+  await renderServer(
+    <Screen>
+      <MatchCandidates
+        dossierId="d1"
+        specLine={{
+          id: "s1",
+          fixtureCode: "Lp301",
+          brandText: "XAL",
+          productText: "SASSO 100",
+        }}
+        provable={provable}
+        incomplete={[]}
+        chooseAction={noopAction}
+        setLineStatusAction={noopAction}
+        setDayPriceAction={noopAction}
+        runMatchAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("No candidates in this list."))
+    .toBeInTheDocument();
+  const empties = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-slot="empty-state"]'),
+  );
+  expect(empties).toHaveLength(1);
+  expect(empties[0].dataset.variant).toBe("framed");
+  await page.screenshot({
+    path: "./regel-kandidaten-lege-kolom.light.desktop.test.png",
+  });
 });
 
 test("DeviationTable: kolommen + een afwijking (gevraagd 12, geleverd 13) zichtbaar", async () => {

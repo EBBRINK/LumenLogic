@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { formatEur } from "@/lib/format";
 import { fieldLabelTitle } from "@/lib/matching/tolerances";
@@ -663,10 +664,12 @@ function RedLinkCard({
           </ul>
         )}
         {results && results.length === 0 && line.searchQuery && (
-          <p className="text-sm text-muted-foreground">
-            No visible products found for &ldquo;{line.searchQuery}&rdquo; — try a
-            broader search term.
-          </p>
+          // Zit al in een <Card>: inline, anders een kader binnen een kader.
+          <EmptyState
+            variant="inline"
+            title={`No visible products found for “${line.searchQuery}” — try a broader search term.`}
+            action={null}
+          />
         )}
       </CardContent>
     </Card>
@@ -698,14 +701,13 @@ export function ReviewQueue({
 }) {
   if (pending.length === 0 && done.length === 0 && rood.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">Nothing to review — all lines are unambiguous.</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Lines only appear here when a human verdict is needed: a yellow deviation,
-          a color variant, a confirmation for missing data, an OCR check, or a
-          not-found product that must be linked manually.
-        </p>
-      </div>
+      // Geen actie: de wachtrij vult zichzelf vanuit de matcher — er is hier niets
+      // te starten. Bewuste `action={null}`.
+      <EmptyState
+        title="Nothing to review — all lines are unambiguous."
+        description="Lines only appear here when a human verdict is needed: a yellow deviation, a color variant, a confirmation for missing data, an OCR check, or a not-found product that must be linked manually."
+        action={null}
+      />
     );
   }
 
@@ -734,9 +736,11 @@ export function ReviewQueue({
         </div>
       ) : (
         rood.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No pending items — everything is done.
-          </p>
+          <EmptyState
+            variant="inline"
+            title="No pending items — everything is done."
+            action={null}
+          />
         )
       )}
 

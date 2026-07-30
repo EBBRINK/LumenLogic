@@ -26,6 +26,10 @@ export function LoginForm() {
   }
 
   return (
+    // BEWUSTE UITZONDERING op de 1280px-paginacontainer (DESIGN.md §5): één veld en
+    // één knop, gecentreerd op een scherm zonder navbalk (de gebruiker is nog niet
+    // ingelogd). Er is geen rand om mee uit te lijnen en 384px is de bedoelde
+    // formulierbreedte. Zie de allowlist in components/container-breedte.test.ts.
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-6 px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Lumen Logic</h1>

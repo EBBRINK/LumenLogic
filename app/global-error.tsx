@@ -31,6 +31,10 @@ export default function GlobalError({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* BEWUSTE UITZONDERING op de 1280px-paginacontainer (DESIGN.md §5), zelfde
+            redenering als app/error.tsx. Hier zelfs dwingend: dit scherm rendert zijn
+            eigen <html>/<body> zónder navbalk, dus er is helemaal geen rand om mee uit
+            te lijnen. Zie de allowlist in components/container-breedte.test.ts. */}
         <main className="mx-auto flex w-full max-w-3xl flex-1 items-center px-6 py-16">
           <div className="w-full rounded-lg border border-dashed p-8 text-center">
             <h1 className="text-2xl font-semibold tracking-tight">

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { WerkvoorbereiderView } from "@/components/dossier/werkvoorbereider-view";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
@@ -31,14 +32,13 @@ export default async function WerkvoorbereidingPage({
   // De fase-badge staat al in de dossier-layout; hier alleen een nette melding.
   if (dossier.phase !== "awarded") {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">This tab only exists when awarded</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Alternatives and value engineering only appear once the project is set to
-          “Won”. Default = safe: during the tender phase the tool shows nothing that
-          could jeopardize spec equivalence.
-        </p>
-      </div>
+      // Geen actie: de fase omzetten gebeurt op het dossier zelf, niet hier. Dat is
+      // een bewuste `action={null}` — ijzeren regel 4 wil hier geen uitweg bieden.
+      <EmptyState
+        title="This tab only exists when awarded"
+        description="Alternatives and value engineering only appear once the project is set to “Won”. Default = safe: during the tender phase the tool shows nothing that could jeopardize spec equivalence."
+        action={null}
+      />
     );
   }
 

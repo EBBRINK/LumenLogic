@@ -1,5 +1,6 @@
 import { IconCheck, IconSearch } from "./icons";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "./status-badge";
 import { VERDICT } from "./deviation-table";
@@ -222,9 +223,9 @@ function CandidateList({
       </div>
       <p className="mb-2 text-xs text-muted-foreground">{hint}</p>
       {candidates.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-          No candidates in this list.
-        </p>
+        // Eén van de twee kolommen kan leeg zijn; het kader markeert die kolom. Geen
+        // actie: de matcher-knop hoort bij de regel als geheel, niet bij één lijst.
+        <EmptyState title="No candidates in this list." action={null} />
       ) : (
         <ul className="flex flex-col gap-2">
           {candidates.map((c) => (
@@ -461,21 +462,19 @@ export function MatchCandidates({
           />
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed p-6 text-center">
-          <p className="font-medium">No candidates yet</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            The matcher hasn't run for this line yet, or found nothing comparable.
-            Run the matcher to fill the two lists — or resolve the line honestly
-            below.
-          </p>
-          <form action={runMatchAction} className="mt-4 inline-block">
-            <input type="hidden" name="dossierId" value={dossierId} />
-            <input type="hidden" name="specLineId" value={specLine.id} />
-            <Button type="submit" size="sm" variant="outline">
-              <IconSearch /> Run the matcher
-            </Button>
-          </form>
-        </div>
+        <EmptyState
+          title="No candidates yet"
+          description="The matcher hasn't run for this line yet, or found nothing comparable. Run the matcher to fill the two lists — or resolve the line honestly below."
+          action={
+            <form action={runMatchAction}>
+              <input type="hidden" name="dossierId" value={dossierId} />
+              <input type="hidden" name="specLineId" value={specLine.id} />
+              <Button type="submit" size="sm" variant="outline">
+                <IconSearch /> Run the matcher
+              </Button>
+            </form>
+          }
+        />
       )}
 
       <ResolutionBlock
