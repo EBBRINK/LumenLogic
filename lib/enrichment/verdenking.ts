@@ -12,7 +12,7 @@
 // Puur: geen database, geen I/O — zodat elke regel een test kan hebben en het filter op elke
 // schaal draait.
 
-import { FIELDS, type ParsedSpecs } from "./parser";
+import { FIELDS, NIET_DIMBAAR, type ParsedSpecs } from "./parser";
 
 export type Veld = (typeof FIELDS)[number];
 
@@ -57,11 +57,14 @@ const TUNABLE = /\b(?:TW|TUNABLE|DIM\s*TO\s*WARM|D2W|DTW)\b/i;
 const KANTEL = /\b(?:TILT|KANTEL|ADJ(?:USTABLE)?|SWIVEL|ROTAT\w*)\b/i;
 const HOEK_BEREIK = /\d{1,3}\s*[-–]\s*\d{1,3}\s*(?:°|deg\b)/i;
 
-// Dimbaarheid is het enige veld met een ONTKENNING die de parser niet ziet: "NON-DIM" bevat
-// het token DIM, en /\bDIM\b/ matcht dat (het streepje is een woordgrens). De parser zegt dan
-// "dimbaar" terwijl de naam het tegendeel zegt.
-const NIET_DIMBAAR =
-  /\b(?:NON[\s-]*DIM\w*|NOT[\s-]*DIM\w*|NIET[\s-]*DIMBAAR|EXCL\.?\s*DIM\w*|ZONDER[\s-]*DIM\w*|NO[\s-]*DIM\b)/i;
+// Dimbaarheid is het enige veld met een ONTKENNING die de parser niet zag: "NON-DIM" bevat
+// het token DIM, en /\bDIM\b/ matcht dat (het streepje is een woordgrens).
+//
+// Sinds 30 jul onderdrukt `parseDimmable` het veld zélf bij een ontkenning, dus deze vlag hoort
+// in de praktijk niet meer te vuren. De regel blijft staan als REGRESSIETOETS: gaat de parser
+// ooit weer voorstellen op een ontkennende naam, dan ziet meet-verdenking.ts dat meteen. NIET_DIMBAAR
+// komt daarom uit parser.ts (zie de import bovenaan) — twee kopieën zouden ongemerkt uiteenlopen
+// en dan zou de wachter de wacht niet meer kunnen houden.
 const DIM_PROTOCOLLEN = [/\bDALI\b/i, /\bTRIAC\b/i, /\bPHASE\b/i, /\b[01]\s*-\s*10\s*V\b/i];
 
 // Getallen die bij een bijgeleverd of uitgesloten onderdeel horen in plaats van bij het armatuur.

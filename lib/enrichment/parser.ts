@@ -115,9 +115,35 @@ function parseLumen(name: string): number | undefined {
   return lm > 0 ? lm : undefined;
 }
 
+// Dimbaarheid is het enige veld met een ONTKENNING die de parser zelf niet zag: "NON DIM" bevat
+// het token DIM en `/\bDIM\b/` matcht dat — het streepje én de spatie zijn een woordgrens. De
+// parser zei dan "dimbaar" terwijl de naam het tegendeel zegt.
+//
+// Gemeten op de branch (scripts/meet-nondim.ts, scripts/meet-nondim-conflict.ts, 30 jul):
+// 3.635 namen ontkennen dimbaarheid, en 3.164 daarvan zouden op een LEGE kolom landen —
+// XAL 2.810, Wever & Ducré 273, CLS 58, Flos Architectural 33. Het zijn aansluitdozen en
+// plafondkappen: "THROUGH WIRING CONNECTION BOX NON DIM 3-POLE". Geen ontbrekende waarde maar
+// de OMGEKEERDE, en `publishRun` is onomkeerbaar.
+//
+// Waarom dit meer is dan een verrijkingsfout: `judgeDimmable` (lib/matching/tolerances.ts:119)
+// doet substring-matching in BEIDE richtingen na het strippen van niet-alfanumeriek. Een bestek
+// dat "DIM" vraagt krijgt dus GROEN op een niet-dimbaar armatuur; vraagt het DALI, dan geel
+// ("ander protocol") in plaats van `onbekend`. Beide duwen de kandidaat omhoog.
+//
+// De ontkenning onderdrukt het veld VOLLEDIG, ook als er een protocolnaam in staat. Gemeten
+// zijn dat 26 namen, en het zijn stuk voor stuk varianten-opsommingen: "TRACK LINEAR CONNECTOR
+// NON DIM/ZIGBEE/DALI 48VDC" somt op wát er leverbaar is. Voor dít artikel is geen van beide
+// lezingen een feit — dus zwijgen, conform de ijzeren regel ontbrekend ≠ fout.
+//
+// Eén definitie, gedeeld met lib/enrichment/verdenking.ts (die importeert hem hiervandaan, niet
+// andersom — verdenking.ts hangt al aan parser.ts en een cyclus is het niet waard).
+export const NIET_DIMBAAR =
+  /\b(?:NON[\s-]*DIM\w*|NOT[\s-]*DIM\w*|NIET[\s-]*DIMBAAR|EXCL\.?\s*DIM\w*|ZONDER[\s-]*DIM\w*|NO[\s-]*DIM\b)/i;
+
 // Dimbaarheid: herken het protocol. Specifiek vóór generiek (DALI/TRIAC/PHASE/x-10V vóór
 // het kale "DIM"). Retour is de genormaliseerde protocolnaam.
 function parseDimmable(name: string): string | undefined {
+  if (NIET_DIMBAAR.test(name)) return undefined;
   if (/\bDALI\b/i.test(name)) return "DALI";
   if (/\bTRIAC\b/i.test(name)) return "TRIAC";
   if (/\bPHASE\b/i.test(name)) return "PHASE";

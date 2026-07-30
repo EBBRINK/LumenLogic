@@ -12,12 +12,38 @@ test("schone XAL-naam levert geen enkele verdenking", () => {
   expect(vlaggen("FINA SPOT LINE 100 RD SP CRI95 1,4W LED 3000K 24VDC")).toEqual([]);
 });
 
-// De ernstigste: de parser leest 'DIM' uit 'NON-DIM' omdat het streepje een woordgrens is.
-test("ontkenning: NON-DIM leest als dimbaar en moet gevlagd worden", () => {
-  expect(parseProductName("SPOT 20W 3000K NON-DIM").dimmable).toBe("DIM");
-  expect(vlaggen("SPOT 20W 3000K NON-DIM")).toContain("dimmable:ontkenning");
-  expect(vlaggen("SPOT 20W 3000K NOT DIMMABLE")).toContain("dimmable:ontkenning");
-  expect(vlaggen("SPOT 20W 3000K EXCL DIM")).toContain("dimmable:ontkenning");
+// De ernstigste faalvorm, en sinds 30 jul BIJ DE BRON gerepareerd in plaats van gevlagd.
+// Deze test las eerst `expect(...dimmable).toBe("DIM")` — hij legde de bug vast als gedrag.
+// Gemeten aanleiding: 3.635 namen ontkennen dimbaarheid en 3.164 daarvan zouden op een lege
+// kolom landen (XAL 2.810). Vlaggen was niet genoeg: `verdenking.ts` hangt aan nul
+// productiepaden, dus die vlag hield niets tegen.
+test("ontkenning: NON-DIM levert GEEN dimbaarheid meer", () => {
+  for (const naam of [
+    "SPOT 20W 3000K NON-DIM",
+    "SPOT 20W 3000K NON DIM",
+    "SPOT 20W 3000K NOT DIMMABLE",
+    "SPOT 20W 3000K EXCL DIM",
+    "THROUGH WIRING CONNECTION BOX NON DIM 3-POLE",
+  ]) {
+    expect(parseProductName(naam).dimmable).toBeUndefined();
+  }
+  // …en dus valt er ook niets meer te vlaggen: het filter mag geen verdenking verzinnen over
+  // een veld dat leeg bleef. De vlagregel blijft in verdenking.ts staan als regressietoets.
+  expect(vlaggen("SPOT 20W 3000K NON-DIM")).not.toContain("dimmable:ontkenning");
+});
+
+// De ontkenning wint óók van een expliciet protocol. Gemeten zijn dat 26 namen in de hele
+// catalogus, en het zijn stuk voor stuk varianten-opsommingen: de naam somt op wát er
+// leverbaar is, dus voor dít artikel is geen van beide lezingen een feit.
+test("ontkenning wint van een expliciet protocol (varianten-opsomming)", () => {
+  expect(
+    parseProductName("TRACK LINEAR CONNECTOR NON DIM/ZIGBEE/DALI 48VDC").dimmable,
+  ).toBeUndefined();
+  expect(
+    parseProductName("MOVE IT 25 TRACK CURVE CONNECTOR R300 DALI NON DIM / DALI 48VDC").dimmable,
+  ).toBeUndefined();
+  // Tegenproef: zonder ontkenning blijft DALI gewoon DALI.
+  expect(parseProductName("TRACK LINEAR CONNECTOR ZIGBEE/DALI 48VDC").dimmable).toBe("DALI");
 });
 
 // Tegenproef: "DIMMER" is géén dimbaarheidstoken voor de parser (\bDIM\b vereist een
