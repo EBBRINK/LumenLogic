@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { AllowedEmailsBlock } from "@/components/settings/allowed-emails-block";
 import { LlmBudgetBlock } from "@/components/settings/llm-budget-block";
+import type { ChangePasswordResult } from "@/components/settings/password-block";
+import { PasswordBlock } from "@/components/settings/password-block";
 import { XisBlock } from "@/components/settings/xis-block";
 import type { XisEnvironment } from "@/components/settings/xis-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { auth } from "@/lib/auth";
+import { changeOwnPassword } from "@/lib/auth-activation";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth-factory";
 import {
   getLlmSpendByPurpose,
   getSetting,
@@ -18,6 +24,48 @@ import {
   saveBudgetAction,
   saveXisAction,
 } from "./actions";
+
+// Zelf je wachtwoord wijzigen (besluit G34, sprint 3.1 golf 2). Inline server action i.p.v.
+// een toevoeging aan ./actions.ts: golf 2 draait met drie builders tegelijk in dezelfde
+// worktree, en dit bestand was voor dit blok de enige plek die is vrijgegeven.
+//
+// ⚠️ UITSLUITEND changeOwnPassword() (lib/auth-activation.ts), nooit
+// auth.api.changePassword rechtstreeks — alleen changeOwnPassword dwingt
+// revokeOtherSessions:true af. Zonder die vlag blijft een sessie op een ander apparaat
+// na een wachtwoordwissel gewoon geldig; precies de bevinding van de golf-1-critic
+// (zie het commentaar bij changeOwnPassword zelf).
+async function changePasswordAction(input: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<ChangePasswordResult> {
+  "use server";
+  await requireSession();
+
+  // Eigen lengtecontrole vóór de aanroep: hetzelfde beleid als de client al toont, maar
+  // hier nogmaals gecontroleerd voor het geval de client-check ooit omzeild wordt.
+  if (
+    input.newPassword.length < MIN_PASSWORD_LENGTH ||
+    input.newPassword.length > MAX_PASSWORD_LENGTH
+  ) {
+    return { error: "weak_password" };
+  }
+
+  try {
+    await changeOwnPassword(auth, {
+      currentPassword: input.currentPassword,
+      newPassword: input.newPassword,
+      headers: await headers(),
+    });
+  } catch {
+    // Better Auth's APIError bij een verkeerd huidig wachtwoord (INVALID_PASSWORD), en
+    // bij elke andere reden die hier zou landen — de wachtwoordlengte is hierboven al
+    // apart afgevangen, dus alles wat híer misgaat is in de praktijk het huidige
+    // wachtwoord.
+    return { error: "wrong_current_password" };
+  }
+
+  return { ok: true };
+}
 
 // L-01/L-02/L-06: interne gebruikers, LLM-budget en XIS-koppeling op één plek. Deze pagina
 // leeft buiten de dossier-layout en rendert daarom zijn eigen <main>.
@@ -96,6 +144,11 @@ export default async function InstellingenPage() {
             </Link>
           </CardContent>
         </Card>
+        <PasswordBlock
+          minPasswordLength={MIN_PASSWORD_LENGTH}
+          maxPasswordLength={MAX_PASSWORD_LENGTH}
+          changePasswordAction={changePasswordAction}
+        />
       </div>
     </main>
   );
