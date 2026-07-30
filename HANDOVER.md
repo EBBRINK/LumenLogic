@@ -3888,3 +3888,26 @@ lamp waarvoor de reflector bedoeld is.
 de waarde vandaan komt, of op een hele klasse in plaats van op de term die de uitzondering nodig
 heeft. Wie hier een nieuwe onderdeel-term toevoegt: meet eerst hoeveel namen hij raakt, print de
 namen uit, en splits pas daarna.
+
+---
+
+## 2026-07-30 — Het patroon achter drie bugs: twee lagen die apart over hetzelfde oordelen
+
+Drie keer op één dag liep dezelfde fout op: twee stukken code beoordeelden onafhankelijk van
+elkaar hetzelfde feit, en gaven daarom vroeg of laat tegengestelde antwoorden. Steeds zag je het
+pas aan een uitkomst die niet klopte, nooit aan de code.
+
+| lagen | wat er uiteenliep | hoe het zich uitte |
+|---|---|---|
+| `parseWatt` vs. `verdenkingen()` | wélke tekstfragmenten een wattage-kandidaat zijn | `… 1.1 **B** ROUND incl. driver 4W` landde, `… 1.1 **W** ROUND …` werd geweerd op `meerdere-waarden`. Zelfde armatuur, andere kleurcode |
+| celsleutel vs. spanselectie | wélke karakters de waarde voortbrachten | `array #k cri#` en `rray #k cri#` werden twee cellen voor dezelfde vraag, omdat het venster middenin een woord knipte |
+| `startEnrichmentRun` vs. `publishRun` | wat "de kolom is leeg" betekent | 64 van 100 steekproefrijen op een kolom die `publishRun` hoe dan ook negeert — de poort stond formeel dicht en hield materieel niets tegen |
+
+**De reparatie was elke keer dezelfde vorm:** één functie tot bron van waarheid maken en de
+andere laag daarnaar laten verwijzen — `wattKandidaten()` in `parser.ts`, `specSpans()` voor de
+celsleutel, `fieldIsEmpty()` voor de leeg-toets. Niet: de tweede laag "ook" repareren.
+
+**Waar dit nog kan spelen:** overal waar een filter, een teller of een rapport een eigen regex of
+eigen definitie hanteert voor iets wat de parser of de matcher al bepaalt. Wie hier iets toevoegt
+dat over dezelfde tekens oordeelt: importeer de bestaande functie in plaats van het patroon over
+te schrijven, ook als dat één regel langer lijkt.
