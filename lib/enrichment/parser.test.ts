@@ -213,11 +213,47 @@ test("dezelfde familie geeft dezelfde uitkomst, ongeacht de kleurcode", () => {
   // Dit is de willekeurtoets. B en W zijn kleurcodes; het armatuur is hetzelfde.
   const b = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W");
   const w = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W");
+  // De KERN van deze test is de symmetrie: de kleurcode mag de uitkomst niet bepalen.
   expect(b.maxWattage).toBe(w.maxWattage);
-  expect(b.maxWattage).toBe(4);
+  // GEWIJZIGD 30 jul: de verwachte waarde was 4, en dat was toen juist. Inmiddels weten we dat
+  // die 4 het vermogen van de MEEGELEVERDE DRIVER is (40 producten, alle W&D, geen daarvan
+  // draagt daarnaast een eigen wattage), dus het juiste antwoord is voor allebei leeg. De
+  // symmetrie-assertie erboven is onveranderd en blijft de eigenlijke bewaker.
+  expect(b.maxWattage).toBeUndefined();
+
+  // Een armatuur mét fitting houdt zijn lampbelasting wél, ook symmetrisch over de kleurcode.
+  expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 B max. 12W GU10").maxWattage).toBe(
+    parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10").maxWattage,
+  );
 });
 
 test("zonder tweede kandidaat blijft de naam zwijgen", () => {
   expect(parseProductName("ODREY SHADE 4.0 W").maxWattage).toBeUndefined();
   expect(parseProductName("UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W").maxWattage).toBeUndefined();
+});
+
+// ── "incl. driver 4W" is het vermogen van de driver ─────────────────────────
+// Gevonden bij het uitsplitsen van de 145 waarden die de span-versie terugwon: 132 daarvan
+// waren terecht (`max. 12W` bij een GU10-fitting), 13 brachten een waarde terug die de zwerm
+// al had afgekeurd. Gemeten: 40 producten, alle Wever & Ducré, en geen enkele draagt daarnaast
+// een eigen wattage — een plafondbasis heeft er ook geen.
+test("een wattage direct achter 'incl. driver' hoort bij de driver", () => {
+  for (const n of [
+    "SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W",
+    "SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W",
+    "3-PHASE TRACK ADAPTER 1.1 W incl. driver 10W 250mA",
+  ]) {
+    expect(parseProductName(n).maxWattage).toBeUndefined();
+  }
+});
+
+test("een armatuur dat zijn driver alleen VERMELDT houdt zijn eigen wattage", () => {
+  // Kreon heeft 1.806 van deze vorm: "driver incl." zónder getal ernaast. De 12W is het
+  // armatuur. Het verschil met de regel hierboven is de volgorde in de tekst.
+  expect(parseProductName("Esprit floor, marble base, driver incl., carrara 12W").maxWattage).toBe(12);
+});
+
+test("de lampbelasting bij een fitting blijft gewoon staan", () => {
+  expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage).toBe(12);
+  expect(parseProductName("BISHOP CEILING SUSP 4.0 E27 W max. 25W A60/G95").maxWattage).toBe(25);
 });

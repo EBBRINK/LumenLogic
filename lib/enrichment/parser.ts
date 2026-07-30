@@ -115,6 +115,16 @@ const WATT_VALS: RegExp[] = [
 // Een getal dat DIRECT achter een letter staat en gevolgd wordt door een LOSSE W: typecode.
 // Twee voorwaarden, want elk apart is te grof — zie de meting hierboven.
 const WATT_TYPECODE = /[A-Za-z]\d+(?:[.,]\d+)?\s+W\b/;
+
+// "… incl. driver 4W": het vermogen hóórt bij de meegeleverde driver, niet bij het product.
+// Gemeten: 40 producten, alle Wever & Ducré, en geen enkele draagt daarnaast een eigen
+// wattage — een plafondbasis heeft er ook geen. Deze namen leveren dus terecht niets.
+//
+// Let op het verschil met Kreon's 1.806 namen die "driver incl." zeggen ZONDER getal: die
+// blijven ongemoeid, want daar is geen wattage-span om over te slaan. De volgorde in de tekst
+// verschilt ook — "incl. driver 4W" tegen "driver incl., carrara" — en alleen de eerste vorm
+// zet een vermogen naast het woord.
+const WATT_VAN_DRIVER = /\bincl\.?\s*(?:\d+\s*x\s*)?drivers?\s*$/i;
 // Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
 const WATT_PER_BRON = /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*W\b/i;
 
@@ -125,6 +135,8 @@ function isValseWatt(name: string, index: number, treffer: string): boolean {
   if (/\d[xX*]$/.test(kop)) return false;
   // "PAR16 W", "GX5.3 W", "IP65 W": een letter direct vóór het getal én een LOSSE W erna.
   if (/[A-Za-z]$/.test(kop) && /\d\s+W/i.test(treffer)) return true;
+  // "… incl. driver 4W": de span staat direct achter het woord driver.
+  if (WATT_VAN_DRIVER.test(kop.slice(-24))) return true;
   // "ODREY SHADE 4.0 W", "80 W-W": decimale typemaat of kleurcode, altijd met een losse W.
   // Bewust een KLEIN venster achter de match: "80 W" alleen laat de "-W" niet zien, maar de
   // hele reststring zou een látere match ten onrechte veroordelen op tekst die verderop staat.
