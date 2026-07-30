@@ -1358,6 +1358,35 @@ wachtwoordflow stukloopt — de 3.1-briefing moet daarom een uitgeschreven terug
 - *Given* de project-queries, *then* zijn lijst, detail, regels, review, estimate en importruns org-gescoped — een extern account kan geen enkel object van een andere org opvragen (directe-URL-test).
 - *Given* de rechten, *then* admin ≠ gewone gebruiker (instellingen/uitnodigen alleen admin).
 
+**Meegeven aan de 3.2a-briefing — drie meldingen van de week-2-sprintmaster, door de week-3-sprintmaster
+onafhankelijk nagemeten op 30 jul (twee bevestigd, één onjuist):**
+1. ✅ **Bevestigd — schema en database lopen uiteen op precies het scoping-veld.**
+   `db/schema.ts:457` declareert `orgId: uuid("org_id")` op `project_dossiers` **zonder**
+   `.references()`, terwijl `db/migrations/0005_h2_h3.sql:34-35` de kolom wél als
+   `org_id uuid REFERENCES organizations(id)` toevoegt — en de live database heeft de constraint
+   daadwerkelijk (`project_dossiers_org_id_fkey`, `FOREIGN KEY (org_id) REFERENCES organizations(id)`,
+   gemeten via `pg_constraint`). Ter vergelijking: `memberships` (`:924-926`) en `leads` (`:985`)
+   hebben de reference in Drizzle wél. Gevolg: TypeScript ziet een vrij uuid-veld, de database eist
+   een bestaande organisatie. **Extra risico dat de 3.2a-briefing moet toetsen (niet bewezen, wel
+   plausibel):** omdat Drizzle de FK niet kent, kan een volgende `drizzle-kit generate` hem als
+   overtollig zien en een DROP genereren. Dit hoort in 3.2a, niet als los klusje — en het raakt de
+   openstaande week-4-schuld "Drizzle-snapshots definitief kloppend".
+2. ✅ **Bevestigd — er is niets om aan te scopen.** Alle **13** dossiers hebben `org_id IS NULL`
+   (13/13, live gemeten 30 jul), bij 0 organisaties en 0 memberships. 3.2a moet dus niet alleen
+   scopen maar ook de bestaande dossiers kóppelen, anders ziet een extern account **niets** in plaats
+   van zijn eigen projecten — een scoping-test die "0 rijen" teruggeeft bewijst dan niets.
+3. ❌ **Onjuist — `lib/repo/analytics-tiles.ts` bestaat niet op `origin/main`.** De melding zegt dat
+   de nieuwe querylaag daar staat met een `orgId`-parameter en dat 3.2a daarop moet aansluiten. Op
+   `origin/main` staan alleen `app/analytics/page.tsx`, `components/analytics-view.tsx` en
+   `lib/repo/analytics.ts`; 2.1+2.2 is niet gepusht. De 3.2a-briefing mag dus **niet** naar dat
+   bestand verwijzen zolang het niet geland is — anders brieft hij tegen code die de bouwsessie niet
+   kan zien. Zodra 2.1+2.2 landt: opnieuw meten en alsnog aansluiten in plaats van een tweede
+   scoping-mechanisme te bouwen.
+
+**Twee losse bevindingen uit dezelfde melding, ook nagemeten (kandidaat 2.5 of eigen item, niet 3.2a):**
+van de **204** `spec_lines` hebben er **3** een gekoppeld product, en `no_match_reason` is **0/204**
+gevuld terwijl schema en C-14/K-03 het beloven. Beide bevestigd op de live database, 30 jul.
+
 **3.2b — Prijsloze estimate voor externen** (~4 u)
 - *Given* fase 0, *when* een extern account een estimate opent of de PDF downloadt, *then* bevatten scherm én PDF **géén prijzen/bedragen/totalen** — wel regels, aantallen, statussen en kleuren (eigen render-pad + sjabloonvariant, met screenshottest); intern blijft alles zichtbaar.
 
