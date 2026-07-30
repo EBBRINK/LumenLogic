@@ -4142,3 +4142,36 @@ waarde staat letterlijk in de naam en beschrijft een echt kanaal — de zwerm no
 
 Alle 34 rapporteren te laag. Klein genoeg om te laten liggen, maar het is een systematische
 onderschatting en geen leesfout — dus het hoort niet in de "afgekeurd"-stapel maar op deze lijst.
+
+---
+
+## 2026-07-30 — De kleine merken, en drie die te klein zijn voor de zwerm
+
+**Lumiance** (32 cellen) en **Nordlux** (24 cellen): allebei `✓ SCHOON`, alles goed, val-recall 2/2.
+Ook hier tegenproef 0/0.
+
+### Drie merken waar de zwerm niets kan meten — met de hand nagelopen
+
+Bij Flos Architectural (25 cellen), It's About RoMi (5) en Estiluz (2) meldde `controleerVallen`
+zelf dat de opzet niet werkt: te weinig cellen om een val van zijn tweeling te scheiden én elke
+scherf een val te geven. Dat is de bedoelde uitkomst — een val die je aan zijn buurman herkent,
+meet niets. Deze 32 cellen dus met de hand:
+
+| merk | oordeel | waarom |
+|---|---|---|
+| Flos Architectural | 25 van 25 goed | BON JOUR, FINDME, JUNCOS, G-O, THEBLOCKOFLIGHT, UT SPOT TRACK — allemaal complete armaturen, kelvin en wattage staan er letterlijk in |
+| It's About RoMi | **0 van 5** | alle vijf zijn `LED bulb globe/tube/sphere filament … E27/3,5W`: losse lampen |
+| Estiluz | **0 van 2** | `Kit recambio led volta 3000k` en `Replacement led volta 2700k`: reserve-LED-modules |
+
+Meegenomen detail dat goed ging: `KAP 80 W-W RND GOLD DW LED ARRAY C95 13W` levert 13 W en niet
+80 — de `W-W`-regel (warm-white) doet wat hij moet doen.
+
+### Twee kandidaten erbij
+
+- **`led bulb` vooraan** dekt nu álle vijf de RoMi-voorstellen, niet alleen TossB' vier. Daarmee
+  komt die regel op 26 namen catalogusbreed en is hij de enige die een heel merk opruimt.
+- **`recambio` / `replacement`**: 62 namen in de catalogus (Marset 33, Lombardo 10, Estiluz 7,
+  W&D 7, &Tradition 4, XAL 1), waarvan er **4 door de poort komen — alle vier van Estiluz**. De
+  overige 58 dragen geen waarde en worden dus toch al niet voorgesteld. Smalle, gratis regel.
+
+Nog steeds geen van de regels gebouwd.
