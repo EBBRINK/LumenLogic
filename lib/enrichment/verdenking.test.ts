@@ -312,3 +312,29 @@ test("een inner reflector is een onderdeel, ook als er een lamptype in de naam s
     vlaggen("ROOMOR WALL SURF 1.0 PAR16 B NO SHADE max. 15W GU10 100-240VAC"),
   ).not.toContain("maxWattage:product-is-onderdeel");
 });
+
+// De scherpste valstrik van de dag: 214 namen bevatten "TRACK ADAPTER", maar 192 daarvan zijn
+// XAL-ARMATUREN waar het een montage-optie aan het EIND is. De positie scheidt ze volledig.
+test("een railadapter is een onderdeel, een armatuur mét railadapter-optie niet", () => {
+  for (const n of [
+    "1-PHASE TRACK ADAPTER 1.0 B for suspended luminaires without steel wire",
+    "BOX / RAY / HEXO / DOCUS STREX TRACK ADAPTER DALI-2 2700K B",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+  // 192 XAL-armaturen waar TRACK ADAPTER de montage-optie aan het eind is — die moeten blijven.
+  const xal = "SIVERA 25 AC LOUVER 200 CRI80 SUSP DALI 10,7W LED 3000K 220-240V TRACK ADAPTER";
+  expect(vlaggen(xal)).not.toContain("kelvin:product-is-onderdeel");
+  expect(parseProductName(xal).kelvin).toBe(3000);
+  expect(parseProductName(xal).cri).toBe(80);
+});
+
+test("connectorset en voedingsstekker zijn onderdelen", () => {
+  for (const n of [
+    "CONNECTOR SET MR16 GU5.3 max. 12W",
+    "FLEXFY DC POWER PLUG 100W B-W 48V",
+    "USB CHARGER + EU PLUG BLACK 30W",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+});

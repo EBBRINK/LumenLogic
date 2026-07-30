@@ -152,6 +152,24 @@ const LAMP_FITTING_BREED =
 // 550mm - 6W LED 2700K", en dat is gewoon een armatuur.
 const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b|\bWIRELESS\b[^|]*\bCONTROL\b/i;
 
+// ── Railadapter, connectorset, voedingsstekker en lader ─────────────────────
+// Alle drie klein en alle drie door de derde zwermronde aangewezen.
+//
+// `TRACK ADAPTER` mag NIET kaal, en dit is de scherpste valstrik van de dag: 214 namen bevatten
+// het, maar 192 daarvan zijn XAL-ARMATUREN waar het een montage-optie aan het EIND is
+// ("SIVERA 25 AC LOUVER … DALI 10,7W LED 3000K 220-240V TRACK ADAPTER"). Bij de 22 Wever &
+// Ducré-adapters staat het middenin, gevolgd door varianten ("1-PHASE TRACK ADAPTER 1.0 B for
+// suspended luminaires", "… STREX TRACK ADAPTER DALI-2 2700K B"). De positie scheidt ze
+// volledig: 22 tegen 192, geen overlap. Een adapter heeft trouwens geen kleurtemperatuur — die
+// 2700K is een variantcode voor het armatuur waar hij onder hangt.
+const RAILADAPTER = /\bTRACK\s+ADAPTER\b(?!\s*$)/i;
+// 12 producten, 2 landende wattages. XAL's "SOUNDCATCHER SYS CONNECTOR SET OF TWO CONNECTORS"
+// en W&D's "CONNECTOR SET MR16 GU5.3 max. 12W" zijn allebei een aansluitset; die 12W hoort bij
+// de lamp die erin gaat.
+const CONNECTORSET = /\bCONNECTOR\s+SET\b/i;
+// 8 producten (Marset 4, W&D 4): "USB CHARGER + EU PLUG BLACK", "FLEXFY DC POWER PLUG 100W".
+const VOEDINGSSTEKKER = /\b(?:POWER\s+PLUG|USB\s+CHARGER)\b/i;
+
 // Twee termen mogen ÓÓK verderop in de naam staan, en dat is geen verzwakking van het anker
 // maar een gemeten uitzondering. "POWER SUPPLY" en "SURF. POWER" zijn samenstellingen die niet
 // in een armatuurnaam voorkomen tenzij het product er een IS — anders dan het kale woord
@@ -232,6 +250,9 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
     isLosseLamp ||
     isKapMetMaxW ||
     BESTURING.test(naam) ||
+    RAILADAPTER.test(naam) ||
+    CONNECTORSET.test(naam) ||
+    VOEDINGSSTEKKER.test(naam) ||
     DRIVER_TYPECODE.test(naam)
   ) {
     for (const veld of FIELDS) {
