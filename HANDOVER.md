@@ -2103,3 +2103,79 @@ Nieuwe PNG's: `components/dossier/project-ocr-budget-month.*` en
 
 **Nog te doen (wacht op Timo):** committen + akkoord om te pushen (= live deploy). Nog niet
 gecommit/gepusht.
+
+---
+
+## Sprint 2.0b — huisstijl afgemaakt (2026-07-30)
+
+Drie commits op `claude/huisstijl-2.0b`, gebaseerd op `origin/main` (`d102cd0`).
+**Nog niet gepusht — de deploy-poort ligt bij Timo.**
+
+| | Commit | Wat |
+|---|---|---|
+| 1 | `050a933` | Merk-assets naar `public/brand/`, favicon aangesloten (O7 gesloten, O11 geopend) |
+| 2 | `efcd76a` | Navbalk + tabbalk navy met teal-accent (O12) |
+| 3 | `f91bb5d` | 207 paletklassen → `--status-*`-tokens, hues bevroren (O13) |
+
+Besluiten van Timo deze sessie: navbalk-variant 2 (navy + teal-accent) · logo-optie 3 (alleen
+het beeldmerk op navy) · statuskleuren "mechanisme om, hues bevriezen" · de AA-fout in
+`badge.tsx`/`button.tsx` alleen melden, niet repareren. Vastgelegd in `DESIGN.md` O11/O12/O13.
+
+### Gemeten bevindingen in bestaande code — gemeld, niet gerepareerd
+
+1. **`bg-destructive/10 text-destructive` faalt AA** in `components/ui/badge.tsx:16` en
+   `components/ui/button.tsx:32`: **3,69:1** in light, **3,11:1** in dark (nagemeten in een
+   echte browser, niet geschat). Het faalt op élk donker vlak. Geen legacy: `button.tsx` is in
+   2.0b stap 3 aangeraakt en deze variant bleef staan. Twee regels, staat los van O13. Besluit
+   Timo: alleen melden.
+2. **De navbalk loopt op mobiel over** — al op `origin/main`. Bij 333px (de effectieve
+   testviewport) zijn Settings, Brand portal en Admin onbereikbaar: `nav` heeft geen
+   `flex-wrap`, geen `overflow-x-auto` en er is geen mobiel menu. Bewijs: een baseline-PNG
+   gegenereerd van `origin/main`. IA-werk, geen huisstijlwerk.
+3. **Screenshots uit een volle parallelle testrun kunnen stil blanco zijn.** Drie van de vier
+   `review-queue.*.png` kwamen uit de volle run als 2–4 KB (leeg) terwijl de vierde 83 KB was;
+   geïsoleerd zijn alle vier 62–83 KB. Dit is dezelfde lastafhankelijkheid die
+   `custom-fields.test.tsx` en `pdf-upload.test.tsx` flaky maakt. **Gevolg voor de werkwijze:
+   "screenshots bekeken" is onbetrouwbaar als je ze uit de volle run haalt — regenereer het
+   betreffende testbestand geïsoleerd voordat je een PNG beoordeelt.**
+4. **`StatusTally` gebruikt kleur als enig onderscheid** (`components/dossier/status-badge.tsx:47-58`):
+   per status alleen een `aria-hidden` bolletje plus het getal, zonder `label`/`word`. Kit §11 en
+   `DESIGN.md` §7 eisen letterlijk dat kleur nooit het enige onderscheid is. Er staat een
+   `title` op, maar dat is hover-only (geen touch, geen toetsenbord, niet in print).
+5. **Rood→groen HSL-verloop, twee keer gedupliceerd** in `components/data/brand-scorecard.tsx:31-32`
+   en `components/data/mini-scorecard.tsx:18-20` (`hsl(142 72% 26%)` + `hsl(${ratio*110} 65% 45%)`).
+   Off-kit hues, en het is kleur als enige drager. Buiten O13 gelaten: dit is een ontwerpvraag,
+   geen find-replace.
+6. **`price-list-status.tsx` buckets `"7"` en `"14"` hebben een identieke tint** — twee toestanden,
+   één uiterlijk. Pre-existent.
+7. **`enrichment-status.tsx`** heeft een comment "bewust niet de STATUS-kleuren" die nu verwarrend
+   leest, omdat het bestand `bg-status-*`-tokens gebruikt. Feitelijk nog juist (het gaat over de
+   `STATUS`-constante, niet over de CSS-tokens), maar het vraagt een herformulering.
+8. **`docs/plan-2.0b-huisstijl-implementatie.md` is verouderd**: §1-4, §5, §8 en §10 noemen
+   "163 voorkomens in 26 bestanden". Werkelijk: **207 in 27** (`rose` en `violet` ontbraken in de
+   telling). §10 wijst de "rood→groen-volledigheidsmeter" bovendien aan `coverage-meter.tsx` toe,
+   die geen rood heeft — die zit in de twee scorecards (punt 5).
+
+### Aannames en open eindes
+
+- **~20 plekken zijn één shade genormaliseerd** naar de badge-taal (een `-600`/`-700`/`-900`/`-50`/`-200`
+  werd `-800`/`-100`). Zichtbaar maar klein; de gevallen waar het wél opviel zijn teruggedraaid.
+  Wil Timo die twintig exact, dan is een extra `ink-soft`-tokentier de enige route.
+- **`catalog-search.tsx:74`**: `text-slate-500` → `text-muted-foreground` maakt die hint gelijk aan
+  zijn twee buur-alinea's, maar zet hem daarmee op `#8E9BA8` (2,84:1) — de geaccepteerde
+  O8-afwijking. Bewuste keuze, geen slip.
+- **De dark-statusparen (`-950`/`-300`) zijn nooit op contrast nagerekend**, niet vóór en niet na
+  deze sprint. Hoort bij de kit-vraag voor Eduard, samen met O1/O8/O11.
+- **De actieve tabstreep is teal op wit = 2,95:1**, onder de 3:1-drempel voor UI-elementen (was
+  17,4:1 met `--foreground`). Aanvaard omdat labelkleur en gewicht meebewegen.
+  `border-brand-blue dark:border-brand-teal` is de volledig conforme route.
+- **Voor Eduard:** de mono-witte lockup (O11) en een zes-kleuren-statusramp met tint/inkt-paren (O13).
+
+### Testtoestand
+
+`bun install` in de worktree gedaan (anders vallen de db-tests om op een misleidende
+PGlite-melding). Volledige run: **1010 geslaagd, 1 overgeslagen, 3 gefaald in 2 bestanden** —
+`components/data/custom-fields.test.tsx` en `components/dossier/pdf-upload.test.tsx`, de twee
+bekende lastafhankelijke flaky's. Geïsoleerd samen **62/62 groen**. Baseline vóór deze sprint had
+dezelfde twee bestanden rood, dus geen regressie. Nieuw: `components/dossier/dossier-tabs.test.tsx`
+(had nul dekking) en 4+2 tests in `site-nav`/`huisstijl`.
