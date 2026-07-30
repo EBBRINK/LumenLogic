@@ -80,8 +80,9 @@ eist geen rood), en de rangterm gaat van 0 naar −0,15 ([engine.ts:358](lib/mat
 terwijl 0,05 eerder top-1 besliste. Overslaan is neutraal (`null` → term 0, besluit 4); een
 representant is actief schadelijk, en `publishRun` is onomkeerbaar.
 
-De prijs — 44 van 1.955 producten (2,3 %) blijven onvindbaar op kelvin, en tunable white is juist
-iets wat een bestek vaak vráágt — komt in het runrapport én in het `logEvent`-payload met kolom,
+De prijs is **groter dan bij het sparren bekend was**: niet 44 rijen maar **173** (8,8 %) — zie
+"Gemeten op de bron". Die 173 producten blijven onvindbaar op kelvin, en tunable white is juist iets
+wat een bestek vaak vráágt. Het komt in het runrapport én in het `logEvent`-payload met kolom,
 rauwe cel, aantal en reden. Bereik écht modelleren (`kelvinMin`/`kelvinMax` + `judgeKelvin` met een
 band + `specScoreSql` + de aanvraagkant) raakt de matcher voor alle 211.310 producten en is geen
 kolom-overzetting meer: op tafel leggen, niet nu doen.
@@ -307,6 +308,115 @@ Timo maakt hem aan in de Neon Console (project `neon-erin-feather` / `sweet-tree
 alleen de connection string in `.env.branch`; geen API-key. **Gevraagde naam: `enrichment-serien`**
 (sluit aan op `enrichment-xal`), **auto-delete op 7 dagen**, niet 1 — anders verdwijnt hij midden in
 het werk.
+
+## Gemeten op de bron (30 jul, read-only Supabase) — blokkade 1 is dicht
+
+Er kwam read-only toegang tot `uvmeytxejlzvdgjgthmr`. Elk cijfer hieronder is zelf gemeten op
+`brink_serien_raw`; niets is meer overgenomen. De bron heeft **28 rauwe merk-tabellen**; Serien
+heeft 26 kolommen, allemaal `text`. **1.956 rijen**, waarvan **1.955 koppelen** op
+`supplier_article_code = "Artikelnummer"` — 0 catalogusrijen zonder bron, 1 bronrij zonder
+catalogus. De sleutel is uniek en compleet.
+
+### De vijf overzetbare kolommen, en de twee die dat níet zijn
+
+| rauwe kolom | → veld | gevuld | stap 1 | stap 2 | oordeel |
+|---|---|---|---|---|---|
+| `Schutzart` | ipValue | 1.886 (96,4 %) | **1.886** | 0 | armatuur |
+| `Systemleistung W` | maxWattage | 1.422 (72,7 %) | **1.400** | 0 | armatuur, LED-restrictie |
+| `CCT K` | kelvin | 1.787 (91,4 %) | **1.283** | 0 | armatuur, LED-restrictie |
+| `CRI Ra` | cri | 1.780 (91,0 %) | **0** | **1.460** | armatuur, LED-restrictie |
+| `Regelung` | dimmable | 1.905 (97,4 %) | **1.193** | **71** | armatuur |
+| `Schutzklasse` | — | 1.878 | — | — | elektrische klasse, geen veld |
+| `Leuchtmittel` | — | 1.929 | — | — | lichtbron, geen veld |
+
+Totaal: **5.762 stap-1-voorstellen en 1.531 stap-2-voorstellen** (`scripts/serien-normalisatie-voorspelling.ts`,
+gerekend door de échte normalisatoren over de volledige waardeverdeling). Dat is ruim boven de
+bewezen veilige insert-maat van 1.000 rijen — **chunking is dus geen voorzorg maar rekenkundig
+noodzakelijk**, precies zoals punt 1 al zei.
+
+### Vijf dingen die het plan bijstellen
+
+**1. `Schutzart` → ipValue is de beste kolom van de tabel, en niemand had hem op de lijst.**
+IP20 (1.439) · IP40 (240) · IP30 (159) · IP44 (48) · null (70). **Nul plaatshouders**, nul
+normalisatie, 96,4 % dekking. De sprintmaster-lijst noemde "CRI/kelvin/IP/watt" zonder rangorde; de
+meting zet IP bovenaan. En het bewijs dat hij het armatuur beschrijft is de verdeling zelf: de kolom
+is óók gevuld waar er géén LED in zit (106 van de 114 rijen met een verwisselbare fitting) — een
+IP-klasse is een eigenschap van de behuizing, onafhankelijk van de lamp.
+
+**2. `CRI Ra` heeft NUL schone waarden. Een stap-1-run op CRI levert exact niets op.**
+`>97` (564) · `>90` (455) · `-` (316) · `>95` (230) · null (176) · `> 95` (120) · `>80` (48) ·
+`> 90` (47). Agent A voorspelde dit breekpunt onder voorbehoud ("is het aandeel schone
+enkelwaarden onder 50 %, dan gaat de kolom direct met zijn normalisatieregel mee"); het is nu
+gemeten en het aandeel is 0 %. Dus: **CRI hoort per definitie in stap 2**, en de operator-strip is
+geen verbetering maar de enige manier waarop die kolom iets oplevert. Let ook op de
+spatie-varianten: `> 95` en `> 90` zijn samen **167 rijen** (11,4 % van alle CRI-data) die een
+regel zonder `\s*` stil mist.
+
+**3. De bereiken zijn 173 rijen in acht vormen, niet 44 in één.**
+DIM2WARM 2200-3000 (46) · TUNABLE WHITE 2200-5000 (44) · D2W (23) · DIM2WARM 1800-3000 (18) ·
+TUNEABLE WHITE 2200-4000 (16) · TW (16) · TUNEABLE WHITE 2700-5000 (8) · TUNABLEWHITE 2200-5000 (2).
+Drie vallen erin: **`TUNEABLE`** (met extra e), **`TUNABLEWHITE`** (zonder spatie) en de kale
+afkortingen **`TW`/`D2W`** die geen getallen dragen. Een regel op de letterlijke string
+"TUNABLE WHITE" mist 42 van de 173. Het besluit blijft overslaan, maar de prijs is 8,8 % en niet
+2,3 %.
+
+**4. De armatuur-of-lamp-vraag is met data beantwoord, niet met een redenering.**
+De kruistabel `Leuchtmittel × CCT K` is beslissend: **alle 1.283 schone kelvinwaarden en alle 173
+bereikvormen staan op een rij met `Leuchtmittel = 'LED'`.** Van de 114 rijen met een verwisselbare
+fitting (G4/G9/E27/GU10/R7S/B15D/E14) heeft er **nul** een schone CCT-waarde. Serien laat de kolom
+dus leeg zodra de kleurtemperatuur niet van hún LED is — precies omgekeerd aan de Muuto-val.
+
+Maar er is één restpost, en die is de echte val-2 in deze tabel: **22 van die 114 rijen dragen tóch
+een `Systemleistung W`** en **4 een `CRI Ra`**. Dat is dan het vermogen respectievelijk de
+kleurweergave van de *lamp*. Daarom staat de LED-restrictie op precies drie kolommen (CCT K,
+Systemleistung W, CRI Ra) en niet op de andere twee — en dat is een gemeten grens, geen
+voorzichtigheid.
+
+**5. De echte naam-val zit niet bij Muuto maar naast `Schutzart`.**
+`Schutzklasse` (I: 1.784 · II: 46 · `-`: 48 · null: 78) is de **elektrische veiligheidsklasse** en
+staat op positie 6, direct naast `Schutzart` op positie 5. Beide beginnen met "Schutz". Een
+heuristiek op kolomnaam zou "I" in `ip_value` schrijven — en omdat `parseIp` met `/(\d{2})/` het
+eerste tweetal uit een willekeurige string plukt ([tolerances.ts:62](lib/matching/tolerances.ts:62)),
+zou dat niet luid falen maar stil onzin opleveren. Dit is de scherpste onderbouwing van "fuzzy
+matchen op kolomnaam is verboden" die er is, en hij komt uit deze tabel.
+
+Ter volledigheid: Muuto's kolommen heten letterlijk `BULB SPECIFICATION - KELVIN`, `- WATT`,
+`- LUMEN`, plus `BULB INCLUDED`, `CHANGEABLE BULB` en `BULB RECCOMENDADTION - LAMP BASE` (sic) —
+nagekeken in de bron. De val-2-tegenhanger is dus feitelijk, geen anekdote.
+
+### Wat er gebouwd is (taken A en B van de sprintmaster)
+
+Twee pure modules met tests, zonder database, dus volledig te bewijzen vóórdat er data landt:
+
+- **`lib/enrichment/supplier-columns.ts`** — de gecureerde toewijzingstabel (taak A). Per ingang:
+  rauwe kolomnaam, doelveld, `beschrijft` (`armatuur` / `lichtbron` / `elektrische-klasse` /
+  `commercieel` / `onbekend`), normalisator, LED-restrictie, en een **`bewijs`-regel met de
+  gemeten verdeling erin**. Alleen `beschrijft: "armatuur"` levert een voorstel; een kolom die niet
+  in de tabel staat, levert nul. `Schutzklasse`, `Leuchtmittel`, `EEK` en Muuto's drie
+  BULB-kolommen staan er expliciet in als beoordeeld-en-afgewezen — want een ontbrekende kolom is
+  niet te onderscheiden van een vergeten kolom.
+- **`lib/enrichment/supplier-cell.ts`** — de normalisatieregels als pure functies (taak B):
+  `klasseerKelvin`, `klasseerCri`, `klasseerIp`, `klasseerWatt`, `klasseerDimprotocol`. Vier
+  uitkomsten: `waarde` (mag een voorstel worden) · `plaatshouder` (leverancier zegt geen data) ·
+  `bereik` (ontwerpvraag, nooit platgeslagen) · `onbekend` (fail-closed).
+- **38 tests**, groen. De tabellen erin zijn de **volledige gemeten waardeverdeling** per kolom, met
+  de aantallen erbij, zodat een verschuiving in de bron later opvalt als een test die niet meer past.
+
+Drie regels die uit de code volgden en niet uit de opdracht:
+
+- **`judgeDimmable` doet substring-matching in beide richtingen** na het strippen van
+  niet-alfanumeriek ([tolerances.ts:119](lib/matching/tolerances.ts:119)). Een bestek dat DALI
+  vraagt tegen een product met `"DALI 2CH + CASAMBI"` geeft dus **groen**. Samengestelde
+  protocollen doorgeven is daarmee niet slordig maar correct — het armatuur ondersteunt ze
+  werkelijk allebei. Dat maakt 71 samengestelde cellen bruikbaar die een strikte allowlist zou
+  hebben weggegooid.
+- **`"ON/OFF"` (132 rijen) moet juist zwijgen.** Dat is de *afwezigheid* van dimmen, en in een kolom
+  die `dimmable` heet zou judgeDimmable hem als "ander protocol" (geel) lezen in plaats van als
+  "kan niet dimmen". Een verkeerd feit, dus plaatshouder — met de 132 als geregistreerde
+  ontwerpvraag in het runrapport in plaats van als stil gat.
+- **De en-streep.** `"TRIAC + 0–10 V"` (20×) gebruikt U+2013, geen koppelteken. Een regel met alleen
+  `[-]` mist die 20 rijen. Diezelfde tekenklasse zit nu ook in de bereik-herkenning van kelvin,
+  want als de bron hem op één plek gebruikt, is aannemen dat hij het nergens anders doet niet veilig.
 
 ## De premisse-toets: wat de naam-route catalogusbreed al kan
 

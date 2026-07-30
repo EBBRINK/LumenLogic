@@ -98,26 +98,26 @@ zitten **niet** in de brondata die dit project heeft:
   Supabase-credential in `.env.local` (die file bevat uitsluitend Neon-, Vercel-, Better-Auth- en
   Anthropic-sleutels). `grep` over de hele repo op `SUPABASE` levert alleen docs-verwijzingen.
 
-Gevolg: ik kan de waardeverdeling per rauwe kolom **niet zelf meten**, en dat is precies wat val 1
-uit de opdracht eist ("meet dus per kolom de WAARDEVERDELING, nooit alleen `count(*)`"). Alles wat
-dit doc over `CCT K` en `CRI Ra` zegt, is overgenomen van de sprintmaster.
+### ✅ OPGELOST, 30 jul (later die dag) — de bron is gemeten
 
-**Wat ik van die overgenomen cijfers wél kon controleren:** ze zijn intern consistent. De
-opgegeven `CCT K`-verdeling telt op tot 1.658 van 1.955 rijen (84,8 %), de opgegeven bruikbare
-waarden tot 1.283 (65,6 %) — wat de "echte bruikbaarheid rond 65-70 %, niet 91 %" uit de opdracht
-bevestigt. En het Serien-productaantal klopt exact: **1.955** rijen in de CSV, hetzelfde getal als
-de sprintmaster noemt. Dat is een goed teken over de bron, geen vervanging van de meting.
+Er kwam read-only Supabase-toegang. **Alle overgenomen cijfers zijn vervangen door eigen metingen**
+op `brink_serien_raw` (26 kolommen, alle `text`). De volledige uitwerking staat in
+`docs/plan-merk-speckolommen-serien.md` ("Gemeten op de bron"); het korte antwoord op val 1:
 
-**Wat dit blokkeert en wat niet.** Stap 1 en 2 zijn niet te bouwen zonder deze tabellen — er is
-geen kolom om over te zetten. Fase 1 en fase 2 (dit doc en het plan) zijn wél af te maken, want de
-ontwerpvragen hieronder volgen uit *ónze* code en niet uit de bronwaarden.
+| | overgenomen | **gemeten** |
+|---|---|---|
+| bronrijen | 1.955 | **1.956** (waarvan 1.955 koppelen; 1 bronrij zonder catalogus) |
+| `CCT K` distincte waarden | 9 genoemd | **15** |
+| `CCT K` bereikvormen | 67 (2 vormen) | **173 rijen in 8 vormen** — 8,8 %, met vijf spellingen van hetzelfde begrip |
+| `CRI Ra` schone getallen | niet vermeld | **nul.** Alle 1.464 bruikbare cellen dragen een operator |
+| beste kolom | niet vermeld | **`Schutzart` → ipValue: 96,4 % gevuld, nul plaatshouders** |
 
-**Wat er nodig is,** in volgorde van voorkeur:
-1. Een read-only Supabase-connectiestring of service-key voor project `uvmeytxejlzvdgjgthmr` in
-   een `.env.bron` (niet in `.env.local` — die is de productie-Neon).
-2. Of: een CSV-export van de rauwe Serien-tabel in `data/source/`, zoals de vier bestaande.
-3. Of: Timo draait de meetquery zelf en plakt de uitvoer; dan blijft dit doc leunen op
-   overgenomen cijfers, wat voor het *plan* genoeg is maar voor de *bouw* niet.
+De koppeling is schoon: `brink_products.supplier_article_code = brink_serien_raw."Artikelnummer"`
+geeft **1.955/1.955** catalogusrijen, 0 zonder bron. `Artikelnummer` is uniek (1.956 distinct).
+
+**Wat blokkade 1 wel heeft opgeleverd zolang hij stond:** de ontwerpvragen hieronder volgen uit
+*ónze* code, niet uit de bronwaarden, en zijn dus onveranderd geldig — inclusief de blinde poort,
+die de meting alleen maar scherper maakt (0/100 toetsbaar).
 
 ## Blokkade 2: er is geen Neon-branch voor dit spoor
 
