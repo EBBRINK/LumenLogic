@@ -1414,13 +1414,17 @@ onafhankelijk nagemeten op 30 jul (twee bevestigd, één onjuist):**
    (13/13, live gemeten 30 jul), bij 0 organisaties en 0 memberships. 3.2a moet dus niet alleen
    scopen maar ook de bestaande dossiers kóppelen, anders ziet een extern account **niets** in plaats
    van zijn eigen projecten — een scoping-test die "0 rijen" teruggeeft bewijst dan niets.
-3. ❌ **Onjuist — `lib/repo/analytics-tiles.ts` bestaat niet op `origin/main`.** De melding zegt dat
-   de nieuwe querylaag daar staat met een `orgId`-parameter en dat 3.2a daarop moet aansluiten. Op
-   `origin/main` staan alleen `app/analytics/page.tsx`, `components/analytics-view.tsx` en
-   `lib/repo/analytics.ts`; 2.1+2.2 is niet gepusht. De 3.2a-briefing mag dus **niet** naar dat
-   bestand verwijzen zolang het niet geland is — anders brieft hij tegen code die de bouwsessie niet
-   kan zien. Zodra 2.1+2.2 landt: opnieuw meten en alsnog aansluiten in plaats van een tweede
-   scoping-mechanisme te bouwen.
+3. ⏳ **Was onjuist bij eerste meting, klopt inmiddels wél.** De melding zei dat de nieuwe querylaag
+   in `lib/repo/analytics-tiles.ts` staat met een `orgId`-parameter waarop 3.2a moet aansluiten. Bij
+   de eerste meting (30 jul, vroeg) bestond dat bestand **niet** op `origin/main` — 2.1+2.2 was nog
+   niet gepusht. Een paar uur later is het alsnog geland (`f766311`, "Analytics 2.1+2.2: negen tegels
+   op echte events") en klopt de melding volledig: `lib/repo/analytics-tiles.ts:23` heeft de
+   `orgId`-parameter, `:134-140` doet een fail-closed uuid-controle, en de code documenteert zelf
+   dat een `orgId` vandaag elke tegel 0 oplevert — "de parameter staat klaar voor week 3". **Voor
+   3.2a betekent dat: sluit hierop aan, bouw géén tweede scoping-mechanisme.** Les voor de
+   sprintmaster: een melding "bestaat niet" is alleen waar op het moment van meten wanneer er
+   parallelle sessies draaien die elk moment kunnen pushen — meet opnieuw vóór je zo'n oordeel
+   naar buiten brengt.
 
 **Twee losse bevindingen uit dezelfde melding, ook nagemeten (kandidaat 2.5 of eigen item, niet 3.2a):**
 van de **204** `spec_lines` hebben er **3** een gekoppeld product, en `no_match_reason` is **0/204**
