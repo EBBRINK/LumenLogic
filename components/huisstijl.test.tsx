@@ -266,23 +266,104 @@ test("specimen dekt elke knop-variant, knop-maat en badge-variant", async () => 
   }
 });
 
-test("specimen hangt aan de tokenlaag, niet aan losse kleuren", async () => {
+// ── Tokenwaarden (stap 1) ────────────────────────────────────────────────────
+// Deze waarden staan letterlijk in de brand kit. Faalt hier iets, dan is de
+// tokenlaag afgeweken van de bron — niet de test aanpassen, de CSS.
+
+const LIGHT_TOKENS = {
+  "--background": "#ffffff",
+  "--foreground": "#1a1a1a",
+  "--primary": "#1a1f3a", // §7 navy
+  "--primary-foreground": "#ffffff",
+  "--secondary": "#f0f2f5",
+  "--muted": "#f5f7fa",
+  "--muted-foreground": "#8e9ba8", // §3, bewuste AA-afwijking (DESIGN.md O8)
+  "--destructive": "#d84c4c",
+  "--border": "#e5e9f0",
+  "--input": "#d0d6e0",
+  "--ring": "#2d5a8c", // §11 blauw in light
+  "--brand-navy": "#1a1f3a",
+  "--brand-blue": "#2d5a8c",
+  "--brand-teal": "#1ba89a",
+  "--brand-slate": "#3f4a5c",
+  "--success": "#1ba89a",
+  "--warning": "#ff9500",
+} as const;
+
+const DARK_TOKENS = {
+  "--background": "#0f1626", // §14
+  "--foreground": "#ffffff",
+  "--card": "#1a1f3a",
+  "--primary": "#ffffff", // besluit O10: wit vlak op donker
+  "--primary-foreground": "#1a1f3a",
+  "--muted": "#2a3145",
+  "--muted-foreground": "#b0b8c4",
+  "--border": "#3a4254",
+  "--ring": "#1ba89a", // besluit O10: teal in dark
+} as const;
+
+test("tokenwaarden light komen letterlijk uit de brand kit", async () => {
   await render(controls, "Specimen — bediening");
   const root = getComputedStyle(document.documentElement);
-  // Deze tokens moeten bestaan; hun wáárden worden in stap 1 vastgelegd.
-  for (const token of [
-    "--background",
-    "--foreground",
-    "--primary",
-    "--muted-foreground",
-    "--border",
-    "--input",
-    "--ring",
-    "--radius",
-  ]) {
+  for (const [token, value] of Object.entries(LIGHT_TOKENS)) {
+    expect(root.getPropertyValue(token).trim(), `${token} in light`).toBe(value);
+  }
+});
+
+test("tokenwaarden dark komen uit kit §14 plus de vastgelegde besluiten", async () => {
+  document.documentElement.classList.add("dark");
+  await render(controls, "Specimen — bediening");
+  const root = getComputedStyle(document.documentElement);
+  for (const [token, value] of Object.entries(DARK_TOKENS)) {
+    expect(root.getPropertyValue(token).trim(), `${token} in dark`).toBe(value);
+  }
+});
+
+test("de tokens landen ook echt op de elementen, niet alleen op :root", async () => {
+  // Tokenwaarden kloppen niet automatisch met wat je ziet: er kan een variant of
+  // een hardgecodeerde klasse tussen zitten. Daarom de computed kleur op het vlak
+  // zelf, licht én donker.
+  await render(surfaces, "Specimen — vlakken");
+  const sheetLight = document.querySelector<HTMLElement>(".bg-background");
+  const cardLight = document.querySelector<HTMLElement>('[data-slot="card"]');
+  expect(getComputedStyle(sheetLight!).backgroundColor).toBe("rgb(255, 255, 255)");
+  expect(getComputedStyle(cardLight!).backgroundColor).toBe("rgb(255, 255, 255)");
+
+  document.documentElement.classList.add("dark");
+  await render(surfaces, "Specimen — vlakken");
+  const sheetDark = document.querySelector<HTMLElement>(".bg-background");
+  const cardDark = document.querySelector<HTMLElement>('[data-slot="card"]');
+  // #0F1626 en #1A1F3A uit kit §14.
+  expect(getComputedStyle(sheetDark!).backgroundColor).toBe("rgb(15, 22, 38)");
+  expect(getComputedStyle(cardDark!).backgroundColor).toBe("rgb(26, 31, 58)");
+});
+
+test("radius-schaal levert exact de kit-waarden 4/6/8px", async () => {
+  await render(controls, "Specimen — bediening");
+  const root = getComputedStyle(document.documentElement);
+  // rounded-lg moet 6px worden (knop, input, KPI) en rounded-xl 8px (kaart,
+  // dialog) zonder dat er één component voor radius is aangepast.
+  expect(root.getPropertyValue("--radius").trim()).toBe("0.375rem");
+  expect(root.getPropertyValue("--radius-sm").trim()).toBe("0.25rem");
+  expect(root.getPropertyValue("--radius-md").trim()).toBe("0.375rem");
+  expect(root.getPropertyValue("--radius-xl").trim()).toBe("0.5rem");
+
+  const card = document.querySelector('[data-slot="card"]');
+  const input = document.querySelector('[data-slot="input"]');
+  if (input) expect(getComputedStyle(input).borderRadius).toBe("6px");
+  if (card) expect(getComputedStyle(card).borderRadius).toBe("8px");
+});
+
+test("het logo-palet zit niet in de interface-tokens", async () => {
+  await render(controls, "Specimen — bediening");
+  const root = getComputedStyle(document.documentElement);
+  // Violet/magenta horen bij het logo, niet bij de UI (DESIGN.md §1). Als ze hier
+  // opduiken, is het logo-palet de interface in gesijpeld.
+  const logoColours = ["#7c5cff", "#ec5cd6", "#7321d6"];
+  for (const token of Object.keys(LIGHT_TOKENS)) {
     expect(
-      root.getPropertyValue(token).trim(),
-      `token ${token} is niet gedefinieerd`,
-    ).not.toBe("");
+      logoColours,
+      `logo-kleur in ${token} — hoort alleen in de logobestanden`,
+    ).not.toContain(root.getPropertyValue(token).trim().toLowerCase());
   }
 });
