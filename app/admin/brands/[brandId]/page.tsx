@@ -5,6 +5,7 @@ import { db } from "@/db/client";
 import { BrandForm } from "@/components/admin/brand-form";
 import { BrandDeleteBlock } from "@/components/admin/brand-delete-block";
 import { getBrandDeleteImpact, getBrandForEdit } from "@/lib/repo/brands";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import {
   deleteBrandAction,
@@ -22,6 +23,8 @@ export default async function MerkDetailPage({
 }) {
   await requireSession();
   const { brandId } = await params;
+  // brandId gaat als uuid de query in (brands.id) — een kapotte param is 404, geen 500.
+  requireUuid(brandId);
 
   const [brand, impact] = await Promise.all([
     getBrandForEdit(db, brandId),

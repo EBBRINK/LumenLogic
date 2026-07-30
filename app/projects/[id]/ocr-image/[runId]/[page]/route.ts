@@ -7,6 +7,7 @@
 import { db } from "@/db/client";
 import { getImportRun } from "@/lib/repo/imports";
 import { getOcrPageImage } from "@/lib/repo/ocr";
+import { isUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 
 export async function GET(
@@ -16,8 +17,12 @@ export async function GET(
   await requireSession();
   const { id, runId, page } = await params;
   const pageNum = Number.parseInt(page, 10);
-  if (!/^[0-9a-f-]{36}$/i.test(runId) || !Number.isInteger(pageNum) || pageNum < 1) {
-    return new Response("Niet gevonden", { status: 404 });
+  // Het uuid-patroon stond hier inline; het woont nu in lib/uuid.ts, zodat de
+  // pagina's en deze route één definitie delen (UX-audit 30 jul, bug #1). Een route
+  // handler kan not-found.tsx niet renderen — daarom een kale 404-Response, maar wel
+  // in het Engels zoals de rest van de UI.
+  if (!isUuid(runId) || !Number.isInteger(pageNum) || pageNum < 1) {
+    return new Response("Not found", { status: 404 });
   }
   // O4 (A3-tiling): optioneel ?tile=n — een specifieke tegel van de pagina.
   // Zonder queryparam de laagste tegel (tile 0 = hele pagina bij bestaande
@@ -27,7 +32,7 @@ export async function GET(
   let tile: number | undefined;
   if (tileRaw != null) {
     if (!/^\d+$/.test(tileRaw)) {
-      return new Response("Niet gevonden", { status: 404 });
+      return new Response("Not found", { status: 404 });
     }
     tile = Number.parseInt(tileRaw, 10);
   }
@@ -35,10 +40,10 @@ export async function GET(
   // dossier → zelfde 404, geen onderscheid naar buiten.
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== id) {
-    return new Response("Niet gevonden", { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
   const image = await getOcrPageImage(db, runId, pageNum, tile);
-  if (!image) return new Response("Niet gevonden", { status: 404 });
+  if (!image) return new Response("Not found", { status: 404 });
   // Uint8Array → los ArrayBuffer-slice zodat Response een nette BodyInit krijgt.
   const body = image.bytes.slice().buffer as ArrayBuffer;
   return new Response(body, {

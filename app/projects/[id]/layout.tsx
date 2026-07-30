@@ -12,6 +12,7 @@ import { getStatusCounts } from "@/lib/repo/matching";
 import { getReviewCounts } from "@/lib/repo/review";
 import { isReadOnly } from "@/lib/repo/project-status";
 import type { StatusCounts } from "@/components/dossier/status";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { setStatusAction, setXisPhaseAction } from "../actions";
 
@@ -28,6 +29,11 @@ export default async function DossierLayout({
 }) {
   await requireSession();
   const { id } = await params;
+  // De guard hoort óók HIER, niet alleen in de pagina's: deze layout doet zelf
+  // getDossier + getStatusCounts + getReviewCounts op de ruwe param en rendert
+  // parallel met zijn pagina. Zonder deze regel gooit de layout de uuid-cast-fout
+  // terwijl de pagina netjes notFound() doet, en wint de 500 alsnog.
+  requireUuid(id);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const counts = (await getStatusCounts(db, id)) as StatusCounts;

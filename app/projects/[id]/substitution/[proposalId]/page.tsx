@@ -5,6 +5,7 @@ import { db } from "@/db/client";
 import { SubstitutionDoc } from "@/components/dossier/substitution-doc";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getSubstitution } from "@/lib/repo/substitution";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { PrintButton } from "../../luminaire-schedule/print-button";
 
@@ -18,6 +19,8 @@ export default async function SubstitutiePage({
 }) {
   await requireSession();
   const { id, proposalId } = await params;
+  // Beide uuid-kolommen (project_dossiers.id, substitution_proposals.id).
+  requireUuid(id, proposalId);
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();
   const proposal = await getSubstitution(db, proposalId);

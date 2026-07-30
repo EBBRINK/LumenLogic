@@ -12,6 +12,7 @@ import {
   type RunStatus,
 } from "@/components/data/enrichment-status";
 import { getEnrichmentRun, getSampleItems } from "@/lib/repo/enrichment";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import {
   publishRunAction,
@@ -26,6 +27,8 @@ export default async function VerrijkingRunPage({
 }) {
   await requireSession();
   const { runId } = await params;
+  // runId gaat als uuid in enrichment_runs.id — kapotte param is 404, geen 500.
+  requireUuid(runId);
   const run = await getEnrichmentRun(db, runId);
   if (!run) notFound();
 

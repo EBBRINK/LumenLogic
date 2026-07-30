@@ -16,6 +16,7 @@ import { brands } from "@/db/schema";
 import { TemplateProposal } from "@/components/data/template-proposal";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { getTemplateReturn } from "@/lib/repo/template-return";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import {
   approveTemplateProposalAction,
@@ -29,6 +30,9 @@ export default async function TemplateVoorstelPage({
 }) {
   await requireSession();
   const { brandId, uploadId } = await params;
+  // Beide params zijn uuid-kolommen (brands.id, brand_uploads.id) en beide gaan in
+  // dezelfde Promise.all — één kapotte van de twee gooit dus de hele render om.
+  requireUuid(brandId, uploadId);
 
   const [[brand], retour] = await Promise.all([
     db.select().from(brands).where(eq(brands.id, brandId)).limit(1),

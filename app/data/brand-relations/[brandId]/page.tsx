@@ -22,6 +22,7 @@ import {
   priceListIndicator,
 } from "@/lib/repo/brand-relations";
 import { listBrandUploads } from "@/lib/repo/brand-portal";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import {
   logBrandMessagePreparedAction,
@@ -38,6 +39,9 @@ export default async function MerkrelatieDetailPage({
 }) {
   await requireSession();
   const { brandId } = await params;
+  // Deze pagina was het bewijsstuk van bug #1: brandId ging ongefilterd in
+  // eq(brands.id, …) — de rij-check hieronder deed het goed, de cast erboven niet.
+  requireUuid(brandId);
 
   const [row] = await db
     .select({

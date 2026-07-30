@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getOpenOcrRun } from "@/lib/repo/ocr";
 import type { SpecLineRow } from "@/components/dossier/types";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import {
   addSpecCsvAction,
@@ -33,6 +34,9 @@ export default async function RegelsTab({
 }) {
   await requireSession();
   const { id } = await params;
+  // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. De dossier-layout
+  // heeft dezelfde regel; beide zijn nodig (zie de toelichting daar).
+  requireUuid(id);
   const { pdf, ocr, run } = await searchParams;
   const dossier = await getDossier(db, id);
   if (!dossier) notFound();

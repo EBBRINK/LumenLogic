@@ -8,6 +8,7 @@ import { getDossier } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
 import { countFailedOcrPages } from "@/lib/repo/ocr";
 import type { ImportRow } from "@/db/schema";
+import { requireUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { cancelImportAction, confirmImportAction } from "../actions";
 
@@ -20,6 +21,10 @@ export default async function ImportRunPage({
 }) {
   await requireSession();
   const { id, runId } = await params;
+  // Beide uuid-kolommen (project_dossiers.id, import_runs.id) en beide in dezelfde
+  // Promise.all — vóór de eigendomscheck hieronder, want die wordt nooit bereikt als
+  // de cast al klapt.
+  requireUuid(id, runId);
   const [dossier, run] = await Promise.all([
     getDossier(db, id),
     getImportRun(db, runId),

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { getProductForDisclosure } from "@/lib/repo/disclosure";
+import { requireUuid } from "@/lib/uuid";
 import { getSession } from "@/lib/session";
 import { ProductCard, objectiveFields } from "@/components/product/product-card";
 import { AddToCompareButton, CompareTray } from "@/components/product/compare-tray";
@@ -20,6 +21,10 @@ export default async function ProductPage({
   searchParams: Promise<{ pricerequest?: string }>;
 }) {
   const { id } = await params;
+  // id gaat als uuid in visible_specs.id / visible_products.id. Deze pagina is de
+  // enige zonder requireSession (tier-gating doet het werk), dus de guard staat hier
+  // vóór álles: een externe bezoeker met een kapotte link hoort óók 404 te zien.
+  requireUuid(id);
   const { pricerequest } = await searchParams;
   const session = await getSession();
   const ctx = { internal: Boolean(session), hasApprovedProject: false };

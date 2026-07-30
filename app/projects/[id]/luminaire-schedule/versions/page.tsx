@@ -15,6 +15,7 @@ import {
   listVersions,
   type ArmatuurSnapshotRow,
 } from "@/lib/repo/armaturenboek-versions";
+import { isUuid } from "@/lib/uuid";
 import { requireSession } from "@/lib/session";
 import { snapshotAction } from "./actions";
 
@@ -74,7 +75,10 @@ export default async function VersiesPage({
   // Diff: expliciet gekozen (?from=&to=) of standaard de twee nieuwste versies.
   let fromRow = null;
   let toRow = null;
-  if (sp.from && sp.to) {
+  // Zelfde uuid-cast-val als bug #1, hier via QUERY-params: ?from=x&to=y gaf een 500.
+  // Géén notFound() maar terugvallen op de standaard-diff (de twee nieuwste versies) —
+  // de pagina zelf is geldig, alleen de gevraagde vergelijking niet.
+  if (isUuid(sp.from) && isUuid(sp.to)) {
     [fromRow, toRow] = await Promise.all([
       getVersion(db, sp.from),
       getVersion(db, sp.to),
