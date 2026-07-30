@@ -353,6 +353,54 @@ opdracht niet uitspreekt en die het plan moeten sturen:
    waarde draagt. Geen daarvan kan `"2700K - CRI90+"` uit Prado's `lightcolour` uit elkaar halen,
    en geen daarvan kent `lumenOutput` of `beamAngle`. Dat is echt bouwwerk, geen configuratie.
 
+## De volgorde is geen smaakkwestie: de eerste bron claimt de kolom permanent
+
+`publishRun` vult uitsluitend lege kolommen ([enrichment.ts:429](lib/repo/enrichment.ts:429)) en is
+onomkeerbaar. Wie het eerst schrijft, sluit elke latere bron voorgoed uit. Ik heb daarom de twee
+routes naast elkaar gelegd per merk × veld (`scripts/meet-overlap-bronnen.ts`): de naam-route zelf
+gemeten op de branch, de kolomroute overgenomen uit `stap1Klaar`.
+
+| merk | veld | kolomroute | naam-route | uitkomst |
+|---|---|---|---|---|
+| Serien | ipValue | 1.886 | 12 | kolom is 157× groter |
+| Serien | kelvin / maxWattage / dimmable | 1.283 / 1.400 / 1.193 | 0 / 0 / 0 | geen conflict |
+| TossB | lumenOutput | 803 | 9 | kolom is 89× groter |
+| Nordlux | lumenOutput | 312 | 6 | kolom is 52× groter |
+| Northern | ipValue | 282 | 0 | geen conflict |
+| Muuto | kelvin / maxWattage / lumenOutput | 20 / 10 / 11 | 0 / 0 / 0 | geen conflict (maar betwist, zie blokkade 5) |
+| **Prado** | **dimmable** | **1.980** | **2.448** | **naam is groter — en de kolom heet `driver`** |
+
+En dan de kant die zwaarder weegt: van de 150.633 veldvullingen die de naam-route klaarzet, is er
+**bijna geen enkele die niet óók door een kolomroute geclaimd wordt.** Gemeten: het enige merk waar
+de naam-route de énige bron is, is **Lumiance** (105 producten, 254 vullingen) — en dat merk heeft
+helemaal geen rauwe tabel. Alle grote posten — Lombardo's 59.623 wattages, Kreon's 11.587 CRI's,
+Wever & Ducré's 21.936 — staan óók in `stap2Wachtrij`.
+
+Ronde 3 eerst draaien betekent dus: 150.633 kolommen permanent vullen met de zwakkere van twee
+bronnen, waarvan er 3.359 een omgekeerde dimbaarheid en 3.106 een driververmogen dragen.
+
+## Maar "ronde 2" is grotendeels geen kolomroute — het is de naam-route op een ander tekstveld
+
+Dit ondergraaft de driedeling van de opdracht en het is met tellen vast te stellen. Van de **158**
+ingangen in `stap2Wachtrij` wijst het merendeel niet naar een spec-kolom maar naar een vrij
+tekstveld — `PRODUCT NAME`, `Description`, `DESCRIZIONE`, `Omschrijving`, `Item Desc.50NL`,
+`Article name`, `name`, `Beschreibung`:
+
+- **114 van de 158** komen uit een vrij tekstveld;
+- **44** uit een echte spec-kolom — en daarvan zijn er ~11 expliciete niet-ingangen
+  (`(geen kolom)`, `geen`, `n.v.t.`, `geen (valstrik)`, `kreon.EUR`, `xal.Weight / Tariff Nr.`).
+
+Er blijven dus ruwweg **33 echte spec-kolommen** over, verspreid over een stuk of tien merken:
+`serien` (4), `leucos` (9, maar over drie LED-modulekolommen), `valerie` (4), `northern` (5),
+`Prado` (4), `muuto` (1), `andtradition` (1), `Egoluce` (1), `estiluz` (1), `sylvania` (1),
+`tal` (1), `tossb` (1).
+
+Wat dat betekent voor het plan: ronde 2 en ronde 3 zijn voor 114 van de 158 ingangen **dezelfde
+machinerie op een andere invoer**, niet twee onafhankelijke bronnen. Ze delen dus ook de drie
+gemeten parserdefecten. Een plan dat ronde 2 als "kolomroute met bewerking" behandelt en ronde 3
+als "naam-route", beschrijft de werkelijkheid niet — en dat verschil bepaalt of je één normalisator
+bouwt of twee.
+
 ## Wat er beslist moet worden vóór er iets gebouwd wordt
 
 1. **Supabase-toegang** (blokkade 1). Zonder dit zijn ronde 1 en 2 dood. Als hij er komt: éérst
