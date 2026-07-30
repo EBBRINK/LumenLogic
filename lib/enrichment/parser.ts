@@ -118,21 +118,42 @@ const WATT_TYPECODE = /[A-Za-z]\d+(?:[.,]\d+)?\s+W\b/;
 // Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
 const WATT_PER_BRON = /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*W\b/i;
 
+// Is de match op deze plek een TYPECODE of TYPEMAAT in plaats van een vermogen?
+function isValseWatt(name: string, index: number, treffer: string): boolean {
+  const kop = name.slice(0, index);
+  // "12X3W": de vermenigvuldigings-x — daar is het getal het vermogen van één lichtbron.
+  if (/\d[xX*]$/.test(kop)) return false;
+  // "PAR16 W", "GX5.3 W", "IP65 W": een letter direct vóór het getal én een LOSSE W erna.
+  if (/[A-Za-z]$/.test(kop) && /\d\s+W/i.test(treffer)) return true;
+  // "ODREY SHADE 4.0 W", "80 W-W": decimale typemaat of kleurcode, altijd met een losse W.
+  // Bewust een KLEIN venster achter de match: "80 W" alleen laat de "-W" niet zien, maar de
+  // hele reststring zou een látere match ten onrechte veroordelen op tekst die verderop staat.
+  // Drie tekens is genoeg voor "-W" en te weinig om een volgende typemaat binnen te halen.
+  const venster = name.slice(index, index + treffer.length + 3);
+  if (WATT_VALS.some((re) => re.test(venster))) return true;
+  return false;
+}
+
 function parseWatt(name: string): number | undefined {
   if (WATT_PER_BRON.test(name)) return undefined;
-  if (WATT_VALS.some((re) => re.test(name))) return undefined;
-  // De typecode-toets kijkt naar de plek die WATT_RE zou pakken, niet naar de hele naam:
-  // "1x10W … PAR16 W" mag zijn 10 houden.
-  const m = WATT_RE.exec(name);
-  if (m && m.index > 0 && WATT_TYPECODE.test(name.slice(Math.max(0, m.index - 1)))) {
-    const kop = name.slice(0, m.index);
-    // niet de vermenigvuldigings-x: daar is het getal wél het vermogen van één lichtbron
-    if (!/\d[xX*]$/.test(kop) && /[A-Za-z]$/.test(kop)) return undefined;
+
+  // ── Per SPAN beoordelen, niet per naam (30 jul, tweede versie) ─────────────
+  // De eerste versie wees de hele naam af zodra er ergens een typemaat-W in stond. Gemeten
+  // gevolg: 16 namen verloren een AANWEZIGE juiste waarde, zoals
+  // "SIRRO SPOT INSET 1.0 W max. 12W" — de 1.0 is de typemaat, maar max. 12W staat er gewoon.
+  //
+  // Dat is precies de willekeur die dit hele spoor moest wegnemen: twee producten uit dezelfde
+  // familie kregen een verschillende uitkomst omdat de kleurcode toevallig W was
+  // ("… 1.1 B ROUND incl. driver 4W" gaf 4, "… 1.1 W ROUND incl. driver 4W" gaf niets).
+  // Nu slaan we de valse span over en kijken naar de volgende kandidaat.
+  const globaal = new RegExp(WATT_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = globaal.exec(name)) !== null) {
+    if (isValseWatt(name, m.index, m[0])) continue;
+    const w = toNumber(m[1]);
+    if (w > 0) return w;
   }
-  const raw = firstCapture(name, WATT_RE);
-  if (raw == null) return undefined;
-  const w = toNumber(raw);
-  return w > 0 ? w : undefined;
+  return undefined;
 }
 
 // Kleurtemperatuur: 3-5 cijfers gevolgd door K/Kelvin. Alleen het reële LED-bereik

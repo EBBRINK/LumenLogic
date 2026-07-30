@@ -164,10 +164,16 @@ test("de reparatie raakt gewone namen niet", () => {
 // Eén regel voor een familie die eerder als losse uitzonderingen groeide. Gemeten vóór het
 // bouwen: 140 landende voorstellen catalogusbreed (W&D 134, Sylvania 4, Marset 2).
 test("een typecode gevolgd door een losse W is geen wattage", () => {
-  // Het gevaarlijkste geval: de JUISTE waarde staat tien tekens verderop in dezelfde naam.
+  // GEWIJZIGD 30 jul: deze assertie eiste eerst `undefined` voor de RONY-naam. Dat was het
+  // gedrag van de eerste, NAAMNIVEAU-versie van de regel, en die gooide met de verkeerde
+  // waarde ook de goede weg — `max. 12W` staat gewoon in dezelfde naam. De spanversie slaat
+  // alleen de valse span (PAR16 W) over en pakt de volgende kandidaat. Zie de test
+  // "een valse span wordt overgeslagen, niet de hele naam".
   expect(
     parseProductName("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage,
-  ).toBeUndefined();
+  ).toBe(12);
+  // Zonder tweede kandidaat blijft het resultaat leeg:
+  expect(parseProductName("PLANO 1.0 SURF BOX PAR16 W").maxWattage).toBeUndefined();
   expect(parseProductName("EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W").maxWattage).toBeUndefined();
   expect(parseProductName("GINGER A XL42 W.CANOPY OAK").maxWattage).toBeUndefined();
   // Een IP-KLASSE als vermogen — dit vond de zwerm en het stond op geen enkele lijst.
@@ -188,4 +194,30 @@ test("de regel raakt de twee vormen NIET waar het getal wél het vermogen is", (
   // En hier zit de W VAST aan het getal, dus is hij de eenheid: een T5-buis van 13 W.
   expect(parseProductName("F13W T5 fluorscentie lamp 840 Aircraft").maxWattage).toBe(13);
   expect(parseProductName("Molla Vetri Componi200W").maxWattage).toBe(200);
+});
+
+// ── Per span beoordelen, niet per naam (30 jul, tweede versie) ───────────────
+// De eerste versie wees de hele naam af zodra er ergens een typemaat-W in stond. Gemeten:
+// 16 namen verloren daardoor een AANWEZIGE juiste waarde. Erger nog, het produceerde precies
+// de willekeur die dit spoor moest wegnemen — twee producten uit één familie kregen een
+// verschillende uitkomst omdat de kleurcode toevallig W was.
+test("een valse span wordt overgeslagen, niet de hele naam", () => {
+  expect(parseProductName("SIRRO SPOT INSET 1.0 W max. 12W").maxWattage).toBe(12);
+  expect(parseProductName("BOX INNER REFLECTOR 1.0 W max. 10W").maxWattage).toBe(10);
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10").maxWattage,
+  ).toBe(12);
+});
+
+test("dezelfde familie geeft dezelfde uitkomst, ongeacht de kleurcode", () => {
+  // Dit is de willekeurtoets. B en W zijn kleurcodes; het armatuur is hetzelfde.
+  const b = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W");
+  const w = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W");
+  expect(b.maxWattage).toBe(w.maxWattage);
+  expect(b.maxWattage).toBe(4);
+});
+
+test("zonder tweede kandidaat blijft de naam zwijgen", () => {
+  expect(parseProductName("ODREY SHADE 4.0 W").maxWattage).toBeUndefined();
+  expect(parseProductName("UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W").maxWattage).toBeUndefined();
 });
