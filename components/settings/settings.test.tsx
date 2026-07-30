@@ -120,9 +120,31 @@ test("budget: verbruik en cap staan er; overschrijding toont een amber-notitie, 
   await expect
     .element(page.getByText("Monthly cap exceeded — check the spend."))
     .toBeInTheDocument();
+  // De gewone tak moet blijven rékenen: 27,40 van 20 loopt over de 100 heen en wordt
+  // afgekapt op 100. Zonder deze assert kan een latere edit de takken verwisselen
+  // (positieve cap valt in de cap-0-tak) zonder dat één test rood wordt.
+  expect(
+    page.getByRole("progressbar").query()?.getAttribute("aria-valuenow"),
+  ).toBe("100");
 });
 
-test("budget: zonder cap geen meter maar een neutrale melding", async () => {
+test("budget: een normale cap rekent het percentage écht uit", async () => {
+  await renderServer(
+    <Screen>
+      <LlmBudgetBlock budgetEur={50} spentEur={25} saveAction={noopAction} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("€ 25,00")).toBeInTheDocument();
+  const meter = page.getByRole("progressbar").query();
+  expect(meter?.getAttribute("aria-valuenow")).toBe("50");
+  expect(document.body.textContent).not.toContain("no AI spend is allowed");
+});
+
+// Negatieve controle: "No monthly cap set." geldt vanaf nu UITSLUITEND voor null.
+// Cap 0 is wél een cap (de strengste) en hoort hier dus niet meer bij — zie de twee
+// tests hieronder. Deze asserts blijven ongewijzigd: ze bewijzen dat de fix voor
+// cap 0 het null-geval niet meesleurt.
+test("budget null (géén cap) → neutrale melding, geen meter", async () => {
   await renderServer(
     <Screen>
       <LlmBudgetBlock budgetEur={null} spentEur={5} saveAction={noopAction} />
@@ -133,6 +155,90 @@ test("budget: zonder cap geen meter maar een neutrale melding", async () => {
     .toBeInTheDocument();
   expect(page.getByRole("progressbar").query()).toBeNull();
 });
+
+test("budget 0 is een hard plafond, NIET 'geen cap'", async () => {
+  await renderServer(
+    <Screen>
+      <LlmBudgetBlock budgetEur={0} spentEur={0} saveAction={noopAction} />
+    </Screen>,
+  );
+  // Eerst wachten tot er écht iets staat — anders slagen de not.toContain-asserts
+  // hieronder op een nog lege DOM en vangen ze niets.
+  await expect
+    .element(page.getByText(/no AI spend is allowed this month/))
+    .toBeInTheDocument();
+  // ⬇ Dit ving de OUDE bug: bij cap 0 verscheen letterlijk "No monthly cap set.",
+  // terwijl de domeinlaag (lib/ai/ocr.ts:535, lib/ai/vangnet.ts:537) juist ALLES blokkeert.
+  expect(document.body.textContent).not.toContain("No monthly cap set.");
+  const meter = page.getByRole("progressbar").query();
+  expect(meter).not.toBeNull();
+  // ⬇ Deze twee vangen de naïeve fix (alleen `> 0` → `>= 0` op de oude regel 24):
+  // 0/0 = NaN geeft aria-valuenow="NaN" plus style="width:NaN%", en die ongeldige CSS
+  // valt weg waarna de binnen-div als block alsnog 100% breed rendert — bij toeval,
+  // niet bij ontwerp. Beide moeten op het attribuut/de style, niet op textContent:
+  // dáár staan attribuutwaarden niet in, dus een assert op body.textContent zou
+  // vacuüm slagen en precies deze fout doorlaten.
+  expect(meter?.getAttribute("aria-valuenow")).toBe("100");
+  expect(
+    (meter?.firstElementChild as HTMLElement | null)?.style.width,
+  ).toBe("100%");
+  // Nul speelruimte, maar niets overschreden: geen amber-notitie.
+  expect(document.body.textContent).not.toContain("Monthly cap exceeded");
+});
+
+test("cap 0 met uitgaven → meter vol én overschrijding gemeld", async () => {
+  await renderServer(
+    <Screen>
+      <LlmBudgetBlock budgetEur={0} spentEur={0.42} saveAction={noopAction} />
+    </Screen>,
+  );
+  // Oud rood: `over` was false omdat `hasBudget` bij cap 0 al false was.
+  await expect
+    .element(page.getByText("Monthly cap exceeded — check the spend."))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("€ 0,42")).toBeInTheDocument();
+  const meter = page.getByRole("progressbar").query();
+  expect(meter).not.toBeNull();
+  expect(meter?.getAttribute("aria-valuenow")).toBe("100");
+});
+
+// Aparte screenshotlus voor de twee NIEUWE cap-0-toestanden; de bestaande
+// settings.*.test.png-lus blijft ongemoeid. Bewust géén derde blok voor null erbij:
+// bij drie blokken schildert de harness op 375px de onderste kaart niet meer bij
+// (de opname is dan 1019px hoog met een lege staart), en het null-geval verandert
+// door deze sprint niets — dat bewaakt de negatieve-controletest hierboven.
+const budgetCapScreen = (
+  <Screen>
+    <LlmBudgetBlock budgetEur={0} spentEur={0} saveAction={noopAction} />
+    <LlmBudgetBlock budgetEur={0} spentEur={0.42} saveAction={noopAction} />
+  </Screen>
+);
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`budget cap nul (${theme}, ${device})`, async () => {
+      // Exact de viewports van de andere lussen. De harness legt full-page vast en
+      // schaalt naar de gevraagde hoogte: een hoogte van 1400 leverde 193 px brede
+      // mobiele PNG's (51%), waarop de nieuwe regel onleesbaar was. Afkappen doet de
+      // viewport-hoogte niet — settings.light.mobile.test.png is 980 px uit 812.
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(budgetCapScreen);
+      // Wacht op béide toestanden vóór de opname — de bovenste (cap 0, niets
+      // uitgegeven) is juist de nieuwe die deze opname documenteert.
+      // .first(): beide cap-0-kaarten tonen die regel, dus de locator raakt er twee.
+      await expect
+        .element(page.getByText(/no AI spend is allowed this month/).first())
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByText("Monthly cap exceeded — check the spend."))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./settings-budget-cap-nul.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
 
 test("XIS: de echte sleutel wordt nooit gerenderd — alleen de aanwezigheid", async () => {
   const secret = "xis-live-supersecret-key-123";

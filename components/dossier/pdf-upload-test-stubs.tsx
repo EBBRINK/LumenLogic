@@ -82,8 +82,9 @@ export function KaartMetOcrHappy() {
   );
 }
 
-// Budget-stop halverwege: pagina 1 slaagt, pagina 2 meldt {stopped: 'budget'} —
-// de kaart moet de loop afbreken en eerlijk zeggen hoeveel pagina's bleven liggen.
+// Budget-stop halverwege: pagina 1 slaagt, pagina 2 meldt {stopped: 'budget_run'}
+// — het €1-plafond van DEZE run. De kaart moet de loop afbreken en eerlijk zeggen
+// hoeveel pagina's bleven liggen.
 export function KaartMetOcrBudgetStop() {
   return (
     <PdfUploadCard
@@ -96,7 +97,31 @@ export function KaartMetOcrBudgetStop() {
       })}
       ocrPageAction={async (form) => {
         await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
-        if (Number(form.get("page")) >= 2) return { stopped: "budget" };
+        if (Number(form.get("page")) >= 2) return { stopped: "budget_run" };
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// Dezelfde stop, ándere oorzaak: de MAANDcap (llm_budget_eur) is op, niet het
+// €1-boekbudget. Een nieuw boek helpt hier niet — de melding moet dat zeggen.
+// Deze stub bestaat omdat de action beide redenen tot één 'budget' plette; toen
+// was dit scenario niet na te bootsen en loog de melding ongemerkt.
+export function KaartMetOcrMaandbudgetStop() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async () => ({
+        runId: "r1",
+        resumed: false,
+        doneTiles: [],
+      })}
+      ocrPageAction={async (form) => {
+        await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+        if (Number(form.get("page")) >= 2) return { stopped: "budget_month" };
         return { created: 1, duplicates: 0 };
       }}
       finishOcrAction={finishOcrOnverwacht}
@@ -230,7 +255,7 @@ export function KaartMetOcrBudgetStopMidPagina() {
       })}
       ocrPageAction={async () => {
         calls++;
-        if (calls >= 4) return { stopped: "budget" };
+        if (calls >= 4) return { stopped: "budget_run" };
         return { created: 1, duplicates: 0 };
       }}
       finishOcrAction={finishOcrOnverwacht}

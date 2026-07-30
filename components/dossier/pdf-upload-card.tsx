@@ -62,7 +62,7 @@ export type StartOcrAction = (input: {
 export type OcrPageAction = (formData: FormData) => Promise<
   | { error: string }
   | { alreadyDone: true }
-  | { stopped: "budget" | "no_key" }
+  | { stopped: "budget_run" | "budget_month" | "no_key" }
   | { failed: string }
   | { created: number; duplicates: number }
 >;
@@ -112,6 +112,30 @@ function etaText(avgMsPerTile: number, tilesLeft: number): string {
   if (seconds < 5) return "";
   if (seconds < 90) return ` — about ${seconds}s left`;
   return ` — about ${Math.round(seconds / 60)} min left`;
+}
+
+// Stopreden → melding. Drie redenen, drie oplossingen: een vol €1-boekbudget gaat
+// over DEZE run, een volle maandcap over de hele maand, en een ontbrekende key is
+// helemaal geen geld. De never-tak dwingt af dat een vierde reden hier een
+// typefout geeft in plaats van stil in een bestaande tak te vallen — precies de
+// manier waarop budget_month zich als "€1-budget" voordeed.
+function ocrStopMessage(
+  reason: "budget_run" | "budget_month" | "no_key",
+  left: number,
+  pageCount: number,
+): string {
+  switch (reason) {
+    case "budget_run":
+      return `OCR stopped: the €1 budget for this book is used up — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are on the project.`;
+    case "budget_month":
+      return `OCR stopped: the monthly AI budget is used up — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are on the project. Raise the monthly cap in Settings, or wait for next month — another book will not help.`;
+    case "no_key":
+      return `OCR stopped: the AI key is missing — ${left} of ${pageCount} pages were not (fully) read. Once a key is configured, choose the same PDF to resume.`;
+    default: {
+      const onbekend: never = reason;
+      throw new Error(`Onbekende OCR-stopreden: ${String(onbekend)}`);
+    }
+  }
 }
 
 export function PdfUploadCard({
@@ -289,16 +313,16 @@ export function PdfUploadCard({
             const result = sent.value;
 
             if ("stopped" in result) {
-              // Budget op (run staat serverside op 'gestopt') of key weggevallen:
-              // beide lussen afbreken met een eerlijke melding. Een pagina kan
-              // half gelezen zijn (tegels 1–k) — die regels blijven staan, net
-              // als vroeger de regels van eerdere pagina's bij een stop.
+              // Drie gevallen, en het verschil is voor de gebruiker niet cosmetisch:
+              // het €1-plafond van DEZE run, de maandcap, of een weggevallen key.
+              // Bij beide budgetredenen zet de repo-laag de run op 'gestopt'
+              // (terminaal, lib/repo/ocr.ts 629-635); bij no_key blijft hij 'bezig'
+              // en is hervatten met hetzelfde bestand dus wél zinnig. Beide lussen
+              // breken af met een eerlijke melding. Een pagina kan half gelezen zijn
+              // (tegels 1–k) — die regels blijven staan, net als vroeger de regels
+              // van eerdere pagina's bij een stop.
               const left = pageCount - pageNo + 1;
-              setError(
-                result.stopped === "budget"
-                  ? `OCR stopped: the €1 budget for this book is used up — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are on the project.`
-                  : `OCR stopped: the AI key is missing — ${left} of ${pageCount} pages were not (fully) read. Once a key is configured, choose the same PDF to resume.`,
-              );
+              setError(ocrStopMessage(result.stopped, left, pageCount));
               return;
             }
             if ("error" in result) {

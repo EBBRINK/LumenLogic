@@ -21,9 +21,24 @@ export function LlmBudgetBlock({
   ocrEur?: number;
   saveAction: (formData: FormData) => void | Promise<void>;
 }) {
-  const hasBudget = budgetEur != null && budgetEur > 0;
-  const pct = hasBudget ? Math.min(100, (spentEur / budgetEur) * 100) : 0;
-  const over = hasBudget && spentEur > budgetEur;
+  // Een cap van 0 is géén "geen cap" maar de strengste: de domeinlaag blokkeert er
+  // werkelijk álles mee, ook bij verbruik 0 (lib/ai/ocr.ts:535 en lib/ai/vangnet.ts:537
+  // vergelijken `spend >= budget`). Alleen null betekent "geen plafond".
+  const hasCap = budgetEur != null;
+  // ≤ 0, niet === 0: een negatieve cap blokkeert net zo hard (`0 >= -5`) en verdient
+  // dus dezelfde volle balk. Via het formulier is hij onbereikbaar (app/settings/
+  // actions.ts weigert `< 0`), via een directe jsonb-write niet.
+  const capBlocksAll = budgetEur != null && budgetEur <= 0;
+  // Delen mag uitsluitend waar de deler > 0 is: 0/0 geeft NaN en daarmee een
+  // aria-valuenow="NaN" plus een ongeldige width, waarna de balk juist vol lijkt.
+  const pct =
+    budgetEur != null && budgetEur > 0
+      ? Math.min(100, (spentEur / budgetEur) * 100)
+      : capBlocksAll
+        ? 100
+        : 0;
+  // Strikt groter dan: bij cap 0 en €0,00 verbruik is er niets overschreden.
+  const over = budgetEur != null && spentEur > budgetEur;
 
   return (
     <Card>
@@ -42,7 +57,7 @@ export function LlmBudgetBlock({
             </span>
             <span className="tabular-nums">
               <span className="font-semibold">{formatEur(spentEur)}</span>
-              {hasBudget && (
+              {hasCap && (
                 <span className="text-muted-foreground">
                   {" "}
                   / {formatEur(budgetEur)}
@@ -50,7 +65,7 @@ export function LlmBudgetBlock({
               )}
             </span>
           </div>
-          {hasBudget ? (
+          {hasCap ? (
             <>
               <div
                 className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
@@ -71,6 +86,12 @@ export function LlmBudgetBlock({
               {over && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                   Monthly cap exceeded — check the spend.
+                </p>
+              )}
+              {capBlocksAll && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Monthly cap is {formatEur(budgetEur)} — no AI spend is allowed
+                  this month.
                 </p>
               )}
             </>

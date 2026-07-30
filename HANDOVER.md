@@ -1992,3 +1992,114 @@ twee cross-review-agents. Resultaat:
   (`ia-card-sorter.html` weg, `launch.json` terug op HEAD; de werkende sorter staat in de scratchpad).
 - **Nog te doen (wacht op Timo):** committen op de branch + akkoord om te pushen (= live deploy).
   Nog niet gecommit/gepusht.
+
+## 2026-07-30 — Sprint 2.4: twee UI's die onwaarheid toonden
+
+Gebouwd tegen `origin/main` = `c5bd87a`. Werkwijze: twee planagents onafhankelijk tegen de
+echte code → één plan → twee bouwagents op strikt gescheiden bestanden → twee cross-review-agents
+op elkaars diff → correcties → volledige suite. **Niet gepusht** (elke push naar main deployt live).
+
+### Bug 1 — de OCR-stopmelding noemde altijd het €1-boekbudget
+
+`app/projects/actions.ts:403` plette `budget_run` en `budget_month` tot één `"budget"`, waarna
+`components/dossier/pdf-upload-card.tsx` bij een volle **maandcap** meldde dat het *€1-budget van
+dit boek* op was. Andere oorzaak, andere uitweg. De domeinlaag (`lib/ai/ocr.ts:518-548`) en de
+repolaag (`lib/repo/ocr.ts:155`) kenden het verschil al; alleen de brug naar de UI gooide het weg.
+
+Gefixt door het type te verbreden naar `"budget_run" | "budget_month" | "no_key"` in actions én
+kaart, de ternary te vervangen door pure doorgifte, en de melding uit een `ocrStopMessage()`-helper
+met `never`-exhaustiviteitscheck te halen. Nieuwe `budget_month`-tekst wijst naar de instellingen
+en zegt dat een ander boek niet helpt — beide claims zijn tegen de code geverifieerd (de run-check
+vuurt vóór de maandcheck, dus een nieuw boek knalt opnieuw op de maandcap).
+
+**Bewust géén gedeeld type**: `app/projects/[id]/page.tsx:110` geeft de echte action aan de kaart,
+dus `tsc` bewaakt de conformiteit al. Het verbreden liet `tsc` eerst falen op precies vier plekken
+(de ternary, de kaart-ternary en de twee stubs) en nergens anders — dat is het bewijs dat er geen
+geplette reden meer rondzwierf.
+
+### Bug 2 — budget 0 toonde "No monthly cap set."
+
+`components/settings/llm-budget-block.tsx:24` (`budgetEur > 0`) zag 0 als "geen cap", terwijl 0 het
+strengste plafond is: `lib/ai/ocr.ts:535` en `lib/ai/vangnet.ts:537` blokkeren bij cap 0 werkelijk
+alles. Commit `7071038` fixte dat destijds in de domeinlaag; de UI volgde nooit. Geverifieerd dat 0
+ongeschonden door de keten gaat (`app/settings/actions.ts:36-40` → `lib/repo/settings.ts:59-69`,
+nergens een `|| null`).
+
+Besluiten, met reden:
+- **`hasCap = budgetEur != null`** — alleen `null` betekent "geen plafond".
+- **De meter wordt bij cap 0 wél gerenderd, op 100%.** Een lege balk suggereert speelruimte die er
+  niet is; en zonder balk is cap-0 visueel niet te onderscheiden van "geen cap".
+- **`over` blijft strikt `>`** — "exceeded" bij € 0,00 uitgegeven zou de nieuwe leugen zijn. De
+  aparte muted regel draagt daar de betekenis.
+- **`capBlocksAll` is `<= 0`, niet `=== 0`** — een negatieve cap blokkeert net zo hard (`0 >= -5`)
+  en kreeg anders een lege balk náást "exceeded". Via het formulier onbereikbaar
+  (`app/settings/actions.ts` weigert `< 0`), via een directe jsonb-write niet.
+
+### Verificatie
+`bunx tsc --noEmit` schoon (exit 0). `bun vitest run` = **83 bestanden, 979 groen, 1 skip, 1
+failure**: `components/data/custom-fields.test.tsx` ("archiveren vraagt om bevestiging"), het
+bekend-flaky bestand onder volle belasting — **geïsoleerd 14/14 groen in 2,6 s**, dus geen
+regressie van 2.4. Beide nieuwe testsets zijn negatief getoetst: teruggezet op de oude conditie
+gingen ze rood, terwijl de `null`-controletest groen bleef. 8 nieuwe screenshots (light/dark ×
+mobile/desktop) zelf bekeken.
+
+**Testkosten bijgesteld.** De nieuwe screenshotlus `project-ocr-budget-month` liep onder volle
+suitebelasting één keer tegen de 25s-timeout (geïsoleerd 48/48 groen). Oorzaak: vier opnames die
+elk een beeld-PDF genereren én rasteriseren. Teruggebracht naar `makeBeeldPdf(2)` — de stub stopt
+toch bij pagina 2, dus de derde pagina kostte alleen rasterisatie en de melding is even lang.
+Blijft dit terugkomen, dan is de bestaande OCR-precedent (één light/desktop-opname, zoals
+`project-ocr-progress`) de terugval; dan wel bewust vastleggen dat de nieuwe tekst niet in
+dark/mobile bekeken is.
+
+### Screenshot-valkuil (kostte tijd, waard om te weten)
+De harness legt **full-page** vast en **schaalt** naar de gevraagde viewporthoogte. Een `page.viewport(375, 1400)`
+leverde daardoor PNG's van 193 px breed (51%) waarop de nieuwe regel onleesbaar was — terwijl de
+conventie in de repo 333 px (mobile) / 1152 px (desktop) is. Tegelijk schildert de harness bij
+drie gestapelde kaarten op 375 px de onderste niet meer bij. Oplossing: viewporthoogte laten staan
+en het aantal blokken per opname beperken. `components/data/brand-relations.test.tsx:532` heeft
+dezelfde afwijking (1280×3200 → 288 px breed) en is dus geen precedent maar een tweede geval.
+
+### Gevonden, met bewijs, bewust NIET gerepareerd (buiten scope 2.4)
+1. **De AI-leesroute laat de stopreden volledig vallen.** `lib/repo/leesroute.ts:51` levert
+   `gestopt: "budget_run"|"budget_month"|"no_key"`, maar `app/projects/actions.ts:236` stopt dat
+   alleen in de event-payload en redirect daarna; `app/projects/[id]/page.tsx:46-58` toont enkel
+   "N spec lines imported from the PDF and matched." Een halverwege afgekapte import presenteert
+   zich als een geslaagde, kleinere import. **Zelfde bugklasse als bug 1, één laag verderop — dit
+   is de duidelijkste kandidaat voor een vervolgsprint.**
+2. **Hervatten na een budgetstop kost dubbel en dupliceert regels.** `lib/repo/ocr.ts:629-635` zet
+   de run op `'gestopt'`; `startOcrRun` (`:64-75`) hervat alleen `'bezig'`. Hetzelfde boek opnieuw
+   kiezen maakt een nieuwe `importRunId` → verse €1-teller, `doneTiles` leeg, alle pagina's opnieuw
+   betaald, en de dedup is per run gescoopt dus de regels landen een tweede keer. Dat raakt de
+   nieuwe `budget_month`-melding: "raise the cap" is een geldige uitweg, maar niet een gratis.
+3. **Bij twee volle caps wint `budget_run`.** `lib/ai/ocr.ts:527-546` checkt de run eerst, dus wie
+   én zijn boekbudget én zijn maandcap vol heeft, hoort alleen over het boek en loopt in het
+   volgende boek meteen opnieuw vast.
+4. **`>` versus `>=` op de maandcap.** De UI meldt overschrijding bij `spentEur > budgetEur`, de
+   handhaving blokkeert bij `spend >= budget` (`lib/ai/ocr.ts:538`, `lib/ai/vangnet.ts:540`). Bij
+   cap 50 en precies € 50,00 is alles geblokkeerd terwijl de UI zwijgt. Niet meegenomen: `>` naar
+   `>=` trekken verruilt deze leugen voor een andere ("exceeded" terwijl er niets overschreden is);
+   de eerlijke oplossing is een aparte "cap reached"-toestand, en dat is een ontwerpbesluit.
+5. **Een maandcap is nooit meer te wissen.** `app/settings/actions.ts:37`: `if (raw === "") return;`
+   — leeg opslaan laat de oude waarde staan, dus na deze sprint is "No monthly cap set." onbereikbaar
+   zodra er ooit een cap stond. 0 is juist het tegenovergestelde van wissen.
+6. **Ongeldige budgetinvoer verdwijnt geruisloos.** `app/settings/actions.ts:38-39`: `"abc"` of `-5`
+   → `return` zonder melding; het scherm komt onveranderd terug alsof het gelukt is.
+7. **Geen regressietest op de action-laag zelf.** De bug zat in `app/projects/actions.ts`, maar alle
+   tests stubben die action weg. Iemand kan het pletten type-geldig herintroduceren
+   (`… ? "no_key" : "budget_run"`) zonder dat één test rood wordt. Bewust niet opgelost: dit is de
+   staande conventie van de repo (zie `components/admin/brand-admin.test.tsx:16-17` — "niet van de
+   actie-brug"), en de compile-time-koppeling via `app/projects/[id]/page.tsx:110` dekt de
+   type-vorm. Een echte actietest vraagt nieuwe mock-infra en is een eigen besluit.
+8. **De progressbar heeft geen toegankelijke naam** (`llm-budget-block.tsx:55-61`, geen
+   `aria-label`). Pre-existent; bij cap 0 hoort een schermlezer nu "100 procent" met de duiding pas
+   in de volgende alinea.
+
+### Diff (6 bestanden, geen styling geraakt)
+M `app/projects/actions.ts`, `components/dossier/pdf-upload-card.tsx`,
+`components/dossier/pdf-upload-test-stubs.tsx`, `components/dossier/pdf-upload.test.tsx`,
+`components/settings/llm-budget-block.tsx`, `components/settings/settings.test.tsx`.
+Nieuwe PNG's: `components/dossier/project-ocr-budget-month.*` en
+`components/settings/settings-budget-cap-nul.*` (elk light/dark × mobile/desktop).
+
+**Nog te doen (wacht op Timo):** committen + akkoord om te pushen (= live deploy). Nog niet
+gecommit/gepusht.

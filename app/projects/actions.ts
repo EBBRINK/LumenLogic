@@ -340,7 +340,7 @@ export async function startOcrImportAction(input: {
 export async function ocrPageAction(formData: FormData): Promise<
   | { error: string }
   | { alreadyDone: true }
-  | { stopped: "budget" | "no_key" }
+  | { stopped: "budget_run" | "budget_month" | "no_key" }
   | { failed: string }
   | { created: number; duplicates: number; upgraded: number }
 > {
@@ -399,9 +399,11 @@ export async function ocrPageAction(formData: FormData): Promise<
     actor,
   });
   if ("alreadyDone" in result) return { alreadyDone: true };
-  if ("skipped" in result) {
-    return { stopped: result.skipped === "no_key" ? "no_key" : "budget" };
-  }
+  // De reden komt onvertaald uit de repo-laag naar de kaart. Hier stond eerder een
+  // ternary die budget_run en budget_month tot één 'budget' plette — dan noemt de
+  // melding een volle maandcap "het €1-budget van dit boek" en is ze onwaar: andere
+  // oorzaak, andere oplossing (cap ophogen vs. wachten op een nieuwe run).
+  if ("skipped" in result) return { stopped: result.skipped };
   if ("failed" in result) return { failed: result.failed };
   // Regels verschijnen progressief op de projectpagina terwijl de loop draait.
   revalidatePath(`/projects/${dossierId}`);
