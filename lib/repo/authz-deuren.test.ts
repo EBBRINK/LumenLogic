@@ -72,8 +72,15 @@ const VERBODEN_NAMEN = ["issueActivationPin", "addMembership", "removeMembership
 /** De modules waarin ze wonen: als geheel niet te importeren (namespace of dynamisch). */
 const SCHRIJFMODULES = String.raw`repo/(orgs|activation)`;
 
-/** Tabellen die alleen via de schrijflaag gemuteerd mogen worden. */
-const VERBODEN_TABELLEN = ["memberships", "activationPins"];
+/**
+ * Tabellen die alleen via de schrijflaag gemuteerd mogen worden.
+ *
+ * `organizations` staat er bewust bij, en het is de belangrijkste van de drie: G36-regel 1
+ * hangt volledig aan `organizations.type`. Wie die kolom kan schrijven, zet zijn eigen org
+ * op 'intern' en is daarmee almachtig — zonder ooit een membership of een PIN aan te raken.
+ * Dat gat vond de critic in de eindronde (aanval G6).
+ */
+const VERBODEN_TABELLEN = ["memberships", "activationPins", "organizations"];
 
 /**
  * De schrijflaag zelf plus de autorisatielaag. Deze drie mógen alles wat hierboven verboden
@@ -92,11 +99,15 @@ const UITGEZONDERD = [
  * toevallig `latest-actions.ts` heet, hoort gewoon bewaakt te worden.
  */
 function isTestinfrastructuur(pad: string): boolean {
-  return (
-    /\.test\.tsx?$/.test(pad) ||
-    /-stubs\.tsx?$/.test(pad) ||
-    pad.endsWith("/lib/test-actions.ts")
-  );
+  // Testbestanden overal: die seeden een uitgangssituatie, ze voeren geen handeling uit.
+  if (/\.test\.tsx?$/.test(pad)) return true;
+  if (pad.endsWith("/lib/test-actions.ts")) return true;
+  // Stubs alléén búiten app/. Binnen app/ wonen de échte server actions, en de uitsluiting
+  // is een vórm-regel — dus zonder deze beperking is een echte action die toevallig
+  // `member-stubs.tsx` heet onzichtbaar voor de bewaker. De critic heeft die deur in de
+  // eindronde daadwerkelijk gebouwd en er iedereen org_admin mee gemaakt (aanval G5).
+  if (/-stubs\.tsx?$/.test(pad) && !pad.startsWith("/app/")) return true;
+  return false;
 }
 
 /**
@@ -112,9 +123,12 @@ export function overtredingenIn(pad: string, bron: string): string[] {
 
   // 1. Named import (incl. alias): `import { addMembership as zetLid } from "…/repo/orgs"`.
   //    Op de import letten en niet op elk voorkomen van de naam: een comment mag hem noemen.
+  //    `import|export`, want een re-export (`export { addMembership } from "…"`) maakt van
+  //    een willekeurig bestand een doorgeefluik waarna de import elders onverdacht oogt —
+  //    de critic bouwde precies die deur in de eindronde (aanval G1).
   for (const naam of VERBODEN_NAMEN) {
     const named = new RegExp(
-      String.raw`import[^;]*\{[^}]*\b${naam}\b[^}]*\}[^;]*from\s*["'][^"']*${SCHRIJFMODULES}["']`,
+      String.raw`(?:import|export)[^;]*\{[^}]*\b${naam}\b[^}]*\}[^;]*from\s*["'][^"']*${SCHRIJFMODULES}["']`,
       "s",
     );
     if (named.test(bron)) gevonden.push(`importeert ${naam}`);
@@ -142,8 +156,39 @@ export function overtredingenIn(pad: string, bron: string): string[] {
     if (schrijf.test(bron)) gevonden.push(`schrijft rechtstreeks op ${tabel}`);
   }
 
-  return gevonden.map((g) => `${pad} ${g}`);
+  return gevonden
+    .map((g) => `${pad} ${g}`)
+    .filter((g) => !BEKENDE_SCHULD.includes(g));
 }
+
+/**
+ * Bekende, bewust openstaande overtredingen. Eén regel per stuk, exact zoals de bewaker hem
+ * meldt — een nieuwe overtreding op dezelfde plek valt dus alsnog rood uit.
+ *
+ * Dit is geen uitzondering "omdat het mag", maar zichtbare schuld. `saveBrandingAction`
+ * schrijft `organizations` met alleen `requireSession()`: de critic heeft gemeten dat een
+ * gewone gebruiker uit org A daarmee de branding van org B overschrijft. Het is géén
+ * G36-escalatie (de kolom `type` wordt niet geraakt, er ontstaat geen membership en geen
+ * PIN), en het bestand valt buiten wat G36/G39 mocht aanraken — vandaar melden en niet
+ * repareren. Het hoort bij 3.2a, en wie het daar dichtzet, haalt deze regel weg.
+ */
+const BEKENDE_SCHULD = [
+  "/app/settings/organization/actions.ts schrijft rechtstreeks op organizations",
+];
+
+test("de bekende schuld staat er nog precies zo — niet meer en niet minder", () => {
+  // Zonder deze test zou BEKENDE_SCHULD een sluipende amnestie worden: iemand plakt er een
+  // regel bij en de bewaker zwijgt. Hier staat letterlijk wat er openstaat, dus het
+  // veranderen ervan is een bewuste handeling die in de diff opvalt.
+  expect(BEKENDE_SCHULD).toEqual([
+    "/app/settings/organization/actions.ts schrijft rechtstreeks op organizations",
+  ]);
+  // En de schuld is echt nog aanwezig: is hij in 3.2a gerepareerd, dan hoort deze regel
+  // weg te gaan in plaats van stil te blijven staan.
+  const bron = bronnen["/app/settings/organization/actions.ts"];
+  expect(bron, "bronbestand niet gevonden").toBeTruthy();
+  expect(/\.\s*update\s*\(\s*organizations\s*[),]/.test(bron)).toBe(true);
+});
 
 test("de bronbestanden zijn daadwerkelijk ingelezen (anders bewijst deze test niets)", () => {
   const paden = Object.keys(bronnen);

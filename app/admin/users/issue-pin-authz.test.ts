@@ -642,3 +642,44 @@ test("de foutmelding verraadt niet of een adres of organisatie bestaat", async (
   expect(teksten).toEqual(new Set([GEWEIGERD]));
   expect(await pinRijen(db, "beheerder-b@extern.nl")).toHaveLength(0);
 });
+
+// Derde aanroepplek van dezelfde G39-regel. `removeMemberAction` heeft, net als de twee
+// hierboven, een `actorEmail: session.user?.email` — en die stond tot nu toe op goed
+// vertrouwen: de eindronde-critic mat dat de M6-mutant hier alle 50 tests overleefde,
+// terwijl een gewone gebruiker met een vervalst actor-veld élk lidmaatschap in het systeem
+// kan wissen, inclusief de laatste beheerder van een klant. Wissen is destructiever dan
+// toevoegen, dus deze plek verdient dezelfde dekking en niet minder.
+test("G39, wissen: een vervalst actor-veld in de FormData wordt genegeerd — de sessie beslist", async () => {
+  const { db, orgB } = await opzet();
+
+  function post(): FormData {
+    const fd = new FormData();
+    fd.append("orgId", orgB);
+    fd.append("email", "beheerder-b@extern.nl");
+    fd.append("actorEmail", "intern@brinklicht.nl");
+    fd.append("actor", "intern@brinklicht.nl");
+    fd.append("session", "intern@brinklicht.nl");
+    fd.append("user", "intern@brinklicht.nl");
+    return fd;
+  }
+
+  // Sessie = gewone gebruiker uit org A, invoer = "ik ben intern", doel = de enige
+  // beheerder van org B.
+  alsActor("calculator-a@extern.nl");
+  await orgActions.removeMemberAction(post());
+  expect(await ledenVan(db, "beheerder-b@extern.nl")).toHaveLength(1);
+
+  // De weigering staat op naam van de sessie, niet van het vervalste adres.
+  const geweigerd = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "membership_change_denied"));
+  expect(geweigerd).toHaveLength(1);
+  expect(geweigerd[0].actor).toBe("calculator-a@extern.nl");
+
+  // Positieve controle: exact dezelfde FormData, maar nu mét een interne sessie. Slaagt hij
+  // hier niet, dan bewees de weigering hierboven niets.
+  alsActor("intern@brinklicht.nl");
+  await orgActions.removeMemberAction(post());
+  expect(await ledenVan(db, "beheerder-b@extern.nl")).toHaveLength(0);
+});
