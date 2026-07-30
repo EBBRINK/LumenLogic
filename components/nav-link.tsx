@@ -49,7 +49,12 @@ export function NavBar({
   const active = activeNavHref(pathname ?? routePathname ?? "");
   return (
     <header className="border-b border-nav-border bg-nav">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6 px-6 py-3">
+      {/* max-w-7xl = 1280px, de containerbreedte uit DESIGN.md §5. Deze balk is de
+          referentie voor de linkerrand van élk scherm: het logo en de eerste
+          navigatie-item moeten op dezelfde x staan als de <h1> van de pagina
+          eronder. Wijzigt de paginacontainer, dan wijzigt deze mee — anders keert
+          de scheefstand alleen om. Vastgepind in components/container-breedte.test.ts. */}
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-6 px-6 py-3">
         <Link
           href="/projects"
           className="flex shrink-0 items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nav-accent"

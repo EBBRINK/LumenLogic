@@ -102,7 +102,7 @@ export default async function EigenVeldenPage() {
   const eigenKolommen = totaalKolommen - CATALOGUS_KOLOMMEN;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

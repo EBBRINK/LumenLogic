@@ -38,7 +38,7 @@ export default async function ProductPage({
   const canCompare = Object.keys(compareFields).length > 0;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8 pb-32">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8 pb-32">
       <div className="mb-4">
         <Link href="/catalog" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to catalog

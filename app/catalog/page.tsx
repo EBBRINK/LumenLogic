@@ -130,7 +130,7 @@ export default async function CatalogusPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Catalog</h1>
       {/* UX-audit 30 jul (item 12): "Price is shown, never sorted." is hier weg. Het
           bleef waar — ijzeren regel 2 staat en het scherm heeft geen sorteerknop — maar

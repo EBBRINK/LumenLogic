@@ -21,7 +21,7 @@ export default async function MerkDataPage({
   const data = brand ? await getBrandData(db, brand.id) : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/brand"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

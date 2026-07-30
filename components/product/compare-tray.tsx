@@ -149,7 +149,10 @@ export function CompareTray() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="mx-auto w-full max-w-6xl px-6 py-3">
+      {/* Zelfde 1280px-container als de pagina eronder (DESIGN.md §5): de tray zweeft
+          over /catalog en /products/[id] en moet dezelfde linkerrand hebben, anders
+          staat hij zichtbaar uit het lood met de lijst waar hij bij hoort. */}
+      <div className="mx-auto w-full max-w-7xl px-6 py-3">
         <div className="mb-2 flex items-center justify-between gap-4">
           <h2 className="text-sm font-medium">
             Compare{" "}

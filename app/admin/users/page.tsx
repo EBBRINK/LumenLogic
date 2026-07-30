@@ -19,7 +19,7 @@ export default async function AdminGebruikersPage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       {/* UX-audit 30 jul (bug #10): dit scherm heette "Users" en de kaart eronder
           "Users across organizations" — dezelfde kop twee keer, én verwarbaar met de
           inlog-allowlist op /settings. Eén kop, hier: org-lidmaatschappen. */}

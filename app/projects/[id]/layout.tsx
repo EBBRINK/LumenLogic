@@ -46,7 +46,7 @@ export default async function DossierLayout({
   const readOnly = isReadOnly(dossier.status);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/projects"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

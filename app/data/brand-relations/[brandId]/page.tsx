@@ -91,7 +91,7 @@ export default async function MerkrelatieDetailPage({
   });
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data/brand-relations"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

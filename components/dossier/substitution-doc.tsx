@@ -138,7 +138,10 @@ export function SubstitutionDoc({
   const sustainability = fields.filter((f) => SUSTAINABILITY.has(f.field));
 
   return (
-    <article className="mx-auto max-w-3xl">
+    // Geen `mx-auto` meer — zelfde reden als in armaturenboek-view.tsx. De
+    // documentbreedte (768px) blijft; alleen de centrering binnen de bredere
+    // dossiercontainer is eruit, zodat de linkerrand met de tabbalk meeloopt.
+    <article className="max-w-3xl">
       <header className="mb-6 border-b pb-4">
         <p className="text-sm text-muted-foreground">Substitution proposal</p>
         <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>

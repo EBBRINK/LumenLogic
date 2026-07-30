@@ -28,7 +28,7 @@ export default async function OrganisatiePage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
         <p className="text-sm text-muted-foreground">

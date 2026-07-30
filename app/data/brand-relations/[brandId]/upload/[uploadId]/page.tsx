@@ -71,7 +71,7 @@ export default async function TemplateVoorstelPage({
   // (zie besluit 9 over het /admin/imports-gat).
   if (upload.status !== "staging") {
     return (
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
+      <main className="mx-auto w-full max-w-7xl px-6 py-8">
         {terug}
         <h1 className="mb-2 text-2xl font-semibold tracking-tight">
           Template proposal
@@ -102,7 +102,7 @@ export default async function TemplateVoorstelPage({
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       {terug}
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">

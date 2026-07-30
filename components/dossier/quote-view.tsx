@@ -67,7 +67,10 @@ export function QuoteView({
     computed;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    // Geen `mx-auto` meer — zelfde reden als in armaturenboek-view.tsx: binnen de
+    // 1280px-dossiercontainer zou centreren het document uit het lood zetten met de
+    // tabbalk erboven. De documentbreedte zelf (896px) verandert niet.
+    <div className="max-w-4xl">
       {actions && (
         <div className="mb-6 flex flex-wrap items-center justify-end gap-2 print:hidden">
           {actions}
