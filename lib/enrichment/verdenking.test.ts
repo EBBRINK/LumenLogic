@@ -151,11 +151,34 @@ test("een onderdeel laat ook zijn IP en dimprotocol vallen, niet alleen het verm
   expect(v).toContain("dimmable:product-is-onderdeel");
 });
 
-// De bovengrens van maxWattage is gemeten, niet gekozen: alle 16 landende voorstellen van
-// 1000 W en hoger zijn railprofielen (T.MAGNET), waar het getal de belastbaarheid van de rail
-// is. Het zwaarste échte armatuur in de catalogus haalt 850 W.
-test("railprofielen vallen buiten het wattagebereik, echte armaturen niet", () => {
+// De bovengrens van maxWattage is gemeten, niet gekozen. Boven 999 W bestaat in deze catalogus
+// geen echt armatuur — het zwaarste is 850 W. Van de 16 voorstellen daarboven zijn er 15
+// railprofielen en is er 1 een typefout in de bronlijst (Sylvania Rocks 2254W bij 41.800 lm =
+// 18,5 lm/W, waar diezelfde familie 177-189 lm/W haalt).
+test("boven 999 W: railprofielen en typefouten vallen af, echte armaturen niet", () => {
   expect(vlaggen("T.MAGNET EVO SUSP. UP&DOWNPROFILE 1000 W")).toContain("maxWattage:buiten-bereik");
   expect(vlaggen("T.MAGNET EVO SURF-SUSP POTPROFILE 3000 W")).toContain("maxWattage:buiten-bereik");
+  expect(vlaggen("Rocks IP65 2254W 41800lm 840 Breed SSA03N")).toContain("maxWattage:buiten-bereik");
   expect(vlaggen("Versus 4 LED 3K 850W Nero")).not.toContain("maxWattage:buiten-bereik");
+  expect(vlaggen("Rocks IP65 142W 26000lm 840 Gang DALI")).not.toContain("maxWattage:buiten-bereik");
+});
+
+// Twee samenstellingen mogen ook verderop in de naam staan. Aanleiding: de zwerm vond
+// `BELT SURF. POWER 96W 48V BLACK`, de voeding van het 48 V BELT-rail, die met de
+// productfamilie begint en dus buiten het anker viel. Gemeten vóór het bouwen: precies één
+// extra product in de hele catalogus, en geen enkele naam met een kaal "POWER".
+test("POWER SUPPLY en SURF. POWER tellen ook verderop in de naam", () => {
+  expect(vlaggen("BELT SURF. POWER 96W 48V BLACK")).toContain("maxWattage:product-is-onderdeel");
+  expect(vlaggen("ZEROTRACK POWER SUPPLY 96W END")).toContain("maxWattage:product-is-onderdeel");
+});
+
+test("een kaal POWER in een armatuurnaam blijft ongemoeid", () => {
+  // Dit is waarom de term een SAMENSTELLING moet zijn en niet het losse woord.
+  expect(parseProductName("BON JOUR 45 BLACK POWER LED 2700K CRI90 8W").maxWattage).toBe(8);
+  expect(vlaggen("BON JOUR 45 BLACK POWER LED 2700K CRI90 8W")).not.toContain(
+    "maxWattage:product-is-onderdeel",
+  );
+  expect(vlaggen("A.24 C POWER KITXRCS/C MOD240WDM BLK APP")).not.toContain(
+    "maxWattage:product-is-onderdeel",
+  );
 });

@@ -96,6 +96,18 @@ const ACCESSOIRE = /\b(?:EXCL|INCL|SPARE|ACCESS\w*|DRIVER|CONVERTER|TRAFO|ADAPTE
 const ONDERDEEL_START =
   /^\s*(?:LED\s+)?(?:POW(?:ER)?\.?\s*SUPPLY|ALIM(?:ENT|T)?\.?\s*LED|ALIMENTATOR\w*|ALIMENTATORE|DRIVER|CONVERTER|TRAFO|TRANSF?(?:ORMATOR|ORMER)?\b|NETZTEIL|EQUIPO|REMOTE\s+KIT|VOEDING|POWER\s+FEED)/i;
 
+// Twee termen mogen ÓÓK verderop in de naam staan, en dat is geen verzwakking van het anker
+// maar een gemeten uitzondering. "POWER SUPPLY" en "SURF. POWER" zijn samenstellingen die niet
+// in een armatuurnaam voorkomen tenzij het product er een IS — anders dan het kale woord
+// "POWER", dat wél gewoon in armatuurnamen staat ("BON JOUR 45 BLACK POWER LED",
+// "A.24 C POWER KIT…") en dat hier dus bewust ontbreekt.
+//
+// Aanleiding: de zwerm vond `BELT SURF. POWER 96W 48V BLACK`, de opbouwvoeding van het
+// 48 V BELT-railsysteem. Die begint met de productfamilie, niet met een onderdeelwoord, dus het
+// anker miste hem. Gemeten vóór het bouwen: deze uitzondering vangt precies ÉÉN extra product
+// in de hele catalogus en raakt geen enkele naam met een kaal "POWER". Eén meting, geen gok.
+const ONDERDEEL_STERK = /\b(?:POW(?:ER)?\.?\s*SUPPLY|SURF\.?\s*POWER|POWER\s+FEED)\b/i;
+
 // Een naam die halverwege ophoudt. Twee signalen: eindigen op een los koppel-/scheidingsteken,
 // of op een LOSSE eenheid-aanduiding die zonder getal betekenisloos is ("… 3000" gevolgd door
 // niets, of een kale "CRI" aan het eind).
@@ -111,12 +123,20 @@ const AFGEKAPT = /(?:[-–/,]\s*$)|(?:\b(?:CRI|IP|LM|KELVIN)\s*$)|(?:\s\d+[.,]?\
 const BEREIK: Partial<Record<Veld, [number, number]>> = {
   cri: [70, 100],
   kelvin: [2200, 6500],
-  // Bovengrens gemeten, niet gekozen (30 jul). Van alle landende voorstellen zijn er 16 op
-  // 1000 W of hoger, en dat zijn ZONDER UITZONDERING T.MAGNET-railprofielen: de 1000/1500/
-  // 2000/2500/3000 W is de maximale belastbaarheid van de rail, niet het vermogen van een
-  // armatuur. Het zwaarste échte armatuur in de catalogus is 850 W (Lombardo Versus 4).
-  // De grens op 999 vangt die hele familie zonder een woordenlijst die per merk moet groeien
-  // — de zwerm wees drie van die profielen aan en dit dekt alle zestien.
+  // Bovengrens gemeten, niet gekozen (30 jul). De juiste formulering is niet "boven 999 staan
+  // alleen railprofielen" — dat was 15 van de 16 en dus een overgeneralisatie — maar:
+  //
+  //   BOVEN 999 W BESTAAT IN DEZE CATALOGUS GEEN ECHT ARMATUUR. Het zwaarste is 850 W
+  //   (Lombardo Versus 4). Wat daarboven staat, is een railprofiel of een typefout.
+  //
+  // Gemeten over alle landende voorstellen: 16 op 1000 W of hoger. Vijftien daarvan zijn
+  // T.MAGNET-railprofielen (1000/1500/2000/2500/3000 W = de belastbaarheid van de rail).
+  // De zestiende is `Rocks IP65 2254W 41800lm 840` van Sylvania, een schijnwerper met een
+  // bedorven getal: dezelfde Rocks-familie loopt 112 W/20.500 lm en 142 W/26.000 lm, netjes
+  // 177–189 lm/W, en 2254 W bij 41.800 lm zou 18,5 lm/W zijn — een factor tien mis. Het ware
+  // vermogen ligt rond 224 W.
+  //
+  // De grens vangt beide soorten zonder een woordenlijst die per merk moet groeien.
   maxWattage: [0.5, 999],
   lumenOutput: [50, 100_000],
   beamAngle: [5, 180],
@@ -143,7 +163,7 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   // ── het product is zelf een onderdeel ─────────────────────────────────────
   // Vlagt ELK gevuld veld, want geen enkele spec van een voeding of driver beschrijft een
   // armatuur. Staat vóór de veldtoetsen zodat de reden zichtbaar één en dezelfde is.
-  if (ONDERDEEL_START.test(naam)) {
+  if (ONDERDEEL_START.test(naam) || ONDERDEEL_STERK.test(naam)) {
     for (const veld of FIELDS) {
       if (specs[veld] === undefined) continue;
       vlag(
