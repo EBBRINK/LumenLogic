@@ -378,6 +378,12 @@ Meetnoot bij dit cijfer: filter opgeslagen regels op **dossier**, niet op `fixtu
 `Lr301` komen in tien dossiers voor; een filter op code alleen gaf 76 "tno-regels" in plaats van
 20. Dat is dezelfde nagebouwde-query-val als altijd, nu in mijn eigen meetscript.
 
+> ⚠️ **Een armatuurcode identificeert geen regel — alleen een dossier + code doet dat.** `Lr302`
+> is in raadhuis een **Exenia**-regel (`blauw`, CRI≥92) en in tno een **XAL**-regel (`open`).
+> Zelfde code, ander dossier, ander merk. Deze val heeft in dit traject al twee keer toegeslagen:
+> in de spec_lines-telling hierboven, en in de eerste voorspelling voor de nameting. Elke query
+> en elke vergelijking indexeert daarom per case/dossier én code.
+
 Dat geeft een meetontwerp dat we niet hoefden te bedenken:
 
 > Vullen we **alleen CRI**, dan kan uitsluitend `raadhuis` bewegen. `tno` moet per constructie

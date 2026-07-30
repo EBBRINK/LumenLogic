@@ -29,6 +29,12 @@
 // Let op het verschil tussen de twee populaties (zie docs/probleem-lege-speckolommen-xal.md):
 // de eval meet de VERSE PARSE — raadhuis 31 regels, tno 15. De opgeslagen spec_lines zijn er
 // 42 en 20; die bewegen bij de hermatch maar verschijnen niet in deze vergelijking.
+//
+// ⚠️ ARMATUURCODES ZIJN NIET UNIEK OVER DOSSIERS. `Lr302` is in raadhuis een EXENIA-regel en in
+// tno een XAL-regel — zelfde code, ander dossier, ander merk. Deze vergelijking indexeert daarom
+// per case én per code; een lookup op code alleen mengt projecten door elkaar. Dat is hier al
+// twee keer misgegaan: een spec_lines-telling die op fixtureCode filterde nam tien dossiers mee
+// (76 'tno-regels' in plaats van 20), en de eerste Lr302-voorspelling verwisselde de twee.
 
 import { readFile } from "node:fs/promises";
 
