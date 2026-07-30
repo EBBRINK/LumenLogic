@@ -47,6 +47,17 @@ test("PIN is 8 cijfers (G34) en elke keer een andere", async () => {
   expect(gezien.size).toBe(10);
 });
 
+// Opdracht B (critic, ronde 2): dit is de énige test die de GETALLEN zelf vastlegt. Alle
+// andere tests in dit bestand rekenen met de constanten en blijven dus groen als iemand er
+// 5 of 1000 van maakt — de mutant PIN_MAX_ATTEMPTS 10 → 11 overleefde alle 18. Deze drie
+// getallen zijn besluiten van Timo (G34, bijgesteld door G38), geen implementatiedetail:
+// wie ze wil wijzigen, wijzigt een besluit, en dan hoort deze test rood te worden.
+test("de getallen van G34/G38 liggen vast: 8 cijfers, 7 dagen, 10 pogingen", () => {
+  expect(PIN_LENGTH).toBe(8);
+  expect(PIN_TTL_DAYS).toBe(7);
+  expect(PIN_MAX_ATTEMPTS).toBe(10);
+});
+
 test("PIN staat gehasht in de database en is nergens leesbaar terug te halen", async () => {
   const db = await createTestDb();
   const { pin, email } = await issueActivationPin(db, {
