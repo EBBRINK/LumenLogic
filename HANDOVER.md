@@ -536,6 +536,43 @@ suite is groen" is op deze machine geen bruikbaar signaal, in geen van beide ric
 de screenshot-timeout omhoog); zolang dat er niet is, kost elke sessie tijd aan het uitsluiten
 van spookregressies.
 
+## Het patroon van sprint 3.1 — een bevinding over de wérkwijze, niet over de code
+
+Dit item leverde vijf keer dezelfde vorm op, en die is meer waard dan de vijf losse bugs:
+**een plausibele zin die niet klopt, geschreven door iemand die net echt werk had gedaan.**
+
+| # | Waar | De zin | Wat er echt was |
+|---|---|---|---|
+| 1 | `lib/repo/activation.ts`, golf 1 | "Teller in SQL ophogen, niet in JS: twee gelijktijdige pogingen mogen niet dezelfde waarde overschrijven" | Waar — en het suggereerde dat de límiet concurrency-veilig was. 200 parallelle gokken werden alle 200 beoordeeld; de lat zei 5. |
+| 2 | `lib/auth-activation.ts`, ronde 2 | "Hier staat de vlag altijd aan — dat is een garantie van deze laag, geen keuze van de aanroeper" | Waar van díé functie, onwaar van het systeem: `auth.api.changePassword` stond één toetsaanslag ernaast en liet sessies leven. |
+| 3 | `HANDOVER.md`, G36 ronde 1 | "uitgeven zónder autorisatie kán niet" | Het grant-merk was een niet-geëxporteerd `Symbol` — maar object-spread kopieert symbool-sleutels en `Object.getOwnPropertySymbols` geeft ze prijs. |
+| 4 | `lib/repo/authz.ts` ×2 + `activation.ts`, G39 | "`lib/repo/authz-deuren.test.ts` bewaakt dat" | Dat bestand bestond niet. Met het grant-token weg wás die bewaker de enige structurele bescherming. |
+| 5 | Deze sessie, in een verklaring **óver** het patroon | "`authz.test.ts` is nooit weg geweest; `ls` toonde het alleen niet omdat het untracked is" | `ls` toont untracked bestanden gewoon. De eigen tijdstempels (22:34 vs 22:29) bewezen het tegendeel: het bestond op dat moment nog niet. |
+
+Instantie 5 is de scherpste illustratie: het patroon sloeg toe ín de uitleg van het patroon.
+
+**Waarom een builder dit zelf niet vangt, en een critic wel.** Het is geen slordigheid. Elke
+zin hierboven is geschreven door iemand die net iets echts had gebouwd en beschreef wat hij
+bedóéld had. Dat is precies de blinde vlek:
+
+> **Een builder controleert of de code doet wat hij bedoelde. Een critic controleert of de zin
+> waar is.**
+
+Dat zijn twee verschillende vragen, en de tweede stel je niet aan je eigen werk. Vandaar de
+scheiding, en vandaar dat de critic op het zwaarste model hoort te draaien: een lichte critic
+leest de bedoeling mee in plaats van ertegenin.
+
+**Wat er praktisch uit volgt, voor de volgende sessie:**
+1. Elke garantie in een comment is een **claim**, en een claim hoort een test te hebben. Zo
+   niet: schrijf op wat er níét gedekt is (zie de "wat dit NIET dekt"-lijst in
+   `lib/repo/authz-deuren.test.ts`). Een eerlijke beperking is meer waard dan een te ruime belofte.
+2. **Een test die een mutant niet doodt, bewaakt niets.** Vier keer bleek dekking te ontbreken
+   op precies de dragende regel: de pogingenlimiet, `PIN_MAX_ATTEMPTS = 10` (mutant 10 → 11
+   overleefde 18 tests), en `actorEmail` uit de sessie (mutant overleefde er 31, op drie
+   aanroepplekken). Wie een regel belangrijk noemt, mutant hem één keer.
+3. **Verwijst een comment naar een bestand, een test of een regelnummer: open het.** Instantie
+   4 en 5 waren allebei binnen een minuut te weerleggen door één keer te kijken.
+
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
 Poortwachter van het retour-pad: `lib/excel-validate.ts` toetst een ingevuld merk-template
