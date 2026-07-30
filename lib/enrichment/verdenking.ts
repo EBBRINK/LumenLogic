@@ -118,6 +118,24 @@ const LAMP_FITTING =
   /\b(?:E27|E14|E40|B15D|G4|G9|G13|GX53|GU10|GU5\.3|R7S|QT14|S14d?|T5|T8|PAR\d\d|A6\d|C35|ST64|T30)\b/i;
 const DRIVER_TYPECODE = /\bDRIVER\s+D\d\b/i;
 
+// ── Losse kap, reflector of plug met de lampbelasting van het armatuur eronder ─
+// "RAY INNER COVER A max. 10W" is een binnenkap; die 10W hoort bij het armatuur waar hij in
+// gaat. De zwerm wees 21 van deze cellen aan.
+//
+// De COMBINATIE doet het werk, niet de term. `SHADE` alleen is een valstrik: "ROOMOR WALL SURF
+// 1.0 PAR16 B NO SHADE max. 15W GU10" is een écht armatuur, en dat zijn er 31. Die dragen een
+// FITTING, en bij een armatuur mét fitting is "max. 15W" juist de geldige lampbelasting.
+// Gemeten: 44 namen met "max. <n>W" zonder fitting-token, waarvan 39 door deze termen gedekt.
+const ACCESSOIRE_MAXW = /\b(?:INNER\s+(?:COVER|REFLECTOR)|SHADE|LED\s+PLUG|COVER\s+RING)\b/i;
+const MAX_WATT = /\bmax\.?\s*\d+(?:[.,]\d+)?\s*W\b/i;
+const LAMP_FITTING_BREED =
+  /\b(?:E27|E14|E40|B15D|G4|G9|G13|GX53|GX5\.3|GU10|GU5\.3|GZ10|R7S|QT14|QT-14|S14d?|T5|T8|PAR\d\d|MR\d\d|A6\d|G9\d|QR-CBC\d*|C35|ST64)\b/i;
+
+// Besturingsapparatuur die met zijn eigen soortnaam begint. `DIMMER` staat in 20 namen over zes
+// merken en levert maar 2 landende wattages op — klein, maar het is per definitie de
+// SCHAKELLAST en nooit het vermogen van een armatuur.
+const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b/i;
+
 // Twee termen mogen ÓÓK verderop in de naam staan, en dat is geen verzwakking van het anker
 // maar een gemeten uitzondering. "POWER SUPPLY" en "SURF. POWER" zijn samenstellingen die niet
 // in een armatuurnaam voorkomen tenzij het product er een IS — anders dan het kale woord
@@ -186,10 +204,16 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   // Vlagt ELK gevuld veld, want geen enkele spec van een voeding of driver beschrijft een
   // armatuur. Staat vóór de veldtoetsen zodat de reden zichtbaar één en dezelfde is.
   const isLosseLamp = LOSSE_LAMP.test(naam) && LAMP_FITTING.test(naam);
+  // Een kap/reflector/plug MET een max.-opgave maar ZONDER fitting: de lampbelasting hoort bij
+  // het armatuur eronder, niet bij het plaatje.
+  const isKapMetMaxW =
+    ACCESSOIRE_MAXW.test(naam) && MAX_WATT.test(naam) && !LAMP_FITTING_BREED.test(naam);
   if (
     ONDERDEEL_START.test(naam) ||
     ONDERDEEL_STERK.test(naam) ||
     isLosseLamp ||
+    isKapMetMaxW ||
+    BESTURING.test(naam) ||
     DRIVER_TYPECODE.test(naam)
   ) {
     for (const veld of FIELDS) {

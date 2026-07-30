@@ -243,3 +243,42 @@ test("een typemaat is geen tweede wattage-kandidaat, een echt tweede wattage wel
   // Tegenproef: twee échte wattages moeten nog steeds vlaggen.
   expect(vlaggen("SPOT CRI80 15W 3000K 20W")).toContain("maxWattage:meerdere-waarden");
 });
+
+// ── Kap/reflector met de lampbelasting van het armatuur eronder ──────────────
+// De COMBINATIE doet het werk, niet de term. `SHADE` alleen is een valstrik: "ROOMOR WALL SURF
+// 1.0 PAR16 B NO SHADE max. 15W GU10" is een écht armatuur (31 namen), en bij een armatuur mét
+// fitting is "max. 15W" juist de geldige lampbelasting.
+test("een kap of reflector met max.-opgave maar zonder fitting is een onderdeel", () => {
+  for (const n of [
+    "RAY INNER COVER A max. 10W",
+    "BOX INNER REFLECTOR 1 D max. 10W",
+    "BISHOP 4.0 SHADE D max. 25W",
+    "FLEXFY LED PLUG NON DIM D max. 14W 48V",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+});
+
+test("dezelfde termen bij een armatuur MET fitting blijven ongemoeid", () => {
+  for (const n of [
+    "ROOMOR WALL SURF 1.0 PAR16 B NO SHADE max. 15W GU10 100-240VAC",
+    "BISHOP CEILING SUSP 4.0 E27 D max. 25W A60/G95 220-240VAC",
+    "BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10",
+  ]) {
+    expect(vlaggen(n)).not.toContain("maxWattage:product-is-onderdeel");
+  }
+  expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10").maxWattage).toBe(12);
+});
+
+test("besturingsapparatuur draagt de schakellast, niet een armatuurvermogen", () => {
+  expect(
+    vlaggen("DIMMER FOR DIN RAIL IP30 230V max. 200W LED PHASE CUT").some((v) =>
+      v.endsWith(":product-is-onderdeel"),
+    ),
+  ).toBe(true);
+  expect(
+    vlaggen("STREX DALI SELV DEVICE max. 300W 48V").some((v) =>
+      v.endsWith(":product-is-onderdeel"),
+    ),
+  ).toBe(true);
+});
