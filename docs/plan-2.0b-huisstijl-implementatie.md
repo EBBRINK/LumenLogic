@@ -9,8 +9,11 @@
 > Guardrails: kit is leidend (G23) · dark mode verplicht (G24) · brand-kit-MD niet aanraken ·
 > geen web-assets ophalen.
 >
-> **Status: papier. Er is geen regel code gewijzigd.** De vier blockers zijn op 2026-07-30 door
-> Timo beantwoord (§6); stap 1 en 3 van §8 zijn daarmee vrij. De bouw wacht op zijn go.
+> **Status 2026-07-30: stap 0, 1 en 3 zijn gebouwd** (specimen-testharnas, token-flip,
+> knop + invoerveld). Stap 2 (fonts), 4 (kaart/dialog/badge), 5 (sweep) en 6 (statuskleuren)
+> staan nog open. Niets gepusht — de deploy-poort ligt bij Timo.
+>
+> Vier bevindingen uit de bouw die het plan bijstellen, zie §10.
 
 ---
 
@@ -348,3 +351,35 @@ de badge stilzwijgend ont-pillen · kleuren afleiden die de kit niet geeft (hoog
 op kit-kleuren, en dan met sign-off) · de token-flip en componentgeometrie in één commit
 (onontwarbaar in screenshots) · violet/magenta in CSS zetten · het brand-kit-MD aanraken ·
 wachten op Eduards woff2's voordat er iets kan landen.
+
+---
+
+## 10. Uit de bouw van stap 0/1/3
+
+Vier dingen die tijdens het bouwen bleken en die de rest van het plan raken.
+
+1. **De suite is niet groen te krijgen, om een reden buiten dit werk.** Ongeveer 275 db-tests
+   vallen om op `Invalid FS bundle size: 971 !== 6293225` — de PGlite-WASM-bundel in de
+   gedeelde `node_modules` is 971 bytes in plaats van 6,3 MB. Geverifieerd pre-existing door de
+   wijzigingen te stashen. Niet aangeraakt: die map is gedeeld met parallelle sessies. De
+   component- en app-tests (28 bestanden, alle screenshot-tests) draaien wél en zijn de basis
+   waarop stap 1 en 3 zijn beoordeeld. **Voor de volgende bouwer: verwacht geen groene
+   `bun vitest run` tot dit is opgelost.**
+2. **Twee component-tests falen pre-existing.** `components/dossier/pdf-upload.test.tsx` kan
+   niet importeren (zelfde kapotte install), en `components/data/custom-fields.test.tsx` flaket
+   op één archiveertest, maar alléén in de volle batch — losstaand draait hij groen. Beide
+   falen ook zonder de huisstijlwijzigingen; niet gaan zoeken in de tokens.
+3. **`page.viewport()` wordt geklemd door het headless browservenster.** "Mobile" is in deze
+   repo feitelijk 333×720 en "desktop" 1152×720, ongeacht wat je opgeeft — een viewport groter
+   dan het venster wordt verkleind in plaats van vergroot. Geldt voor álle bestaande
+   screenshot-tests. 333px blijft onder het `md:`-breekpunt, dus het licht/donker- en
+   mobiel/desktop-onderscheid werkt nog; de PNG's zijn alleen kleiner dan hun naam suggereert.
+4. **De ad-hoc `<select>` en `<textarea>` vallen nu zichtbaar uit de toon.** Ze gebruiken
+   `bg-background` (wit) terwijl `Input` na stap 3 een grijs vlak heeft. Te zien in
+   `brand-form` en `data-merkrelaties`. Dit staat al in stap 5 (sweep naar `bg-muted`), maar
+   het is nu een zichtbare inconsistentie in plaats van een theoretische.
+
+Wat de screenshots verder bevestigen: **de 26 bestanden met hardgecodeerde statuskleuren
+detoneren precies zoals voorspeld.** De rood→groen-volledigheidsmeter en de amber/emerald
+statusbadges in `data-merkrelaties` en `review-queue` lezen naast het navy/teal-palet als een
+tweede designsysteem. Dat is stap 6 en gegate op V13/V14 — niet stilzwijgend meenemen.
