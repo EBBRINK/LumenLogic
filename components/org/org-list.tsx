@@ -178,7 +178,8 @@ function BrandingForm({
             </span>
           </div>
         </div>
-        <Button type="submit" variant="secondary" className="self-start">
+        {/* Echte submit → `outline`, niet het neutrale vlak. */}
+        <Button type="submit" variant="outline" className="self-start">
           Save branding
         </Button>
       </div>

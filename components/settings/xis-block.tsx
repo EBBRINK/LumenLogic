@@ -82,7 +82,12 @@ export function XisBlock({
             </p>
           </div>
 
-          <Button type="submit" variant="secondary" className="self-start">
+          {/* De primary van /settings (huisregel "één primary per scherm", DESIGN.md §6).
+              Dit is het zwaarste gevolg op de pagina: de sleutel wordt daarna nooit meer
+              getoond én de keuze sandbox/productie bepaalt waar een echte offerte landt.
+              Stond op `secondary` — een bleek vlak dat de UX-audit van 30 jul als
+              uitgeschakeld las. */}
+          <Button type="submit" className="self-start">
             Save
           </Button>
         </form>

@@ -210,7 +210,9 @@ export function OrgMembers({
             ))}
           </div>
         </fieldset>
-        <Button type="submit" className="self-start">
+        {/* Staat één keer per organisatiekaart, dus N keer op het scherm. De primary van
+            /settings/organization is "Create" — dat maakt de organisatie zelf. */}
+        <Button type="submit" variant="outline" className="self-start">
           Add member
         </Button>
       </form>

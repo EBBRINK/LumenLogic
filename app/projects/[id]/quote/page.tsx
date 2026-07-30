@@ -74,7 +74,9 @@ function KopblokBewerken({
           {field("authorEmail", "Author", q.authorEmail)}
         </div>
         <div className="mt-3">
-          <Button type="submit" size="sm">
+          {/* Sub-formulier in een uitklap: het corrigeert kopvelden. De primary van dit
+              scherm is "Generate / Refresh estimate" in de actiebalk. */}
+          <Button type="submit" size="sm" variant="outline">
             Save header
           </Button>
         </div>
@@ -144,7 +146,12 @@ export default async function EstimatePage({
     <>
       <form action={generateQuoteAction}>
         <input type="hidden" name="dossierId" value={dossier.id} />
-        <Button type="submit" variant="secondary" size="sm">
+        {/* De primary van /projects/[id]/quote (DESIGN.md §6): dit bouwt de estimate op
+            en overschrijft bij "Refresh" een bestaande — het zwaarste gevolg op deze
+            pagina. Stond op het neutrale `secondary`-vlak, dus het lichtste element van
+            het scherm. "Send to XIS" is zwaarder, maar die knop staat ín de dialoog en
+            heeft dáár zijn eigen primary; de trigger op deze pagina opent alleen. */}
+        <Button type="submit" size="sm">
           {q ? "Refresh estimate" : "Generate estimate"}
         </Button>
       </form>

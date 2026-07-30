@@ -2781,3 +2781,57 @@ het gestreepte kader maar zijn foutschermen, geen lege toestanden. En een handvo
 regels buiten de audit-lijst (`spec-line-table`, `werkvoorbereider-view`,
 `enrichment-panels`, `deviation-table`, `price-list-status`, `custom-fields-table`,
 `analytics-*`) staan nog op hun eigen zin — kandidaat voor een volgende veegbeurt.
+
+---
+
+## Bak 2, item 7 — één primary per scherm (2026-07-30)
+
+**De regel staat in `docs/DESIGN.md` §6, onder "Knophiërarchie — huisregel, geen afwijking",
+met een korte kopie bovenaan `components/ui/button.tsx`.** Bewust als *huisregel* gelabeld en
+niet als afwijking: kit §7 zegt wél hóé een primaire/secundaire/tertiaire knop eruitziet, maar
+nergens wannéér je welke kiest. Er is dus niets van de kit afgeweken (harde regel 2 blijft
+onaangeroerd) — er is een gat gevuld dat de kit openlaat. Komt er ooit een kit-uitspraak over
+knophiërarchie, dan wint die.
+
+Kern: `default` (navy) = **precies één per scherm**, de actie met het zwaarste gevolg.
+`outline` = elke andere échte actie. `ghost` = wegwerpactie. **`secondary` is geen
+actiegewicht** — het is de aan/uit-stand van een schakelaar of filterchip en de inerte
+navigatie eromheen, en hoort nooit op een `type="submit"`. "Scherm" telt per beslissing: een
+dialoog is een eigen scherm, een herhaalde beslis-kaart heeft één primary per item, en een
+filterchip die `default` gebruikt toont een stand.
+
+**`components/knophierarchie.test.tsx`** pint het vast: een bronscan over de .tsx-importgraaf
+vanaf elke `page`/`layout` (één primary per scherm, met een becommentarieerde allowlist voor
+de drie uitzonderingscategorieën), een tweede scan die `variant="secondary"` op een
+`type="submit"` verbiedt (nul uitzonderingen), plus gerenderde metingen van de
+disabled-behandeling. Zestien aanroepplekken zijn omgezet; het aantal `<Button>`-plekken bleef
+gelijk (99) en er is geen label gewijzigd.
+
+**Disabled.** Kit §6's 50 % opacity blijft ongewijzigd. Wat erbij kwam is
+`disabled:cursor-not-allowed` — en daarvoor moest `disabled:pointer-events-none` uit
+`button.tsx`. Met `pointer-events: none` is de knop geen muis-doelwit, dus de cursorregel deed
+nooit iets **én** de `title` met de reden was onbereikbaar (de tooltip "Your own address — ask
+a colleague to remove it" in `allowed-emails-block` verscheen nooit). Een `disabled`-knop vuurt
+van zichzelf al geen click of submit, dus er verdwijnt geen bescherming; alleen de hover-stijlen
+moesten expliciet uit, en dat gebeurt nu per variant met `not-disabled:hover:…`. De testsuite
+controleert dat die guard ook echt als `:not(:disabled)` in de CSS terechtkomt — een typefout in
+een variantnaam levert stilzwijgend géén regel op.
+
+**Aannames die Timo mag terugdraaien:**
+- Op `/settings` is de **XIS-`Save`** de primary geworden (de sleutel is daarna nooit meer te
+  zien én de keuze sandbox/productie bepaalt waar een echte offerte landt), en `Add address` is
+  naar `outline` gegaan. Wie "een adres toevoegen = toegang verlenen" zwaarder vindt dan de
+  sleutel, draait die twee om — één van de twee moet outline zijn.
+- Op `/projects/[id]/quote` is **`Generate / Refresh estimate`** de primary; `Save header` ging
+  naar `outline`. "Send to XIS" is zwaarder, maar staat ín de dialoog en heeft daar zijn eigen
+  primary.
+- **Niet aangeraakt:** de filterchips die `default` als actieve stand gebruiken
+  (`status-filter`, `brand-relations-controls`). Ze staan op schermen die óók een echte primary
+  hebben, dus navy betekent daar twee dingen. Dat is A14-terrein (filter-idiomen) en raakt een
+  recent verbeterd scherm — bewust laten liggen.
+- **Grootte niet meegenomen:** `Run parser` op `/data/enrichment` draait over 539 producten maar
+  staat op `size="sm"` (28 px) in een gewoon paneel, niet in een dense tabel. Dat is niet wat
+  besluit O9 dekt. Dit item ging over gewicht, niet over maat — kandidaat voor een volgende ronde.
+
+**Pre-existing lint, niet van deze wijziging:** `components/dossier/review-queue.tsx:331`
+`react/no-unescaped-entities` op "line's". Stond er al vóór deze sessie.

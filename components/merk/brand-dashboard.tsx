@@ -44,7 +44,10 @@ export function BrandDashboard({
           projects or users are not visible here.
         </p>
         <form action={refreshAction}>
-          <Button type="submit" variant="secondary" size="sm">
+          {/* De énige actie op /brand/dashboard, dus per definitie de zwaarste — en
+              daarmee de primary van dit scherm (DESIGN.md §6). Stond op `secondary` en
+              werd in de UX-audit van 30 jul als uitgeschakeld gelezen. */}
+          <Button type="submit" size="sm">
             Refresh figures
           </Button>
         </form>

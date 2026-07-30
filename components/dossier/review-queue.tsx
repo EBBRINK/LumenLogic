@@ -260,7 +260,10 @@ function KeuzeCard({
           <input type="hidden" name="dossierId" value={dossierId} />
           <input type="hidden" name="specLineId" value={item.id} />
           <input type="hidden" name="decision" value="accepteer" />
-          <Button type="submit" size="sm" variant="secondary">
+          {/* `outline`: een echte submit hoort niet op het neutrale vlak. Blijft
+              bewust ónder de per-kandidaat "Choose this" hierboven — dát is de
+              primary van deze kaart (DESIGN.md §6). */}
+          <Button type="submit" size="sm" variant="outline">
             <IconCheck /> Accept as proposal
           </Button>
         </form>
@@ -622,7 +625,8 @@ function RedLinkCard({
             className="h-8 w-72 max-w-full text-sm"
             aria-label={`Search comparable product for ${line.fixtureCode}`}
           />
-          <Button type="submit" size="sm" variant="secondary">
+          {/* Submit → `outline`; de primary van deze kaart is "Link this product". */}
+          <Button type="submit" size="sm" variant="outline">
             <IconSearch /> Search
           </Button>
         </form>

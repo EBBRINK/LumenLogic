@@ -157,7 +157,11 @@ export function LlmBudgetBlock({
             placeholder="50"
             className="sm:max-w-32"
           />
-          <Button type="submit" variant="secondary" className="self-start">
+          {/* `outline`, niet `secondary`: dit is een echte submit die configuratie
+              vastlegt (een cap van 0 blokkeert álle AI-uitgaven), dus hij mag niet als
+              uitgeschakeld lezen. Géén primary — die staat op de XIS-kaart, waar de
+              sleutel en de omgevingskeuze het zwaarste gevolg hebben. */}
+          <Button type="submit" variant="outline" className="self-start">
             Save
           </Button>
         </form>

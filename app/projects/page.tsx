@@ -75,7 +75,9 @@ function ProjectSearch({
         placeholder="Search project or customer"
         className="w-full sm:w-72"
       />
-      <Button type="submit" variant="secondary">
+      {/* Submit → `outline`. `secondary` is hier gereserveerd voor de filterchips
+          ernaast, waar het de úit-stand van een schakelaar is (DESIGN.md §6). */}
+      <Button type="submit" variant="outline">
         Search
       </Button>
       {q !== "" && (

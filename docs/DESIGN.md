@@ -221,6 +221,46 @@ Radius 6 px, hoogte min. 44 px. Primair hover `#0F1626` + schaduw `0 2px 8px rgb
 active schaal 0.98 op `#0A0E18`. Disabled 50% opacity.
 **Geen pill-vormen** — extreme afronding haalt het professionele eruit (§19-1).
 
+#### Knophiërarchie — huisregel, geen afwijking
+
+> **Wat dit is.** De kit beschrijft in §7 hóé een primaire, secundaire en tertiaire knop
+> eruitzien, maar nergens **wanneer** je welke kiest. Dit is dus geen afwijking van de kit
+> (harde regel 2 hierboven) maar een huisregel die een gat vult dat de kit openlaat. Komt
+> er ooit een kit-uitspraak over knophiërarchie, dan wint die.
+
+**Één primary per scherm: de actie met het zwaarste gevolg.** Gewicht zegt hoe zwaar de
+gevolgen zijn, niet hoe vaak je de knop gebruikt.
+
+| Variant (code) | Kit | Waarvoor |
+|---|---|---|
+| `default` | primair, navy vlak | **precies één per scherm** — de zwaarste actie |
+| `outline` | secundair, 2 px blauwe rand | alle andere échte acties, ook de belangrijke |
+| `ghost` | tertiair | wegwerpacties: annuleren, wissen, verwijder-icoontje |
+| `destructive` | — | vernietigen of afwijzen |
+| `secondary` | — | **geen actiegewicht**: de aan/uit-stand van een schakelaar of filterchip, en de inerte navigatie eromheen (pager, terug-link) |
+
+`variant="secondary"` (een neutraal grijs vlak) staat bewust naast de kit-drieslag; het is de
+oude shadcn-variant die op ~20 plekken een schakelaarstand draagt. **Zet hem nooit op een
+`type="submit"`.** Op 50 % opacity is dat vlak niet van disabled te onderscheiden, en precies
+daardoor lazen twee echte `Save`-knoppen op `/settings` als uitgeschakeld (UX-audit 30 jul,
+A13).
+
+**"Scherm" telt per beslissing**, niet per URL:
+- een **dialoog** is een eigen scherm — de trigger op de pagina eronder is niet de zware actie,
+  de knop ín de dialoog wel;
+- een **herhaalde beslis-kaart of tabelrij** (reviewwachtrij, kandidatenlijst,
+  organisatiekaart) heeft zijn eigen primary, één per item;
+- een **filterchip** die `default` gebruikt om "actief" te tonen is een stand, geen actie.
+
+`components/knophierarchie.test.tsx` scant de broncode hierop, met een becommentarieerde
+allowlist voor die drie uitzonderingen.
+
+**Disabled.** De 50 % opacity uit de kit blijft. Daar bovenop: `cursor-not-allowed`, en waar
+een knop om een reden uit staat hoort die reden **naast** de knop te staan (een geteld getal,
+een `role="status"`-zin of een `title`) in plaats van een dood bedieningselement achter te
+laten. Staat er geen reden en is er geen weg vooruit, dan hoort de knop weg te zijn, niet
+uitgegrijsd — zie `EvaluationPanel` en `BrandDeleteBlock`.
+
 ### Invoer
 
 Achtergrond `#F5F7FA`, rand 1 px `#D0D6E0`, radius 6 px, padding 12×14 px, Inter 400 15 px.

@@ -83,7 +83,9 @@ export function BrandRelationsToolbar({
           aria-label="Search brand name or code"
           className="h-9 w-56"
         />
-        <Button type="submit" size="sm" variant="secondary">
+        {/* Submit → `outline`. `secondary` blijft hier voor de filterchips en de pager
+            hieronder: schakelaarstanden en inerte navigatie (DESIGN.md §6). */}
+        <Button type="submit" size="sm" variant="outline">
           Search
         </Button>
         {query.q && (

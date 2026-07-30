@@ -160,7 +160,9 @@ export default async function RegelsTab({
               className="w-full rounded-lg border border-input bg-background p-2.5 font-mono text-sm"
             />
             <div className="mt-2">
-              <Button type="submit" variant="secondary" size="sm">
+              {/* Echte submit, dus `outline` en niet het neutrale `secondary`-vlak:
+                  dit schrijft aantallen over de hele regeltabel. Zie DESIGN.md §6. */}
+              <Button type="submit" variant="outline" size="sm">
                 Link quantities
               </Button>
             </div>

@@ -27,7 +27,10 @@ export function AddSpecLineForm({
           <Input name="reqCri" type="number" placeholder="CRI" />
           <Input name="reqIp" placeholder="IP" />
         </div>
-        <Button type="submit" className="self-start">
+        {/* Eén regel met de hand. De primary van /projects/[id] is de PDF-import
+            erboven — die leest een heel armaturenboek in en kost OCR-budget per
+            pagina. Zie de huisregel in DESIGN.md §6. */}
+        <Button type="submit" variant="outline" className="self-start">
           Add line
         </Button>
       </form>
@@ -41,7 +44,9 @@ export function AddSpecLineForm({
           placeholder={"code, quantity, brand, type\nLp301, 12, XAL, SASSO 100\nLw201, 8, Wever & Ducré, SCAVA 1.0"}
           className="rounded-lg border border-input bg-background p-2.5 font-mono text-xs"
         />
-        <Button type="submit" variant="secondary" className="self-start">
+        {/* Een geplakt CSV-blok maakt véél regels tegelijk — zwaarder dan "Add line",
+            en het stond bleker. Nu even zwaar, allebei onder de PDF-import. */}
+        <Button type="submit" variant="outline" className="self-start">
           Import lines
         </Button>
       </form>

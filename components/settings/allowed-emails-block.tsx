@@ -132,7 +132,11 @@ export function AllowedEmailsBlock({
             placeholder="name@brink.nl"
             className="sm:max-w-xs"
           />
-          <Button type="submit" className="self-start">
+          {/* Was de énige donkere knop van /settings, terwijl hij één regel aan een lijst
+              toevoegt die direct ernaast weer te verwijderen is — precies de omkering die
+              de UX-audit van 30 jul beschreef (A13). De primary van dit scherm is de
+              XIS-Save. */}
+          <Button type="submit" variant="outline" className="self-start">
             Add address
           </Button>
         </form>

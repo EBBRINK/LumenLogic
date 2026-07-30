@@ -178,7 +178,10 @@ export default async function RegelDetailPage({
             Changing brand, type or specs re-runs the matcher.
           </p>
           <div className="mt-2">
-            <Button type="submit" size="sm" variant="secondary">
+            {/* Echte submit → `outline` in plaats van het neutrale vlak; hij draait de
+                matcher opnieuw. De primary van dit scherm is "Choose" op een
+                aantoonbare kandidaat (DESIGN.md §6). */}
+            <Button type="submit" size="sm" variant="outline">
               Save &amp; re-match
             </Button>
           </div>

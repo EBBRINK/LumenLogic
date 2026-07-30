@@ -70,7 +70,12 @@ export function AiSuggestionBlock({
                   <input type="hidden" name="specLineId" value={specLineId} />
                   <input type="hidden" name="suggestionId" value={s.id} />
                   <input type="hidden" name="productId" value={s.productId} />
-                  <Button type="submit" size="sm">
+                  {/* Bewust géén primary. Dit blok zegt zelf "No verdict; choosing stays
+                      human work" — een AI-hint mag dan niet zwaarder ogen dan de
+                      kandidatenlijst van de matcher ernaast, die wél onderbouwing toont.
+                      Het stond op navy naast "Choose" (óók navy) op zowel het
+                      regeldetail als de reviewwachtrij. Zie DESIGN.md §6. */}
+                  <Button type="submit" size="sm" variant="outline">
                     <IconCheck /> Use as manual choice
                   </Button>
                 </form>
@@ -78,7 +83,9 @@ export function AiSuggestionBlock({
                   <input type="hidden" name="dossierId" value={dossierId} />
                   <input type="hidden" name="specLineId" value={specLineId} />
                   <input type="hidden" name="suggestionId" value={s.id} />
-                  <Button type="submit" size="sm" variant="outline">
+                  {/* `ghost`: wegwerpactie. Zakt mee nu "Use as manual choice" van navy
+                      naar outline ging — anders staan de twee op gelijk gewicht. */}
+                  <Button type="submit" size="sm" variant="ghost">
                     Dismiss
                   </Button>
                 </form>
