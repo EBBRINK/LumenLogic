@@ -111,7 +111,13 @@ const AFGEKAPT = /(?:[-–/,]\s*$)|(?:\b(?:CRI|IP|LM|KELVIN)\s*$)|(?:\s\d+[.,]?\
 const BEREIK: Partial<Record<Veld, [number, number]>> = {
   cri: [70, 100],
   kelvin: [2200, 6500],
-  maxWattage: [0.5, 1000],
+  // Bovengrens gemeten, niet gekozen (30 jul). Van alle landende voorstellen zijn er 16 op
+  // 1000 W of hoger, en dat zijn ZONDER UITZONDERING T.MAGNET-railprofielen: de 1000/1500/
+  // 2000/2500/3000 W is de maximale belastbaarheid van de rail, niet het vermogen van een
+  // armatuur. Het zwaarste échte armatuur in de catalogus is 850 W (Lombardo Versus 4).
+  // De grens op 999 vangt die hele familie zonder een woordenlijst die per merk moet groeien
+  // — de zwerm wees drie van die profielen aan en dit dekt alle zestien.
+  maxWattage: [0.5, 999],
   lumenOutput: [50, 100_000],
   beamAngle: [5, 180],
 };

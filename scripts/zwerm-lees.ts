@@ -29,13 +29,17 @@ async function main() {
   const scherven = bestanden.filter((f) => /^scherf-\d+\.json$/.test(f));
   const sleutel = JSON.parse(await readFile(`${map}/antwoordsleutel.json`, "utf8")) as Record<
     string,
-    { val: boolean; namen: string[] }
+    { val: boolean; tegenproef?: boolean; namen: string[] }
   >;
 
   let cellenTotaal = 0, beoordeeld = 0, ongeldigeScherven = 0;
   const perOordeel: Record<string, number> = {};
   const bevindingen: Bevinding[] = [];
   const vallen = { totaal: 0, gevonden: 0, gemist: [] as string[] };
+  // Tegenproef: cellen die de voorstelpoort WEERDE als onderdeel, ononderscheidbaar meegemengd.
+  // Ze toetsen het FILTER in plaats van alleen wat het doorlaat. Noemt een agent er één een
+  // echt armatuur, dan is het naam-begin-anker te grof en weren we goede waarden.
+  const tegen = { totaal: 0, bevestigd: 0, betwist: [] as string[] };
   const problemen: string[] = [];
 
   for (const scherfNaam of scherven) {
@@ -84,6 +88,12 @@ async function main() {
 
     for (const cel of scherf.cellen) {
       const o = gezien.get(cel.celId)!;
+      if (sleutel[cel.celId]?.tegenproef === true) {
+        tegen.totaal++;
+        if (o.oordeel === "goed") tegen.betwist.push(`${cel.celId}: ${cel.productnamen[0]}`);
+        else tegen.bevestigd++;
+        continue;
+      }
       const isVal = sleutel[cel.celId]?.val === true;
       if (isVal) {
         vallen.totaal++;
@@ -124,7 +134,7 @@ async function main() {
     }
   }
 
-  const echteCellen = cellenTotaal - vallen.totaal;
+  const echteCellen = cellenTotaal - vallen.totaal - tegen.totaal;
   console.log(`\nzwerm-uitslag · run ${runId}`);
   console.log(`  scherven         : ${scherven.length} (${ongeldigeScherven} ongeldig)`);
   console.log(`  cellen           : ${echteCellen} echt + ${vallen.totaal} vallen`);
@@ -136,6 +146,13 @@ async function main() {
     `  val-recall       : ${vallen.gevonden}/${vallen.totaal}` +
       (vallen.gemist.length ? `  ← GEMIST: ${vallen.gemist.join(", ")}` : "  ✓"),
   );
+  if (tegen.totaal > 0) {
+    console.log(
+      `  tegenproef       : ${tegen.bevestigd}/${tegen.totaal} geweerde onderdelen bevestigd` +
+        (tegen.betwist.length ? "  ← ANKER MOGELIJK TE GROF:" : "  ✓ het anker weert terecht"),
+    );
+    for (const b of tegen.betwist) console.log(`      ${b}`);
+  }
 
   if (problemen.length) {
     console.log(`\nproblemen (${problemen.length}):`);
@@ -154,6 +171,7 @@ async function main() {
 
   // ── Het eindoordeel ───────────────────────────────────────────────────────
   const schoon =
+    tegen.betwist.length === 0 &&
     ongeldigeScherven === 0 &&
     vallen.gemist.length === 0 &&
     (perOordeel["onbeslist"] ?? 0) === 0 &&

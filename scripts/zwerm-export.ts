@@ -33,7 +33,12 @@ import { parseProductName } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
 
 const [, , runId, ...rest] = process.argv;
-const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(8) ?? 40);
+const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) ?? 40);
+// Tegenproef: N producten die de voorstelpoort WEERDE als onderdeel, ononderscheidbaar tussen
+// de echte cellen gemengd. Ze toetsen het FILTER in plaats van alleen wat het doorlaat: noemt
+// een agent er één een echt armatuur, dan is het anker te grof. Het juiste antwoord is
+// `nee-hoort-bij-onderdeel`.
+const tegenproefN = Number(rest.find((a) => a.startsWith("--tegenproef="))?.slice(13) ?? 0);
 
 type Cel = {
   celId: string;
@@ -81,6 +86,46 @@ async function main() {
   }
   const echte = [...perCel.values()];
 
+  // ── tegenproef-cellen: door de poort geweerde onderdelen ──────────────────
+  // Die staan niet in enrichment_items (ze zijn immers geweerd), dus we herberekenen ze uit de
+  // productnamen van dit merk met exact dezelfde functies als de poort gebruikt.
+  const tegenproef: Cel[] = [];
+  if (tegenproefN > 0) {
+    const { products, brands } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { FIELDS } = await import("@/lib/enrichment/parser");
+    const { ONDERDRUKKENDE_VERDENKINGEN } = await import("@/lib/repo/enrichment");
+    const prods = await db
+      .select({ name: products.name })
+      .from(products)
+      .innerJoin(brands, eq(brands.id, products.brandId))
+      .where(eq(brands.name, run.brandName));
+    const veld = items[0].field;
+    const kandidaten: { naam: string; waarde: string }[] = [];
+    for (const p of prods) {
+      const specs = parseProductName(p.name);
+      const v = specs[veld as (typeof FIELDS)[number]];
+      if (v === undefined) continue;
+      const vl = verdenkingen(p.name, specs);
+      const blok = vl.find((x) => x.veld === veld && x.soort === "product-is-onderdeel");
+      if (!blok) continue;
+      kandidaten.push({ naam: p.name, waarde: String(v) });
+    }
+    // Gelijkmatig over de lijst, zodat het niet één productfamilie is.
+    for (let i = 0; i < Math.min(tegenproefN, kandidaten.length); i++) {
+      const k = kandidaten[Math.floor((i * kandidaten.length) / Math.min(tegenproefN, kandidaten.length))];
+      tegenproef.push({
+        celId: `t${String(i + 1).padStart(4, "0")}`,
+        veld,
+        waarde: k.waarde,
+        naamvorm: nameShape(k.naam),
+        aantalProducten: 1,
+        productnamen: [k.naam],
+        vlaggen: [],
+      });
+    }
+  }
+
   // ── vallen ────────────────────────────────────────────────────────────────
   // Eén val per 20 echte cellen, minimaal 2. Een val is een ECHTE productnaam gekoppeld aan een
   // waarde die er aantoonbaar NIET in staat. Het juiste antwoord is dus 'nee-niet-in-naam'.
@@ -103,19 +148,20 @@ async function main() {
 
   // Vallen tussen de echte cellen mengen, deterministisch (elke n-de plek).
   const alles: Cel[] = [];
-  const stap = Math.max(1, Math.floor(echte.length / (vallen.length + 1)));
+  const extra = [...vallen, ...tegenproef];
+  const stap = Math.max(1, Math.floor(echte.length / (extra.length + 1)));
   let vi = 0;
   echte.forEach((c, i) => {
     alles.push(c);
-    if ((i + 1) % stap === 0 && vi < vallen.length) alles.push(vallen[vi++]);
+    if ((i + 1) % stap === 0 && vi < extra.length) alles.push(extra[vi++]);
   });
-  while (vi < vallen.length) alles.push(vallen[vi++]);
+  while (vi < extra.length) alles.push(extra[vi++]);
 
   // ── scherven schrijven ────────────────────────────────────────────────────
   const map = `zwerm/${runId}`;
   await mkdir(map, { recursive: true });
   const scherven: string[] = [];
-  const antwoordsleutel: Record<string, { val: boolean; namen: string[] }> = {};
+  const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
 
   for (let s = 0; s * scherfMaat < alles.length; s++) {
     const deel = alles.slice(s * scherfMaat, (s + 1) * scherfMaat);
@@ -147,14 +193,19 @@ async function main() {
       ),
     );
     scherven.push(pad);
-    for (const c of deel) antwoordsleutel[c.celId] = { val: c.val === true, namen: c.productnamen };
+    for (const c of deel)
+      antwoordsleutel[c.celId] = {
+        val: c.val === true,
+        tegenproef: c.celId.startsWith("t"),
+        namen: c.productnamen,
+      };
   }
 
   await writeFile(`${map}/antwoordsleutel.json`, JSON.stringify(antwoordsleutel, null, 2));
 
   console.log(`\nrun ${runId} — ${run.brandName}`);
   console.log(`  voorstellen : ${items.length}`);
-  console.log(`  cellen      : ${echte.length} echt + ${vallen.length} vallen = ${alles.length}`);
+  console.log(`  cellen      : ${echte.length} echt + ${vallen.length} vallen + ${tegenproef.length} tegenproef = ${alles.length}`);
   console.log(`  scherven    : ${scherven.length} (max ${scherfMaat} cellen elk)`);
   console.log(`  map         : ${map}/`);
   console.log(`\nde antwoordsleutel is voor de LEZER, niet voor de agents:`);

@@ -150,3 +150,12 @@ test("een onderdeel laat ook zijn IP en dimprotocol vallen, niet alleen het verm
   expect(v).toContain("maxWattage:product-is-onderdeel");
   expect(v).toContain("dimmable:product-is-onderdeel");
 });
+
+// De bovengrens van maxWattage is gemeten, niet gekozen: alle 16 landende voorstellen van
+// 1000 W en hoger zijn railprofielen (T.MAGNET), waar het getal de belastbaarheid van de rail
+// is. Het zwaarste échte armatuur in de catalogus haalt 850 W.
+test("railprofielen vallen buiten het wattagebereik, echte armaturen niet", () => {
+  expect(vlaggen("T.MAGNET EVO SUSP. UP&DOWNPROFILE 1000 W")).toContain("maxWattage:buiten-bereik");
+  expect(vlaggen("T.MAGNET EVO SURF-SUSP POTPROFILE 3000 W")).toContain("maxWattage:buiten-bereik");
+  expect(vlaggen("Versus 4 LED 3K 850W Nero")).not.toContain("maxWattage:buiten-bereik");
+});
