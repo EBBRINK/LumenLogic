@@ -51,7 +51,7 @@ import { assertBranchDb, logGuard } from "./branch-guard";
 import { getRunItems, getEnrichmentRun, nameShape } from "@/lib/repo/enrichment";
 import { parseProductName, specSpans } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
-import { meng } from "@/lib/enrichment/zwerm-meng";
+import { meng, scheidTweelingen } from "@/lib/enrichment/zwerm-meng";
 
 const [, , runId, ...rest] = process.argv;
 const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) ?? 40);
@@ -107,6 +107,7 @@ type Cel = {
   productnamen: string[]; // maximaal 3, letterlijk uit de catalogus
   vlaggen: string[];
   val?: true; // alleen in het antwoordmodel van de lezer; staat NIET in het scherfbestand
+  bron?: Cel; // bij een val: de echte cel waarvan hij gekopieerd is. Ook alleen intern.
 };
 
 async function main() {
@@ -225,6 +226,7 @@ async function main() {
       celId: `v${String(i + 1).padStart(4, "0")}`, // voorlopig
       waarde: nep,
       val: true,
+      bron,
     });
   }
 
@@ -247,9 +249,30 @@ async function main() {
   });
   // De invoegposities komen uit `meng()` (lib/enrichment/zwerm-meng.ts): hash-gestuurd binnen
   // gelijke emmers, dus gespreid maar niet op een vaste stap. Los getest.
-  alles.push(
-    ...meng(echte, extra, (s) => createHash("sha256").update(s).digest()),
+  const gemengd = meng(echte, extra, (s) => createHash("sha256").update(s).digest());
+
+  // Past alles in ÉÉN scherf, dan is er geen andere scherf om een val naartoe te ruilen en staat
+  // hij dus per definitie naast zijn tweeling. Bij een merk dat toevallig klein genoeg is zou het
+  // vierde slot dan stilletjes niet werken — precies het soort poort dat formeel dichtstaat en
+  // materieel niets tegenhoudt. Daarom in dat geval altijd minstens twee scherven.
+  const maat =
+    vallen.length > 0 && gemengd.length <= scherfMaat
+      ? Math.ceil(gemengd.length / 2)
+      : scherfMaat;
+
+  // ── Vierde slot: de val mag zijn TWEELING niet in dezelfde scherf hebben ───
+  // Een val is een gekopieerde echte cel. Lag het origineel ernaast, dan is de val te vinden
+  // zonder hem te lezen: twee cellen die op één getal na identiek zijn. Bij Lombardo gold dat
+  // voor 186 van de 196 vallen, en vijf agents schreven onafhankelijk op dat ze het zagen
+  // ("gif-cellen", "opzettelijk geplante afwijkers"). `scheidTweelingen` ruilt zulke vallen met
+  // een echte cel uit een andere scherf; zie de toelichting in lib/enrichment/zwerm-meng.ts.
+  const gescheiden = scheidTweelingen(
+    gemengd,
+    maat,
+    (c) => (c.val === true ? "val" : c.celId.startsWith("t") ? "tegenproef" : "echt"),
+    (c) => c.bron ?? null,
   );
+  alles.push(...gescheiden.rij);
 
   // ── celId's hernummeren: geen herkenbaar voorvoegsel meer ─────────────────
   // Twee agenten meldden onafhankelijk dat ze de ingevoegde cellen aan hun `v`- en `t`-prefix
@@ -283,10 +306,10 @@ async function main() {
   const scherven: string[] = [];
   const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
 
-  for (let s = 0; s * scherfMaat < alles.length; s++) {
-    const deel = alles.slice(s * scherfMaat, (s + 1) * scherfMaat);
+  for (let s = 0; s * maat < alles.length; s++) {
+    const deel = alles.slice(s * maat, (s + 1) * maat);
     // Het scherfbestand draagt GEEN val-markering — anders is de val geen val.
-    const cellen = deel.map(({ val: _val, ...c }) => c);
+    const cellen = deel.map(({ val: _val, bron: _bron, ...c }) => c);
     const hash = createHash("sha256")
       .update(cellen.map((c) => `${c.celId}:${c.veld}:${c.waarde}`).join("|"))
       .digest("hex")
@@ -317,7 +340,7 @@ async function main() {
     );
     scherven.push(pad);
     deel.forEach((c, j) => {
-      const soort = soortVan.get(`${s * scherfMaat + j}`);
+      const soort = soortVan.get(`${s * maat + j}`);
       antwoordsleutel[c.celId] = {
         val: soort === "val",
         tegenproef: soort === "tegenproef",
@@ -331,7 +354,17 @@ async function main() {
   console.log(`\nrun ${runId} — ${run.brandName}`);
   console.log(`  voorstellen : ${items.length}`);
   console.log(`  cellen      : ${echte.length} echt + ${vallen.length} vallen + ${tegenproef.length} tegenproef = ${alles.length}`);
-  console.log(`  scherven    : ${scherven.length} (max ${scherfMaat} cellen elk)`);
+  console.log(
+    `  scherven    : ${scherven.length} (max ${maat} cellen elk` +
+      (maat !== scherfMaat ? `, opgesplitst omdat één scherf de vallen naast hun tweeling zet` : "") +
+      `)`,
+  );
+  console.log(
+    `  tweelingen  : ${gescheiden.geruild} val(len) naar een andere scherf geruild` +
+      (gescheiden.rest > 0
+        ? `  ⚠ ${gescheiden.rest} kon niet — te weinig scherven, die val is herkenbaar naast zijn bron`
+        : ""),
+  );
   console.log(`  map         : ${map}/`);
   console.log(`\nde antwoordsleutel is voor de LEZER, niet voor de agents:`);
   console.log(`  ${map}/antwoordsleutel.json`);

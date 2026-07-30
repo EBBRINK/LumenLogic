@@ -1,6 +1,6 @@
 // De valpositie mag de val niet verraden. Zie de toelichting in zwerm-meng.ts.
 import { describe, expect, it } from "vitest";
-import { meng } from "./zwerm-meng";
+import { meng, scheidTweelingen } from "./zwerm-meng";
 
 /** Deterministische pseudo-hash; de suite draait in de browser, dus geen node:crypto. */
 function hash(s: string): Uint8Array {
@@ -67,5 +67,97 @@ describe("meng", () => {
     expect(meng(echt(5), [], hash)).toHaveLength(5);
     expect(meng(echt(3), nep(7), hash)).toHaveLength(10);
     expect(meng([], nep(3), hash)).toHaveLength(3);
+  });
+});
+
+describe("scheidTweelingen", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  const soortVan = (c: C) => c.soort;
+  const bronVan = (c: C) => c.bron ?? null;
+
+  /** Bouwt een lijst waarin elke val direct naast zijn bron staat — de Lombardo-situatie. */
+  function naastElkaar(nEcht: number, elke: number) {
+    const rij: C[] = [];
+    for (let i = 0; i < nEcht; i++) {
+      const e: C = { id: `e${i}`, soort: "echt" };
+      rij.push(e);
+      if (i % elke === elke - 1) rij.push({ id: `v${i}`, soort: "val", bron: e });
+    }
+    return rij;
+  }
+  const scherf = (i: number, maat: number) => Math.floor(i / maat);
+  function tweelingenInEenScherf(rij: C[], maat: number) {
+    const pos = new Map<C, number>();
+    rij.forEach((c, i) => pos.set(c, i));
+    return rij.filter(
+      (c) => c.soort === "val" && c.bron && scherf(pos.get(c)!, maat) === scherf(pos.get(c.bron)!, maat),
+    ).length;
+  }
+
+  it("haalt de val bij zijn bron vandaan", () => {
+    const maat = 50;
+    const rij = naastElkaar(400, 20);
+    expect(tweelingenInEenScherf(rij, maat)).toBeGreaterThan(15); // de bug
+    const uit = scheidTweelingen(rij, maat, soortVan, bronVan);
+    expect(tweelingenInEenScherf(uit.rij, maat)).toBe(0);
+    expect(uit.rest).toBe(0);
+    expect(uit.geruild).toBeGreaterThan(0);
+  });
+
+  it("verliest geen enkele cel en houdt de lengte gelijk", () => {
+    const rij = naastElkaar(400, 20);
+    const uit = scheidTweelingen(rij, 50, soortVan, bronVan);
+    expect(uit.rij).toHaveLength(rij.length);
+    expect(new Set(uit.rij.map((c) => c.id)).size).toBe(rij.length);
+  });
+
+  it("laat elke scherf vallen houden — recall blijft een uitspraak over élke scherf", () => {
+    const maat = 50;
+    const uit = scheidTweelingen(naastElkaar(400, 20), maat, soortVan, bronVan);
+    const perScherf = new Map<number, number>();
+    uit.rij.forEach((c, i) => {
+      if (c.soort === "val") perScherf.set(scherf(i, maat), (perScherf.get(scherf(i, maat)) ?? 0) + 1);
+    });
+    const scherven = Math.ceil(uit.rij.length / maat);
+    for (let s = 0; s < scherven; s++) expect(perScherf.get(s) ?? 0).toBeGreaterThan(0);
+  });
+
+  it("meldt eerlijk als er te weinig scherven zijn in plaats van stil te falen", () => {
+    // Alles in één scherf: er ís geen andere scherf om naartoe te ruilen.
+    const rij = naastElkaar(20, 10);
+    const uit = scheidTweelingen(rij, 1000, soortVan, bronVan);
+    expect(uit.geruild).toBe(0);
+    expect(uit.rest).toBe(2);
+  });
+
+  it("is reproduceerbaar", () => {
+    const a = scheidTweelingen(naastElkaar(400, 20), 50, soortVan, bronVan).rij.map((c) => c.id);
+    const b = scheidTweelingen(naastElkaar(400, 20), 50, soortVan, bronVan).rij.map((c) => c.id);
+    expect(a).toEqual(b);
+  });
+});
+
+describe("scheidTweelingen — de ruil mag geen nieuwe tweeling maken", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  it("gebruikt nooit een broncel als ruilpartner", () => {
+    // Gezien bij XAL: 1 van de 11 vallen stond na de reparatie alsnog naast zijn bron, doordat
+    // een latere ruil die bron in de scherf van een al verhuisde val zette.
+    const maat = 10;
+    const rij: C[] = [];
+    for (let i = 0; i < 60; i++) {
+      const e: C = { id: `e${i}`, soort: "echt" };
+      rij.push(e);
+      if (i % 6 === 5) rij.push({ id: `v${i}`, soort: "val", bron: e });
+    }
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const pos = new Map<C, number>();
+    uit.rij.forEach((c, i) => pos.set(c, i));
+    const naast = uit.rij.filter(
+      (c) =>
+        c.soort === "val" &&
+        c.bron &&
+        Math.floor(pos.get(c)! / maat) === Math.floor(pos.get(c.bron)! / maat),
+    );
+    expect(naast).toHaveLength(0);
   });
 });
