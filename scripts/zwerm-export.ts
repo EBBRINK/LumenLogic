@@ -355,7 +355,15 @@ async function main() {
     });
   }
 
-  await writeFile(`${map}/antwoordsleutel.json`, JSON.stringify(antwoordsleutel, null, 2));
+  // ── De sleutel ligt NIET in de scherfmap ──────────────────────────────────
+  // Hij lag er wel, naast de scherven die de agents lezen. Eén agent meldde het uit zichzelf:
+  // *"ik zag wel dat er een antwoordsleutel.json in dezelfde map staat — die heb ik bewust niet
+  // geopend, dat zou de controle zinloos maken."* Dat hij dat deed is netjes; dat hij het kón is
+  // het probleem. Een slot dat afhangt van de terughoudendheid van degene die je controleert,
+  // is geen slot. De sleutel gaat naar `zwerm/sleutels/` — de agents krijgen alleen een pad naar
+  // hun eigen scherf, dus die map staat buiten hun blikveld.
+  await mkdir("zwerm/sleutels", { recursive: true });
+  await writeFile(`zwerm/sleutels/${runId}.json`, JSON.stringify(antwoordsleutel, null, 2));
 
   console.log(`\nrun ${runId} — ${run.brandName}`);
   console.log(`  voorstellen : ${items.length}`);
@@ -385,8 +393,8 @@ async function main() {
         : ""),
   );
   console.log(`  map         : ${map}/`);
-  console.log(`\nde antwoordsleutel is voor de LEZER, niet voor de agents:`);
-  console.log(`  ${map}/antwoordsleutel.json`);
+  console.log(`\nde antwoordsleutel is voor de LEZER, niet voor de agents — buiten de scherfmap:`);
+  console.log(`  zwerm/sleutels/${runId}.json`);
   for (const p of scherven) console.log(`  ${p}`);
 }
 

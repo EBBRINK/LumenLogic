@@ -30,7 +30,12 @@ type Bevinding = { celId: string; oordeel: string; reden: string; namen: string[
 async function main() {
   const bestanden = (await readdir(map)).sort();
   const scherven = bestanden.filter((f) => /^scherf-\d+\.json$/.test(f));
-  const sleutel = JSON.parse(await readFile(`${map}/antwoordsleutel.json`, "utf8")) as Record<
+  // De sleutel ligt bewust buiten de scherfmap (zie zwerm-export.ts). Oudere runs hebben hem er
+  // nog wel in staan; die blijven leesbaar zodat afgeronde rondes na te rekenen zijn.
+  const sleutelPad = await readFile(`zwerm/sleutels/${runId}.json`, "utf8").catch(() =>
+    readFile(`${map}/antwoordsleutel.json`, "utf8"),
+  );
+  const sleutel = JSON.parse(sleutelPad) as Record<
     string,
     { val: boolean; tegenproef?: boolean; namen: string[] }
   >;
@@ -40,8 +45,14 @@ async function main() {
   const bevindingen: Bevinding[] = [];
   const vallen = { totaal: 0, gevonden: 0, gemist: [] as string[] };
   // Tegenproef: cellen die de voorstelpoort WEERDE als onderdeel, ononderscheidbaar meegemengd.
-  // Ze toetsen het FILTER in plaats van alleen wat het doorlaat. Noemt een agent er één een
-  // echt armatuur, dan is het naam-begin-anker te grof en weren we goede waarden.
+  // Ze toetsen het FILTER in plaats van alleen wat het doorlaat.
+  //
+  // ⚠ Een betwiste tegenproef betekent NIET automatisch dat het anker te grof is. Er zijn twee
+  // lezingen en alleen een mens kan kiezen: óf het anker weerde een echt armatuur, óf de agent
+  // zag het onderdeel niet. Bij Wever & Ducré waren de twee betwiste cellen
+  // `LAMP C35 LED 2700K OPAL 5.5W E14` en `LAMP G95 LED 2700K OPAL 10W E27` — losse lampen, dus
+  // het anker had gelijk en de agent niet. Dat is óók waardevol: het is de enige plek waar de
+  // FOUT-NEGATIEVEN van de zwerm zelf zichtbaar worden.
   const tegen = { totaal: 0, bevestigd: 0, betwist: [] as string[] };
   const problemen: string[] = [];
   const prompts = new Set<string>();
@@ -203,7 +214,10 @@ async function main() {
   if (tegen.totaal > 0) {
     console.log(
       `  tegenproef       : ${tegen.bevestigd}/${tegen.totaal} geweerde onderdelen bevestigd` +
-        (tegen.betwist.length ? "  ← ANKER MOGELIJK TE GROF:" : "  ✓ het anker weert terecht"),
+        (tegen.betwist.length
+          ? "  ← ONENIGHEID, met de hand bekijken: óf het anker weert een echt armatuur,\n" +
+            "                       óf de zwerm heeft een onderdeel niet herkend:"
+          : "  ✓ het anker weert terecht"),
     );
     for (const b of tegen.betwist) console.log(`      ${b}`);
   }

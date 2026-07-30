@@ -4329,3 +4329,27 @@ ving 4 en 5 niet omdat hij per scherf kijkt en niet naar de verdeling tússen sc
 óók gedekt: de dichtheidstoets zit in de reparatie zelf. Wie hier nog iets verandert: **draai de
 export en kijk naar de valposities vóór je agents inzet** — dat kost een minuut en het heeft
 vandaag twee volledige rondes gekost om die gewoonte te leren.
+
+### Twee dingen die deze W&D-ronde wél oplevert
+
+**1. De tegenproef heeft voor het eerst iets betwist — en het anker had gelijk.**
+`tegenproef 10/12`. De twee betwiste cellen: `LAMP C35 LED 2700K OPAL 5.5W E14` en
+`LAMP G95 LED 2700K OPAL 10W E27`. Dat zijn losse lampen; de poort weerde ze terecht en **de
+agents zagen het niet**. Dat is de eerste gemeten FOUT-NEGATIEF van de zwerm zelf: 2 van de 12,
+op precies de vraag waar hij voor bestaat.
+
+De verwerker zei daarbij `← ANKER MOGELIJK TE GROF`, en dat is één van twee lezingen. Die tekst
+is aangepast: een betwiste tegenproef betekent onenigheid, niet dat het anker fout zit. Alleen
+een mens kan kiezen welke van de twee het is.
+
+⚠ **Consequentie voor alle andere merken:** de `goed`-oordelen zijn niet foutloos. Waar de
+tegenproef nul cellen had — negen van de vijftien runs — is deze fout-negatief niet meetbaar
+geweest en is er dus ook geen reden om aan te nemen dat hij daar niet bestaat.
+
+**2. De antwoordsleutel lag in dezelfde map als de scherven.**
+Een agent meldde het uit zichzelf: *"ik zag wel dat er een `antwoordsleutel.json` in dezelfde map
+staat — die heb ik bewust niet geopend, dat zou de controle zinloos maken."* Dat hij dat deed is
+netjes; dat hij het kón is het probleem. Een slot dat afhangt van de terughoudendheid van degene
+die je controleert is geen slot. De sleutel gaat nu naar `zwerm/sleutels/<runId>.json`, buiten de
+map waar de agents in werken; `zwerm-lees.ts` valt terug op de oude plek zodat afgeronde rondes
+na te rekenen blijven.
