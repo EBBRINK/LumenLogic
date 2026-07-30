@@ -14,6 +14,7 @@ import { getVisibleProduct, searchProducts } from "@/lib/repo/products";
 import { getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
 import { getColorVariants } from "@/lib/repo/variants";
 import { getActor, requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   decideReviewAction,
   dismissAiSuggestionAction,
@@ -95,6 +96,10 @@ export default async function ReviewTab({
 }) {
   await requireSession();
   const { id } = await params;
+  // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
+  // regel gooit getReviewQueue de uuid-cast en wint die 500 van de nette 404 van
+  // de layout. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
   const { line, q } = await searchParams;
   const { pending, done } = await getReviewQueue(db, id);
   // Fase voor de AI-suggestie-render-guard (regel 4) + de suggesties zelf (B4).

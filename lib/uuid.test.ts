@@ -226,19 +226,14 @@ test("guard-dekking: de gedeelde merk-resolver guardt de queryparam", () => {
 test("guard-dekking: élke dynamische pagina en layout guardt zijn eigen param", () => {
   // De regel staat bij requireUuid in lib/uuid.ts: layout en pagina renderen concurrent
   // en dekken elkaar dus NIET. Deze test is de handhaving daarvan.
-  const NOG_TE_DOEN = new Set([
-    // Twee bestanden waren tijdens deze reparatieronde in handen van een parallelle
-    // sessie en konden hier niet aangepast worden. Zodra die zijn geland horen deze
-    // regels weg — de test dekt ze dan automatisch.
-    "app/projects/[id]/quote/page.tsx",
-    "app/projects/[id]/review/page.tsx",
-  ]);
-
+  // Geen uitzonderingen meer: quote/page.tsx en review/page.tsx waren tijdens de
+  // reparatieronde in handen van een parallelle sessie en zijn daarna alsnog
+  // geguard. Elke dynamische pagina of layout hoort hier doorheen te komen — voeg
+  // hier niets aan toe zonder de reden erbij.
   const dynamisch = bestanden.filter(
     (b) =>
       (b.pad.endsWith("/page.tsx") || b.pad.endsWith("/layout.tsx")) &&
-      b.pad.includes("[") &&
-      !NOG_TE_DOEN.has(b.pad),
+      b.pad.includes("["),
   );
   // Ondergrens, geen exact aantal — zie de toelichting bij de route handlers.
   expect(dynamisch.length).toBeGreaterThanOrEqual(13);

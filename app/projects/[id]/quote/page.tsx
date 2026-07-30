@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { getEstimateData } from "@/lib/repo/estimate";
 import { getXisExports, preflightSummary } from "@/lib/repo/xis";
 import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   generateQuoteAction,
   saveQuoteHeaderAction,
@@ -99,6 +100,10 @@ export default async function EstimatePage({
 }) {
   await requireSession();
   const { id } = await params;
+  // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
+  // regel gooit getEstimateData de uuid-cast en wint die 500 van de nette 404 van
+  // de layout. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
 
   const data = await getEstimateData(db, id);
   if (!data) notFound();
