@@ -217,3 +217,51 @@ describe("controleerVallen — de vier lekken die we al een keer gemist hebben",
     expect(k.join(" ")).toMatch(/geen enkele val/);
   });
 });
+
+describe("scheidTweelingen — geen scherf zonder val", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  // 43 cellen bij maat 15 ⇒ precies 3 scherven, en 3 vallen om te verdelen. Meer scherven dan
+  // vallen is een ander probleem (dan kán het niet) en hoort in `controleerVallen`, niet hier.
+  const maat = 15;
+  const scherfVan = (i: number) => Math.floor(i / maat);
+  function vallenPerScherf(rij: C[]) {
+    const per = new Map<number, number>();
+    rij.forEach((c, i) => {
+      if (c.soort === "val") per.set(scherfVan(i), (per.get(scherfVan(i)) ?? 0) + 1);
+    });
+    return per;
+  }
+
+  it("haalt een val terug als de tweeling-reparatie een scherf leegtrok", () => {
+    // Gezien bij Flos Architectural en It's About RoMi: de vallen verhuisden allemaal naar scherf
+    // 2 en scherf 1 hield er nul over, waarmee val-recall niets meer zei over scherf 1.
+    const echt: C[] = Array.from({ length: 40 }, (_, i) => ({ id: `e${i}`, soort: "echt" }));
+    const rij: C[] = [...echt];
+    // twee vallen met een bron in scherf 1, één met een bron in scherf 3 — die laatste kán terug
+    rij.splice(3, 0, { id: "v1", soort: "val", bron: echt[2] });
+    rij.splice(9, 0, { id: "v2", soort: "val", bron: echt[7] });
+    rij.splice(12, 0, { id: "v3", soort: "val", bron: echt[36] });
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const per = vallenPerScherf(uit.rij);
+    for (let s = 0; s < Math.ceil(uit.rij.length / maat); s++) {
+      expect(per.get(s) ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("dringt zich niet op als terughalen de tweeling-eis zou breken", () => {
+    // Twee vallen, beide met hun bron in scherf 1: dan MÓET scherf 1 leeg blijven. De
+    // tweeling-eis gaat voor, en `controleerVallen` meldt de lege scherf eerlijk.
+    const echt: C[] = Array.from({ length: 28 }, (_, i) => ({ id: `e${i}`, soort: "echt" }));
+    const rij: C[] = [...echt];
+    rij.splice(3, 0, { id: "v1", soort: "val", bron: echt[2] });
+    rij.splice(9, 0, { id: "v2", soort: "val", bron: echt[7] });
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const pos = new Map<C, number>();
+    uit.rij.forEach((c, i) => pos.set(c, i));
+    const naast = uit.rij.filter(
+      (c) => c.soort === "val" && c.bron && scherfVan(pos.get(c)!) === scherfVan(pos.get(c.bron)!),
+    );
+    expect(naast).toHaveLength(0);
+    expect(vallenPerScherf(uit.rij).get(0) ?? 0).toBe(0);
+  });
+});

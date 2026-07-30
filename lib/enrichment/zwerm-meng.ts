@@ -142,6 +142,37 @@ export function scheidTweelingen<T>(
     vallenPerScherf.set(nieuweScherf, (vallenPerScherf.get(nieuweScherf) ?? 0) + 1);
     geruild++;
   }
+  // ── Elke scherf houdt minstens één val ────────────────────────────────────
+  // De tweeling-reparatie kan een scherf leeghalen: verhuizen alle vallen van scherf 1 naar
+  // scherf 2, dan zegt val-recall niets meer over scherf 1. Gezien bij Flos Architectural en
+  // It's About RoMi. Haal er dan een val terug uit de scherf met de meeste, mits diens bron er
+  // niet zit — de tweeling-eis gaat vóór.
+  const aantalScherven = Math.ceil(rij.length / scherfMaat);
+  for (let leeg = 0; leeg < aantalScherven; leeg++) {
+    if ((vallenPerScherf.get(leeg) ?? 0) > 0) continue;
+    let rijkste = -1;
+    for (let s = 0; s < aantalScherven; s++) {
+      if (rijkste < 0 || (vallenPerScherf.get(s) ?? 0) > (vallenPerScherf.get(rijkste) ?? 0)) rijkste = s;
+    }
+    if ((vallenPerScherf.get(rijkste) ?? 0) < 2) break; // niets te verdelen
+    const kandidaatVal = rij.find((c, i) => {
+      if (soortVan(c) !== "val" || scherf(i) !== rijkste) return false;
+      const b = bronVan(c);
+      const pb2 = b ? posVan.get(b) : null;
+      return pb2 == null || scherf(pb2) !== leeg;
+    });
+    const doelCel = rij.find((c, i) => scherf(i) === leeg && soortVan(c) === "echt" && !bronnen.has(c));
+    if (!kandidaatVal || !doelCel) continue;
+    const pa = posVan.get(kandidaatVal)!;
+    const pd = posVan.get(doelCel)!;
+    [rij[pa], rij[pd]] = [rij[pd], rij[pa]];
+    posVan.set(kandidaatVal, pd);
+    posVan.set(doelCel, pa);
+    vallenPerScherf.set(rijkste, (vallenPerScherf.get(rijkste) ?? 1) - 1);
+    vallenPerScherf.set(leeg, 1);
+    geruild++;
+  }
+
   return { rij, geruild, rest };
 }
 
