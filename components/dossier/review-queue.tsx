@@ -401,15 +401,16 @@ function OcrCard({
   // paginanummer en link ernaar (nieuw tabblad) zodat de reviewer het boek naast
   // de gelezen waarden kan leggen. Alleen als de regel zijn herkomst draagt.
   // hasPageImage komt per PAGINA uit de review-query (UX-audit 30 jul, bug #2):
-  // false = er is geen beeld van déze pagina — een leesroute-run (AI-tekstroute,
-  // stap 3 fase B, die reviewKind 'ocr' deelt maar nooit beelden heeft) óf een
-  // OCR-run die maar een deel van zijn pagina's in beeld kreeg. Blind naar
-  // /ocr-image linken gaf dan een kale 404; nu linkt de kaart naar het
-  // markdown-controlespoor van de importrun, met hetzelfde paginanummer als
-  // tekst. undefined (fixtures/oudere aanroepers) blijft de beeldlink: bestaand
-  // OCR-gedrag ongewijzigd.
+  // true = er is een beeld van déze pagina. Alleen dán de beeldlink. Anders — een
+  // leesroute-run (AI-tekstroute, stap 3 fase B, die reviewKind 'ocr' deelt maar
+  // nooit beelden heeft), een OCR-run die maar een deel van zijn pagina's in beeld
+  // kreeg, óf een aanroeper die de vlag niet meestuurt — linkt de kaart naar het
+  // markdown-controlespoor van de importrun, met hetzelfde paginanummer als tekst.
+  // Bewust `=== true` en niet `!== false` (reviewronde 2, 30 jul): de "onbekend →
+  // tóch de beeldlink"-tak was de enige tak die een kale 404 kón opleveren en had
+  // geen enkele aanroeper meer — getReviewQueue levert altijd een echte boolean.
   const hasSource = item.importRunId != null && item.sourcePage != null;
-  const hasImage = item.hasPageImage !== false;
+  const hasImage = item.hasPageImage === true;
   return (
     <>
       <p className="text-sm text-muted-foreground">
@@ -418,18 +419,31 @@ function OcrCard({
       </p>
       {/* De ruwe tabelregel zoals de import hem las: zonder dit citaat vraagt de
           kaart om een controle zonder het te controleren materiaal te tonen
-          (UX-audit 30 jul). Bewust compact — twee regels via line-clamp, de hele
-          (al in de repo-laag afgekapte) tekst zit in de title-tooltip. */}
+          (UX-audit 30 jul). Compact in rust (twee regels), maar de hele regel is
+          bereikbaar: uitklappen haalt de line-clamp weg. Géén title-tooltip meer
+          (reviewronde 2, 30 jul) — die droeg dezelfde al afgekapte tekst en doet
+          op 375px, waar geen hover bestaat, helemaal niets. De tekst staat precies
+          één keer in de DOM; alleen de clamp klapt open. */}
       {item.sourceText && (
-        <p
-          className="line-clamp-2 border-l-2 pl-2.5 font-mono text-xs leading-snug text-muted-foreground"
-          title={item.sourceText}
-        >
-          <span className="font-sans font-medium text-foreground">
-            Source text
-          </span>{" "}
-          {item.sourceText}
-        </p>
+        <details className="group/src border-l-2 pl-2.5">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="text-xs font-medium text-foreground">
+              Source text
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {" · "}
+              <span className="underline underline-offset-2 group-open/src:hidden">
+                show all
+              </span>
+              <span className="hidden underline underline-offset-2 group-open/src:inline">
+                show less
+              </span>
+            </span>
+            <span className="mt-0.5 line-clamp-2 font-mono text-xs leading-snug break-words whitespace-pre-wrap text-muted-foreground group-open/src:line-clamp-none">
+              {item.sourceText}
+            </span>
+          </summary>
+        </details>
       )}
       {hasSource && (
         <p className="text-sm text-muted-foreground">

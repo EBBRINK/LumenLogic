@@ -4,8 +4,9 @@
 // Daarnaast (stap 7, herontwerp 2026-07-14): rode regels zonder match horen als
 // werkvoorraad op de review-pagina ("Niet gevonden — handmatig linken"). Rood is een
 // STATUS, geen review-flag — die regels krijgen dus geen reviewKind, maar een eigen query.
-import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
+  type ImportRow,
   importRuns,
   ocrPageImages,
   specLineCandidates,
@@ -15,10 +16,14 @@ import { triggerVangnet } from "@/lib/ai/vangnet";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
 
-// Hoeveel tekens ruwe brontekst de review-kaart maximaal krijgt. Bewust in SQL
-// afgekapt: de kaart toont een citaat van één tabelregel, geen paginatranscript —
-// zo sleept de wachtrijquery geen kilobytes leestekst mee per regel.
-const SOURCE_TEXT_CAP = 240;
+// Payload-plafond, GEEN weergavegrens (reviewronde 2, 30 jul). De vorige versie kapte
+// op 240 tekens in SQL en zette diezelfde 240 tekens óók in een title-tooltip als
+// "volledige tekst" — dubbel afgekapt, op 375px zonder hover helemaal onbereikbaar.
+// Afkappen voor het oog hoort in de kaart (line-clamp + uitklappen); hier staat alleen
+// een bovengrens die één ontspoorde lezing (model dumpt een halve pagina in rawText)
+// uit de RSC-payload houdt. Een echte tabelregel zit rond de 350 tekens. Constante in
+// TypeScript, niet meer via sql.raw in de query — dat was injectie-op-termijn.
+const SOURCE_TEXT_MAX = 2000;
 
 export async function getReviewQueue(db: AppDb, dossierId: string) {
   const rows = await db
@@ -54,44 +59,139 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
       // gecorreleerd, zodat de vlag exact betekent "het paginabeeld van DEZE regel
       // bestaat". source_page null → false → de kaart valt terug op de tekstlink.
       hasPageImage: sql<boolean>`exists (select 1 from ${ocrPageImages} where ${ocrPageImages.importRunId} = ${specLines.importRunId} and ${ocrPageImages.page} = ${specLines.sourcePage})`,
-      // Wat de import van DEZE regel las (UX-audit 30 jul, tweede helft van bug #2):
-      // de OCR-kaart vraagt "is de lezing correct?" maar toonde alleen de al
-      // geparste velden — niets om tegen te vergelijken. De ruwe tabelregel staat
-      // per gelezen rij in import_runs.rows (ImportRow.rawText, gezet door
-      // verwerkGelezenRegels voor zowel de beeld- als de tekstroute). We halen
-      // alléén dat ene tekstveld op, niet de hele rows-array.
-      // Alleen voor OCR-reviews: anders zou élke regel van het dossier de
-      // rows-array van zijn run laten uitklappen, terwijl geen andere kaart de
-      // brontekst toont. Keuze bij meerdere rijen met dezelfde armatuurcode (een
-      // boek noemt een code op meerdere pagina's): eerst de rij van de eigen
-      // source_page, dan de 'checked' rij — dat is de winnende (rijkste) lezing
-      // waaruit de regelvelden komen.
-      // Twee bewuste voorzichtigheden in de SQL: jsonb_array_elements klapt op een
-      // niet-array (zou de héle review-pagina 500'en op één rare run), en een
-      // ::int-cast klapt op een niet-numerieke page — vandaar de typeof-guard en
-      // een vergelijking in jsonb zelf.
-      sourceText: sql<string | null>`case when ${specLines.reviewKind} = 'ocr' then (
-        select left(elem->>'rawText', ${sql.raw(String(SOURCE_TEXT_CAP))})
-        from ${importRuns} ir
-        cross join lateral jsonb_array_elements(
-          case when jsonb_typeof(ir."rows") = 'array' then ir."rows" else '[]'::jsonb end
-        ) as elem
-        where ir.id = ${specLines.importRunId}
-          and elem->>'fixtureCode' = ${specLines.fixtureCode}
-          and elem->>'rawText' is not null
-        order by
-          case when elem->'page' = to_jsonb(${specLines.sourcePage}) then 0 else 1 end,
-          case when elem->'checked' = 'true'::jsonb then 0 else 1 end
-        limit 1
-      ) end`,
     })
     .from(specLines)
     .where(eq(specLines.dossierId, dossierId))
     .orderBy(asc(specLines.sortOrder), asc(specLines.createdAt));
   // aanvraagvolgorde (C-11), niet urgentie
-  const pending = rows.filter((r) => r.reviewKind && !r.reviewedAt);
-  const done = rows.filter((r) => r.reviewKind && r.reviewedAt);
+  const pendingRows = rows.filter((r) => r.reviewKind && !r.reviewedAt);
+  const doneRows = rows.filter((r) => r.reviewKind && r.reviewedAt);
+  // De brontekst hoort alleen bij de WACHTENDE OCR-kaarten: de afgerond-sectie van
+  // de wachtrij rendert hem niet (review-queue.tsx toont daar alleen het
+  // audit-spoor), dus die rijen mogen er ook niets voor kosten — een uitgereviewd
+  // boek groeit naar honderden afgeronde regels (reviewronde 2, 30 jul).
+  const pending = await metBrontekst(db, dossierId, pendingRows);
+  const done = doneRows.map((r) => ({ ...r, sourceText: null as string | null }));
   return { pending, done };
+}
+
+// ── Ruwe brontekst per OCR-regel ─────────────────────────────────────────────
+// Wat de import van een regel las (UX-audit 30 jul): de OCR-kaart vraagt "is de
+// lezing correct?" maar toonde alleen de al geparste velden — niets om tegen te
+// vergelijken. De ruwe tabelregel staat per gelezen rij in import_runs.rows
+// (ImportRow.rawText, gezet door verwerkGelezenRegels voor zowel de beeld- als de
+// tekstroute).
+//
+// Dit gebeurt in TypeScript en niet meer als gecorreleerde subquery per regel
+// (reviewronde 2, 30 jul). Die vorm klapte de héle rows-jsonb van de run open per
+// spec-regel — zuiver O(n²) met detoasting: gemeten op PGlite met realistische
+// rawText liep de wachtrijquery van ~2 ms naar 164 ms bij 800 regels, en een echt
+// armaturenboek is honderden regels. Nu: één keer `rows` per betrokken run.
+type BrontekstRegel = {
+  fixtureCode: string;
+  sourcePage: number | null;
+  importRunId: string | null;
+  reviewKind: string | null;
+};
+
+// Welke gelezen rij hoort bij DEZE regel? import_runs.rows heeft géén stabiele
+// identiteit (ImportRow in db/schema.ts kent geen id, en een index in de array
+// bijhouden zou een migratie op spec_lines kosten — bewust niet in deze ronde), en
+// de armatuurcode is GEEN sleutel:
+//   • het regel-detail laat de reviewer de code vrij overschrijven
+//     (editSpecLineAction → updateSpecLine, zonder uniciteitscheck en zonder
+//     source_page aan te raken) — precies de handeling waarvoor deze kaart bestaat
+//     ("Lr001B" op pagina 9 was een hallucinatie → wordt "Lr001");
+//   • één run kan dezelfde code meermaals lezen (duplicaat-pad in
+//     verwerkGelezenRegels) en in het geaccepteerde race-geval zelfs twee
+//     spec-regels met dezelfde code overhouden.
+// Matchen op code alléén liet daardoor de tekst van een ANDERE pagina onder de kop
+// "Read from page N" verschijnen. Een verkeerd citaat is strikt erger dan geen
+// citaat: de reviewer bevestigt dan een 3000K-lezing tegen een 2700K-bron. Daarom
+// zijn pagina én code HARDE eisen en is twijfel = geen citaat. Op een gezonde
+// OCR/leesroute-run verandert dat niets: verwerkGelezenRegels zet source_page altijd
+// op de pagina van de winnende lezing.
+function kiesRuweTekst(
+  rows: ImportRow[],
+  fixtureCode: string,
+  sourcePage: number,
+): string | null {
+  const kandidaten = rows.filter(
+    (r) =>
+      r.fixtureCode === fixtureCode &&
+      r.page === sourcePage &&
+      typeof r.rawText === "string" &&
+      r.rawText.trim() !== "",
+  );
+  if (kandidaten.length === 0) return null;
+  if (kandidaten.length === 1) return kap(kandidaten[0].rawText!);
+  // Meerdere lezingen van dezelfde code op dezelfde pagina: 'checked' wijst de
+  // winnende (rijkste) lezing aan — precies één rij per code mag die vlag dragen.
+  const gewonnen = kandidaten.filter((r) => r.checked === true);
+  if (gewonnen.length === 1) return kap(gewonnen[0].rawText!);
+  // Geen unieke winnaar. Zeggen ze allemaal hetzelfde, dan is citeren nog veilig;
+  // anders zwijgen we — we kunnen niet weten welke van de twee bij deze regel hoort.
+  const uniek = new Set(kandidaten.map((r) => r.rawText!.trim()));
+  return uniek.size === 1 ? kap(kandidaten[0].rawText!) : null;
+}
+
+function kap(tekst: string): string {
+  return tekst.length > SOURCE_TEXT_MAX
+    ? `${tekst.slice(0, SOURCE_TEXT_MAX)}…`
+    : tekst;
+}
+
+async function metBrontekst<T extends BrontekstRegel>(
+  db: AppDb,
+  dossierId: string,
+  lines: T[],
+): Promise<(T & { sourceText: string | null })[]> {
+  const zonder = (l: T) => ({ ...l, sourceText: null as string | null });
+  // Alleen OCR-reviews: geen andere kaart toont de brontekst, dus geen andere regel
+  // hoeft de rows van zijn run te laten lezen.
+  const relevant = lines.filter(
+    (l) => l.reviewKind === "ocr" && l.importRunId != null && l.sourcePage != null,
+  );
+  if (relevant.length === 0) return lines.map(zonder);
+
+  const runIds = [...new Set(relevant.map((l) => l.importRunId!))];
+  // Gescoopt op het dossier (defense in depth): een regel die naar de run van een
+  // ánder dossier wijst kan normaal niet bestaan, en als het gebeurt citeren we
+  // liever niets dan tekst van een vreemd dossier.
+  const runs = await db
+    .select({ id: importRuns.id, rows: importRuns.rows })
+    .from(importRuns)
+    .where(and(inArray(importRuns.id, runIds), eq(importRuns.dossierId, dossierId)));
+  const rowsPerRun = new Map<string, ImportRow[]>(
+    runs.map((r) => [r.id, Array.isArray(r.rows) ? r.rows : []]),
+  );
+
+  // Twee spec-regels met dezelfde (run, code, pagina) — de expliciet geaccepteerde
+  // race in verwerkGelezenRegels — zijn niet te onderscheiden: dan krijgt géén van
+  // beide een citaat, in plaats van beide hetzelfde citaat waarvan één fout is.
+  const gezien = new Set<string>();
+  const dubbel = new Set<string>();
+  const sleutel = (l: BrontekstRegel) =>
+    `${l.importRunId} ${l.fixtureCode} ${l.sourcePage}`;
+  for (const l of relevant) {
+    const k = sleutel(l);
+    if (gezien.has(k)) dubbel.add(k);
+    else gezien.add(k);
+  }
+
+  return lines.map((l) => {
+    if (l.reviewKind !== "ocr" || l.importRunId == null || l.sourcePage == null)
+      return zonder(l);
+    if (dubbel.has(sleutel(l))) return zonder(l);
+    return {
+      ...l,
+      sourceText: kiesRuweTekst(
+        rowsPerRun.get(l.importRunId) ?? [],
+        l.fixtureCode,
+        l.sourcePage,
+      ),
+    };
+  });
 }
 
 // Rode regels zonder match: "merk wél, product niet". Geen review-flag (rood is een

@@ -499,7 +499,7 @@ test("wachtrij: paginabeeld-vlag is per PAGINA, niet per run (geen link naar een
   const metBeeld = pending.find((r) => r.sourcePage === 3);
   const zonderBeeld = pending.find((r) => r.sourcePage === 7);
 
-  // Echte booleans (niet 't'/'f'): de UI test op `!== false`, dus dat moet hard zijn.
+  // Echte booleans (niet 't'/'f'): de UI test op `=== true`, dus dat moet hard zijn.
   expect(metBeeld?.hasPageImage).toBe(true);
   expect(zonderBeeld?.hasPageImage).toBe(false);
 });
@@ -523,4 +523,157 @@ test("wachtrij: niet-OCR-regels vragen de brontekst niet op (blijft null)", asyn
   expect(pending[0].sourceText).toBeNull();
   // Zonder import_run_id is er ook geen paginabeeld.
   expect(pending[0].hasPageImage).toBe(false);
+});
+
+// ── Rijidentiteit van de brontekst (reviewronde 2, 30 jul) ───────────────────
+// De eerste versie zocht de rij op armatuurcode, met de eigen pagina als
+// VOORKEUR. Maar de code is geen sleutel: het regel-detail laat de reviewer hem
+// vrij overschrijven (editSpecLineAction → updateSpecLine, geen uniciteitscheck,
+// source_page blijft staan) en één run kan dezelfde code op meerdere pagina's
+// lezen. Zo kon de tekst van pagina 5 onder de kop "Read from page 9" verschijnen —
+// een verkeerd citaat, en dat is erger dan geen citaat. Onderstaande seeds bouwen
+// die gevallen letterlijk na; de eis is nu: pagina én code moeten kloppen, anders
+// zwijgt de kaart.
+async function seedRunMetRegels(
+  rows: ImportRow[],
+  lines: { code: string; page: number | null; reviewedAt?: Date }[],
+) {
+  const db = await createTestDb();
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "OCR-rijidentiteit" })
+    .returning();
+  const [run] = await db
+    .insert(importRuns)
+    .values({
+      dossierId: dossier.id,
+      source: "ocr",
+      status: "bevestigd",
+      ocrStatus: "klaar",
+      rows,
+    })
+    .returning();
+  await db.insert(specLines).values(
+    lines.map((l, i) => ({
+      dossierId: dossier.id,
+      fixtureCode: l.code,
+      source: "ocr" as const,
+      sourcePage: l.page,
+      importRunId: run.id,
+      reviewKind: "ocr" as const,
+      reviewedAt: l.reviewedAt ?? null,
+      sortOrder: i,
+    })),
+  );
+  return { db, dossierId: dossier.id, runId: run.id };
+}
+
+function ocrRij(over: Partial<ImportRow> & { fixtureCode: string }): ImportRow {
+  return {
+    quantity: null,
+    brandText: "XAL",
+    productText: null,
+    source: "ocr",
+    checked: true,
+    ...over,
+  };
+}
+
+test("wachtrij: een handmatig bijgewerkte code citeert nóóit de tekst van een andere pagina", async () => {
+  // Het gerapporteerde geval: de run las Lr001 op pagina 5 en Lr001B op pagina 9;
+  // de reviewer besloot dat die B een hallucinatie was en zette de code van de
+  // pagina-9-regel op Lr001. Die regel heeft nu source_page 9 met een rij die
+  // alleen op pagina 5 bestaat.
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({
+        fixtureCode: "Lr001",
+        rawText: "Lr001 XAL UNICO Q4 2700K IP20 9W",
+        page: 5,
+      }),
+      ocrRij({
+        fixtureCode: "Lr001B",
+        rawText: "Lr001B XAL UNICO Q4 3000K IP20 9W",
+        page: 9,
+      }),
+    ],
+    [
+      { code: "Lr001", page: 5 },
+      { code: "Lr001", page: 9 }, // code bijgewerkt in de review
+    ],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  const pagina5 = pending.find((r) => r.sourcePage === 5)!;
+  const pagina9 = pending.find((r) => r.sourcePage === 9)!;
+  // Pagina 5 klopt gewoon.
+  expect(pagina5.sourceText).toBe("Lr001 XAL UNICO Q4 2700K IP20 9W");
+  // Pagina 9 heeft geen eigen rij meer → geen citaat. Vóór de fix stond hier het
+  // 2700K-citaat van pagina 5 onder de kop "Read from page 9".
+  expect(pagina9.sourceText).toBeNull();
+  expect(pagina9.sourceText ?? "").not.toContain("2700K");
+});
+
+test("wachtrij: een rij zonder ruwe tekst leent er geen van een andere pagina", async () => {
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({ fixtureCode: "Ld200", page: 2 }), // winnende lezing, géén rawText
+      ocrRij({
+        fixtureCode: "Ld200",
+        rawText: "Ld200 XAL van een heel andere pagina",
+        page: 8,
+        checked: false,
+      }),
+    ],
+    [{ code: "Ld200", page: 2 }],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending[0].sourceText).toBeNull();
+});
+
+test("wachtrij: twee regels met dezelfde code op dezelfde pagina krijgen géén citaat", async () => {
+  // De expliciet geaccepteerde race in verwerkGelezenRegels kan twee spec-regels met
+  // dezelfde code in één run overhouden. Ze zijn niet te onderscheiden, dus liever
+  // beide zonder citaat dan beide hetzelfde citaat waarvan één bij de verkeerde regel
+  // staat.
+  const s = await seedRunMetRegels(
+    [ocrRij({ fixtureCode: "Ld300", rawText: "Ld300 XAL 4000K", page: 4 })],
+    [
+      { code: "Ld300", page: 4 },
+      { code: "Ld300", page: 4 },
+    ],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending).toHaveLength(2);
+  expect(pending.map((r) => r.sourceText)).toEqual([null, null]);
+});
+
+test("wachtrij: afgeronde regels krijgen geen brontekst (de afgerond-sectie toont hem niet)", async () => {
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({ fixtureCode: "Ld400", rawText: "Ld400 XAL 2700K", page: 1 }),
+      ocrRij({ fixtureCode: "Ld401", rawText: "Ld401 XAL 3000K", page: 2 }),
+    ],
+    [
+      { code: "Ld400", page: 1 },
+      { code: "Ld401", page: 2, reviewedAt: new Date("2026-07-29T10:00:00Z") },
+    ],
+  );
+  const { pending, done } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending[0].sourceText).toBe("Ld400 XAL 2700K");
+  expect(done).toHaveLength(1);
+  expect(done[0].sourceText).toBeNull();
+});
+
+test("wachtrij: lange brontekst wordt niet meer op 240 tekens gekapt", async () => {
+  // De vorige versie kapte in SQL op 240 tekens én zette diezelfde 240 tekens als
+  // "volledige tekst" in een title-tooltip. Afkappen voor het oog hoort in de kaart;
+  // de data-laag levert de hele regel (payload-plafond ligt op 2000).
+  const lang = `Ld500 XAL ${"UNICO Q4 2700K IP20 9W 650lm 36gr wit ".repeat(20)}`;
+  const s = await seedRunMetRegels(
+    [ocrRij({ fixtureCode: "Ld500", rawText: lang, page: 1 })],
+    [{ code: "Ld500", page: 1 }],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(lang.length).toBeGreaterThan(600);
+  expect(pending[0].sourceText).toBe(lang);
 });

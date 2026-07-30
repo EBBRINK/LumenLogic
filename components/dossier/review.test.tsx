@@ -155,13 +155,32 @@ const ocrItem: ReviewItem = {
 // (vision-fout/budgetstop halen de beeldrij weer weg, dus een run kan een deel van
 // zijn pagina's in beeld hebben). De run-brede vlag liet hier tóch de beeldlink
 // renderen → kale 404 (UX-audit 30 jul, bug #2). Verwacht: de tekstlink.
+// De brontekst is hier bewust een ECHTE boekregel-lengte (~350 tekens, zoals een
+// detailpagina in het Deerns-boek): zo laat de screenshot op 375px zien dat het
+// citaat in rust twee regels blijft en uitklapbaar is (reviewronde 2, 30 jul).
 const ocrItemZonderBeeld: ReviewItem = {
   ...ocrItem,
   id: "s6",
   fixtureCode: "Ld106",
   sourcePage: 15,
   hasPageImage: false,
-  sourceText: "Ld106  XAL  UNICO Q4 3000K  IP20  9W  650lm  36°  zwart",
+  sourceText:
+    "Ld106  XAL  UNICO Q4 3000K  IP20  9W  650lm  36°  zwart  " +
+    "inbouwspot vierkant 68x68 mm inbouwdiepte 95 mm  driver extern DALI dimbaar  " +
+    "CRI ≥ 90  MacAdam step 3  behuizing aluminium gepoedercoat  " +
+    "levensduur L80B10 50.000 h  bestelnummer 1234-5678-90  positie plafond gang 1.04",
+};
+
+// Aanroeper die de vlag niet meestuurt (fixture/oudere code). Er is dan geen bewijs
+// dát het paginabeeld bestaat, dus de kaart valt terug op de tekstlink — nooit op een
+// mogelijke 404 (reviewronde 2, 30 jul: de "onbekend → tóch de beeldlink"-tak is weg).
+const ocrItemZonderVlag: ReviewItem = {
+  ...ocrItem,
+  id: "s7",
+  fixtureCode: "Ld107",
+  sourcePage: 16,
+  hasPageImage: undefined,
+  sourceText: "Ld107  XAL  UNICO Q4 4000K  IP44  12W  900lm  60°  wit",
 };
 
 const done: ReviewItem[] = [
@@ -256,9 +275,10 @@ const shots = {
     <Screen>
       <ReviewQueue
         dossierId="d1"
-        // Twee OcrCards: mét paginabeeld ("View page image") en zonder beeld van
-        // die pagina ("View source text") — beide met hun ruwe brontekst.
-        pending={[ocrItem, ocrItemZonderBeeld]}
+        // Drie OcrCards: mét paginabeeld ("View page image"), zonder beeld van die
+        // pagina (lange brontekst, clamp + "show all") en zonder vlag — alle drie
+        // met hun ruwe brontekst.
+        pending={[ocrItem, ocrItemZonderBeeld, ocrItemZonderVlag]}
         done={[]}
         decideAction={noopAction}
         linkAction={noopAction}
@@ -424,6 +444,67 @@ test("ocr-kaart zonder beeld van díe pagina linkt naar de brontekst, niet naar 
   await expect
     .element(page.getByText(/UNICO Q4 3000K\s+IP20\s+9W/))
     .toBeInTheDocument();
+});
+
+// Reviewronde 2 (30 jul): de "onbekend → tóch de beeldlink"-tak was gedocumenteerd maar
+// ongetest, en was de énige tak die nog een kale 404 kón opleveren. Hij is weg: zonder
+// bewijs dat het beeld bestaat linkt de kaart naar de brontekst.
+test("ocr-kaart zonder hasPageImage-vlag linkt naar de brontekst, niet naar het beeld", async () => {
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderVlag]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  expect(page.getByRole("link", { name: /View page image/ }).query()).toBeNull();
+  await expect
+    .element(page.getByRole("link", { name: /View source text/ }))
+    .toBeInTheDocument();
+});
+
+// F4 (reviewronde 2, 30 jul): de kaart beweerde "volledige tekst in de title", maar die
+// title droeg dezelfde al op 240 tekens gekapte string — dubbel afgekapt, en op 375px
+// (geen hover) helemaal onbereikbaar. Nu: de héle regel staat één keer in de DOM,
+// zichtbaar op twee regels, en uitklappen haalt de clamp weg.
+test("brontekst: hele regel in de DOM, uitklappen haalt de afkapping weg", async () => {
+  await page.viewport(375, 812); // de telefoon waar geen hover bestaat
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderBeeld]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  const quote = page.getByText(/bestelnummer 1234-5678-90/);
+  await expect.element(quote).toBeInTheDocument();
+  const el = quote.element() as HTMLElement;
+  // Geen afgekapte kopie: de tekst in de DOM is exact de meegegeven brontekst, en
+  // er staat géén title-attribuut meer dat "de rest" belooft.
+  expect(el.textContent).toBe(ocrItemZonderBeeld.sourceText);
+  expect(el.closest("[title]")).toBeNull();
+
+  // In rust twee regels: er valt méér tekst binnen dan er te zien is, en de kaart
+  // biedt de uitklap-affordance aan.
+  const details = el.closest("details") as HTMLDetailsElement;
+  const showAll = page.getByText("show all", { exact: true }).element();
+  const showLess = page.getByText("show less", { exact: true }).element();
+  expect(details.open).toBe(false);
+  expect(el.scrollHeight).toBeGreaterThan(el.clientHeight);
+  expect(getComputedStyle(showAll).display).not.toBe("none");
+  expect(getComputedStyle(showLess).display).toBe("none");
+
+  // Uitgeklapt staat de hele regel er — de clamp is weg (geen overloop meer).
+  details.open = true;
+  expect(el.scrollHeight).toBe(el.clientHeight);
+  expect(getComputedStyle(showAll).display).toBe("none");
+  expect(getComputedStyle(showLess).display).not.toBe("none");
 });
 
 test("review-queue lege staat", async () => {

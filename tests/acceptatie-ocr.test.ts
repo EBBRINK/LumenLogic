@@ -294,9 +294,14 @@ test("B7: source ocr + sourcePage; groen/rood → reviewKind 'ocr', matcher-geel
   // beeldrij, dus de kaart mag de beeldlink dragen.
   expect(ocrItem.hasPageImage).toBe(true);
   // …en de kaart krijgt de ruwe tabelregel mee om de lezing tegen te vergelijken.
-  // Lp301 staat óók op pagina 3 (duplicaat "(nogmaals)"); de wachtrij pakt de rij
-  // van de eigen source_page — de winnende lezing, niet het duplicaat.
+  // Lp301 staat óók op pagina 3 (duplicaat "(nogmaals)"): de wachtrij citeert de rij
+  // van de eigen source_page, dus niet het duplicaat. LET OP — dit is de gezonde
+  // situatie, waarin álle criteria (arrayvolgorde, pagina, checked) naar dezelfde rij
+  // wijzen; deze assertie pint de resolutielogica dus NIET. Dat doet
+  // "wachtrij citeert de rij van de EIGEN pagina" in het SASSO-blok onderaan, waar de
+  // arrayvolgorde bewust naar de verkeerde rij wijst (reviewronde 2, 30 jul).
   expect(ocrItem.sourceText).toBe("Lp301 XAL SASSO 100 SQ SP CEIL 3000K");
+  expect(ocrItem.sourceText).not.toContain("(nogmaals)");
   // De matcher-gele regel is geen OCR-review → geen brontekst opgehaald.
   expect(queue.pending.find((p) => p.fixtureCode === "Lw102")!.sourceText).toBeNull();
   expect(await getRedLinkLines(db, dossierId)).toHaveLength(0);
@@ -590,6 +595,26 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
       (upgraded[0].payload as { newRichness: number }).newRichness,
     ).toBeGreaterThanOrEqual(1);
   }, 120_000);
+
+  // Reviewronde 2 (30 jul), F5: hier draaien arrayvolgorde en waarheid tégen elkaar in.
+  // import_runs.rows staat na dit scenario als [pagina 1 (inhoudsopgave, checked:false
+  // na de upgrade), pagina 2 (detailpagina, checked:true)], terwijl de spec-regel op
+  // source_page 2 staat. Wie "de eerste rij met deze armatuurcode" pakt (of het
+  // pagina-/checked-criterium sloopt) krijgt hier de ARME inhoudsopgave-tekst te zien —
+  // en die zou de reviewer laten aftekenen tegen het verkeerde bewijs. De eerdere versie
+  // van deze acceptatie pinde dat niet: daar wees álles naar dezelfde rij.
+  test("wachtrij citeert de rij van de EIGEN pagina, niet de eerste rij met dezelfde code", async () => {
+    const queue = await getReviewQueue(sassoDb, sassoDossierId);
+    const kaart = queue.pending.find((p) => p.fixtureCode === "Lp301")!;
+    expect(kaart.sourcePage).toBe(2); // de detailpagina won de dedup
+    expect(kaart.sourceText).toBe(
+      "Lp301 XAL SASSO 100 Vermogen: 17,9 W. Kleurtemperatuur: 3000 K. CRI ≥ 90.",
+    );
+    // De inhoudsopgave-regel van pagina 1 staat vóóraan in rows en mag niet lekken.
+    expect(kaart.sourceText).not.toBe("Lp301 XAL SASSO 100 8");
+    // En het beeld van díe pagina bestaat, dus de kaart mag de beeldlink dragen.
+    expect(kaart.hasPageImage).toBe(true);
+  }, 60_000);
 
   test("generateQuote/estimate: de SASSO-regel staat p.m. rood, niet geprijsd groen", async () => {
     await generateQuote(sassoDb, sassoDossierId, ACTOR);

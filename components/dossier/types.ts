@@ -144,15 +144,19 @@ export type ReviewItem = {
   // de OcrCard — zodat de reviewer het boek naast de gelezen waarden kan leggen.
   sourcePage?: number | null;
   importRunId?: string | null;
-  // Bestaat het paginabeeld van DEZE regel (run + eigen source_page)? false =
-  // AI-tekstroute (stap 3 fase B, geen beelden) óf een run met maar een deel van
-  // zijn pagina's in beeld (UX-audit 30 jul, bug #2): dan linkt de OcrCard naar het
-  // markdown-controlespoor van de importrun in plaats van naar het niet-bestaande
-  // paginabeeld — dat gaf een kale 404. undefined = onbekend (oudere
-  // aanroepers/fixtures) → gedraagt zich als vanouds (beeldlink).
+  // Bestaat het paginabeeld van DEZE regel (run + eigen source_page)? Alleen true
+  // geeft de beeldlink. false/ontbrekend = AI-tekstroute (stap 3 fase B, geen
+  // beelden), een run met maar een deel van zijn pagina's in beeld (UX-audit 30 jul,
+  // bug #2) of een aanroeper die de vlag niet kent: dan linkt de OcrCard naar het
+  // markdown-controlespoor van de importrun in plaats van naar een niet-bestaand
+  // paginabeeld — dat gaf een kale 404. Er is dus géén "onbekend → tóch de
+  // beeldlink"-tak meer (die was ongetest en de enige die 404 kón geven).
   hasPageImage?: boolean;
-  // De ruwe tabelregel zoals de import hem las (ImportRow.rawText), afgekapt in de
-  // repo-laag. Dít is waartegen de reviewer de gelezen velden vergelijkt.
+  // De ruwe tabelregel zoals de import hem las (ImportRow.rawText) van de eigen
+  // pagina — dít is waartegen de reviewer de gelezen velden vergelijkt. null =
+  // niet eenduidig terug te vinden (bv. de code is na de lezing bijgewerkt); de
+  // kaart toont dan liever geen citaat dan het verkeerde. De kaart kapt zelf af
+  // voor het oog (line-clamp + uitklappen), de repo-laag alleen als payload-plafond.
   sourceText?: string | null;
 };
 
