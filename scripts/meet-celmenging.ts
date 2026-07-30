@@ -25,8 +25,13 @@ const rows = ((await db.execute(sql`
 function sleutelVan(naam: string, f: string, waarde: unknown) {
   const spans = specSpans(naam).filter((s) => s.field === f).sort((a, b) => a.start - b.start);
   const s = spans[0];
-  const stuk = s ? naam.slice(Math.max(0, s.start - context), Math.min(naam.length, s.end + context)) : naam;
-  return `${f}|${nameShape(stuk)}|${waarde}`;
+  if (!s) return `${f}|${nameShape(naam)}|${waarde}`;
+  // Uitbreiden tot woordgrenzen: een knip midden in een woord splitst dezelfde vorm zodra een
+  // buurwoord een teken langer is (gezien: "array" vs "rray"). Ruis van de knip, geen data.
+  let van = Math.max(0, s.start - context), tot = Math.min(naam.length, s.end + context);
+  while (van > 0 && !/\s/.test(naam[van - 1])) van--;
+  while (tot < naam.length && !/\s/.test(naam[tot])) tot++;
+  return `${f}|${nameShape(naam.slice(van, tot))}|${waarde}`;
 }
 
 for (const [label, metGeweerd] of [["A. alleen doorgelaten", false], ["B. inclusief geweerd", true]] as [string, boolean][]) {

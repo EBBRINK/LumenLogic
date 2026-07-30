@@ -38,14 +38,15 @@ for (const r of rows) {
     // weerskanten. De context telt mee omdat "C90 W" en "CRI 90" hetzelfde getal anders
     // rechtvaardigen — de buren zijn precies wat een agent moet zien.
     const span = spans.filter((s) => s.field === f).sort((a, b) => a.start - b.start)[0];
-    const stuk = span
-      ? naam.slice(Math.max(0, span.start - context), Math.min(naam.length, span.end + context))
-      : naam;
+    let van = span ? Math.max(0, span.start - context) : 0;
+    let tot = span ? Math.min(naam.length, span.end + context) : naam.length;
+    while (span && van > 0 && !/\s/.test(naam[van - 1])) van--;
+    while (span && tot < naam.length && !/\s/.test(naam[tot])) tot++;
+    const stuk = span ? naam.slice(van, tot) : naam;
     // De sleutel draagt OOK het begin van de naam. Wat een product IS staat vooraan
     // ("POW.SUPPLY …", "BELT …") en dat is precies wat het oordeel bepaalt; het fragment
     // alleen zou `POW.SUPPLY 96W 48V` en `BELT SURF. POWER 96W 48V` op één hoop gooien.
-    const kop = nameShape(naam.trim().split(/[\s,|]+/)[0] ?? "");
-    const k = `${f}|${kop}|${nameShape(stuk)}|${specs[f]}`;
+    const k = `${f}|${nameShape(stuk)}|${specs[f]}`;
     fragment.set(k, 1);
     if (!voorbeeld.has(k)) voorbeeld.set(k, naam);
   }

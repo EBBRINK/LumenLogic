@@ -64,16 +64,27 @@ const tegenproefN = Number(rest.find((a) => a.startsWith("--tegenproef="))?.slic
 // rechtvaardigen ("CRI 90" versus "C90 W"), niet zoveel dat de familienaam terugkomt.
 const CONTEXT = Number(rest.find((a) => a.startsWith("--context="))?.slice(10) ?? 8);
 
-// De vorm van het spec-fragment: de karakters die dit veld voortbrachten, plus context.
+// De vorm van het spec-fragment: de karakters die dit veld voortbrachten, plus context —
+// UITGEBREID TOT WOORDGRENZEN.
+//
+// Waarom die uitbreiding: een venster op een vast aantal tekens knipt midden in een woord, en
+// dan splitst dezelfde vorm in tweeën zodra een buurwoord één teken langer is. Gezien in de
+// uitdraai van de Flos-cri-run: "BON JOUR 145 BLACK LED ARRAY 27K CRI90" gaf `ray #k cri#` en
+// "… ARRAY 3K CRI90" gaf `rray #k cri#`, omdat "27K" één teken langer is dan "3K". Twee cellen
+// voor precies dezelfde vraag. Dat is ruis van de knip, geen verschil in de data — en het
+// verklaarde waarom die run 11 cellen gaf waar de hele naam er 10 gaf.
 function fragmentVorm(naam: string, veld: string): string {
   const spans = specSpans(naam)
     .filter((s) => s.field === veld)
     .sort((a, b) => a.start - b.start);
   const s = spans[0];
-  const stuk = s
-    ? naam.slice(Math.max(0, s.start - CONTEXT), Math.min(naam.length, s.end + CONTEXT))
-    : naam;
-  return nameShape(stuk);
+  if (!s) return nameShape(naam);
+  let van = Math.max(0, s.start - CONTEXT);
+  let tot = Math.min(naam.length, s.end + CONTEXT);
+  // naar buiten tot een spatie (of het begin/eind van de naam)
+  while (van > 0 && !/\s/.test(naam[van - 1])) van--;
+  while (tot < naam.length && !/\s/.test(naam[tot])) tot++;
+  return nameShape(naam.slice(van, tot));
 }
 
 type Cel = {
