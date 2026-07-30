@@ -269,17 +269,54 @@ de plan-agents, niet iets om nu te beslissen:
 - **bereik modelleren** (extra kolom(men) + `judgeKelvin` erop): correct, maar het raakt de
   matcher en dat is geen "kolom overzetten" meer.
 
+## 🛑 BLOKKADE 3 (gemeten 30 jul, en dit is de zwaarste): de testcases kunnen dit bewijs niet dragen
+
+Dit was de eerste meting zodra de branch er was, en de uitkomst is harder dan verwacht.
+`scripts/serien-kandidaat-check.ts` op de branch `enrichment-serien` (endpoint
+`ep-rapid-credit-at806lp6`, guard-regel in de log, strikt read-only):
+
+> **0 van de 204 opgeslagen spec-regels — over álle 10 dossiers in de database — heeft ook maar
+> één Serien-kandidaat.** Gemeten met de échte `evaluateSpecLine`, op rang-limiet 50 (gelijk aan
+> de `--rank-limit`-default van `scripts/eval-testset.ts`).
+
+En dat is **niet** te verklaren met onzichtbaarheid — die uitweg is expliciet uitgesloten:
+
+| | gemeten |
+|---|---|
+| Serien-producten in de catalogus | 1.955 |
+| zichtbaar in `visible_products` | **1.925** |
+| prijslijst | 2026-01-01 → 2026-12-31, **geldig** |
+
+Serien is dus een volwaardige kandidatenbron; de matcher komt er alleen voor geen enkele regel
+in de buurt. De merkvraag per case bevestigt het van de andere kant: `raadhuis` vraagt
+`<leeg>` (17) · Bega (8) · XAL (4) · Exenia (1) · Etap (1), en `tno` vraagt `<leeg>` (13) ·
+XAL (4) · Muuto (1) · LED Linear (1) · Moooi (1). **Serien komt in geen van beide voor** — ook
+niet via de 30 merkloze regels, waar de matcher wél alle merken doorzoekt.
+
+**Wat dit betekent, hardop:** een geslaagde Serien-vulling is op de vier testcases **per
+constructie onmeetbaar**. Meetlat 1 uit dit doc ("de testcases gaan niet achteruit") blijft
+haalbaar en zinvol als *veiligheidstoets* — stilstand is dan het verwachte en te bewijzen
+resultaat. Maar de nameting kan **niet** aantonen dat de kolomroute wérkt. Dat is een echte
+beperking van deze proef, geen detail, en het hoort bij Timo op tafel vóór er iets gebouwd wordt
+om er omheen te werken.
+
+**Wat de nulmeting wél opleverde — het instrument is aantoonbaar deterministisch.** Op deze
+branch, zonder `--ai`:
+
+| case | regels | statusverdeling |
+|---|---|---|
+| raadhuis | 31 | open 12 · blauw 10 · geel 6 · rood 2 · paars 1 |
+| tno | 20 (15 gelezen) | open 11 · blauw 2 · groen 1 · geel 1 |
+
+Dat is **exact** de nulmeting die het XAL-spoor op 29 jul op een ándere branch (`enrichment-xal`,
+`ep-broad-term-atw1a95t`) mat — cijfer voor cijfer gelijk. Twee onafhankelijk geforkte branches,
+hetzelfde instrument, dezelfde uitkomst: de meetketen is betrouwbaar, en deze branch is een
+getrouwe fork. Die uitspraak is los van Serien geldig en blijft staan.
+
 ## Wat er nog niet gemeten is, en waarom niet
 
 Eerlijk over de gaten, zodat het plan er niet omheen rekent:
 
-- **De rauwe kolommen zelf** — blokkade 1. Alle bronwaarden in dit doc zijn overgenomen.
-- **De nulmeting op een branch** (`scripts/eval-testset.ts`, verse parse) — blokkade 2. Onbekend
-  is dus ook: **dragen `raadhuis` en `tno` überhaupt Serien-kandidaten?** Bij XAL bleken maar 4
-  van de 31 raadhuis-regels een XAL-kandidaat te hebben, en dát bepaalde wat de nameting kon
-  zien. Zonder die telling weet niemand of een geslaagde Serien-vulling op de testcases
-  *zichtbaar* is. Dit is de eerste meting zodra er een branch is, en hij kan de hele
-  bewijsvoering van scope veranderen.
 - **De rangverschuiving.** De mechaniek is bekend uit het XAL-doc (`SPEC_COEFF` 0,15 per veld,
   termen worden opgeteld, marges van 0,05 beslisten eerder top-1). Serien zou 4 velden tegelijk
   vullen op één product, dus tot **+0,60** — twee keer de XAL-uitschieter. Te kwantificeren pas
