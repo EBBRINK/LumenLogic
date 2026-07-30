@@ -451,6 +451,81 @@ Verder nagelezen: `UNCONFIRMED_TIER2_SOURCES` bevat alleen `"optic-code"`
 ([engine.ts:197](lib/matching/engine.ts:197)). Een `supplier-column:*`-label hoort daar níét in —
 staat het er wel in, dan kan geen enkel veld uit de kolomroute groen worden.
 
+## ✅ Blokkade 1 opgeheven (30 jul, later) — en drie vragen zijn nu gemeten in plaats van beoordeeld
+
+Er kwam alsnog read-only Supabase-toegang op `uvmeytxejlzvdgjgthmr` ("Brink licht"). De 28 rauwe
+tabellen staan er, met de kolomaantallen die het zwerm-onderzoek noemt (Valerie 116, Sylvania 73,
+Northern 70, Muuto 68 … Kreon 5, Brick in the Wall 5). Daarmee vervallen de metingen hieronder als
+"overgenomen".
+
+### 1. De vijf verdachte koppelingen: het zijn dubbele sleutels, geen merk-overschrijding
+
+De verdenking uit dit doc was terecht en de uitkomst is precies te maken. `count(distinct sleutel)`
+per rauwe tabel valt **exact samen met mijn onafhankelijk gemeten catalogusteller**:
+
+| merk | rauwe rijen | distincte sleutels | producten in catalogus | dubbele sleutels |
+|---|---|---|---|---|
+| flos | 19.872 | **18.263** | 18.263 ✓ | 1.609 |
+| marset | 2.172 | **1.723** | 1.723 ✓ | 449 |
+| lombardo | 65.360 | **65.096** | 65.096 ✓ | 264 |
+| artemide | 10.281 | 10.259 | 10.258 (−1) | 22 |
+| sylvania | 4.020 | 4.019 | 3.914 (−105) | 1 |
+
+Geen enkele bronrij landt dus op een product van een ánder merk — faalvorm 2 valt af. Blijft
+faalvorm 1: welke van twee rijen met dezelfde sleutel wint? Dat is alleen schadelijk als ze het
+oneens zijn, en dat is gemeten:
+
+| merk | dubbele sleutels | betrokken rijen | **sleutels waar de brontekst verschilt** |
+|---|---|---|---|
+| flos | 1.470 | 3.079 | **0** |
+| lombardo | 264 | 528 | **0** |
+| marset | 214 | 663 | **9** |
+
+Flos en Lombardo dragen bij élke dubbele sleutel identieke tekst — meervoudige sheet-imports van
+dezelfde regel, onschadelijk. **Het hele risico is negen Marset-sleutels.** De overzetting krijgt
+een dedup-stap en die negen komen met naam en al in het runrapport; ze worden niet stilzwijgend
+door een `distinct` opgeslokt.
+
+### 2. Muuto: Timo's kritiek is gemeten en klopt — met een factor tien
+
+De tegenspraak uit blokkade 5 lost op zodra je de vraag per **rij** stelt in plaats van per kolom.
+De geïntegreerde-LED-populatie (`LAMP BASE = '-'` én `BULB INCLUDED = 'Yes'`) is **152 rijen**;
+daarnaast staan 28 rijen met een verwisselbare fitting mét lamp, die eruit horen.
+
+| veld | kale waarde (de ronde-1-grens: typografie) | mét waarde (na eenheid strippen) | factor |
+|---|---|---|---|
+| wattage | **10** | **146** | 14,6× |
+| kelvin | **20** | **152** | 7,6× |
+| lumen | **11** | **137** | 12,5× |
+
+**41 waarden onder de typografische grens, 435 onder de betekenisgrens.** Precies het bezwaar dat
+de opdracht maakt — Tip Table krijgt zijn 8 en Leaf Table blijft leeg omdat er `8W` staat — nu met
+een getal erbij. En het antwoord is niet "zet de BULB-kolom in ronde 1": dat houdt juist die 10 van
+de 146 en laat de willekeur staan. Het antwoord is een **rijfilter plus normalisator in ronde 2**,
+en dan vullen alle 146 consistent.
+
+Daarmee hebben `supplier-columns.ts` en het zwerm-onderzoek allebei gelijk over iets anders: de
+kolom als geheel beschrijft de lamp (`supplier-columns.ts`), en 152 rijen ervan beschrijven het
+armatuur (de zwerm). `KolomToewijzing` kan dat vandaag niet uitdrukken — het heeft één boolean
+`alleenGeintegreerdeLed` en dat is een Serien-specifiek predikaat. Dat veld moet een **benoemd,
+gecureerd rijfilter** worden.
+
+### 3. `stap1Klaar` is geen ronde-1-lijst — de zwerm zegt dat zelf
+
+Ik heb de `kanttekening`-velden gelezen die in de samenvatting niet meekomen. Vier van de elf
+ingangen dragen daarin een **gemeten defect tegen hun eigen voorstel**:
+
+| ingang | wat de zwerm er zelf bij schrijft |
+|---|---|
+| `serien.Schutzart` (1.886) | **89 rijen zijn geen armatuur** — 56 met een expliciete accessoirenaam (optiek, baldakijn, reflektor, front). Op zo'n frontplaat wordt `ip_value` de énige spec. |
+| `serien.Regelung` (1.193) | **42 van de 1.193 beschrijven het retrofit-peertje**, niet het armatuur (TRIAC op G9/R7S/GU10/E27/B15D). |
+| `tossb.LUMEN` (803) | **12 rijen zijn per lichtbron, niet totaal** — bij de DICE-familie is de `6x`-multiplier weggevallen. |
+| `muuto.BULB …` (41) | *"geselecteerd op TYPOGRAFIE, niet op betekenis"* — de zwerm schrijft het letterlijk op. |
+
+Een lijst die "stap 1 klaar" heet en waarvan vier ingangen een eigen tegenbewijs dragen, is geen
+werklijst maar een leeslijst. **Ronde 1 moet uit de export opnieuw worden opgebouwd**, met het
+rijfilter als eerstelijnsinstrument.
+
 ## Wat er beslist moet worden vóór er iets gebouwd wordt
 
 1. **Supabase-toegang** (blokkade 1). Zonder dit zijn ronde 1 en 2 dood. Als hij er komt: éérst
