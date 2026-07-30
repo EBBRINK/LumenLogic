@@ -20,7 +20,9 @@ import {
 // L-01/L-02/L-06: interne gebruikers, LLM-budget en XIS-koppeling op één plek. Deze pagina
 // leeft buiten de dossier-layout en rendert daarom zijn eigen <main>.
 export default async function InstellingenPage() {
-  await requireSession();
+  // De sessie levert hier méér dan de poort: het eigen adres gaat naar de allowlist,
+  // zodat je jezelf niet kunt uitsluiten (UX-audit bug #5).
+  const session = await requireSession();
 
   const [emails, budget, spent, vangnetSpent, ocrSpent, xisEnv, xisKey] =
     await Promise.all([
@@ -53,6 +55,7 @@ export default async function InstellingenPage() {
             emails={emails.map((e) => ({ email: e.email, addedBy: e.addedBy }))}
             addAction={addEmailAction}
             removeAction={removeEmailAction}
+            sessionEmail={session.user?.email ?? null}
           />
         </div>
         <LlmBudgetBlock

@@ -59,6 +59,12 @@ export function EvaluationPanel({
   // runs komen oudste-eerst binnen (listEvaluationRuns) → laatste is de nieuwste meting
   const latest = runs.length > 0 ? runs[runs.length - 1] : null;
   const byLine = new Map(lines.map((l) => [l.id, l]));
+  // UX-audit 30 jul, bug #4: zonder regels is er niets te meten. Het meetformulier
+  // stond er dan wél, met een disabled knop, terwijl de tekst eronder zei "Click
+  // 'Measure hit-rate'" — een opdracht die niet uit te voeren is. Dode knop weg
+  // (afwezig, niet uitgegrijsd — zelfde lijn als BrandDeleteBlock) en de lege stand
+  // vertelt in plaats daarvan waar regels vandaan komen.
+  const isEmpty = lines.length === 0;
 
   return (
     <div className="space-y-6">
@@ -69,22 +75,41 @@ export function EvaluationPanel({
             {lines.length} line{lines.length === 1 ? "" : "s"}
           </p>
         </div>
-        <form action={measureAction} className="flex items-end gap-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">Label</span>
-            <Input
-              name="label"
-              placeholder="e.g. after tolerance tweak"
-              className="h-8 w-56"
-            />
-          </label>
-          <Button type="submit" size="sm" disabled={lines.length === 0}>
-            Measure hit-rate
-          </Button>
-        </form>
+        {!isEmpty && (
+          <form action={measureAction} className="flex items-end gap-2">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Label</span>
+              <Input
+                name="label"
+                placeholder="e.g. after tolerance tweak"
+                className="h-8 w-56"
+              />
+            </label>
+            <Button type="submit" size="sm">
+              Measure hit-rate
+            </Button>
+          </form>
+        )}
       </div>
 
-      {latest ? (
+      {isEmpty ? (
+        <div className="rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
+          <p className="font-medium">The evaluation set is empty</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A line is a real spec line from a project plus the status a human
+            expects the matcher to give it. Without lines there is nothing to
+            measure, so measuring is switched off here.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            There is no screen yet that adds a line to the set — today it is
+            filled straight in the database (table{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              evaluation_lines
+            </code>
+            ). Adding lines from a spec line is still an open design decision.
+          </p>
+        </div>
+      ) : latest ? (
         <div className="rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
           <div className="flex items-baseline justify-between gap-4">
             <span className="text-sm text-muted-foreground">

@@ -109,6 +109,119 @@ test("gebruikers: het laatste adres is NIET te verwijderen (fail-safe)", async (
   expect(removeBtn?.disabled).toBe(true);
 });
 
+// ── Bevestiging vóór verwijderen (UX-audit 30 jul, bug #5) ──────────────────
+//
+// De prullenbak was een kale form-submit: één klik en het adres was weg. Nu opent hij
+// een bevestiging die het adres bij naam noemt, met een weg terug.
+test("verwijderen vraagt om bevestiging en noemt het adres bij naam", async () => {
+  await renderServer(
+    <Screen>
+      <AllowedEmailsBlock
+        emails={emails}
+        addAction={noopAction}
+        removeAction={noopAction}
+      />
+    </Screen>,
+  );
+  const knop = page.getByRole("button", { name: "Remove eduard@brink.nl" });
+  await expect.element(knop).toBeInTheDocument();
+  // De trigger submit zelf niets meer — anders is de bevestiging een sierstuk.
+  expect(knop.element().getAttribute("type")).toBe("button");
+  await knop.click();
+
+  await expect
+    .element(page.getByRole("heading", { name: "Remove eduard@brink.nl?" }))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Remove address" }))
+    .toBeInTheDocument();
+  // Er is altijd een weg terug.
+  await expect
+    .element(page.getByRole("button", { name: "Cancel" }))
+    .toBeInTheDocument();
+});
+
+// De echte lock-out uit de audit: met twee adressen mocht je jezélf verwijderen, en de
+// enige weg terug loopt via dit scherm — waar je dan niet meer bij kunt.
+test("je eigen adres is niet te verwijderen, ook niet met meerdere adressen", async () => {
+  await renderServer(
+    <Screen>
+      <AllowedEmailsBlock
+        emails={emails}
+        addAction={noopAction}
+        removeAction={noopAction}
+        sessionEmail="hello@noplasticfloralfoam.com"
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("eduard@brink.nl"))
+    .toBeInTheDocument();
+  const eigen = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
+  );
+  expect(eigen).not.toBeNull();
+  expect(eigen?.disabled).toBe(true);
+  expect(eigen?.getAttribute("title")).toBe(
+    "Your own address — ask a colleague to remove it",
+  );
+  // De rij van de ander blijft gewoon verwijderbaar — anders is er geen uitweg meer.
+  const ander = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Remove eduard@brink.nl"]',
+  );
+  expect(ander?.disabled).toBe(false);
+});
+
+// Hoofdletters/spaties in het sessieadres mogen de bescherming niet omzeilen.
+test("eigen adres wordt hoofdletter-ongevoelig herkend", async () => {
+  await renderServer(
+    <Screen>
+      <AllowedEmailsBlock
+        emails={emails}
+        addAction={noopAction}
+        removeAction={noopAction}
+        sessionEmail="  Hello@NoPlasticFloralFoam.com "
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("eduard@brink.nl"))
+    .toBeInTheDocument();
+  const eigen = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
+  );
+  expect(eigen?.disabled).toBe(true);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`verwijder-bevestiging (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <AllowedEmailsBlock
+            emails={emails}
+            addAction={noopAction}
+            removeAction={noopAction}
+            sessionEmail="hello@noplasticfloralfoam.com"
+          />
+        </Screen>,
+      );
+      await page.getByRole("button", { name: "Remove eduard@brink.nl" }).click();
+      await expect
+        .element(page.getByRole("heading", { name: "Remove eduard@brink.nl?" }))
+        .toBeInTheDocument();
+      // De dialoog animeert in (duration-100 in components/ui/dialog.tsx); zonder
+      // deze pauze legt de opname een half-doorzichtige, dubbel-belichte staat vast.
+      await new Promise((r) => setTimeout(r, 300));
+      await page.screenshot({
+        path: `./settings-verwijder-bevestiging.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
 test("budget: verbruik en cap staan er; overschrijding toont een amber-notitie, geen rood alarm", async () => {
   await renderServer(
     <Screen>

@@ -17,7 +17,7 @@ const viewports = {
 } as const;
 
 const header: EstimateHeader = {
-  quoteNumber: null, // nog niet uitgestuurd → "BL-2026-{nummer volgt}"
+  quoteNumber: null, // nog niet uitgestuurd → "Number assigned on sending" (A-09)
   quoteDate: "2026-07-07",
   customer: "Deerns",
   projectRef: "PRJ-42",
@@ -144,6 +144,26 @@ const screens = {
       />
     </Screen>
   ),
+  // UX-audit bug #6: kop zonder datum/geldigheid. Zo stelt de offerte-pagina de
+  // actiebalk dan samen — alléén "Generate estimate"; Print, Download PDF en → To XIS
+  // zijn afwezig, niet uitgegrijsd.
+  "estimate-kop-incompleet": (
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={{ ...header, quoteDate: null, validUntil: null }}
+        lines={zonedLines}
+        actions={
+          <form action={noopAction}>
+            <Button type="submit" variant="secondary" size="sm">
+              Generate estimate
+            </Button>
+          </form>
+        }
+      />
+    </Screen>
+  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -222,13 +242,80 @@ test("open punten & acties: blauw = inladen (ons), rood = terug naar klant", asy
   await expect.element(page.getByText(/Kreon — 1×/)).toBeInTheDocument();
 });
 
-test("kopblok: nummer-volgt fallback als er nog geen offertenummer is", async () => {
+// A-09 blijft: er wordt geen nummer gereserveerd. UX-audit bug #6 zat in de WEERGAVE —
+// `BL-2026-{nummer volgt}` is Nederlands mét accolades op een Engelstalig klantstuk dat
+// letterlijk zo naar de printer en de PDF gaat, en leest als een onvervulde
+// sjabloonvariabele.
+test("kopblok: zonder offertenummer staat er een Engelse zin, geen sjabloonhaken", async () => {
   await renderServer(
     <Screen>
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
     </Screen>,
   );
-  await expect.element(page.getByText(/BL-2026-\{nummer volgt\}/)).toBeInTheDocument();
+  await expect
+    .element(page.getByText("Number assigned on sending"))
+    .toBeInTheDocument();
+  const tekst = document.body.textContent ?? "";
+  expect(tekst).not.toContain("nummer volgt");
+  expect(tekst).not.toContain("{");
+});
+
+// ── Kopblokpoort (UX-audit bug #6) ───────────────────────────────────────────
+//
+// Print / Download PDF / → To XIS stonden live terwijl Date en Valid until op "—"
+// stonden: een onvolledig klantstuk ging stilzwijgend naar de printer. De knoppen
+// worden nu op de pagina weggelaten; QuoteView zégt waaróm, en die melding staat
+// bewust NIET op print:hidden.
+test("kop incompleet: melding noemt de ontbrekende velden en verwijst naar Edit header", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={{ ...header, quoteDate: null, validUntil: null }}
+        lines={zonedLines}
+      />
+    </Screen>,
+  );
+  const melding = page.getByRole("status");
+  await expect.element(melding).toBeInTheDocument();
+  const tekst = melding.element().textContent ?? "";
+  expect(tekst).toContain("Complete the quote header");
+  expect(tekst).toContain("Date and Valid until");
+  expect(tekst).toContain("Edit header");
+  // De melding moet mee naar papier — dat is het hele punt.
+  expect(melding.element().className).not.toContain("print:hidden");
+});
+
+test("kop incompleet met alleen een lege geldigheid: één veld genoemd, enkelvoud", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView
+        dossierName="Ziekenhuis Noord"
+        phase="tender"
+        header={{ ...header, validUntil: null }}
+        lines={zonedLines}
+      />
+    </Screen>,
+  );
+  const melding = page.getByRole("status");
+  await expect.element(melding).toBeInTheDocument();
+  const tekst = melding.element().textContent ?? "";
+  expect(tekst).toContain("Valid until is still empty");
+  expect(tekst).not.toContain("Date and");
+});
+
+// Negatieve controle: een complete kop mag geen waarschuwing tonen — anders staat er
+// straks op élk klantstuk een blokje dat er niet hoort.
+test("kop compleet: geen waarschuwing", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Estimate").first()).toBeInTheDocument();
+  expect(page.getByRole("status").query()).toBeNull();
+  expect(document.body.textContent ?? "").not.toContain("Complete the quote header");
 });
 
 test("downloadknop staat naast de printknop en wijst naar de PDF-route", async () => {

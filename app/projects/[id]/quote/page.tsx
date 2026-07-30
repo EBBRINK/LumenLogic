@@ -21,6 +21,7 @@ function KopblokBewerken({
   dossierId,
   q,
   frozen,
+  openen,
 }: {
   dossierId: string;
   q: {
@@ -34,6 +35,8 @@ function KopblokBewerken({
     validUntil: string | null;
   } | null;
   frozen: boolean;
+  /** Kop nog niet compleet → meteen open; de gebruiker moet hier toch zijn (bug #6). */
+  openen: boolean;
 }) {
   if (!q || frozen) return null;
   const field = (
@@ -53,7 +56,7 @@ function KopblokBewerken({
     </label>
   );
   return (
-    <details className="mb-6 rounded-lg border">
+    <details open={openen} className="mb-6 rounded-lg border">
       <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
         Edit header
       </summary>
@@ -114,6 +117,14 @@ export default async function EstimatePage({
       }
     : null;
 
+  // UX-audit bug #6: Print / Download PDF / → To XIS zijn uitgangen naar de klant.
+  // Zolang datum of geldigheid leeg is, is het stuk geen aanbod en horen ze er niet te
+  // staan — afwezig, niet uitgegrijsd (zelfde lijn als BrandDeleteBlock: een dode knop
+  // leert niets en nodigt uit tot klikken). De reden staat in het kopblok zelf, met de
+  // ontbrekende velden bij naam; "Edit header" erboven blijft altijd bereikbaar.
+  // "Generate estimate" blijft wél staan: dát is de stap die de datum invult.
+  const headerComplete = data.computed.headerComplete;
+
   const actions = (
     <>
       <form action={generateQuoteAction}>
@@ -122,18 +133,22 @@ export default async function EstimatePage({
           {q ? "Refresh estimate" : "Generate estimate"}
         </Button>
       </form>
-      <PrintButton />
-      <Button asChild variant="outline" size="sm">
-        <a href={`/projects/${dossier.id}/quote/pdf`} download>
-          Download PDF
-        </a>
-      </Button>
-      <XisPushDialog
-        dossierId={dossier.id}
-        preflight={preflight}
-        existing={existing}
-        action={xisExportAction}
-      />
+      {headerComplete && (
+        <>
+          <PrintButton />
+          <Button asChild variant="outline" size="sm">
+            <a href={`/projects/${dossier.id}/quote/pdf`} download>
+              Download PDF
+            </a>
+          </Button>
+          <XisPushDialog
+            dossierId={dossier.id}
+            preflight={preflight}
+            existing={existing}
+            action={xisExportAction}
+          />
+        </>
+      )}
     </>
   );
 
@@ -143,6 +158,7 @@ export default async function EstimatePage({
         dossierId={dossier.id}
         q={q}
         frozen={q?.frozenAt != null}
+        openen={!headerComplete}
       />
       <QuoteView
         dossierName={dossier.name}

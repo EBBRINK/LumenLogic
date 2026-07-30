@@ -159,6 +159,12 @@ const screens = {
       <EvaluationPanel lines={evalLines} runs={evalRuns} measureAction={noopAction} />
     </Screen>
   ),
+  // UX-audit bug #4: de lege stand is precies de stand die vandaag in productie staat.
+  "evaluatie-leeg": (
+    <Screen>
+      <EvaluationPanel lines={[]} runs={[]} measureAction={noopAction} />
+    </Screen>
+  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -400,4 +406,49 @@ test("evaluatie toont de laatste score en per-regel-diff", async () => {
   // laatste run = "na tweak" met 100% (verschijnt in de scorekaart én de historie-tabel)
   await expect.element(page.getByText("100%").first()).toBeInTheDocument();
   await expect.element(page.getByText("hit").first()).toBeInTheDocument();
+});
+
+// UX-audit 30 jul, bug #4. De oude lege stand was een doodloper: een uitgegrijsde
+// "Measure hit-rate" naast de tekst "Click 'Measure hit-rate' to run the evaluation
+// set" — een opdracht die niet uit te voeren was. En er is geen enkel UI-pad om de set
+// te vullen (addEvaluationLines in lib/repo/evaluation.ts heeft nul aanroepers buiten
+// zijn eigen test), dus die zin kon ook nooit waar worden.
+test("evaluatie leeg: geen meetknop, geen klik-hierop-opdracht, wél waar regels vandaan komen", async () => {
+  await renderServer(
+    <Screen>
+      <EvaluationPanel lines={[]} runs={[]} measureAction={noopAction} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("The evaluation set is empty"))
+    .toBeInTheDocument();
+
+  // De dode knop is wég, niet uitgegrijsd (zelfde lijn als BrandDeleteBlock).
+  expect(page.getByRole("button", { name: "Measure hit-rate" }).query()).toBeNull();
+  // En het label-invoerveld van dat formulier dus ook.
+  expect(document.querySelector('input[name="label"]')).toBeNull();
+
+  const tekst = document.body.textContent ?? "";
+  // Dít was de leugen: klik op iets wat niet kan.
+  expect(tekst).not.toContain("Click “Measure hit-rate”");
+  expect(tekst).not.toContain("No measurement run yet");
+  // En dit is wat er in de plaats komt: waar regels vandaan komen.
+  expect(tekst).toContain("evaluation_lines");
+});
+
+// Negatieve controle: met regels blijft de meting gewoon bereikbaar én blijft de
+// instructie staan — die is dán waar. Zonder deze test kan "verberg het formulier"
+// doorslaan naar "verberg het altijd".
+test("evaluatie met regels maar zonder meting: knop actief, instructie blijft", async () => {
+  await renderServer(
+    <Screen>
+      <EvaluationPanel lines={evalLines} runs={[]} measureAction={noopAction} />
+    </Screen>,
+  );
+  const knop = page.getByRole("button", { name: "Measure hit-rate" });
+  await expect.element(knop).toBeInTheDocument();
+  await expect.element(knop).toBeEnabled();
+  await expect
+    .element(page.getByText(/No measurement run yet/))
+    .toBeInTheDocument();
 });

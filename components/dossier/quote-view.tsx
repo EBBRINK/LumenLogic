@@ -84,6 +84,23 @@ export function QuoteView({
           <Field label="Author" value={header.author ?? "—"} />
           <Field label="Valid until" value={header.validUntil ?? "—"} />
         </dl>
+        {/* UX-audit bug #6: een kop met lege datum/geldigheid mag niet stilzwijgend
+            naar de printer. Bewust NIET op print:hidden — komt het stuk toch op
+            papier (Ctrl+P van de browser), dan hoort deze regel er juist op te staan.
+            Print/PDF/XIS zelf staan uit zolang dit blok er is; dat gebeurt in
+            app/projects/[id]/quote/page.tsx, want daar wonen de knoppen. */}
+        {!computed.headerComplete && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg bg-status-amber-tint px-3 py-2 text-sm text-status-amber-ink"
+          >
+            <span className="font-medium">Complete the quote header</span> —{" "}
+            {computed.missingHeaderFields.join(" and ")}{" "}
+            {computed.missingHeaderFields.length === 1 ? "is" : "are"} still
+            empty. Fill them in under &ldquo;Edit header&rdquo;; until then this
+            estimate cannot be printed, downloaded or sent.
+          </p>
+        )}
       </header>
 
       {lines.length === 0 ? (

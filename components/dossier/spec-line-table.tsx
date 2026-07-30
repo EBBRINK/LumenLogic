@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { IconSearch, IconTrash } from "./icons";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
   Table,
   TableBody,
@@ -99,18 +100,26 @@ export function SpecLineTable({
                       </a>
                     </Button>
                     {deleteAction && (
-                      <form action={deleteAction}>
-                        <input type="hidden" name="dossierId" value={dossierId} />
-                        <input type="hidden" name="specLineId" value={l.id} />
-                        <Button
-                          type="submit"
-                          size="icon-sm"
-                          variant="ghost"
-                          aria-label="Remove line"
-                        >
-                          <IconTrash />
-                        </Button>
-                      </form>
+                      // UX-audit bug #5: dit was een kale form-submit, 40px naast de
+                      // Open/Load-knop. Eén misklik wiste de regel definitief
+                      // (harde delete, lib/repo/dossiers.ts) zonder undo.
+                      <ConfirmActionDialog
+                        trigger={
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={`Remove line ${l.fixtureCode}`}
+                          >
+                            <IconTrash />
+                          </Button>
+                        }
+                        title={`Remove line ${l.fixtureCode}?`}
+                        description="The line disappears from this project, together with its match, its deviations and any day price. This cannot be undone."
+                        confirmLabel="Remove line"
+                        action={deleteAction}
+                        fields={{ dossierId, specLineId: l.id }}
+                      />
                     )}
                   </div>
                 </TableCell>

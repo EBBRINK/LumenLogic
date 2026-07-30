@@ -31,6 +31,11 @@ export type EstimateLine = {
   manuallyChosen?: boolean;
 };
 
+// Wat er in het veld "Quote number" staat zolang er nog geen nummer is (A-09: de
+// teller loopt pas bij uitsturen). Eén constante, want scherm, PDF en test moeten
+// dezelfde zin gebruiken.
+export const NUMBER_PENDING = "Number assigned on sending";
+
 // Kopblok (A-09/A-10). Read-only tonen is prima; het nummer volgt pas bij uitsturen.
 export type EstimateHeader = {
   quoteNumber: string | null;
@@ -81,7 +86,17 @@ export type EstimateZoneGroup = {
 };
 
 export type EstimateComputed = {
-  quoteNumberDisplay: string; // A-09: "BL-{jaar}-{nummer volgt}" zolang er geen nummer is
+  // A-09: het nummer komt pas bij uitsturen. Zolang dat niet is gebeurd staat hier
+  // NUMBER_PENDING — geen sjabloonhaken, geen Nederlands (UX-audit bug #6): dit veld
+  // wordt letterlijk op een Engelstalig klantdocument (scherm én PDF) afgedrukt.
+  quoteNumberDisplay: string;
+  // Is er een écht offertenummer? Voor plekken waar de zin anders moet lopen dan een
+  // veldwaarde, zoals de PDF-titel en de voettekst.
+  quoteNumberAssigned: boolean;
+  // A-10 + UX-audit bug #6: kopblok compleet genoeg om het stuk de deur uit te doen?
+  // Datum en geldigheid zijn het minimum — een offerte zonder die twee is geen aanbod.
+  headerComplete: boolean;
+  missingHeaderFields: string[]; // labels, in de volgorde van het kopblok
   totals: { groen: number; geel: number; samen: number };
   pm: { blauw: number; rood: number; paars: number; total: number };
   blauwLines: EstimateLine[]; // p.m.: merk inladen (onze actie)
@@ -124,8 +139,20 @@ export function computeEstimate(
   header: EstimateHeader,
   lines: EstimateLine[],
 ): EstimateComputed {
-  const year = header.quoteDate?.slice(0, 4) ?? String(new Date().getFullYear());
-  const quoteNumberDisplay = header.quoteNumber ?? `BL-${year}-{nummer volgt}`;
+  // A-09 blijft ongewijzigd: er wordt hier GEEN nummer gereserveerd, de teller loopt
+  // pas bij uitsturen. Alleen de weergave is veranderd (UX-audit bug #6): de oude
+  // fallback was `BL-{jaar}-{nummer volgt}` — een Nederlandse zin mét accolades op een
+  // Engelstalig klantdocument, die als onvervulde sjabloonvariabele leest. Het jaar
+  // erin was bovendien een gok: de teller loopt op het jaar van uitsturen, niet op de
+  // offertedatum van nu.
+  const quoteNumberAssigned = header.quoteNumber != null;
+  const quoteNumberDisplay = header.quoteNumber ?? NUMBER_PENDING;
+
+  // Kopblokpoort (bug #6): datum en geldigheid zijn het minimum voor een klantstuk.
+  const missingHeaderFields: string[] = [];
+  if (!header.quoteDate?.trim()) missingHeaderFields.push("Date");
+  if (!header.validUntil?.trim()) missingHeaderFields.push("Valid until");
+  const headerComplete = missingHeaderFields.length === 0;
 
   // Totalen: groen apart, geel apart, samen. Een regel telt alleen mee met een aantal
   // én een geldige prijs; ontbreekt het aantal, dan is het een stukprijs-regel (p/st).
@@ -165,6 +192,9 @@ export function computeEstimate(
 
   return {
     quoteNumberDisplay,
+    quoteNumberAssigned,
+    headerComplete,
+    missingHeaderFields,
     totals: { groen, geel, samen: groen + geel },
     pm,
     blauwLines,

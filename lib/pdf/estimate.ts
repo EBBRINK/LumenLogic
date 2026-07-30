@@ -79,7 +79,13 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
   const { header, computed } = data;
   const { totals, pm, groups, hasZones } = computed;
 
-  doc.setTitle(`Estimate ${computed.quoteNumberDisplay} — ${data.dossier.name}`);
+  // Zonder nummer geen nummer in de titel: "Estimate Number assigned on sending — X"
+  // leest als onzin (UX-audit bug #6). Het kopveld zégt het wel, daar hoort het.
+  doc.setTitle(
+    computed.quoteNumberAssigned
+      ? `Estimate ${computed.quoteNumberDisplay} — ${data.dossier.name}`
+      : `Estimate — ${data.dossier.name}`,
+  );
 
   let page: PDFPage;
   let y = 0;
@@ -400,7 +406,11 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
       font: regular,
       color: MUTED,
     });
-    const brand = clean(`Brink Licht · Estimate ${computed.quoteNumberDisplay}`);
+    const brand = clean(
+      computed.quoteNumberAssigned
+        ? `Brink Licht · Estimate ${computed.quoteNumberDisplay}`
+        : "Brink Licht · Estimate",
+    );
     p.drawText(brand, {
       x: MARGIN,
       y: MARGIN - 18,

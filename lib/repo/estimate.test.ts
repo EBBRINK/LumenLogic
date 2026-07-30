@@ -11,6 +11,7 @@ import {
   countedLineTotal,
   getEstimateData,
   notableDeviations,
+  NUMBER_PENDING,
 } from "./estimate";
 
 // Zelfde stand als de scherm-fixture: twee zones, alle p.m.-statussen, één geel met
@@ -131,13 +132,21 @@ test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", asyn
   ]);
 });
 
-test("kopblok: vóór genereren 'nummer volgt', ná genereren het echte offertenummer", async () => {
+// A-09 ongewijzigd: er wordt géén nummer gereserveerd bij aanmaken, de teller loopt
+// pas bij uitsturen. Wat wél veranderde (UX-audit bug #6): de fallbacktekst was
+// `BL-2026-{nummer volgt}` — Nederlands mét accolades op een Engelstalig klantstuk,
+// en het jaar erin was een gok, want de teller loopt op het jaar van uitsturen.
+test("kopblok: vóór genereren geen nummer maar 'Number assigned on sending', ná genereren het echte offertenummer", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
   const before = (await getEstimateData(db, dossierId))!;
   expect(before.header.quoteNumber).toBeNull();
-  expect(before.computed.quoteNumberDisplay).toMatch(/^BL-\d{4}-\{nummer volgt\}$/);
+  expect(before.computed.quoteNumberDisplay).toBe(NUMBER_PENDING);
+  expect(before.computed.quoteNumberAssigned).toBe(false);
+  // Geen sjabloonhaken en geen Nederlands meer op het klantstuk.
+  expect(before.computed.quoteNumberDisplay).not.toMatch(/[{}]/);
+  expect(before.computed.quoteNumberDisplay).not.toContain("nummer volgt");
 
   await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
 
@@ -145,6 +154,7 @@ test("kopblok: vóór genereren 'nummer volgt', ná genereren het echte offerten
   const year = new Date().getFullYear();
   expect(after.header.quoteNumber).toBe(`BL-${year}-0001`);
   expect(after.computed.quoteNumberDisplay).toBe(`BL-${year}-0001`);
+  expect(after.computed.quoteNumberAssigned).toBe(true);
   expect(after.header.customer).toBe("Deerns");
   expect(after.header.author).toBe("hello@noplasticfloralfoam.com");
   expect(after.quote?.frozenAt ?? null).toBeNull();
@@ -163,5 +173,45 @@ test("computeEstimate is puur: zelfde invoer → zelfde uitkomst, lege lijst →
   expect(empty.totals).toEqual({ groen: 0, geel: 0, samen: 0 });
   expect(empty.pm.total).toBe(0);
   expect(empty.groups).toEqual([]);
-  expect(empty.quoteNumberDisplay).toBe("BL-2026-{nummer volgt}");
+  expect(empty.quoteNumberDisplay).toBe(NUMBER_PENDING);
+});
+
+// Kopblokpoort (UX-audit bug #6): met een lege datum of geldigheid is het stuk geen
+// aanbod. computeEstimate is de enige bron daarvan — scherm, PDF-route en de
+// downloadroute lezen alle drie dit veld.
+test("kopblokpoort: datum én geldigheid nodig, en de ontbrekende velden staan er bij naam", () => {
+  const basis = {
+    quoteNumber: null,
+    quoteDate: null,
+    customer: "Deerns",
+    projectRef: "PRJ-42",
+    author: "timo@brink.nl",
+    validUntil: null,
+  };
+  const leeg = computeEstimate(basis, []);
+  expect(leeg.headerComplete).toBe(false);
+  expect(leeg.missingHeaderFields).toEqual(["Date", "Valid until"]);
+
+  // Eén van de twee is niet genoeg.
+  expect(
+    computeEstimate({ ...basis, quoteDate: "2026-07-07" }, []).missingHeaderFields,
+  ).toEqual(["Valid until"]);
+  expect(
+    computeEstimate({ ...basis, validUntil: "2026-08-07" }, []).missingHeaderFields,
+  ).toEqual(["Date"]);
+
+  // generateQuote vult de datum wél en de geldigheid NIET (lib/repo/dossiers.ts) —
+  // die tussenstand is precies de stand waarin de knoppen uit horen te staan.
+  const compleet = computeEstimate(
+    { ...basis, quoteDate: "2026-07-07", validUntil: "2026-08-07" },
+    [],
+  );
+  expect(compleet.headerComplete).toBe(true);
+  expect(compleet.missingHeaderFields).toEqual([]);
+
+  // Een veld met alleen witruimte telt niet als ingevuld.
+  expect(
+    computeEstimate({ ...basis, quoteDate: "  ", validUntil: "2026-08-07" }, [])
+      .headerComplete,
+  ).toBe(false);
 });
