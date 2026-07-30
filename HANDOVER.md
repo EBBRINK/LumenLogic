@@ -3817,3 +3817,43 @@ Alles op de Neon-branch `enrichment-serien` (`ep-rapid-credit-at806lp6`), achter
   `accessoire-context` vlagt 12.417 landende voorstellen waarvan het overgrote deel gewone
   armaturen zijn die hun driver alleen vermelden. Onderdrukken daarop zou duizenden juiste
   waarden weggooien. De vlag bepaalt wélke cellen als eerste langskomen, niet wélke sneuvelen.
+
+---
+
+## 2026-07-30 — Waarneming bij de aanvraagkant: opgeslagen eis vs. verse parse
+
+Gevonden tijdens de nameting van het verrijkingsspoor, niet gerepareerd. Hoort bij de
+bestaande bevinding "verzonnen eisen" hierboven en is er een derde categorie naast.
+
+**Eerst de correctie op een te snelle conclusie.** Een eerste, slordige vergelijking suggereerde
+dat 65 van de 133 spec-regels met een opgeslagen eis het oneens zijn met een verse parse. Netjes
+gemeten — numeriek met tolerantie, tekst hoofdletterongevoelig — is dat niet waar:
+
+| | aantal |
+|---|---|
+| opgeslagen eiswaarden over alle `req_*`-kolommen | **525** |
+| identiek aan een verse parse van de opgeslagen tekst | 250 |
+| **werkelijk een andere waarde** | **1** |
+| verse parse vindt niets waar wél een eis staat | **274** |
+
+Die ene afwijking is `Lw101` (dossier `4ca9fafe`): opgeslagen `req_watt = 2.50`, verse parse 3.3.
+
+**Wat de 274 betekent en wat níét.** Het bewijst *niet* dat die eisen verouderd zijn. Het bewijst
+dat `description + product_text + brand_text` niet de volledige invoer is die de import gebruikte —
+de leesroute ziet meer (tabelkolommen, de hele rijcontext). **Elke meting die een eis probeert te
+reproduceren uit de opgeslagen tekst, reproduceert dus iets anders dan wat de matcher gebruikt.**
+Dat raakt de betrouwbaarheid van elke nameting die op een verse parse leunt, en het is de reden
+om metingen op `spec_lines` te doen en niet op een herbouwde parse.
+
+**Het overtuigendste voorbeeld staat op blauw.** `Lw101` in dossier `4ca9fafe` luidt
+*"Wand Vierkant Maatwerk wandarmatuur exact type nader uit te werken door architect - - - LED - - -
+- - - - 3000K CRI ≥ 80"* — een regel die letterlijk zegt dat het type nog bepaald moet worden.
+Een verse parse haalt daar zeven harde eisen uit: `maxWattage 3.3`, `kelvin 3000`, `cri 80`,
+`ipValue IP42`, `beamAngle 25`, `lumenOutput 50`, `dimmable DALI`. De IP-klasse, de bundelhoek en
+het dimprotocol staan nergens in die tekst; ze komen uit de streepjes en de omliggende kolommen.
+
+**En een val die vandaag twee keer toesloeg: `fixture_code` is geen sleutel.** Er zijn drie
+regels met code `Lw101`, in drie dossiers, met drie verschillende armaturen (Axo Light NEST,
+het maatwerk-armatuur hierboven, en een lege "Maatwerk wandarmatuur"). Wie een regel aanhaalt,
+moet het dossier erbij noemen — anders kijken twee mensen naar een andere regel en denken ze
+elkaar tegen te spreken.
