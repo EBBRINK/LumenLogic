@@ -25,7 +25,13 @@ import { Input } from "@/components/ui/input";
 import type { MembershipRole } from "@/db/schema";
 import { callAction, failureDetail } from "@/lib/next-action-result";
 
-export type OrgOption = { id: string; name: string; type: string };
+export type OrgOption = {
+  id: string;
+  name: string;
+  type: string;
+  /** Nog geen beheerder: de eerste die hier binnenkomt wordt het (G36, eerste zin). */
+  needsOrgAdmin: boolean;
+};
 
 export type PinState = "geen" | "actief" | "gebruikt" | "verlopen" | "geblokkeerd";
 
@@ -36,6 +42,8 @@ export type PinUserRow = {
   state: PinState;
   expiresAtIso: string | null;
   usedAtIso: string | null;
+  /** Besluit G36, door de server bepaald (app/admin/users/page.tsx). */
+  canReissue: boolean;
 };
 
 export type IssuePinResult =
@@ -47,6 +55,8 @@ export type IssuePinResult =
       userCreated: boolean;
       activateUrl: string;
       name: string | null;
+      /** Wat er daadwerkelijk is toegekend — kan één rol méér zijn dan aangevinkt. */
+      roles: string[];
     }
   | { ok: false; error: string };
 
@@ -63,6 +73,8 @@ const ROLE_OPTIONS: { value: MembershipRole; label: string }[] = [
   { value: "projectleider", label: "Project lead" },
   { value: "org_admin", label: "Org admin" },
 ];
+
+const ROLE_LABEL = new Map(ROLE_OPTIONS.map((r) => [r.value as string, r.label]));
 
 const STATE_LABEL: Record<PinState, string> = {
   geen: "No PIN issued",
@@ -186,12 +198,16 @@ export function PinBlock({
   issueAction,
   pinLength,
   pinTtlDays,
+  canGrantOrgAdmin,
 }: {
+  /** Alleen de organisaties die deze gebruiker mág kiezen (besluit G36). */
   organizations: OrgOption[];
   users: PinUserRow[];
   issueAction: IssuePinAction;
   pinLength: number;
   pinTtlDays: number;
+  /** G36, tweede zin: alleen Brink zelf kent de org_admin-rol toe. */
+  canGrantOrgAdmin: boolean;
 }) {
   const [justIssued, setJustIssued] = useState<
     Extract<IssuePinResult, { ok: true }> | null
@@ -199,7 +215,20 @@ export function PinBlock({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [reissuing, setReissuing] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // G36: het scherm biedt niets aan dat de server toch weigert. Dat is gemak, geen poort —
+  // issuePinAction beslist opnieuw en weigert hetzelfde, ook bij een aanroep zonder
+  // formulier (bewezen in app/admin/users/issue-pin-authz.test.ts).
+  const roleOptions = canGrantOrgAdmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((r) => r.value !== "org_admin");
+  const gekozenOrg = organizations.find((o) => o.id === orgId) ?? null;
+  // De eerste persoon in een organisatie wordt haar beheerder (G36, eerste zin). De server
+  // doet dat sowieso; dit vinkje zégt het alleen, aangevinkt en vastgezet, zodat de uitgever
+  // niet denkt dat hij het nog kan uitzetten.
+  const orgAdminVastgezet = canGrantOrgAdmin && !!gekozenOrg?.needsOrgAdmin;
 
   // Ronde-1-critic: het succespaneel verschijnt BOVEN de kaart met de knop die net is
   // ingedrukt — zonder deze focusverplaatsing blijft een toetsenbord-/schermlezergebruiker
@@ -264,6 +293,9 @@ export function PinBlock({
       }
       setJustIssued(result);
       form.reset();
+      // form.reset() raakt de select niet: die is controlled (de org bepaalt of het
+      // org_admin-vinkje vastgezet is), dus de state moet apart terug.
+      setOrgId("");
       focusPanel();
     } finally {
       setSubmitting(false);
@@ -328,6 +360,17 @@ export function PinBlock({
                     {justIssued.userCreated
                       ? "new account created"
                       : "existing account"}
+                    {/* De rollen die de server toekende, niet de aangevinkte: de eerste
+                        persoon in een organisatie krijgt er org_admin bij (G36, eerste
+                        zin). Een toegekende beheerdersrol mag nooit onzichtbaar blijven. */}
+                    {justIssued.roles.length > 0 && (
+                      <>
+                        {" · "}
+                        {justIssued.roles
+                          .map((r) => ROLE_LABEL.get(r) ?? r)
+                          .join(", ")}
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -367,7 +410,7 @@ export function PinBlock({
         </div>
       )}
 
-      <Card>
+      <Card data-testid="pin-issue-card">
         <CardHeader>
           <CardTitle>Issue a PIN</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -379,6 +422,15 @@ export function PinBlock({
           </p>
         </CardHeader>
         <CardContent>
+          {organizations.length === 0 ? (
+            // Geen enkele organisatie waar deze gebruiker in mag uitgeven (G36 regel 3, of
+            // een org_admin zonder org). Dan hoort er geen formulier te staan dat toch
+            // afgewezen wordt.
+            <p className="text-sm text-muted-foreground">
+              You can&apos;t issue PINs. Ask Brink if you think you should be
+              able to.
+            </p>
+          ) : (
           <form onSubmit={onCreateSubmit} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -421,7 +473,8 @@ export function PinBlock({
                 id="pin-org"
                 name="orgId"
                 required
-                defaultValue=""
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
                 className="h-11 w-full rounded-lg border border-input bg-muted px-3 text-sm outline-none focus-visible:border-ring focus-visible:bg-background focus-visible:ring-3 focus-visible:ring-ring/10 sm:max-w-sm"
               >
                 <option value="" disabled>
@@ -438,21 +491,56 @@ export function PinBlock({
             <fieldset className="flex flex-col gap-1.5">
               <legend className="text-sm font-medium">Roles</legend>
               <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {ROLE_OPTIONS.map((r) => (
-                  <label
-                    key={r.value}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      name="roles"
-                      value={r.value}
-                      className="size-4 rounded border-input focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    />
-                    {r.label}
-                  </label>
-                ))}
+                {roleOptions.map((r) => {
+                  const vast = r.value === "org_admin" && orgAdminVastgezet;
+                  const vinkjeClass =
+                    "size-4 rounded border-input focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+                  return (
+                    <label
+                      key={r.value}
+                      className={`flex items-center gap-2 text-sm ${
+                        vast ? "text-muted-foreground" : ""
+                      }`}
+                    >
+                      {/* Twee losse elementen met een eigen key i.p.v. één input met
+                          voorwaardelijke props: React ziet dat laatste als een input die van
+                          uncontrolled naar controlled springt en waarschuwt daarover.
+                          Vastgezet i.p.v. alleen aangevinkt omdat de server deze rol hoe dan
+                          ook toekent zolang de organisatie nog geen beheerder heeft — een
+                          uitzetbaar vinkje zou een keuze suggereren die er niet is. Dat het
+                          `disabled` daardoor niet meegestuurd wordt, maakt niets uit: de
+                          bootstrap-regel zit in de autorisatielaag, niet in dit formulier. */}
+                      {vast ? (
+                        <input
+                          key="vast"
+                          type="checkbox"
+                          name="roles"
+                          value={r.value}
+                          checked
+                          readOnly
+                          disabled
+                          className={vinkjeClass}
+                        />
+                      ) : (
+                        <input
+                          key="vrij"
+                          type="checkbox"
+                          name="roles"
+                          value={r.value}
+                          className={vinkjeClass}
+                        />
+                      )}
+                      {r.label}
+                    </label>
+                  );
+                })}
               </div>
+              {orgAdminVastgezet && (
+                <p className="text-xs text-muted-foreground">
+                  {gekozenOrg?.name} has no admin yet — the first person you
+                  invite becomes its org admin.
+                </p>
+              )}
             </fieldset>
 
             {formError && (
@@ -465,6 +553,7 @@ export function PinBlock({
               {submitting ? "Issuing…" : "Create account & issue PIN"}
             </Button>
           </form>
+          )}
         </CardContent>
       </Card>
 
@@ -526,20 +615,26 @@ export function PinBlock({
                         </p>
                       )}
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={reissuing === u.email}
-                      title="Issuing a new PIN replaces the current one, valid or expired."
-                      onClick={() => onReissue(u.email)}
-                    >
-                      {reissuing === u.email
-                        ? "Issuing…"
-                        : u.state === "geen"
-                          ? "Issue PIN"
-                          : "Issue new PIN"}
-                    </Button>
+                    {/* Geen knop voor iemand die deze gebruiker toch niet mag resetten
+                        (G36) — een knop die altijd faalt is erger dan geen knop. De rij
+                        zelf blijft staan: binnen je eigen organisatie mag je zien wie er
+                        lid is en hoe zijn PIN ervoor staat. */}
+                    {u.canReissue && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={reissuing === u.email}
+                        title="Issuing a new PIN replaces the current one, valid or expired."
+                        onClick={() => onReissue(u.email)}
+                      >
+                        {reissuing === u.email
+                          ? "Issuing…"
+                          : u.state === "geen"
+                            ? "Issue PIN"
+                            : "Issue new PIN"}
+                      </Button>
+                    )}
                   </div>
                 </li>
               ))}

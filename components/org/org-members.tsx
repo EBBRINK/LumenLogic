@@ -104,17 +104,29 @@ export function RoleLegend() {
 // De leden van één organisatie: de lijst met hun petten, verwijderen, en het formulier
 // om een lid toe te voegen (e-mail + rol-checkboxes). Presentational — alle schrijf-acties
 // komen als server-action binnen.
+// ⚠️ `canManage` en `canGrantOrgAdmin` komen van de server (besluiten G36/G39) en zijn
+// UI-gemak, geen poort: addMemberAction/removeMemberAction leiden de bevoegdheid zelf
+// opnieuw af uit de sessie en weigeren hetzelfde, ook zonder formulier.
 export function OrgMembers({
   orgId,
   members,
   addAction,
   removeAction,
+  canManage,
+  canGrantOrgAdmin,
 }: {
   orgId: string;
   members: MemberRow[];
   addAction: (formData: FormData) => void | Promise<void>;
   removeAction: (formData: FormData) => void | Promise<void>;
+  /** Mag deze gebruiker de leden van déze organisatie beheren? */
+  canManage: boolean;
+  /** Mag hij de org_admin-rol toekennen? Alleen intern (G36, tweede zin). */
+  canGrantOrgAdmin: boolean;
 }) {
+  const roleOptions = canGrantOrgAdmin
+    ? ROLE_ORDER
+    : ROLE_ORDER.filter((r) => r !== "org_admin");
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -154,25 +166,36 @@ export function OrgMembers({
                     )}
                   </div>
                 </div>
-                <form action={removeAction}>
-                  <input type="hidden" name="orgId" value={orgId} />
-                  <input type="hidden" name="email" value={m.email} />
-                  <Button
-                    type="submit"
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Remove ${m.email}`}
-                    title="Remove member"
-                  >
-                    <IconTrash />
-                  </Button>
-                </form>
+                {/* Geen verwijderknop voor wie deze organisatie niet beheert, en ook niet
+                    voor een org_admin-lid: alleen Brink zelf haalt een beheerder weg (G36).
+                    Een knop die de server altijd weigert is erger dan geen knop. */}
+                {canManage &&
+                  (canGrantOrgAdmin || !m.roles.includes("org_admin")) && (
+                    <form action={removeAction}>
+                      <input type="hidden" name="orgId" value={orgId} />
+                      <input type="hidden" name="email" value={m.email} />
+                      <Button
+                        type="submit"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Remove ${m.email}`}
+                        title="Remove member"
+                      >
+                        <IconTrash />
+                      </Button>
+                    </form>
+                  )}
               </li>
             ))}
           </ul>
         )}
       </div>
 
+      {!canManage ? (
+        <p className="border-t border-foreground/10 pt-4 text-sm text-muted-foreground">
+          You can&apos;t manage the members of this organization.
+        </p>
+      ) : (
       <form
         action={addAction}
         className="flex flex-col gap-3 border-t border-foreground/10 pt-4"
@@ -191,7 +214,7 @@ export function OrgMembers({
             Roles — determine where this member lands by default
           </legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {ROLE_ORDER.map((role) => (
+            {roleOptions.map((role) => (
               <label
                 key={role}
                 className="flex items-center gap-2 text-sm"
@@ -216,6 +239,7 @@ export function OrgMembers({
           Add member
         </Button>
       </form>
+      )}
     </div>
   );
 }

@@ -14,7 +14,13 @@
 // aparte, directive-loze pin-block-fixtures.ts.
 import { redirect } from "next/navigation";
 import { PinBlock } from "./pin-block";
-import { issueHappy, organizations, users } from "./pin-block-fixtures";
+import {
+  eigenOrganisatie,
+  eigenUsers,
+  issueHappy,
+  organizations,
+  users,
+} from "./pin-block-fixtures";
 
 // Nabootst hoe Next een redirecterende server-action ECHT aflevert: de client-promise
 // rejectet met een NEXT_REDIRECT-digest (zie lib/next-action-result.ts), niet een gewone
@@ -37,6 +43,7 @@ export function PinBlockScreen() {
       issueAction={issueHappy}
       pinLength={8}
       pinTtlDays={7}
+      canGrantOrgAdmin
     />
   );
 }
@@ -49,6 +56,7 @@ export function PinBlockLeeg() {
       issueAction={issueHappy}
       pinLength={8}
       pinTtlDays={7}
+      canGrantOrgAdmin
     />
   );
 }
@@ -64,6 +72,7 @@ export function PinBlockMetFout() {
       })}
       pinLength={8}
       pinTtlDays={7}
+      canGrantOrgAdmin
     />
   );
 }
@@ -78,6 +87,37 @@ export function PinBlockMetSessieRedirect() {
       }}
       pinLength={8}
       pinTtlDays={7}
+      canGrantOrgAdmin
+    />
+  );
+}
+
+// Hetzelfde blok, maar gezien door een org_admin (besluit G36): één organisatie in de
+// keuzelijst, geen org_admin-vinkje, en geen "Issue new PIN"-knop bij de collega-beheerder.
+// Het scherm biedt dus niets aan dat issuePinAction toch zou weigeren.
+export function PinBlockAlsOrgAdmin() {
+  return (
+    <PinBlock
+      organizations={eigenOrganisatie}
+      users={eigenUsers}
+      issueAction={issueHappy}
+      pinLength={8}
+      pinTtlDays={7}
+      canGrantOrgAdmin={false}
+    />
+  );
+}
+
+// En de derde stand: iemand die helemaal geen PIN's mag uitgeven ziet geen formulier.
+export function PinBlockZonderRechten() {
+  return (
+    <PinBlock
+      organizations={[]}
+      users={[]}
+      issueAction={issueHappy}
+      pinLength={8}
+      pinTtlDays={7}
+      canGrantOrgAdmin={false}
     />
   );
 }

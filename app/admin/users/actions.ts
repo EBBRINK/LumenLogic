@@ -12,8 +12,8 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import type { MembershipRole } from "@/db/schema";
-import { issueActivationPin } from "@/lib/repo/activation";
-import { getActor, requireSession } from "@/lib/session";
+import { issuePinAsActor } from "@/lib/repo/authz";
+import { requireSession } from "@/lib/session";
 
 export type IssuePinResult =
   | {
@@ -26,6 +26,13 @@ export type IssuePinResult =
       /** Absoluut, met ?email= voorgevuld (app/activate/page.tsx leest die param). */
       activateUrl: string;
       name: string | null;
+      /**
+       * De rollen die de autorisatielaag daadwerkelijk heeft toegekend — niet wat er
+       * aangevinkt stond. Kan één rol méér bevatten dan gevraagd: de eerste persoon in een
+       * organisatie wordt haar org_admin (G36, eerste zin). Het scherm toont ze, zodat een
+       * toegekende beheerdersrol nooit onzichtbaar blijft.
+       */
+      roles: MembershipRole[];
     }
   | { ok: false; error: string };
 
@@ -45,16 +52,11 @@ async function buildActivateUrl(email: string): Promise<string> {
 
 // Ronde-1-critic: "rauwe interne foutteksten in de UI" — issueActivationPin gooit Nederlands
 // mét functienaam ("issueActivationPin: onbekende organisatie"), en elke andere DB-fout kwam
-// woordelijk op het Engelse scherm terecht. Vertaal de twee bekende gevallen expliciet en val
-// voor al het overige terug op een neutrale Engelse melding — nooit err.message doorgeven.
-function friendlyIssueError(err: unknown): string {
-  const message = err instanceof Error ? err.message : "";
-  if (message.includes("onbekende organisatie")) {
-    return "That organization no longer exists — refresh the page and try again.";
-  }
-  if (message.includes("ongeldig e-mailadres")) {
-    return "Enter a valid email address.";
-  }
+// woordelijk op het Engelse scherm terecht. Sinds G36 komen de bekende gevallen (vormloos
+// adres, verdwenen organisatie, "jij mag dit niet") al als Engelse, lekvrije tekst uit
+// authorizePinIssue(); wat hier nog langskomt is een échte storing — nooit err.message
+// doorgeven.
+function friendlyIssueError(): string {
   return "Something went wrong while issuing the PIN. Check the events log, or try again.";
 }
 
@@ -70,37 +72,43 @@ export async function issuePinAction(input: {
   orgId?: string | null;
   roles?: MembershipRole[];
 }): Promise<IssuePinResult> {
-  await requireSession();
-
-  const email = input.email.trim();
-  if (!email || !email.includes("@")) {
-    return { ok: false, error: "Enter a valid email address." };
-  }
-
-  const actor = await getActor();
+  const session = await requireSession();
   const name = input.name?.trim() || null;
+
   try {
-    const issued = await issueActivationPin(db, {
-      email,
+    // Besluiten G36/G39 — de enige poort. Deze action beslist zelf niets en draagt ook geen
+    // toestemming: hij geeft door wíé het vraagt (uit de sessie, niet uit de invoer) en wát
+    // er gevraagd wordt. issuePinAsActor zoekt de rechten van die actor vers op en schrijft
+    // in dezelfde aanroep. Er is hier bewust geen `if` over rollen of organisaties: dan
+    // zouden er twee plekken zijn waar G36 staat, die uit elkaar kunnen lopen.
+    //
+    // De hele aanroep staat binnen de try: een vormloze orgId of een databasestoring hoort
+    // dezelfde nette `{ok:false}` te geven als een weigering, niet een harde error op de
+    // client — en zeker geen ander gedrag voor een onbevoegde dan voor een bevoegde.
+    const outcome = await issuePinAsActor(db, {
+      actorEmail: session.user?.email,
+      email: input.email,
       name: name ?? undefined,
-      orgId: input.orgId ?? undefined,
+      orgId: input.orgId ?? null,
       roles: input.roles,
-      actor,
     });
+    if (!outcome.ok) return { ok: false, error: outcome.message };
+
     // Ververst de PIN-statuslijst en de memberships-tabel op deze pagina (nieuwe org-lid,
     // nieuwe vervaldatum, teller terug op 0). Draagt zelf nooit de PIN — die staat alleen
-    // in de return hierboven, die rechtstreeks naar de aanroepende client gaat.
+    // in de return hieronder, die rechtstreeks naar de aanroepende client gaat.
     revalidatePath("/admin/users");
     return {
       ok: true,
-      email: issued.email,
-      pin: issued.pin,
-      expiresAtIso: issued.expiresAt.toISOString(),
-      userCreated: issued.userCreated,
-      activateUrl: await buildActivateUrl(issued.email),
+      email: outcome.issued.email,
+      pin: outcome.issued.pin,
+      expiresAtIso: outcome.issued.expiresAt.toISOString(),
+      userCreated: outcome.issued.userCreated,
+      activateUrl: await buildActivateUrl(outcome.issued.email),
       name,
+      roles: outcome.roles,
     };
-  } catch (err) {
-    return { ok: false, error: friendlyIssueError(err) };
+  } catch {
+    return { ok: false, error: friendlyIssueError() };
   }
 }

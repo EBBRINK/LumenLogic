@@ -16,6 +16,13 @@ import { OrgMembers, type MemberRow } from "./org-members";
 export type OrgWithMembers = {
   org: Organization;
   members: MemberRow[];
+  /**
+   * Mag de ingelogde gebruiker de leden van déze organisatie beheren (besluiten G36/G39)?
+   * Bepaald door de server (app/settings/organization/page.tsx via describeIssueScope);
+   * dit blok toont dan de formulieren, en anders alleen de lijst. UI-gemak — de actions
+   * beslissen zelf opnieuw.
+   */
+  canManageMembers: boolean;
 };
 
 // Alleen de velden die de UI van de branding leest. De opslag is een vrije jsonb-map;
@@ -196,12 +203,15 @@ export function OrgList({
   addMemberAction,
   removeMemberAction,
   saveBrandingAction,
+  canGrantOrgAdmin,
 }: {
   orgs: OrgWithMembers[];
   createAction: (formData: FormData) => void | Promise<void>;
   addMemberAction: (formData: FormData) => void | Promise<void>;
   removeMemberAction: (formData: FormData) => void | Promise<void>;
   saveBrandingAction: (formData: FormData) => void | Promise<void>;
+  /** G36, tweede zin: alleen Brink zelf kent de org_admin-rol toe. */
+  canGrantOrgAdmin: boolean;
 }) {
   // UX-audit 30 jul, A7: het Create-formulier stond bóven de zin "No organizations yet.
   // Create one above." — een lege toestand die naar boven wijst. Bij leeg staat er nu
@@ -222,7 +232,7 @@ export function OrgList({
     <div className="flex flex-col gap-6">
       <NewOrgForm createAction={createAction} />
 
-      {orgs.map(({ org, members }) => (
+      {orgs.map(({ org, members, canManageMembers }) => (
         <Card key={org.id}>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -241,6 +251,8 @@ export function OrgList({
               members={members}
               addAction={addMemberAction}
               removeAction={removeMemberAction}
+              canManage={canManageMembers}
+              canGrantOrgAdmin={canGrantOrgAdmin}
             />
             <BrandingForm org={org} saveAction={saveBrandingAction} />
           </CardContent>

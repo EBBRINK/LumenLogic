@@ -33,6 +33,10 @@ const orgs: OrgWithMembers[] = [
       { email: "piet@devries.nl", roles: ["calculator", "org_admin"] },
       { email: "sanne@devries.nl", roles: ["werkvoorbereider"] },
     ],
+    // Besluiten G36/G39: de server bepaalt of deze gebruiker de leden van déze organisatie
+    // mag beheren. De fixtures hieronder zijn de interne stand (mag alles) — de
+    // org_admin-stand staat in een eigen test onderaan dit bestand.
+    canManageMembers: true,
   },
   {
     org: {
@@ -47,6 +51,7 @@ const orgs: OrgWithMembers[] = [
       updatedAt: now,
     },
     members: [],
+    canManageMembers: true,
   },
 ];
 
@@ -72,6 +77,7 @@ const orgScreen = (
       addMemberAction={noopAction}
       removeMemberAction={noopAction}
       saveBrandingAction={noopAction}
+      canGrantOrgAdmin
     />
   </Screen>
 );
@@ -113,6 +119,7 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
+        canGrantOrgAdmin
       />
     </Screen>,
   );
@@ -154,6 +161,7 @@ test("A7 — lege organisatielijst: alleen de lege toestand, met het Create-form
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
+        canGrantOrgAdmin
       />
     </Screen>,
   );
@@ -191,6 +199,7 @@ for (const theme of ["light", "dark"] as const) {
             addMemberAction={noopAction}
             removeMemberAction={noopAction}
             saveBrandingAction={noopAction}
+            canGrantOrgAdmin
           />
         </Screen>,
       );
@@ -213,6 +222,7 @@ test("A7 — met organisaties: het formulier staat terug in zijn kaart, geen leg
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
+        canGrantOrgAdmin
       />
     </Screen>,
   );
@@ -262,6 +272,8 @@ test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
         members={[]}
         addAction={noopAction}
         removeAction={noopAction}
+        canManage
+        canGrantOrgAdmin
       />
     </Screen>,
   );
@@ -277,4 +289,67 @@ test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
     "projectleider",
     "org_admin",
   ]);
+});
+
+// ── Besluiten G36/G39: het scherm biedt niets aan dat de server toch weigert ────
+// ⚠️ UI-gemak, geen poort. Het bewijs dat addMemberAction/removeMemberAction zélf weigeren
+// staat in app/admin/users/issue-pin-authz.test.ts (de échte actions, zonder formulier).
+
+test("org_admin-stand: geen org_admin-vinkje, en geen verwijderknop bij een collega-beheerder", async () => {
+  await renderServer(
+    <Screen>
+      <OrgMembers
+        orgId="o1"
+        members={[
+          { email: "piet@devries.nl", roles: ["calculator", "org_admin"] },
+          { email: "sanne@devries.nl", roles: ["werkvoorbereider"] },
+        ]}
+        addAction={noopAction}
+        removeAction={noopAction}
+        canManage
+        canGrantOrgAdmin={false}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Add member")).toBeInTheDocument();
+
+  const boxes = Array.from(
+    document.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"][name="roles"]',
+    ),
+  );
+  expect(boxes.map((b) => b.value)).toEqual([
+    "calculator",
+    "werkvoorbereider",
+    "projectleider",
+  ]);
+
+  // Piet is org_admin: geen knop. Sanne wel.
+  const knoppen = Array.from(
+    document.querySelectorAll("button[aria-label^='Remove']"),
+  ).map((b) => b.getAttribute("aria-label"));
+  expect(knoppen).toEqual(["Remove sanne@devries.nl"]);
+});
+
+test("een organisatie die je niet beheert: geen formulier, geen knoppen, wel de lijst", async () => {
+  await renderServer(
+    <Screen>
+      <OrgMembers
+        orgId="o2"
+        members={[{ email: "iemand@anders.nl", roles: ["calculator"] }]}
+        addAction={noopAction}
+        removeAction={noopAction}
+        canManage={false}
+        canGrantOrgAdmin={false}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("iemand@anders.nl"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/can't manage the members/))
+    .toBeInTheDocument();
+  expect(document.querySelectorAll('input[name="roles"]')).toHaveLength(0);
+  expect(document.querySelectorAll("button[aria-label^='Remove']")).toHaveLength(0);
 });

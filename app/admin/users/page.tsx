@@ -9,7 +9,12 @@ import {
   type PinUserRow,
 } from "@/components/admin/pin-block";
 import { listAllMemberships } from "@/lib/repo/admin";
-import { listOrganizations } from "@/lib/repo/orgs";
+import {
+  decidePinIssue,
+  describeIssueScope,
+  mayViewPinStatus,
+} from "@/lib/repo/authz";
+import type { MembershipRole } from "@/db/schema";
 import {
   getActivationPinStatus,
   PIN_LENGTH,
@@ -23,13 +28,22 @@ import { issuePinAction } from "./actions";
 // memberships-tabel blijft alleen-lezen; het PIN-blok erboven is waar Brink een account
 // aanmaakt en de eenmalige activatie-PIN krijgt. Eigen <main>.
 export default async function AdminGebruikersPage() {
-  await requireSession();
+  const session = await requireSession();
 
-  const [memberships, organizations] = await Promise.all([
+  // Besluit G36. Deze pagina bepaalt zélf niets: ze vraagt de autorisatielaag wat deze
+  // gebruiker mag, en toont niet meer dan dat. Zou dit scherm de regels overschrijven, dan
+  // stonden ze op twee plekken — en dan is het een kwestie van tijd tot ze verschillen.
+  // ⚠️ Dit is gemak, geen poort: issuePinAction weigert hetzelfde, ook zonder formulier.
+  const [memberships, scope] = await Promise.all([
     listAllMemberships(db),
-    listOrganizations(db),
+    describeIssueScope(db, session.user?.email),
   ]);
 
+  // ⚠️ Deze tabel toont ALLE memberships aan iedereen die de pagina opent — ook aan een
+  // externe org_admin. Dat is geen nieuwe situatie en het is bewust niet met G36 meegenomen:
+  // "extern ziet alleen eigen spullen" is org-scoping over routes, en dat is item 3.2a. G36
+  // gaat over wie er iets mag DOEN; deze tabel heeft geen enkele knop. Staat als open eind
+  // in HANDOVER.md.
   const rows: MembershipRow[] = memberships.map((m) => ({
     id: m.id,
     orgName: m.orgName,
@@ -48,7 +62,13 @@ export default async function AdminGebruikersPage() {
   // "Issue new PIN"-knoppen voor dezelfde persoon (ronde-1-critic).
   const byEmail = new Map<
     string,
-    { display: string; orgNames: Set<string>; roles: Set<string> }
+    {
+      display: string;
+      orgNames: Set<string>;
+      roles: Set<string>;
+      /** Ruwe org/rol-paren — de feiten die de autorisatielaag hieronder nodig heeft. */
+      membershipsRaw: { orgId: string; roles: MembershipRole[] }[];
+    }
   >();
   for (const m of memberships) {
     const key = m.email.toLowerCase().trim();
@@ -56,18 +76,33 @@ export default async function AdminGebruikersPage() {
       display: m.email,
       orgNames: new Set<string>(),
       roles: new Set<string>(),
+      membershipsRaw: [] as { orgId: string; roles: MembershipRole[] }[],
     };
     entry.orgNames.add(m.orgName);
     for (const r of m.roles ?? []) entry.roles.add(r);
+    entry.membershipsRaw.push({
+      orgId: m.orgId,
+      roles: (m.roles ?? []) as MembershipRole[],
+    });
     byEmail.set(key, entry);
   }
-  const uniqueEmailKeys = [...byEmail.keys()];
+  // De statuslijst is óók een knoppenlijst ("Issue new PIN"), dus hij toont alleen adressen
+  // waar deze uitgever daadwerkelijk iets mee mag. Dezelfde functies die de action gebruikt,
+  // op dezelfde feiten — `hasAccount` wordt in deze aanroep niet gelezen (elk adres hier
+  // heeft per constructie minstens één membership; zie decidePinIssue).
+  const zichtbareKeys = [...byEmail.keys()].filter((key) =>
+    mayViewPinStatus(scope.authority, {
+      email: key,
+      hasAccount: true,
+      memberships: byEmail.get(key)!.membershipsRaw,
+    }),
+  );
   const statuses = await Promise.all(
-    uniqueEmailKeys.map((email) => getActivationPinStatus(db, email)),
+    zichtbareKeys.map((email) => getActivationPinStatus(db, email)),
   );
   const statusByEmail = new Map(statuses.map((s) => [s.email, s]));
 
-  const pinUsers: PinUserRow[] = uniqueEmailKeys.map((key) => {
+  const pinUsers: PinUserRow[] = zichtbareKeys.map((key) => {
     const entry = byEmail.get(key)!;
     const status = statusByEmail.get(key);
     return {
@@ -77,13 +112,26 @@ export default async function AdminGebruikersPage() {
       state: status?.state ?? "geen",
       expiresAtIso: status?.expiresAt ? status.expiresAt.toISOString() : null,
       usedAtIso: status?.usedAt ? status.usedAt.toISOString() : null,
+      // Een nieuwe PIN uitgeven is een wachtwoordreset: dezelfde beslissing als de action
+      // straks neemt (zonder org, zonder rollen — precies wat de knop stuurt).
+      canReissue: decidePinIssue({
+        authority: scope.authority,
+        target: {
+          email: key,
+          hasAccount: true,
+          memberships: entry.membershipsRaw,
+        },
+        orgId: null,
+        org: null,
+      }).allowed,
     };
   });
 
-  const orgOptions: OrgOption[] = organizations.map((o) => ({
+  const orgOptions: OrgOption[] = scope.orgs.map((o) => ({
     id: o.id,
     name: o.name,
     type: o.type,
+    needsOrgAdmin: o.needsOrgAdmin,
   }));
 
   return (
@@ -108,6 +156,7 @@ export default async function AdminGebruikersPage() {
           issueAction={issuePinAction}
           pinLength={PIN_LENGTH}
           pinTtlDays={PIN_TTL_DAYS}
+          canGrantOrgAdmin={scope.canGrantOrgAdmin}
         />
         <MembershipsBlock memberships={rows} />
       </div>

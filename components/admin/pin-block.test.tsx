@@ -25,10 +25,12 @@ import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { FIXED_EXPIRES_AT_ISO, FIXED_PIN } from "./pin-block-fixtures";
 import {
+  PinBlockAlsOrgAdmin,
   PinBlockLeeg,
   PinBlockMetFout,
   PinBlockMetSessieRedirect,
   PinBlockScreen,
+  PinBlockZonderRechten,
 } from "./pin-block-stubs";
 
 const viewports = {
@@ -366,3 +368,134 @@ test("een verlopen sessie tijdens het uitgeven meldt zich eerlijk als 'signedOut
 test("fixture-sanity: FIXED_EXPIRES_AT_ISO is de datum die de asserts hierboven verwachten", () => {
   expect(FIXED_EXPIRES_AT_ISO).toBe("2026-08-06T14:32:00.000Z");
 });
+
+// ── Besluit G36: het scherm biedt niets aan dat de server toch weigert ──────────
+// ⚠️ Dit is UI-gemak, geen poort. Het bewijs dat de weigering serverkant zit staat in
+// app/admin/users/issue-pin-authz.test.ts (de échte server-action, zonder formulier).
+
+test("org_admin: geen org_admin-vinkje, één organisatie, en geen knop bij de collega-beheerder", async () => {
+  await renderServer(
+    <Screen>
+      <PinBlockAlsOrgAdmin />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("gebruikt@voorbeeld.nl"))
+    .toBeInTheDocument();
+
+  // De rol die hij niet mag toekennen, bestaat op zijn scherm niet.
+  expect(document.body.textContent).not.toContain("Org admin");
+  const rolVinkjes = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="roles"]'),
+  ).map((i) => i.value);
+  expect(rolVinkjes).toEqual(["calculator", "werkvoorbereider", "projectleider"]);
+
+  // Eén organisatie in de keuzelijst: de zijne.
+  const opties = Array.from(
+    document.querySelectorAll<HTMLOptionElement>("#pin-org option"),
+  )
+    .map((o) => o.textContent?.trim())
+    .filter((t) => t && t !== "Choose an organization");
+  expect(opties).toEqual(["Aannemer Zuid (extern)"]);
+
+  // Drie rijen, maar maar twee knoppen: de collega-beheerder (canReissue: false) heeft er
+  // geen — een knop die de server altijd weigert is erger dan geen knop.
+  const knoppen = Array.from(
+    document.querySelectorAll("button"),
+  ).filter((b) => /Issue (new )?PIN/.test(b.textContent ?? ""));
+  expect(knoppen).toHaveLength(2);
+});
+
+test("zonder uitgifterecht staat er geen formulier, maar een uitleg", async () => {
+  await renderServer(
+    <Screen>
+      <PinBlockZonderRechten />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/You can't issue PINs/))
+    .toBeInTheDocument();
+  expect(document.querySelector('input[name="email"]')).toBeNull();
+});
+
+test("de eerste persoon in een organisatie zonder beheerder: het org_admin-vinkje staat vast aan", async () => {
+  await renderServer(
+    <Screen>
+      <PinBlockScreen />
+    </Screen>,
+  );
+  // Op .value zoeken en niet met een attribuut-selector: React zet die waarde als DOM-
+  // property, dus `input[value="org_admin"]` matcht niet betrouwbaar.
+  const orgAdmin = () =>
+    Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[name="roles"]'),
+    ).find((i) => i.value === "org_admin")!;
+  // Eerst wachten tot het formulier er staat: renderServer levert de DOM asynchroon.
+  await expect
+    .element(page.getByRole("button", { name: "Create account & issue PIN" }))
+    .toBeInTheDocument();
+  // Zolang er geen organisatie gekozen is, is het een gewoon vinkje.
+  expect(orgAdmin().checked).toBe(false);
+  expect(orgAdmin().disabled).toBe(false);
+
+  // "Nieuwe Klant" heeft nog geen beheerder (needsOrgAdmin) — de server kent org_admin dan
+  // hoe dan ook toe (G36, eerste zin), dus het vinkje zegt dat en is niet uit te zetten.
+  await page.getByLabelText("Organization").selectOptions("Nieuwe Klant (extern)");
+  await expect
+    .element(page.getByText(/has no admin yet/))
+    .toBeInTheDocument();
+  expect(orgAdmin().checked).toBe(true);
+  expect(orgAdmin().disabled).toBe(true);
+
+  // En bij een organisatie die al een beheerder heeft, is het weer een vrije keuze.
+  await page.getByLabelText("Organization").selectOptions("Aannemer Zuid (extern)");
+  expect(orgAdmin().disabled).toBe(false);
+  expect(document.body.textContent).not.toMatch(/has no admin yet/);
+});
+
+test("de toegekende rollen staan bij de uitgegeven PIN, zodat een beheerdersrol nooit onzichtbaar blijft", async () => {
+  await renderServer(
+    <Screen>
+      <PinBlockScreen />
+    </Screen>,
+  );
+  await page.getByLabelText("Email").fill("eigenaar@voorbeeld.nl");
+  await page.getByLabelText("Organization").selectOptions("Aannemer Zuid (extern)");
+  await page.getByLabelText("Calculator").click();
+  await page
+    .getByRole("button", { name: "Create account & issue PIN" })
+    .click();
+  await expect
+    .element(page.getByText("PIN for eigenaar@voorbeeld.nl"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByTestId("pin-issued-code"))
+    .toHaveTextContent("Calculator");
+});
+
+// Screenshots van de org_admin-stand: dit is een ander scherm dan het interne, dus het
+// hoort zijn eigen beeld te hebben (licht/donker × mobiel/desktop).
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`pin-blok: org_admin-stand (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <PinBlockAlsOrgAdmin />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByRole("button", { name: "Create account & issue PIN" }))
+        .toBeInTheDocument();
+      await screenshotBlock(
+        "pin-issue-card",
+        `./pin-block-orgadmin-form.${theme}.${device}.test.png`,
+      );
+      await screenshotBlock(
+        "pin-status-card",
+        `./pin-block-orgadmin-status.${theme}.${device}.test.png`,
+      );
+    });
+  }
+}

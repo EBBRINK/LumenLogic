@@ -14,9 +14,15 @@ export const FIXED_EXPIRES_AT_ISO = "2026-08-06T14:32:00.000Z";
 const ACTIVATE_HOST = "https://app.lumenlogic.example";
 
 export const organizations: OrgOption[] = [
-  { id: "org-1", name: "Aannemer Zuid", type: "extern" },
-  { id: "org-2", name: "Brink Licht", type: "intern" },
+  // "Aannemer Zuid" heeft al een beheerder; "Nieuwe Klant" nog niet — die tweede laat het
+  // vastgezette org_admin-vinkje zien (G36, eerste zin).
+  { id: "org-1", name: "Aannemer Zuid", type: "extern", needsOrgAdmin: false },
+  { id: "org-2", name: "Brink Licht", type: "intern", needsOrgAdmin: false },
+  { id: "org-3", name: "Nieuwe Klant", type: "extern", needsOrgAdmin: true },
 ];
+
+// Wat een org_admin van Aannemer Zuid te zien krijgt: alleen zijn eigen organisatie.
+export const eigenOrganisatie: OrgOption[] = [organizations[0]];
 
 export const users: PinUserRow[] = [
   {
@@ -26,6 +32,7 @@ export const users: PinUserRow[] = [
     state: "geen",
     expiresAtIso: null,
     usedAtIso: null,
+    canReissue: true,
   },
   {
     email: "actief@voorbeeld.nl",
@@ -34,6 +41,7 @@ export const users: PinUserRow[] = [
     state: "actief",
     expiresAtIso: "2026-08-05T09:00:00.000Z",
     usedAtIso: null,
+    canReissue: true,
   },
   {
     email: "gebruikt@voorbeeld.nl",
@@ -42,6 +50,7 @@ export const users: PinUserRow[] = [
     state: "gebruikt",
     expiresAtIso: "2026-07-20T09:00:00.000Z",
     usedAtIso: "2026-07-15T11:22:00.000Z",
+    canReissue: true,
   },
   {
     email: "verlopen@voorbeeld.nl",
@@ -50,6 +59,7 @@ export const users: PinUserRow[] = [
     state: "verlopen",
     expiresAtIso: "2026-07-10T09:00:00.000Z",
     usedAtIso: null,
+    canReissue: true,
   },
   {
     email: "geblokkeerd@voorbeeld.nl",
@@ -58,7 +68,16 @@ export const users: PinUserRow[] = [
     state: "geblokkeerd",
     expiresAtIso: "2026-08-01T09:00:00.000Z",
     usedAtIso: null,
+    canReissue: true,
   },
+];
+
+// Dezelfde lijst zoals een org_admin hem ziet: alleen zijn eigen mensen, en géén knop bij
+// de collega-beheerder — die mag hij niet resetten (G36).
+export const eigenUsers: PinUserRow[] = [
+  { ...users[0], canReissue: true },
+  { ...users[1], canReissue: true },
+  { ...users[2], orgName: "Aannemer Zuid", canReissue: false },
 ];
 
 // Happy path: elke aanroep (nieuw account of herhaling) geeft dezelfde vaste PIN terug,
@@ -72,4 +91,7 @@ export const issueHappy: IssuePinAction = async (input) => ({
   userCreated: !input.orgId,
   activateUrl: `${ACTIVATE_HOST}/activate?email=${encodeURIComponent(input.email)}`,
   name: input.name?.trim() || null,
+  // De rollen zoals de server ze toekende — de echte action geeft hier de grant-rollen
+  // terug, dus inclusief een org_admin die de bootstrap-regel erbij zette.
+  roles: input.roles ?? [],
 });

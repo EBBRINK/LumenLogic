@@ -128,6 +128,12 @@ async function findUserByEmail(db: AppDb, email: string) {
  * Een bestaande PIN voor hetzelfde adres wordt overschreven (geldig of verlopen), inclusief
  * een reset van de pogingenteller en van used_at: dat is precies C10's "vergeten wachtwoord
  * = nieuwe PIN".
+ *
+ * ⚠️ Deze functie beslist NIET wie er een PIN mag krijgen en met welke rol — dat is besluit
+ * G36 en dat staat in lib/repo/authz.ts. Dit is de kale schrijffunctie, bedoeld voor
+ * migraties, seeds en tests. **App-code (server actions, route handlers) roept hem nooit
+ * rechtstreeks aan, maar altijd via `issuePinAsActor()`**, die de bevoegdheid uit de sessie
+ * en de database afleidt. `lib/repo/authz-deuren.test.ts` bewaakt die regel.
  */
 export async function issueActivationPin(
   db: AppDb,
@@ -155,10 +161,18 @@ export async function issueActivationPin(
   //   1. de organisatie controleren — een goedkope SELECT vóór er iets geschreven wordt,
   //      zodat een verkeerde orgId geen spookgebruiker achterlaat die daarna niet meer als
   //      nieuw herkend wordt;
-  //   2. de user-rij, conflict-tolerant, zodat twee gelijktijdige uitgiftes voor hetzelfde
+  //   2. het membership (idempotent, upsert op org+e-mail);
+  //   3. de user-rij, conflict-tolerant, zodat twee gelijktijdige uitgiftes voor hetzelfde
   //      adres geen rauwe unique-violation naar de aanroeper laten lekken;
-  //   3. het membership (idempotent, upsert op org+e-mail);
   //   4. de PIN zelf, als laatste — mislukt er iets eerder, dan is er simpelweg geen PIN.
+  //
+  // ⚠️ Membership vóór de user-rij, en dat is een correctie (critic, ronde 2). Andersom
+  // bleef er bij een mislukte membership-insert een user-rij zonder membership achter, en
+  // dát is precies de toestand waarin regel 2c van G36 (lib/repo/authz.ts) een org_admin
+  // voorgoed de deur wijst: "bestaand account zonder membership" mag hij niet aanraken. Eén
+  // mislukte uitgifte zou een adres dus permanent onbruikbaar maken voor de enige persoon
+  // die hem mag uitnodigen. Nu blijft in dat geval hooguit een membership zónder user-rij
+  // achter, en dat herstelt zichzelf bij de volgende poging (upsert + insert).
   if (input.orgId) {
     const [org] = await db
       .select({ id: organizations.id })
@@ -168,6 +182,12 @@ export async function issueActivationPin(
     if (!org) {
       throw new Error("issueActivationPin: onbekende organisatie");
     }
+    await addMembership(db, {
+      orgId: input.orgId,
+      email,
+      roles: input.roles ?? [],
+      actor: input.actor,
+    });
   }
 
   const existing = await findUserByEmail(db, email);
@@ -188,15 +208,6 @@ export async function issueActivationPin(
       .onConflictDoNothing()
       .returning({ id: authSchema.user.id });
     userCreated = inserted.length > 0;
-  }
-
-  if (input.orgId) {
-    await addMembership(db, {
-      orgId: input.orgId,
-      email,
-      roles: input.roles ?? [],
-      actor: input.actor,
-    });
   }
 
   const pin = generatePin();

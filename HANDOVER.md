@@ -3295,3 +3295,57 @@ schrijven wacht).
 (`huisstijl` 2×, `project-status` 2×, `custom-fields` 1× — allemaal `oklab()` vs `rgb()` op
 berekende kleuren); geïsoleerd hertest zijn ze alle 70 groen. Bekende suite-conditie, geen
 codefout, en geen van de vijf raakt iets uit dit blok.
+
+---
+
+## Sprint 3.1 — G36: wie mag een activatie-PIN uitgeven (2026-07-30)
+
+Besluit G36 van Timo: **intern (`organizations.type = 'intern'`) mag alles; een `org_admin`
+mag alleen binnen zijn eigen organisatie en mag de `org_admin`-rol niet toekennen; een gewone
+gebruiker mag niets.** Plus de eerste zin: wie van Brink een PIN krijgt, is org_admin van zijn
+eigen organisatie. Aanleiding: `issuePinAction` had alleen `requireSession()`, dus élke
+ingelogde gebruiker kon een PIN uitgeven voor élk adres — en een PIN is een wachtwoordreset.
+**Niets gecommit, niets gepusht**; het werk staat in de working tree van `claude/sprint31-pin`.
+
+- `lib/repo/authz.ts` (nieuw) — de beslissing. `decidePinIssue()` is puur (geen db) en is de
+  plek waar G36 letterlijk staat; `authorizePinIssue()` haalt de feiten op, logt elke
+  weigering en geeft bij "ja" een `PinIssueGrant` terug.
+- **De grant is de poort, niet een check.** `issueActivationPin(db, grant, { name, now })`
+  neemt geen los adres/org/rollen/actor meer aan. Het merk op `PinIssueGrant` is een privé
+  symbool: buiten `authz.ts` valt er geen grant te schrijven (tsc), en `isPinIssueGrant()`
+  weigert een gecaste of onbetypeerde poging (runtime). Uitgeven zónder autorisatie kan dus
+  niet, in plaats van "mag niet".
+- `/admin/users` toont alleen wat de server toestaat: een org_admin ziet één organisatie in
+  de select, geen `org_admin`-vinkje, alleen zijn eigen mensen in de PIN-statuslijst, en geen
+  knop bij een collega-beheerder. Dat is gemak — de action weigert hetzelfde zonder formulier.
+
+**Aannames en open eindes (vervolg op de nummering van golf 1/2)**
+18. **G36's twee zinnen verzoend met een bootstrap-regel.** Krijgt een organisatie die nog
+    géén org_admin heeft haar eerste lid van een *interne* uitgever, dan wordt die persoon
+    org_admin — ook als het vinkje uit stond. Een org_admin doorloopt die regel nooit (zijn
+    org heeft per definitie een beheerder, maar de code steunt niet op dat toeval: de
+    bootstrap wordt op zijn pad niet eens aangeroepen). Zo is zin 1 waar door de vorm van de
+    code en zin 2 absoluut. De toegekende rollen komen terug in `IssuePinResult.roles` en
+    staan op het scherm, zodat een automatisch toegekende beheerdersrol nooit onzichtbaar is.
+19. **Een org_admin die de org_admin-rol probeert te geven, krijgt niets** — geen account,
+    geen membership, geen PIN. Bewust géén "wel aanmaken, rol stilletjes weglaten": dan denkt
+    hij dat er een tweede beheerder is.
+20. **Een org_admin mag alleen een volstrekt onbekend adres of een lid van zijn eigen org als
+    doel hebben.** Een adres dat elders lid is, een collega-beheerder, hijzelf, of een
+    bestaand account zonder membership: geweigerd. Anders is een PIN een overnameknop voor
+    een account met meer rechten dan hij mag uitdelen. Gevolg: hij kan zijn eigen wachtwoord
+    niet via een PIN resetten — dat gaat via `/settings` of via Brink.
+21. **Eén foutmelding voor élke bevoegdheidsweigering** ("You can't issue a PIN here…"), zodat
+    de melding niet verraadt of een adres of organisatie bestaat. Alleen een vormloos adres en
+    een verdwenen organisatie (die een interne uitgever sowieso in zijn lijst ziet) krijgen een
+    eigen tekst.
+22. **De memberships-tabel op `/admin/users` is nog steeds ongescoopt**: iedereen die de
+    pagina opent ziet alle organisaties en alle adressen. Die tabel heeft geen knoppen; het
+    afschermen ervan is org-scoping over routes en hoort bij **3.2a**, samen met de vraag of
+    `/admin/*` überhaupt voor externen bereikbaar mag zijn.
+23. **`lib/repo/activation.test.ts` en `lib/auth-activation.test.ts` halen hun grants nu langs
+    de échte poort** (een interne uitgever, `verseDb()` + `grant()`-helper) in plaats van
+    `issueActivationPin` rechtstreeks te voeden. Twee tests daar veranderden van betekenis:
+    "vormloos adres" toetst nu dat er geen grant komt, en "onbekende organisatie" toetst het
+    tweede slot ín `issueActivationPin` door de organisatie tússen autorisatie en uitgifte te
+    verwijderen (het enige scenario waarin dat slot nog kan afgaan).
