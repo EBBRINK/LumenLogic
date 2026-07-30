@@ -25,6 +25,7 @@ const orgs: OrgWithMembers[] = [
       branding: { accentColor: "#0a7d55", logoUrl: "https://x/logo.svg" },
       plan: "abonnement",
       seatLimit: 5,
+      type: "extern", // organizations.type, nieuw in migratie 0017 (G31)
       createdAt: now,
       updatedAt: now,
     },
@@ -41,6 +42,7 @@ const orgs: OrgWithMembers[] = [
       branding: null,
       plan: "trial",
       seatLimit: null,
+      type: "extern", // organizations.type, nieuw in migratie 0017 (G31)
       createdAt: now,
       updatedAt: now,
     },

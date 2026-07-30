@@ -307,6 +307,54 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## Sprint 3.1 golf 1 — auth-fundament + PIN-laag + org/rollen — 30 jul 2026
+
+Briefing: `docs/sprint3-1-briefing.md`. Dit is stuk 1–3 (fundament); de schermen (stuk 4–6)
+zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op branch
+`claude/sprint31-pin`. G32 betekent bovendien dat er twéé losse deploy-akkoorden nodig zijn.
+
+- `lib/auth-factory.ts` — `createAuth(db, opts)` (besluit G30). `lib/auth.ts` blijft de
+  singleton (`export const auth`) en re-exporteert de factory. De splitsing was nodig:
+  `db/client.ts` gooit bij import al een fout zonder `DATABASE_URL`, dus een test die alleen
+  de factory wil struikelde erover. `emailAndPassword` staat aan mét `disableSignUp: true`;
+  de magic link + allowlist-poort staat er ongewijzigd naast (G32, deploy 1).
+- `lib/repo/activation.ts` — PIN-datamodel: 8 cijfers, scrypt-hash, 7 dagen, eenmalig,
+  5 pogingen, één actieve PIN per adres. `lib/auth-activation.ts` — `redeemActivationPin`:
+  wachtwoord zetten en pas dáárna een sessie.
+- Migratie `0017_org_type_activatie.sql` — `organizations.type` (G31), de Brink-org, backfill
+  van dossiers zonder org en memberships voor bestaande users, plus `activation_pins`.
+- Eerste tests die dit project op Better Auth heeft: `lib/auth-activation.test.ts` (hele flow
+  + faalpaden), `lib/repo/activation.test.ts`, `db/migration-0017.test.ts`. 29 nieuwe tests.
+
+**Aannames en open eindes**
+1. **De allowlist geldt bewust NIET voor het wachtwoordpad.** Hij blijft de poort onder de
+   magic link (L-02). Zou hij ook onder wachtwoorden liggen, dan moest elke externe
+   installateur eerst in Brinks interne lijst — dan is de hele PIN-onboarding zinloos. De
+   poort onder het wachtwoordpad is dat je een PIN van Brink nodig hebt om er één te kúnnen
+   zetten. **Gevolg voor deploy 2 (G27):** als de magic link eruit gaat, verliest de
+   allowlist zijn enige gebruiker. Bewuste keuze van Timo nodig: weghalen of herbestemmen.
+2. **`hello@noplasticfloralfoam.com`** krijgt via 0017 een `org_admin`-membership in de
+   Brink-org, net als de andere twee users — het is Timo's eigen tweede adres. Er is
+   **niets** aan de allowlist veranderd. Het account kan dus pas inloggen zodra Brink er een
+   PIN voor aanmaakt; via magic link kan het (op productie) niet. Bewust zo gelaten.
+3. **Alle drie de bestaande users worden `org_admin`** in de interne org ("intern super
+   admin" uit de G21-kaart). Ze zijn alle drie Brink-kant; er is geen bestaande gebruiker
+   waarvoor een lichtere rol klopt.
+4. **`organizations.type` default `extern`** — default = veilig (regel 4). Elke org die vóór
+   0017 bestond wordt dus `extern`; alleen de Brink-org is `intern`.
+5. **Minimale wachtwoordlengte 12** (NIST SP 800-63B vraagt 8). Bewust hoger: er draait geen
+   check tegen gelekte wachtwoorden, dus lengte is de enige weerstand die er is.
+6. **Migratie 0017 zaait de Brink-org in élke database**, ook in een verse test-DB — zelfde
+   patroon als de allowlist-seed van 0004. Eén bestaande assertie in
+   `scripts/cleanup-testdata.test.ts` telde het aantal organisaties en is daarop bijgesteld
+   (2 → 3).
+7. **`redeemActivationPin` claimt de PIN vóór het wachtwoord wordt geschreven.** Faalt de
+   schrijfactie daarna alsnog, dan is de PIN op en moet Brink een nieuwe geven. Dat is de
+   goede kant om op te falen: eenmaligheid blijft dan hoe dan ook waar.
+8. **`nextCookies()` staat alleen in de productie-instantie**, niet in de testfactory (er is
+   geen request-scope in een test). Golf 2 kan in een server action dus gewoon
+   `auth.api.signInEmail(...)` aanroepen; de cookie wordt vanzelf gezet.
+
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
 Poortwachter van het retour-pad: `lib/excel-validate.ts` toetst een ingevuld merk-template

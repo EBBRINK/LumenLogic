@@ -85,7 +85,8 @@ test("dry-run rapporteert de testdata maar wijzigt niets (ook geen events)", asy
   expect(plan.flos).toEqual([{ id: flosId, from: "tier2" }]);
 
   // Niets geschreven: org, users, allowlist, tier en events staan er nog exact zo.
-  expect(await db.select().from(organizations)).toHaveLength(2);
+  // 2 gezaaide test-orgs + de Brink-org die migratie 0019 in élke database aanmaakt (G31).
+  expect(await db.select().from(organizations)).toHaveLength(3);
   expect(await db.select().from(user)).toHaveLength(2);
   expect(
     await db.select().from(allowedEmails).where(eq(allowedEmails.email, CALC)),

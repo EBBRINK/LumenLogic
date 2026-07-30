@@ -25,6 +25,7 @@ import eigenVeldenSql from "./migrations/0015_eigen_velden.sql?raw";
 import eigenVeldenEngelsSql from "./migrations/0016_eigen_velden_engels.sql?raw";
 import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
 import analyticsMerkgatSql from "./migrations/0018_analytics_merkgat_index.sql?raw";
+import orgTypeActivatieSql from "./migrations/0019_org_type_activatie.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -62,6 +63,16 @@ export async function createTestDb(): Promise<TestDb> {
   await client.exec(snelheidIndexenSql);
   // 0018: idem, voor de merkgat-tegel op /analytics.
   await client.exec(analyticsMerkgatSql);
+  // 0019: organizations.type (G31) + activation_pins (C10/G34). Zaait óók in een verse
+  // test-DB de Brink-org ('brink-licht', type 'intern') — elke test-DB heeft dus precies
+  // één organisatie vóórdat de test zelf iets aanmaakt. De dossier- en membership-backfill
+  // eronder raakt in een verse DB nul rijen (geen dossiers, geen users).
+  //
+  // ⚠️ Was 0017 op deze branch. Sprint 2.5b nam dat nummer op main in (én 0018), dus bij
+  // de rebase is deze migratie hernummerd naar 0019 — hij was nog niet gedeployd, dus dat
+  // kon zonder gevolgen. Twee bestanden met hetzelfde nummer laten staan zou de volgorde
+  // dubbelzinnig maken, en dít bestand is wat die volgorde bepaalt.
+  await client.exec(orgTypeActivatieSql);
   return drizzle(client, { schema });
 }
 

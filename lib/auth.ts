@@ -1,28 +1,21 @@
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { magicLink } from "better-auth/plugins";
+// De Better Auth-instantie van de applicatie: de factory uit lib/auth-factory.ts, gevoed met
+// de Neon-client. Dit bestand bestaat alleen nog om díe koppeling te maken — alle regels
+// (magic link + allowlist, wachtwoordbeleid, zelfregistratie uit) staan in de factory, zodat
+// tests exact dezelfde configuratie op PGlite kunnen draaien (besluit G30).
+//
+// `import { auth } from "@/lib/auth"` blijft werken zoals altijd; createAuth en het
+// wachtwoordbeleid zijn hier doorgegeven, dus niemand hoeft twee bestanden te kennen.
 import { db } from "@/db/client";
-import * as authSchema from "@/db/auth-schema";
-import { isAllowed } from "@/lib/repo/settings";
+import { createAuth } from "./auth-factory";
 
-export const auth = betterAuth({
-  // baseURL uit env; op Vercel valt hij terug op de deploy-URL (preview per PR).
-  baseURL:
-    process.env.BETTER_AUTH_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined),
-  database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
-  plugins: [
-    magicLink({
-      sendMagicLink: async ({ email, url }) => {
-        // Allowlist-poort (L-02): staat het adres niet in de lijst, dan gebeurt er
-        // niets — geen link, geen log. De login-UI toont altijd dezelfde neutrale
-        // melding, dus een buitenstaander kan niet afleiden of een adres bestaat
-        // (geen account-enumeratie).
-        if (!(await isAllowed(db, email))) return;
-        // Geen e-mailprovider in deze fase — er is één gebruiker (Timo).
-        // De magic link verschijnt in de serverconsole; daar klik je hem uit.
-        console.log(`[auth] magic link voor ${email}: ${url}`);
-      },
-    }),
-  ],
-});
+export {
+  createAuth,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  type CreateAuthOptions,
+  type LumenAuth,
+} from "./auth-factory";
+
+// nextCookies aan: de server actions van /login en /activate schrijven het sessiecookie via
+// de cookie-jar van Next. In tests staat hij uit — daar is geen request-scope.
+export const auth = createAuth(db, { nextCookies: true });
