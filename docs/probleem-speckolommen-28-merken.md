@@ -126,6 +126,39 @@ toegang opgelost werd. **De export die toen gemaakt had moeten worden, is niet b
 staat hij nu opnieuw in de weg, en daarom is "eerst exporteren, dan pas werken" hieronder een
 harde eis en geen nette gewoonte.
 
+### En nee, de catalogus draagt de leverancierstekst niet zelf — nagemeten
+
+De import-bron heeft 45 kolommen en daar zitten er een paar tussen die de blokkade hadden kunnen
+omzeilen: `description`, `light_source`, `light_source_included`, `lamp_foot`, `lamp_category`.
+Als `products.description` de rauwe leveranciersomschrijving droeg, zou een flink deel van ronde 2
+vandaag bereikbaar zijn — 158 van de kolommen in `stap2Wachtrij` komen immers uit precies zo'n
+vrijetekstveld (`Description`, `DESCRIZIONE`, `Omschrijving`, `Item Desc.50NL`).
+
+Gemeten (`scripts/meet-description.ts`, `scripts/meet-description-inhoud.ts`): **de kolommen
+bestaan en zijn zo goed als leeg.**
+
+- `light_source`, `light_source_system`, `light_source_included`, `lamp_foot`, `lamp_category`:
+  **0 gevuld bij álle 28 merken.** Daarmee is de Muuto-kruistabel uit blokkade 5 vandaag **niet**
+  te draaien — er is geen lichtbron-kolom om tegen te kruisen. Blokkade 5 blijft dus staan.
+- `description` is bij precies zeven merken gevuld, en levert vrijwel niets nieuws op:
+
+| merk | gevuld | veldvullingen uit de naam | uit de description | **extra** |
+|---|---|---|---|---|
+| Sylvania | 3.914 (100 %) | 7.164 | 7.164 | **0** — de description is letterlijk gelijk aan de naam |
+| Lumiance | 105 | 310 | 310 | **0** — idem |
+| It's About RoMi | 420 | 21 | 21 | **0** — idem |
+| Nordlux | 1.027 (100 %) | 117 | 284 | **225** — draagt `[DECO-FUNCTIONAL]`/`[OUTDOOR]` plus wat stijltekst |
+| Nyta | 233 | 6 | 46 | **40** |
+| Marset | 2 | 0 | 0 | **0** — staffelprijs-notities, puur commercieel |
+| Leucos | — | 36 | 0 | **0** |
+
+Totale winst als je de bestaande parser óók over `description` laat lopen: **265 veldvullingen**
+op 150.633. Verwaarloosbaar, en bij Nordlux zit het in een categorie-tag die geen matchveld is.
+
+Dit is een negatief resultaat en dat is precies waarom het hier staat: het sluit de gedachte
+"misschien kunnen we het zonder Supabase" definitief af, in plaats van hem als hoop te laten
+staan.
+
 ## Blokkade 2 — de voorwaardelijke code staat op twee zijsporen, niet op `main`
 
 Dit spoor kan zonder drie ingrepen niet draaien, en geen daarvan staat op `origin/main`:
