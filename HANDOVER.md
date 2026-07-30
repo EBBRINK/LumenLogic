@@ -4455,3 +4455,50 @@ in het bestand staat, dan is de meting besmet zonder dat de hash het merkt — d
 ⚠ **Wat dit betekent voor de gepubliceerde bevinding `LED MODULE vooraan`:** die kwam uit de
 EERSTE W&D-ronde, waar niemand dat gezegd had (drie agents trokken de grens zelf) en uit de
 Lombardo- en Kreon-rondes. Die staat dus. Maar de tweede ronde telt niet mee als bevestiging.
+
+---
+
+# OPENSTAAND VOOR TIMO — mag een LED-module een armatuurspec dragen?
+
+**Dit is het enige punt waar twee metingen van vandaag elkaar lijken tegen te spreken. Ze doen dat
+niet, en het verschil zit in de VRAAG — maar het besluit is niet aan mij.**
+
+## De twee metingen
+
+| | ronde `zwerm/ledmodule` (19:15) | de merkrondes (Lombardo, Kreon, W&D) |
+|---|---|---|
+| cellen | 112, twee lezers, identieke manifest- én prompthash | duizenden |
+| uitslag | **99 goed · 13 onzeker · 0 afgekeurd · 0 keer oneens** | drie agents wezen `LED MODULE …` af |
+| de gestelde vraag | *"beschrijft deze waarde het **PRODUCT** waar hij op staat?"* | *"is deze waarde een juiste technische specificatie van het **ARMATUUR** waar hij op staat?"* |
+
+Dat is niet dezelfde vraag. Voor `LED MOD HV DIM LOW FLICKER 2700K B 8W CRI90` luidt het antwoord
+op de eerste vraag **ja** — het product ís de module, dus 2700 K en CRI 90 zijn er echte
+eigenschappen van. Het antwoord op de tweede is **nee** — een module is geen armatuur.
+
+**Beide metingen zijn schoon en beide zijn juist.** Wat geen van beide beantwoordt is de vraag die
+er voor de catalogus toe doet: *mag een product dat de lichtbron ís, met die waarden meedoen in
+een armatuurzoekopdracht?* Dat is een productbeslissing, geen parservraag.
+
+⚠ **Ik heb die twee eerder vandaag door elkaar gehaald.** Toen ik de Kreon-light-engines behandelde
+citeerde ik de schone 74-cellenmeting als bewijs dat "de waarde klopt", terwijl die meting nooit
+gevraagd had of het ding een armatuur is. Dat was een verkeerd gebruik van een goede meting.
+
+## De omvang
+
+    namen die met "(LED) MODULE" beginnen : 454   (Kreon 358 · Wever & Ducré 96)
+    daarvan met minstens één LANDENDE waarde : 423
+
+Dus geen randgeval van 96 W&D-producten, maar een besluit over ruim vierhonderd — en het zwaartepunt
+ligt bij **Kreon**, niet bij W&D.
+
+## De twee mogelijke besluiten
+
+1. **Module = armatuur.** Niets doen. 423 producten krijgen hun waarden. Risico: een zoekopdracht
+   naar een inbouwspot levert losse modules op, en die kunnen niet gemonteerd worden.
+2. **Module ≠ armatuur.** Een regel op `(LED) MODULE` VOORAAN (de 454 hierboven; namen die de term
+   elders dragen — `MILES WALL SURF 12.0 LED MODULE` — blijven ongemoeid). 423 waarden landen niet.
+
+Er is een derde weg die beide problemen oplost en die hier weer terugkomt: **een producttype-veld
+bij het inlezen.** Dan houdt de module zijn waarden én blijft hij buiten de armatuurzoekopdracht.
+
+**Niets van dit alles is gebouwd of gepubliceerd.**
