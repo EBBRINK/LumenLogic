@@ -182,3 +182,44 @@ test("een kaal POWER in een armatuurnaam blijft ongemoeid", () => {
     "maxWattage:product-is-onderdeel",
   );
 });
+
+// ── Losse vervanglamp en driver-met-typecode (30 jul, zwerm op Wever & Ducré) ─
+// Allebei vooraf gemeten, want allebei is het kale woord te grof.
+test("een losse vervanglamp wordt als onderdeel gevlagd", () => {
+  for (const n of [
+    "LAMP A60 LED 2700K CLEAR / GOLD MIRROR 5.5W E27 220-240VAC",
+    "LAMP. GX53 8W 4000K DIM",
+    "LAMP PAR16 LED 3000K B CRI90 5W",
+    "Lampadina E14 2700K",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+});
+
+test("een armatuur dat toevallig met LAMP begint blijft ongemoeid", () => {
+  // De valse positief die de fitting-eis voorkomt: dit zijn Italiaanse armatuurtypes —
+  // sospensione (hang), parete (wand), tavolo (tafel), terra (vloer).
+  for (const n of [
+    "LAMP. SOSP. GIOVE 3000K 12W",
+    "LAMP. PAR. VELA 102,5 CM 2700K",
+    "LAMP. TAVOLO ALBA 3000K",
+    "LAMPADA ESAGONALE 52 S - ALU",
+    "LAMP SHADE",
+  ]) {
+    expect(vlaggen(n)).not.toContain("kelvin:product-is-onderdeel");
+    expect(vlaggen(n)).not.toContain("maxWattage:product-is-onderdeel");
+  }
+  expect(parseProductName("LAMP. SOSP. GIOVE 3000K 12W").kelvin).toBe(3000);
+});
+
+test("een driver met typecode wordt gevlagd, een armatuur dat zijn driver noemt niet", () => {
+  expect(
+    vlaggen("STREX SURF IN TRACK DRIVER D4 100W B 48V 220-240VAC").some((v) =>
+      v.endsWith(":product-is-onderdeel"),
+    ),
+  ).toBe(true);
+  // Kreon heeft 1.806 van deze; het zijn gewone armaturen.
+  expect(vlaggen("Esprit floor, marble base, driver incl., carrara 12W")).not.toContain(
+    "maxWattage:product-is-onderdeel",
+  );
+});

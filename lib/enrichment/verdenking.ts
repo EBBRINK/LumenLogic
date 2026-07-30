@@ -96,6 +96,28 @@ const ACCESSOIRE = /\b(?:EXCL|INCL|SPARE|ACCESS\w*|DRIVER|CONVERTER|TRAFO|ADAPTE
 const ONDERDEEL_START =
   /^\s*(?:LED\s+)?(?:POW(?:ER)?\.?\s*SUPPLY|ALIM(?:ENT|T)?\.?\s*LED|ALIMENTATOR\w*|ALIMENTATORE|DRIVER|CONVERTER|TRAFO|TRANSF?(?:ORMATOR|ORMER)?\b|NETZTEIL|EQUIPO|REMOTE\s+KIT|VOEDING|POWER\s+FEED)/i;
 
+// ── Twee categorieën die het anker miste, gevonden door de zwerm op W&D ─────
+// Allebei vooraf gemeten op valse positieven, want allebei is het kale woord te grof.
+//
+// LOSSE VERVANGLAMP. `^LAMP` alleen mag NIET: 124 namen beginnen ermee en Egoluce's
+// `LAMP. SOSP. GIOVE`, `LAMP. PAR. VELA`, `LAMP. TAVOLO ALBA` zijn Italiaanse armatuurtypes
+// (sospensione = hang, parete = wand, tavolo = tafel), net als Artemide's `LAMPADA ESAGONALE`
+// en Valerie's `LAMP SHADE`. Een losse lamp noemt daarentegen altijd zijn FITTING of lamptype.
+// Die extra eis scheidt ze schoon: 91 producten (W&D 50, Egoluce 38, Lombardo 3) met 153
+// landende veldvullingen, en geen enkele armatuurnaam erbij. Nagekeken op alle 124.
+//
+// DRIVER MET TYPECODE. `DRIVER` ergens in de naam mag óók niet: Kreon heeft 1.806 namen met
+// "driver incl." die gewone armaturen zijn, en TossB/Estiluz hebben 1.161 "Driver Base"-namen
+// die een eigen beoordeling verdienen (409 landende wattages — dat is een aparte ronde waard,
+// geen regel die je er even bij doet). Wél ondubbelzinnig is de vorm die de zwerm aanwees:
+// `… TRACK DRIVER D4 100W`, waar DRIVER door een typecode wordt gevolgd. 73 namen, alle W&D,
+// alle 73 met een landend wattage dat het driververmogen is.
+const LOSSE_LAMP =
+  /^\s*LAMP/i;
+const LAMP_FITTING =
+  /\b(?:E27|E14|E40|B15D|G4|G9|G13|GX53|GU10|GU5\.3|R7S|QT14|S14d?|T5|T8|PAR\d\d|A6\d|C35|ST64|T30)\b/i;
+const DRIVER_TYPECODE = /\bDRIVER\s+D\d\b/i;
+
 // Twee termen mogen ÓÓK verderop in de naam staan, en dat is geen verzwakking van het anker
 // maar een gemeten uitzondering. "POWER SUPPLY" en "SURF. POWER" zijn samenstellingen die niet
 // in een armatuurnaam voorkomen tenzij het product er een IS — anders dan het kale woord
@@ -163,7 +185,13 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   // ── het product is zelf een onderdeel ─────────────────────────────────────
   // Vlagt ELK gevuld veld, want geen enkele spec van een voeding of driver beschrijft een
   // armatuur. Staat vóór de veldtoetsen zodat de reden zichtbaar één en dezelfde is.
-  if (ONDERDEEL_START.test(naam) || ONDERDEEL_STERK.test(naam)) {
+  const isLosseLamp = LOSSE_LAMP.test(naam) && LAMP_FITTING.test(naam);
+  if (
+    ONDERDEEL_START.test(naam) ||
+    ONDERDEEL_STERK.test(naam) ||
+    isLosseLamp ||
+    DRIVER_TYPECODE.test(naam)
+  ) {
     for (const veld of FIELDS) {
       if (specs[veld] === undefined) continue;
       vlag(
