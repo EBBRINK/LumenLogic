@@ -14,6 +14,7 @@ import {
 import {
   brands,
   enrichmentItems,
+  enrichmentRuns,
   events,
   priceLists,
   prices,
@@ -38,6 +39,7 @@ import {
   pickSampleIndices,
   publishRun,
   rejectRun,
+  revertRun,
   setSampleVerdict,
   startEnrichmentRun,
   startOpticCodeRun,
@@ -197,6 +199,12 @@ test("publiceren vult de productvelden + zet tier2_source (herkomst)", async () 
   expect(cov.ratio).toBeCloseTo(1, 4);
 });
 
+// GEWIJZIGD 30 jul: deze test riep `publishRun(db, run.id)` kaal aan en legde daarmee het
+// OUDE contract vast — één 'fout' blokkeert alleen dát item en de rest publiceert gewoon door.
+// Dat contract is vervangen: sinds de drempel weigert publishRun de hele run bij één fout
+// (zie DEFAULT_MAX_SAMPLE_ERROR_RATE). Het per-item-uitsluitmechanisme bestaat nog en wordt
+// hier nog steeds getoetst, maar nu via het pad waarop het bereikbaar is: een expliciet
+// getypte uitzondering. Zo blijft de dekking staan zonder de nieuwe poort te ondermijnen.
 test("een 'fout' beoordeeld steekproef-item wordt NIET toegepast", async () => {
   const db = await createTestDb();
   const { brandId } = await seedBrandWithBareProducts(db);
@@ -209,7 +217,7 @@ test("een 'fout' beoordeeld steekproef-item wordt NIET toegepast", async () => {
   const target = sample[0];
   await setSampleVerdict(db, target.id, "fout");
 
-  await publishRun(db, run.id);
+  await publishRun(db, run.id, undefined, { maxSampleErrorRate: 1 });
 
   // dat specifieke item is niet toegepast
   const [after] = await db
@@ -885,4 +893,91 @@ test("een onzinnige waarde op een numeric-kolom laat de bundel niet klappen", as
   expect(p.maxWattage).toBeNull(); // de onzin is geweigerd…
   expect(p.kelvin).toBe(3000); // …en de goede waarde ernaast is gewoon geland
   expect(applied).toBe(1);
+});
+
+// ── De drempel en de terugweg (30 jul) ───────────────────────────────────────
+
+test("publiceren wordt geblokkeerd zodra er één 'fout' in de steekproef staat", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+  const run = await startEnrichmentRun(db, brandId, "test");
+
+  const sample = await getSampleItems(db, run.id);
+  await setSampleVerdict(db, sample[0].id, "fout");
+  for (const it of sample.slice(1)) await setSampleVerdict(db, it.id, "goed");
+
+  await expect(publishRun(db, run.id, "test")).rejects.toThrow(/foutratio/i);
+
+  // Niets toegepast, en de run staat nog op 'steekproef' — dus rejectRun kan nog.
+  const [p] = await db.select().from(products).where(eq(products.brandId, brandId));
+  expect(p.kelvin).toBeNull();
+  const [naRun] = await db.select().from(enrichmentRuns).where(eq(enrichmentRuns.id, run.id));
+  expect(naRun.status).toBe("steekproef");
+});
+
+test("een bewuste uitzondering moet expliciet getypt worden", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+  const run = await startEnrichmentRun(db, brandId, "test");
+  const sample = await getSampleItems(db, run.id);
+  await setSampleVerdict(db, sample[0].id, "fout");
+  for (const it of sample.slice(1)) await setSampleVerdict(db, it.id, "goed");
+
+  const { applied } = await publishRun(db, run.id, "test", { maxSampleErrorRate: 1 });
+  expect(applied).toBeGreaterThan(0);
+});
+
+test("revertRun neemt terug wat de run zette, en laat de rest staan", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Reverttest",
+    name: "ZETA 12W 3000K CRI95",
+  });
+  const run = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run.id)) await setSampleVerdict(db, it.id, "goed");
+  const { applied } = await publishRun(db, run.id, "test");
+  expect(applied).toBe(3);
+
+  // Iemand corrigeert ná publicatie één veld met de hand: dat is niet meer ónze waarde.
+  await db.update(products).set({ cri: 80 }).where(eq(products.id, productId));
+
+  const uit = await revertRun(db, run.id, "test");
+  expect(uit).toEqual({ teruggedraaid: 2, overgeslagen: 1 });
+
+  const [p] = await db.select().from(products).where(eq(products.id, productId));
+  expect(p.kelvin).toBeNull();
+  expect(p.maxWattage).toBeNull();
+  expect(p.cri).toBe(80); // de handmatige correctie blijft staan
+  expect(p.tier2Source).toMatchObject({ cri: "parsed-from-name" }); // en houdt zijn stempel
+  expect((p.tier2Source as Record<string, string>).kelvin).toBeUndefined();
+
+  const [naRun] = await db.select().from(enrichmentRuns).where(eq(enrichmentRuns.id, run.id));
+  expect(naRun.status).toBe("teruggedraaid");
+});
+
+test("revertRun weigert vóór publicatie — daar is rejectRun voor", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+  const run = await startEnrichmentRun(db, brandId, "test");
+  await expect(revertRun(db, run.id, "test")).rejects.toThrow(/alleen na publiceren/i);
+});
+
+test("na revertRun kan een andere bron de kolom alsnog claimen", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Claimtest",
+    name: "ETA 3000K",
+  });
+  const run1 = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run1.id)) await setSampleVerdict(db, it.id, "goed");
+  await publishRun(db, run1.id, "test");
+  await revertRun(db, run1.id, "test");
+
+  // Dit is de hele reden dat revertRun bestaat: "wie eerst gaat, wint" is nu opzegbaar.
+  const run2 = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run2.id)) await setSampleVerdict(db, it.id, "goed");
+  const { applied } = await publishRun(db, run2.id, "test");
+  expect(applied).toBe(1);
+  const [p] = await db.select().from(products).where(eq(products.id, productId));
+  expect(p.kelvin).toBe(3000);
 });

@@ -164,6 +164,11 @@ export function SampleReview({
   // De steekproefpoort (publishRun weigert bij een onbeoordeelde rij): laat het hier zien
   // in plaats van de gebruiker tegen een servererror aan te laten lopen.
   const openCount = items.filter((i) => i.sampleVerdict == null).length;
+  // Sinds de drempel (30 jul) blokkeert ÉÉN 'fout' de hele run, niet alleen dat item.
+  // Reden: de steekproef dekt 100 van soms honderdduizenden rijen, dus één fout betekent dat
+  // alle producten met dezelfde naamvorm die fout óók krijgen. Deze knop hoort dat te tonen —
+  // anders belooft het scherm iets wat publishRun weigert.
+  const geblokkeerd = openCount > 0 || foutCount > 0;
   return (
     <div className="space-y-4">
       {items.length === 0 ? (
@@ -249,7 +254,7 @@ export function SampleReview({
             {openCount > 0
               ? `${openCount} sample row(s) still need a verdict before you can publish.`
               : foutCount > 0
-                ? `${foutCount} item(s) marked incorrect — they won't be applied.`
+                ? `${foutCount} item(s) marked incorrect — this run can no longer be published. One error in the sample means the other proposals likely carry it too; reject the run and investigate.`
                 : "Publishing fills the empty match fields and re-matches this brand's blue lines."}
           </p>
           <div className="flex items-center gap-2">
@@ -261,7 +266,7 @@ export function SampleReview({
             </form>
             <form action={publishAction}>
               <input type="hidden" name="runId" value={runId} />
-              <Button type="submit" size="sm" disabled={openCount > 0}>
+              <Button type="submit" size="sm" disabled={geblokkeerd}>
                 Publish
               </Button>
             </form>

@@ -622,11 +622,32 @@ async function applyProposals(
 // Past alle items toe BEHALVE steekproef-items die als 'fout' gemarkeerd zijn. Vult
 // uitsluitend nog-lege velden (nooit overschrijven), zet products.tier2_source per veld,
 // legt de steekproef-foutratio vast, en hermatcht alle blauwe/open spec-regels van dit merk.
+//
+// ── De drempel (30 jul) ──────────────────────────────────────────────────────
+// `assertSampleReviewed` eist dat elke steekproefrij ÉÉN oordeel draagt. Daarna sloot
+// `toApply` alleen de individueel als 'fout' gemarkeerde rijen uit — en publiceerde de rest.
+// Concreet: 40 fouten op 100 steekproefrijen blokkeerden 40 rijen en lieten de overige
+// honderdduizend ongecontroleerde voorstellen onomkeerbaar door. De foutratio werd wél
+// berekend en weggeschreven, maar nergens vergeleken. De poort was een telling, geen oordeel.
+//
+// De staande afspraak is strenger en stond al in twee documenten en in scripts/publiceer-run.ts:
+// één 'fout' ⇒ de HELE run afwijzen. Reden: bij een deterministische bron is de verwachte
+// foutratio 0; één fout betekent dat het foutmodel niet klopt, en dan is doorpubliceren met een
+// uitzondering het verkeerde antwoord — alle producten met dezelfde naamvorm krijgen die fout
+// alsnog, want de steekproef dekt maar 100 van de honderdduizenden rijen.
+//
+// Die afspraak staat nu in de gedeelde code in plaats van in een script dat je kunt overslaan.
+// `maxSampleErrorRate` is bewust een parameter en geen constante: een bewuste uitzondering moet
+// getypt worden bij de aanroep, zodat hij in de code van de aanroeper zichtbaar is.
+export const DEFAULT_MAX_SAMPLE_ERROR_RATE = 0;
+
 export async function publishRun(
   db: AppDb,
   runId: string,
   actor?: string,
+  opts: { maxSampleErrorRate?: number } = {},
 ): Promise<{ run: EnrichmentRun; applied: number; rematched: number }> {
+  const maxErrorRate = opts.maxSampleErrorRate ?? DEFAULT_MAX_SAMPLE_ERROR_RATE;
   const [run] = await db
     .select()
     .from(enrichmentRuns)
@@ -652,6 +673,19 @@ export async function publishRun(
   const sample = items.filter((i) => i.inSample);
   const sampleFout = sample.filter((i) => i.sampleVerdict === "fout").length;
   const errorRate = sample.length > 0 ? sampleFout / sample.length : 0;
+
+  // De drempel: boven de grens publiceert niemand, ook niet gedeeltelijk. De run blijft op
+  // 'steekproef' staan, dus rejectRun is nog mogelijk en er is niets toegepast.
+  if (errorRate > maxErrorRate) {
+    throw new Error(
+      `steekproef-foutratio ${(errorRate * 100).toFixed(1)}% (${sampleFout} van ${sample.length}) ` +
+        `ligt boven de grens van ${(maxErrorRate * 100).toFixed(1)}%. Publiceren geblokkeerd. ` +
+        `Eén fout in de steekproef betekent dat het foutmodel niet klopt: de overige ` +
+        `${items.length - sample.length} voorstellen zijn niet gecontroleerd en dragen ` +
+        `waarschijnlijk dezelfde fout. Wijs de run af (rejectRun) en kijk wat er misgaat. ` +
+        `Een bewuste uitzondering vergt maxSampleErrorRate expliciet bij de aanroep.`,
+    );
+  }
 
   // toe te passen: alles behalve expliciet als fout beoordeelde steekproef-items
   const toApply = items.filter(
@@ -700,6 +734,139 @@ export async function publishRun(
     .where(eq(enrichmentRuns.id, runId))
     .limit(1);
   return { run: updated, applied, rematched };
+}
+
+// ── Terugdraaien na publicatie (30 jul) ──────────────────────────────────────
+// "publishRun is onomkeerbaar" was een eigenschap van de GEBOUWDE CODE, niet van de data.
+// `enrichment_items` draagt per gelande vulling `productId`, `field`, `value`, `source` en
+// `applied`; `publishRun` stempelt bovendien `products.tier2_source[field] = source`. Dat is
+// samen genoeg om precies terug te nemen wat deze run gezet heeft, en niets anders.
+//
+// Waarom dit meer is dan gemak: élke volgordebeslissing in dit dossier hing aan de aanname dat
+// de eerste bron een kolom PERMANENT claimt (publishRun vult alleen lege velden). Met deze
+// functie is die claim opzegbaar en wordt "verkeerd gekozen" een correctie in plaats van een
+// ramp.
+//
+// ── De twee voorwaarden, en waarom ze allebei nodig zijn ─────────────────────
+// Een veld wordt alleen leeggemaakt als:
+//   1. de huidige kolomwaarde nog exact is wat deze run erin zette, EN
+//   2. `tier2_source[field]` nog het source-label van dit item draagt.
+// Wijkt één van beide af, dan heeft iets anders die kolom sindsdien aangeraakt — een latere
+// run, een import, een handmatige correctie — en dan is het niet meer ónze waarde om terug te
+// nemen. Zo'n veld blijft staan en wordt geteld als `overgeslagen`.
+//
+// ── Wat dit NIET is ──────────────────────────────────────────────────────────
+// Geen vrijbrief om slordig te publiceren. De drempel op de foutratio hierboven bestaat juist
+// zodat terugdraaien nooit het goedkoopste pad wordt: een run die de grens raakt komt er niet
+// door, en hoeft dus ook niet teruggedraaid te worden. De volgorde is: eerst niet fout doen,
+// dan pas kunnen herstellen.
+export async function revertRun(
+  db: AppDb,
+  runId: string,
+  actor?: string,
+): Promise<{ teruggedraaid: number; overgeslagen: number } | null> {
+  const [run] = await db
+    .select()
+    .from(enrichmentRuns)
+    .where(eq(enrichmentRuns.id, runId))
+    .limit(1);
+  if (!run) return null;
+  if (run.status !== "gepubliceerd") {
+    throw new Error(
+      `run heeft status '${run.status}' — terugdraaien kan alleen na publiceren. ` +
+        `Vóór publicatie is rejectRun het juiste gereedschap.`,
+    );
+  }
+
+  const items = await db
+    .select()
+    .from(enrichmentItems)
+    .where(and(eq(enrichmentItems.runId, runId), eq(enrichmentItems.applied, true)));
+
+  let teruggedraaid = 0;
+  let overgeslagen = 0;
+  const terugItems: string[] = [];
+
+  const perProduct = new Map<string, typeof items>();
+  for (const it of items) {
+    const l = perProduct.get(it.productId) ?? [];
+    l.push(it);
+    perProduct.set(it.productId, l);
+  }
+
+  for (const blok of chunk([...perProduct.keys()], UPDATE_CHUNK)) {
+    const huidig = await db.select().from(products).where(inArray(products.id, blok));
+    const perId = new Map(huidig.map((p) => [p.id, p]));
+
+    for (const productId of blok) {
+      const product = perId.get(productId);
+      if (!product) continue;
+      const tier2 = { ...((product.tier2Source as Record<string, string> | null) ?? {}) };
+      const leeg: Record<string, null> = {};
+      let raak = false;
+
+      for (const it of perProduct.get(productId)!) {
+        const nu = (product as Record<string, unknown>)[it.field];
+        const bedoeld = toColumnValue(it.field, it.value);
+        // Numeric komt als string terug ("17.90"); vergelijk numeriek waar dat kan.
+        const gelijk =
+          nu != null &&
+          (Number.isFinite(Number(nu)) && Number.isFinite(Number(bedoeld))
+            ? Number(nu) === Number(bedoeld)
+            : String(nu) === String(bedoeld));
+        if (!gelijk || tier2[it.field] !== it.source) {
+          overgeslagen++;
+          continue;
+        }
+        leeg[it.field] = null;
+        delete tier2[it.field];
+        terugItems.push(it.id);
+        raak = true;
+      }
+
+      if (raak) {
+        await db
+          .update(products)
+          .set({
+            ...leeg,
+            tier2Source: Object.keys(tier2).length > 0 ? tier2 : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(products.id, productId));
+        teruggedraaid += Object.keys(leeg).length;
+      }
+    }
+  }
+
+  for (const itemBlok of chunk(terugItems, INSERT_CHUNK)) {
+    await db
+      .update(enrichmentItems)
+      .set({ applied: false })
+      .where(inArray(enrichmentItems.id, itemBlok));
+  }
+
+  await db
+    .update(enrichmentRuns)
+    .set({
+      status: "teruggedraaid",
+      counts: {
+        ...((run.counts as Record<string, number> | null) ?? {}),
+        teruggedraaid,
+        overgeslagen,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(enrichmentRuns.id, runId));
+
+  await logEvent(db, {
+    entity: "brand",
+    entityId: run.brandId,
+    action: "enrichment_reverted",
+    actor,
+    payload: { runId, teruggedraaid, overgeslagen },
+  });
+
+  return { teruggedraaid, overgeslagen };
 }
 
 // Run verwerpen: niets toepassen, status op 'afgewezen'.

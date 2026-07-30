@@ -384,7 +384,11 @@ test("steekproef met onbeoordeelde rij: publiceren geblokkeerd", async () => {
     .toBeDisabled();
 });
 
-test("steekproef volledig beoordeeld: publiceren mag, mét fout-waarschuwing", async () => {
+// GEWIJZIGD 30 jul: heette "publiceren mag, mét fout-waarschuwing" en eiste een INGESCHAKELDE
+// publiceerknop naast een 'fout'-oordeel. Dat was het oude contract (één fout blokkeert alleen
+// dát item). Sinds de drempel in publishRun blokkeert één fout de hele run, dus het scherm hoort
+// de knop uit te zetten — anders belooft het iets wat de server weigert.
+test("steekproef volledig beoordeeld met één fout: publiceren is geblokkeerd", async () => {
   const beoordeeld: SampleItem[] = sampleItems.map((it) =>
     it.sampleVerdict == null ? { ...it, sampleVerdict: "goed" as const } : it,
   );
@@ -402,9 +406,12 @@ test("steekproef volledig beoordeeld: publiceren mag, mét fout-waarschuwing", a
   );
   await expect
     .element(page.getByRole("button", { name: "Publish" }))
-    .toBeEnabled();
+    .toBeDisabled();
   await expect
     .element(page.getByText(/1 item\(s\) marked incorrect/))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/reject the run and investigate/i))
     .toBeInTheDocument();
 });
 
