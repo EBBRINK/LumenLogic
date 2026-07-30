@@ -510,64 +510,13 @@ test("data-hub: de prijslijst-badge telt élk dekkingsgat, niet alleen de verlop
     .toBeInTheDocument();
 });
 
-// ── /data/loading als zesde hub-kaart (besluit Timo 30 jul) ──────────────────────────
-// Dit gaat BEWUST in tegen docs/rol-schermen-kaart-2.0a.md ("blijft technisch bestaan;
-// niet in de hub-kaarten"). De inlaadwachtrij was daardoor alleen via de URL of één
-// Analytics-tegel te bereiken. Zie de toelichting in data-cards.tsx; deze test staat er
-// zodat de kaart niet stilzwijgend teruggehaald wordt naar vijf.
-test("data-hub: Loading is de zesde kaart en linkt naar /data/loading", async () => {
-  expect(DATA_CARDS).toHaveLength(6);
-  expect(DATA_CARDS.at(-1)?.href).toBe("/data/loading");
-  // Geen dubbele ingangen: elke kaart één keer.
-  expect(new Set(DATA_CARDS.map((c) => c.href)).size).toBe(6);
-
-  await renderServer(
-    <Screen>
-      <DataCards badge={{}} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByRole("link", { name: /^Loading/ }))
-    .toBeInTheDocument();
-  const link = page.getByRole("link", { name: /^Loading/ }).element();
-  expect(link.getAttribute("href")).toBe("/data/loading");
-});
-
-test("data-hub: de Loading-badge telt de wachtende rijen, niet de ingeladen", async () => {
-  // Dezelfde telling als app/data/page.tsx op de rijen van listBrandLoadQueue.
-  // q1 en q3 wachten, q2 is ingeladen — een badge van 3 zou het openstaande werk
-  // overdrijven en het scherm dat hij aanwijst tegenspreken.
-  const waiting = queue.filter((q) => q.status === "wachtend").length;
-  expect(waiting).toBe(2);
-  expect(queue).toHaveLength(3);
-
-  await renderServer(
-    <Screen>
-      <DataCards badge={{ "/data/loading": waiting }} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByRole("link", { name: /^Loading/ }))
-    .toBeInTheDocument();
-  const link = page.getByRole("link", { name: /^Loading/ }).element();
-  expect(link.textContent).toContain("2");
-});
-
-// De badge hangt aan href, precies zoals die van Enrichment en Price lists: bij 0 hoort
-// er niets te staan, anders leest een lege wachtrij als openstaand werk.
-test("data-hub: een lege wachtrij geeft geen Loading-badge", async () => {
-  await renderServer(
-    <Screen>
-      <DataCards badge={{ "/data/loading": 0 }} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByRole("link", { name: /^Loading/ }))
-    .toBeInTheDocument();
-  const link = page.getByRole("link", { name: /^Loading/ }).element();
-  expect(link.querySelector("span")).toBeNull();
-  expect(link.textContent).not.toContain("0");
-});
+// /data/loading kreeg op 30 jul kortstondig een zesde hub-kaart; die commit is op verzoek
+// van Timo NIET meegegaan naar main (de inlaadwachtrij hoort bij het week-3-navigatiewerk,
+// G21). De tests die de kaart vastpinden stonden per ongeluk in een ándere commit dan de
+// kaart zelf en bleven dus achter op een DATA_CARDS van vijf — drie rode tests op main.
+// Ze zijn hier verwijderd in plaats van de kaart terug te halen: het besluit is dat hij er
+// niet is. Zie docs/rol-schermen-kaart-2.0a.md ("blijft technisch bestaan; niet in de
+// hub-kaarten"). Les: een test hoort in dezelfde commit als de feature die hij bewaakt.
 
 // Eén presentatie voor de levensfase (components/admin/brand-lifecycle-badge.tsx), dezelfde
 // als /admin/brands: 'actief' krijgt géén badge, de afwijking wel.
