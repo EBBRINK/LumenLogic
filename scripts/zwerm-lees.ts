@@ -17,7 +17,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 const runId = process.argv[2];
-if (!runId) throw new Error("gebruik: zwerm-lees.ts <runId>");
+if (!runId) throw new Error("gebruik: zwerm-lees.ts <runId> [--json]");
+// `--json` schrijft dezelfde uitslag machineleesbaar naar stdout. Het overzicht voor Timo leest
+// dát, zodat er geen tweede teller bestaat die zijn eigen antwoord kan geven.
+const alsJson = process.argv.includes("--json");
 const map = `zwerm/${runId}`;
 
 const OORDELEN = new Set(["goed", "nee-niet-in-naam", "nee-hoort-bij-onderdeel", "onzeker"]);
@@ -158,6 +161,34 @@ async function main() {
   }
 
   const echteCellen = cellenTotaal - vallen.totaal - tegen.totaal;
+  const productenPerOordeel: Record<string, number> = {};
+  for (const b of bevindingen) productenPerOordeel[b.oordeel] = (productenPerOordeel[b.oordeel] ?? 0) + b.n;
+
+  if (alsJson) {
+    const schoonJ =
+      prompts.size <= 1 &&
+      tegen.betwist.length === 0 &&
+      ongeldigeScherven === 0 &&
+      vallen.gemist.length === 0 &&
+      (perOordeel["onbeslist"] ?? 0) === 0 &&
+      bevindingen.length === 0;
+    console.log(
+      JSON.stringify({
+        runId,
+        scherven: scherven.length,
+        ongeldigeScherven,
+        echteCellen,
+        perOordeel,
+        productenPerOordeel,
+        vallen: { totaal: vallen.totaal, gevonden: vallen.gevonden, gemist: vallen.gemist },
+        tegenproef: { totaal: tegen.totaal, bevestigd: tegen.bevestigd, betwist: tegen.betwist },
+        problemen,
+        schoon: schoonJ,
+      }),
+    );
+    process.exit(schoonJ ? 0 : 1);
+  }
+
   console.log(`\nzwerm-uitslag · run ${runId}`);
   console.log(`  scherven         : ${scherven.length} (${ongeldigeScherven} ongeldig)`);
   console.log(`  cellen           : ${echteCellen} echt + ${vallen.totaal} vallen`);
