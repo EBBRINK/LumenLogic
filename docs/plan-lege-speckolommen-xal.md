@@ -32,10 +32,17 @@ blijft juist, maar is pas nodig bij de dimbaarheidsrun en bij andere merken.
 
 ### 1. Alleen CRI — niet CRI + dimbaarheid
 
-De doorslag geeft de controlegroep. `tno` vraagt nul keer CRI en wél 15× dimbaarheid: vullen we
-alleen CRI, dan **moet tno per constructie exact stilstaan**. Dat is een falsifieerbare
-voorspelling die niets kost en die de hele meetketen toetst — beweegt tno tóch, dan deugt het
-instrument niet en willen we dat weten vóór er een tweede veld bij komt.
+De doorslag geeft de controlegroep. In de **verse parse** — de populatie die de nameting meet —
+vraagt `tno` nul keer CRI en wél 15× dimbaarheid: vullen we alleen CRI, dan **moet tno per
+constructie exact stilstaan**. Dat is een falsifieerbare voorspelling die niets kost en die de
+hele meetketen toetst.
+
+Nagemeten op de **opgeslagen** regels is het beeld anders en het argument sterker: tno heeft daar
+20 regels die **allemaal** dimbaarheid vragen (niet 15), en 2 met een CRI-eis (`Lr001`, rood;
+`Lr302`, open). Die twee verschijnen niet in de nameting — de verse parse leest er geen CRI-eis
+op — maar `Lr302` is open en kan bij de hermatch bewegen. **Vooraf benoemd, zodat we die beweging
+straks niet als regressie lezen.** Zou dimbaarheid meegaan, dan raakt het alle 20 tno-regels en
+is er geen controlegroep meer over.
 
 A's tegenargument (alleen-CRI vereist een codewijziging in precies de functie die het bewijs
 leverde) verliest zijn kracht nu er sowieso een script komt. Zijn tweede punt weegt wel: de extra

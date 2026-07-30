@@ -349,6 +349,35 @@ lijst leest raadhuis 0 regels in plaats van 31):
 **Elke raadhuis-regel vraagt om CRI** — 19× ≥80, 11× ≥90, en één ≥92 (Lr302). **Geen enkele
 tno-regel doet dat**, terwijl tno wél op alle 15 regels dimbaarheid vraagt.
 
+### Twee populaties, twee rollen — verwar ze niet
+
+De tabel hierboven is de **verse parse**: wat `parseSpecLinesFromPages` uit de PDF haalt, en dus
+precies wat `scripts/eval-testset.ts` meet. Daarnaast staan er **opgeslagen** `spec_lines` in de
+database, ontstaan via de AI-route of met de hand aangepast. Die twee lopen uiteen
+(`scripts/tno-raadhuis-cri.ts`):
+
+| case | verse parse | met CRI-eis | opgeslagen | met CRI-eis | dimbaar (opgeslagen) |
+|---|---|---|---|---|---|
+| raadhuis | 31 | 31 (100 %) | 42 | 39 (93 %) | 30 |
+| tno | 15 | **0** | 20 | **2** | **20** |
+
+De twee tno-regels mét CRI-eis zijn `Lr001` (rood) en `Lr302` (open). Ze bestaan óók in de verse
+parse, maar dáár zonder CRI-eis — de opgeslagen versie draagt meer dan de deterministische parse
+leest.
+
+**Welke telt waarvoor:**
+
+- **De nameting** draait `eval-testset.ts`, dat de PDF vers parseert en `evaluateSpecLine`
+  aanroept. Het raakt de opgeslagen regels niet. Voor de vraag "beweegt tno?" geldt dus de verse
+  parse: **0 CRI-eisen, tno moet stilstaan.**
+- **De publish** hermatcht wél opgeslagen regels — maar alleen blauwe/open van XAL, en dat zijn
+  er vier (zie zwakke plek 3). `Lr001` is rood en wordt niet hermatcht; `Lr302` is open en kan
+  bewegen.
+
+Meetnoot bij dit cijfer: filter opgeslagen regels op **dossier**, niet op `fixtureCode`. Codes als
+`Lr301` komen in tien dossiers voor; een filter op code alleen gaf 76 "tno-regels" in plaats van
+20. Dat is dezelfde nagebouwde-query-val als altijd, nu in mijn eigen meetscript.
+
 Dat geeft een meetontwerp dat we niet hoefden te bedenken:
 
 > Vullen we **alleen CRI**, dan kan uitsluitend `raadhuis` bewegen. `tno` moet per constructie
