@@ -2290,3 +2290,37 @@ dus `Button asChild` forceert geen client-boundary).
 commit belanden. De screenshots komen uit vitest' browsermodus (echte Chromium, echte computed
 styles); wat daar ontbreekt is het echte lettertype (de harnas valt terug op een serif, die
 bréder is dan Geist — de overloopmeting is dus de pessimistische kant).
+---
+
+## 2026-07-30 — Open eindes uit de XAL-verrijking (vastgelegd, niet gebouwd)
+
+### 1. XAL-productnamen kappen af op 100 tekens — en dat raakt de matcher
+
+**752 XAL-namen zijn exact 100 tekens lang en geen enkele is langer.** De langste naam in de
+hele catalogus is 266 tekens, dus dit is geen kolomlimiet van ons maar de XAL-prijslijst zelf.
+De lengteverdeling bevestigt het: 96tk×525, 97tk×915, 98tk×1009, dan een dal bij 99tk×533 en
+een **piek bij 100tk×752**. Zo'n piek na een dal is het handtekeningpatroon van afkapping —
+alles wat langer was is teruggeknipt naar precies 100.
+
+Waarom dit meer is dan een verrijkingsprobleem: de matcher leest diezelfde namen, en de
+positiegewogen tekstscore (`lib/matching/textscore.ts`) weegt tokens naar hun plaats in de naam.
+Een afgekapte naam mist dus niet alleen specs maar verschuift ook de weging van wat er nog wél
+staat. Verdient een eigen probleemdoc met eigen meting; niet meenemen in het verrijkingsspoor.
+
+Wat het **niet** is: er is geen enkele aanwijzing dat er een tweede CRI-waarde achter de
+afkapping schuilt. Gemeten over alle 211.317 producten draagt geen enkele naam meer dan één
+CRI-token — nul precedent, ook bij de niet-afgekapte namen.
+
+### 2. Draagt een draagrail een CRI? (accessoire-vraag)
+
+`PICO SUPPORT` is een draagrail met twaalf losse lichtpunten (`12x1.1W`). Hoort zo'n product
+een CRI, kelvin of bundelhoek te dragen — en hoort het überhaupt als kandidaat op te komen bij
+een armatuur-regel? Dit is dezelfde vraag als de `accessoire-context`-vlag in
+`lib/enrichment/verdenking.ts` en de 4.072 producten die mogelijk zélf een accessoire zijn
+(zie `docs/plan-steekproef-zwerm.md`, R2). Hoort daar thuis, niet in de CRI-run.
+
+### 3. Bronfouten van XAL, niet van onze pijplijn
+
+`220-200V` (aflopend spanningsbereik) en `2200-31000K` staan in namen van 56–59 tekens — dus
+compleet ingelezen, niet afgekapt. Typefouten in de bronprijslijst. Vastgelegd zodat een
+volgende sessie ze niet als import- of parserfout aanmerkt.
