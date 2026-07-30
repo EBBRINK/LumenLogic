@@ -5,6 +5,7 @@
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { activeNavHref, NAV_ITEMS } from "./nav-items";
 import { NavBar } from "./nav-link";
 
@@ -55,6 +56,8 @@ test("navigatie-items: Brand relations staat tussen Catalog en Data, labels zijn
 
 afterEach(() => {
   document.documentElement.classList.remove("dark");
+  // De balk bevat sinds 30 jul de themaschakelaar; die schrijft in localStorage.
+  localStorage.removeItem(THEME_STORAGE_KEY);
 });
 
 const nav = (
@@ -154,6 +157,60 @@ test("de focus-outline in de balk is teal, niet blauw", async () => {
   expect(focused.matches(":focus-visible")).toBe(true);
   expect(getComputedStyle(focused).outlineColor).toBe("rgb(27, 168, 154)");
   expect(getComputedStyle(focused).outlineWidth).toBe("2px");
+});
+
+// ── Themaschakelaar in de balk (DESIGN.md O3/G24, O9, O10/O12) ───────────────
+// De knop is de énige toevoeging aan de balk. Gemeten in deze harnas bij viewport
+// 375, vóór en ná: document.body.scrollWidth 595 → 651 (+56 = 32px knop + de gap-6
+// naar het groepje ernaast), balkhoogte onveranderd 73px. De balk liep daar dus al
+// over en loopt nu 56px verder over. NIET hier gerepareerd: dat is week 3 (besluit
+// G21, vier rollen), en het getal staat hier zodat die sprint het niet opnieuw hoeft
+// te meten. Vandaar ook geen assertie op scrollWidth — die zou week 3 in de weg staan.
+
+test("de themaschakelaar staat in de balk, is een echte knop en meldt zijn stand", async () => {
+  await renderNav();
+  const btn = page.getByRole("button", { name: "Dark mode" }).element();
+  expect(btn.tagName).toBe("BUTTON");
+  expect(btn.getAttribute("type")).toBe("button");
+  // Geen opgeslagen keuze → licht, dus de knop staat uit (DESIGN.md O13).
+  expect(btn.getAttribute("aria-pressed")).toBe("false");
+  // 32px: bewuste compacte maat, DESIGN.md O9 (44px geldt voor default/lg/velden).
+  const r = btn.getBoundingClientRect();
+  expect(r.width).toBe(32);
+  expect(r.height).toBe(32);
+});
+
+test("de themaschakelaar is met Tab bereikbaar en heeft een tealen ring", async () => {
+  await renderNav();
+  const btn = page
+    .getByRole("button", { name: "Dark mode" })
+    .element() as HTMLElement;
+  for (let i = 0; i < 20 && document.activeElement !== btn; i++) {
+    await userEvent.keyboard("{Tab}");
+  }
+  expect(document.activeElement).toBe(btn);
+  expect(btn.matches(":focus-visible")).toBe(true);
+  // Blauw #2D5A8C haalt op de navy balk 2,3:1 — teal, net als NavLink (O10/O12).
+  // Pollen en niet meteen lezen: Tailwind v4 zet outline-color in transition-colors,
+  // dus een directe getComputedStyle vangt de ring halverwege de overgang nog op de
+  // globale outline-ring/50.
+  await expect
+    .poll(() => getComputedStyle(btn).outlineColor)
+    .toBe("rgb(27, 168, 154)");
+  expect(getComputedStyle(btn).outlineWidth).toBe("2px");
+});
+
+test("de balk klikt zichzelf naar dark en terug", async () => {
+  // De hele reden dat dit bestaat: vanuit de balk moet je bij het .dark-tokenblok
+  // kunnen komen. Zonder deze weg maakte elke sprint dark-screenshots van een stand
+  // die geen gebruiker kon bereiken.
+  await renderNav();
+  const btn = page.getByRole("button", { name: "Dark mode" });
+  await btn.click();
+  expect(document.documentElement.classList.contains("dark")).toBe(true);
+  await expect.element(btn).toHaveAttribute("aria-pressed", "true");
+  await btn.click();
+  expect(document.documentElement.classList.contains("dark")).toBe(false);
 });
 
 test("gerenderde balk markeert alleen Brand relations op /data/brand-relations", async () => {

@@ -2628,3 +2628,50 @@ als `new Date(...)` — dan is de zone-informatie al weg vóór de formatter hem
 **Nog open:** `app/projects/[id]/quote/page.tsx` heeft nog een eigen `nl-NL`-datumformatter
 (regel ~86). Die stond tijdens deze ronde bij een parallelle sessie; hij hoort ook naar
 `formatDate()`.
+
+---
+
+## 2026-07-30 — Dark mode is bereikbaar (en niets anders)
+
+Het `.dark`-tokenblok in `app/globals.css` was al compleet, maar er was geen enkele weg
+ernaartoe: geen `prefers-color-scheme`, geen provider, geen toggle buiten `*.test.tsx`. Elke
+sprint maakte dus light/dark-screenshotparen van een stand die geen gebruiker kon bereiken,
+terwijl `CLAUDE.md` die paren eist en DESIGN.md O3/G24 dark verplicht stelt. Nieuw:
+`lib/theme.ts` (sleutel + klasse + init-script), `components/theme-toggle.tsx` (de knop),
+een inline `<script>` als eerste kind van `<body>` in `app/layout.tsx`, en de knop gemonteerd
+in `components/nav-link.tsx`. **Geen tokenwaarde gewijzigd** — alleen wánneer `.dark` op
+`<html>` staat.
+
+**De standaard is LICHT, niet de systeemvoorkeur (besluit Timo).** DESIGN.md O13 zegt
+letterlijk dat de dark-paren nooit op contrast zijn nagerekend; zolang dat zo is mag niemand
+in dark bélanden zonder erom te vragen. `prefers-color-scheme` wordt daarom nergens gelezen —
+niet in het init-script, niet in een matchMedia-luisteraar. Twee tests bewaken dat: de
+`THEME_INIT_SCRIPT`-string mag het woord niet bevatten, en tijdens het monteren van de knop
+wordt `window.matchMedia` bespioneerd en mag hij niet met een color-scheme-query worden
+aangeroepen. Een eventuele latere ramp van Eduard (O13) is de plek om deze knoop te herzien,
+niet een opruimactie.
+
+**Geen dependency.** `next-themes` zou een provider + context in de RSC-boom hangen (elke
+`renderServer`-test moet er dan omheen) voor één klasse en één localStorage-sleutel.
+Dat is nu ± 20 regels in `lib/theme.ts`. De stand staat niet in React-state maar wordt via
+`useSyncExternalStore` van de klasse op `<html>` gelezen — het init-script schrijft die klasse
+vóór React bestaat, dus een `useState`-kopie zou na hydratie moeten worden bijgetrokken.
+
+**Knop:** echte `<button type="button">` met `aria-pressed` en `aria-label="Dark mode"`, 32px
+(size-8). Dat is bewust ónder de 44px uit kit §7 — DESIGN.md **O9** legt vast dat 44px geldt
+voor `default`, `lg` en formuliervelden, niet voor compacte icoon-only bedieningen. 44px zou
+de balk 16px hoger maken. Focus-ring teal `#1BA89A` en niet `--ring`: blauw haalt op de navy
+balk 2,3:1 (O10/O12, zelfde redenering als `NavLink`). Beide iconen staan altijd in de DOM en
+worden door de `dark:`-variant gewisseld — hingen ze aan de state, dan klapte het icoon ná
+hydratie om, precies de flits die de inline-init voorkomt. **Geen thema-transitie**: DESIGN.md
+§8 eist respect voor `prefers-reduced-motion` en de app doet dat nergens; een cross-fade over
+de hele app zou dat gat groter maken.
+
+**Openstaand — de balk bij 375px.** In de testharnas gemeten, vóór en ná: `document.body.scrollWidth`
+**595 → 651** bij viewport 375 (+56 = 32px knop + de `gap-6` naar het groepje ernaast);
+balkhoogte onveranderd 73px. De balk liep daar dus al over (op productie eerder 640 gemeten) en
+loopt nu 56px verder over. **Bewust niet gerepareerd**: dat is week 3 (besluit G21, vier rollen),
+die sprint herbouwt de balk toch. Er staat daarom géén assertie op `scrollWidth` — het getal
+staat in `components/site-nav.test.tsx` in commentaar zodat week 3 niet opnieuw hoeft te meten.
+De enige wijziging in `nav-link.tsx` is de knop plus een wrapper-div die het aantal
+flex-kinderen op drie houdt (anders verdeelt `justify-between` de bestaande elementen anders).

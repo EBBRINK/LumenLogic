@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { activeNavHref, NAV_ITEMS } from "./nav-items";
+import { ThemeToggle } from "./theme-toggle";
 
 export function NavLink({
   href,
@@ -86,7 +87,18 @@ export function NavBar({
             />
           ))}
         </nav>
-        <span className="hidden text-xs text-nav-muted sm:inline">{email}</span>
+        {/* Alléén de themaknop erbij (DESIGN.md O3/G24 — dark mode was onbereikbaar).
+            Het groepje eromheen is er om precies dat te kunnen: de wrapper houdt het
+            aantal flex-kinderen van de balk op drie, zodat justify-between de bestaande
+            elementen niet anders verdeelt dan hiervoor. Verder is er níéts aan de balk
+            veranderd: de overloop bij 375px (gemeten: body.scrollWidth 595 → 651) blijft
+            staan en hoort bij week 3 (besluit G21, vier rollen), niet hier. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden text-xs text-nav-muted sm:inline">
+            {email}
+          </span>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
