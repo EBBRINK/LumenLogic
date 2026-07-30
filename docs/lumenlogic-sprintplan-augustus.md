@@ -1405,6 +1405,48 @@ tegenspreekt, wint in de praktijk de paragraaf, want daar bouwt de sessie uit. D
 briefingfout die door een bouwsessie is gevangen sinds week 1 — het vangnet werkt, de briefingdiscipline
 nog niet.
 
+**Besluiten G36 t/m G38 (Timo, 30 jul) — na de oplevering van 3.1.** De bouwsessie leverde vier
+onderdelen op die allebei de latten haalden; de sprintmaster verifieerde het rapport tegen de code en
+de productiedatabase. Vier claims klopten, één niet (zie onderaan).
+
+- **G36 — wie een PIN uitgeeft, en met welke rol.** `issuePinAction` controleerde alleen
+  `requireSession()` en nam `orgId` én rollen uit de input: elke ingelogde gebruiker kon een PIN
+  uitgeven voor elk adres en zichzelf `org_admin` maken in elke organisatie. Timo's ontwerp lost dit
+  op in plaats van het af te dekken: **wie van Brink een PIN krijgt, is `org_admin` van zijn eigen
+  organisatie. Die org_admin mag zelf mensen aanmaken binnen zijn eigen org, maar die worden nooit
+  org_admin.** Daarmee kan niemand zichzelf verheffen en niemand buiten zijn eigen org uitgeven.
+  Concreet: intern (Brink) mag alles, een `org_admin` mag alleen binnen zijn eigen org en zonder de
+  org_admin-rol toe te kennen, een gewone gebruiker mag niets. *Niet doorschuiven naar 3.2a* — dat
+  item gaat over routes, en een route-allowlist dekt server actions niet automatisch.
+- **G37 — `dark:text-brand-teal` op de magic-link-onthulling is goedgekeurd.** Repareert een gemeten
+  contrastfout van 2,54:1. Breidt de redenering van O10 (teal in plaats van `--ring`, omdat blauw op
+  navy 2,27:1 haalt) uit van focusringen naar labeltekst. `DESIGN.md` §11 verbood het eenzijdig
+  invullen; hiermee is het ingevuld.
+- **G38 — de pogingenlimiet gaat naar 10 op rij en verdwijnt uit beeld.** G34 zei 5; Timo's bezwaar
+  was dat een klant die zich vertypt daardoor moet bellen. De sprintmaster bracht er tegenin dat de
+  limiet niet over vertypen gaat maar over geautomatiseerd raden: 8 cijfers = 100 miljoen combinaties,
+  scrypt kost ~46 ms per poging, dus serieel ~27 dagen maar **met 200 parallelle verzoeken ~3 uur** —
+  binnen de 7 dagen die de PIN leeft. Uitkomst: **10 foute pogingen op rij** (een mens haalt dat
+  nooit, een aanvaller heeft er niets aan) en **de teller wordt nergens getoond**. `/activate` toonde
+  hem al niet; het aftellende getal in `components/admin/pin-block.tsx:528` gaat eruit.
+  *Aanname van de sprintmaster:* de eindstatus "geblokkeerd" blíjft zichtbaar voor Brink — anders ziet
+  niemand bij een supportvraag waarom een code niet werkt. Alleen het getal verdwijnt.
+
+**Correctie op het opleveringsrapport (geverifieerd 30 jul):** de gemelde `rules-of-hooks`-fout op
+`app/projects/actions.ts:652` is **geen bug**. `useAiSuggestion` is een gewone async repo-functie
+(`lib/repo/ai-suggestions.ts:124`); ESLint ziet de `use`-prefix aan voor een React hook. Fout-positief.
+Wél bevestigd: de allowlist-mismatch in `db/migrations/0004_vijfstatussen.sql:131-134` (seedt
+`hello@noplasticfloralfoam.com` + `timo@jouwainstein.com`, productie heeft `timo@jouwainstein.com` +
+`e.brink@brinklicht.nl`), de atomaire pogingenteller en de reset-on-success.
+
+**Het productie-incident, nagemeten:** een bouwagent draaide een dev-server tegen productie-Neon.
+Omvang is **precies één sessierij** (30 jul 17:13, localhost-IP); de rijen van 06:38–06:43 zijn Timo
+zelf vanaf 82.75.31.121. `verification` heeft 0 rijen van die dag, `account` is nog steeds volledig
+leeg, en migratie 0017 is **niet** op productie gedraaid (`organizations` heeft geen `type`-kolom,
+`activation_pins` bestaat er niet). Geen schemawijziging, geen wachtwoord gezet. *Correctie op de
+nulmeting in deze sectie:* daar stond "0 van 3 accounts met wachtwoord" — de `account`-tabel is in
+werkelijkheid leeg (magic link maakt geen account-rij aan). Gevolg identiek, formulering onnauwkeurig.
+
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
 - *Given* de project-queries, *then* zijn lijst, detail, regels, review, estimate en importruns org-gescoped — een extern account kan geen enkel object van een andere org opvragen (directe-URL-test).
