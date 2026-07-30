@@ -41,6 +41,11 @@ async function main() {
   // echt armatuur, dan is het naam-begin-anker te grof en weren we goede waarden.
   const tegen = { totaal: 0, bevestigd: 0, betwist: [] as string[] };
   const problemen: string[] = [];
+  const prompts = new Set<string>();
+  // Welke antwoordbestanden deze uitslag droeg, met hun wijzigingstijd. Een uitslag is een
+  // momentopname: komt er later een antwoord bij of overheen, dan veroudert hij stil. Door de
+  // bestanden te stempelen is achteraf te zien waarop een uitspraak gebaseerd was.
+  const gelezen: string[] = [];
 
   for (const scherfNaam of scherven) {
     const scherf = JSON.parse(await readFile(`${map}/${scherfNaam}`, "utf8"));
@@ -49,11 +54,15 @@ async function main() {
 
     let antwoord: {
       manifestHash?: string;
+      promptHash?: string;
       gelezenCellen?: number;
       oordelen?: { celId: string; oordeel: string; bewijsNaam?: string; reden?: string }[];
     };
     try {
       antwoord = JSON.parse(await readFile(antwoordPad, "utf8"));
+      const { stat } = await import("node:fs/promises");
+      const st = await stat(antwoordPad);
+      gelezen.push(`${scherfNaam.replace(".json", "")} · ${st.mtime.toISOString().slice(0, 19)}`);
     } catch {
       // Slot: een ontbrekende of onleesbare scherf is GEEN stilzwijgende goedkeuring.
       problemen.push(`${scherfNaam}: geen leesbaar antwoord — hele scherf ongeldig (${scherf.cellen.length} cellen onbeslist)`);
@@ -71,6 +80,20 @@ async function main() {
       ongeldigeScherven++;
       continue;
     }
+
+    // Slot 2c — de PROMPT hoort bij het manifest. Antwoorden die onder verschillende
+    // vraagstellingen tot stand kwamen, mogen niet worden samengevoegd: dan meet je niet wat
+    // agents ervan vinden maar wat je ze gevraagd hebt. Zie de kanttekening in zwerm-export.ts.
+    const verwachtePrompt = scherf.meta?.promptHash;
+    if (verwachtePrompt && antwoord.promptHash !== verwachtePrompt) {
+      problemen.push(
+        `${scherfNaam}: promptHash ${antwoord.promptHash ?? "<ontbreekt>"} ≠ ${verwachtePrompt} — ` +
+          `dit antwoord kwam onder een ANDERE vraagstelling tot stand; hele scherf ongeldig`,
+      );
+      ongeldigeScherven++;
+      continue;
+    }
+    prompts.add(String(antwoord.promptHash ?? "-"));
 
     // Slot 2b — sluitende telling. Ontbreekt er één cel, dan is de HELE scherf ongeldig; er
     // wordt niet "de rest is goed" van gemaakt, want dan loont het om er een paar over te slaan.
@@ -154,6 +177,15 @@ async function main() {
     for (const b of tegen.betwist) console.log(`      ${b}`);
   }
 
+  console.log(`\n  gelezen antwoorden (deze uitslag geldt alleen hiervoor):`);
+  for (const g of gelezen) console.log(`      ${g}`);
+  if (prompts.size > 1) {
+    console.log(
+      `\n  ✗ ${prompts.size} VERSCHILLENDE promptHashes tussen de scherven — deze antwoorden zijn\n` +
+        `    niet vergelijkbaar en horen niet in één uitslag.`,
+    );
+  }
+
   if (problemen.length) {
     console.log(`\nproblemen (${problemen.length}):`);
     for (const p of problemen) console.log(`  ${p}`);
@@ -171,6 +203,7 @@ async function main() {
 
   // ── Het eindoordeel ───────────────────────────────────────────────────────
   const schoon =
+    prompts.size <= 1 &&
     tegen.betwist.length === 0 &&
     ongeldigeScherven === 0 &&
     vallen.gemist.length === 0 &&

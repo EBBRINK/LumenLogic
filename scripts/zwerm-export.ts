@@ -63,6 +63,16 @@ const tegenproefN = Number(rest.find((a) => a.startsWith("--tegenproef="))?.slic
 // optimum, dus dit is een ontwerpkeuze: genoeg tekens om de buren te zien die de waarde
 // rechtvaardigen ("CRI 90" versus "C90 W"), niet zoveel dat de familienaam terugkomt.
 const CONTEXT = Number(rest.find((a) => a.startsWith("--context="))?.slice(10) ?? 8);
+// Pad naar het promptbestand dat de agents krijgen. De HASH daarvan gaat in elke scherf, en de
+// verwerker weigert antwoorden waarvan de echo niet klopt.
+//
+// Waarom dit een slot moet zijn en geen discipline: op 30 jul draaide ik scherf 6 opnieuw met
+// een AANGESCHERPTE prompt ("let scherp op een decimale typemaat…", "een losse lamp of
+// LED-module") en het tweede antwoord week precies op die twee punten af. Ik meldde die
+// afwijking als onenigheid tússen agents — als signaal dat er een echte productvraag lag —
+// terwijl ik er zelf aan geduwd had. Dat is het verschil tussen een meting en een bevestiging
+// van je eigen vermoeden, en je ziet die fout niet terwijl je hem maakt.
+const promptPad = rest.find((a) => a.startsWith("--prompt="))?.slice(9) ?? null;
 
 // De vorm van het spec-fragment: de karakters die dit veld voortbrachten, plus context —
 // UITGEBREID TOT WOORDGRENZEN.
@@ -207,6 +217,16 @@ async function main() {
   // ── scherven schrijven ────────────────────────────────────────────────────
   const map = `zwerm/${runId}`;
   await mkdir(map, { recursive: true });
+
+  // De prompt hoort bij het manifest: verandert hij, dan zijn oude antwoorden niet meer
+  // vergelijkbaar met nieuwe en mogen ze niet worden samengevoegd.
+  let promptHash = "geen-prompt-vastgelegd";
+  if (promptPad) {
+    const { readFile } = await import("node:fs/promises");
+    const tekst = await readFile(promptPad, "utf8");
+    promptHash = createHash("sha256").update(tekst).digest("hex").slice(0, 16);
+    await writeFile(`${map}/prompt.md`, tekst);
+  }
   const scherven: string[] = [];
   const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
 
@@ -229,6 +249,9 @@ async function main() {
             scherf: s + 1,
             aantalCellen: cellen.length,
             manifestHash: hash,
+            // Neem deze letterlijk over in je antwoord. Wijkt hij af, dan is je antwoord onder
+            // een andere vraagstelling tot stand gekomen en telt het niet mee.
+            promptHash,
             vraag:
               "Beschrijft deze waarde het ARMATUUR, en staat hij letterlijk in de productnaam? " +
               "Let op driver, converter, lamp, optiek, accessoire en bereiken.",
