@@ -136,8 +136,16 @@ function PriceBlock({
   if (disclosure.awaitingData) return null;
   if (disclosure.showPrice) {
     return (
+      // UX-audit 30 jul (item 3): dit was `text-2xl font-semibold` — de prijs was
+      // letterlijk de grootste tekst op de productpagina, groter dan de productnaam
+      // (text-xl). Ijzeren regel 2 zegt dat geld de rangschikking nooit beïnvloedt; dan
+      // hoort het ook niet het luidste element van het scherm te zijn. Nu bodygewicht:
+      // even zichtbaar en even exact, alleen niet meer als eerste in het oog.
+      // Niet terugzetten naar een koptekstformaat zonder dat besluit terug te draaien.
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular-nums">{formatEur(price?.grossPrice)}</span>
+        <span data-price className="text-base font-medium tabular-nums">
+          {formatEur(price?.grossPrice)}
+        </span>
         <span className="text-sm text-muted-foreground">list price</span>
       </div>
     );

@@ -288,9 +288,13 @@ export default async function RegelDetailPage({
       {/* AFWIJKINGEN — altijd getoond, ook binnen groen (transparantieregel C-07). */}
       <section className="mt-6">
         <h3 className="text-sm font-medium">Deviations</h3>
+        {/* UX-audit 30 jul (item 12): de tweede zin ("&ldquo;No data&rdquo; is an honest
+            gray flag, not an error.") is weg — de grijze vlag mét het woord "no data"
+            staat in de tabel eronder en legt zichzelf uit. Wat blijft is wat de tabel
+            toont, niet waarom het beleid klopt. */}
         <p className="mt-0.5 mb-3 text-xs text-muted-foreground">
           Every requested field comes back with its verdict — including the fields
-          that match. &ldquo;No data&rdquo; is an honest gray flag, not an error.
+          that match.
         </p>
         <DeviationTable deviations={specLine.deviations as Deviation[] | null} />
       </section>

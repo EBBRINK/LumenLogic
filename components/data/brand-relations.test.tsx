@@ -437,9 +437,10 @@ test("merkpagina met geldige prijslijst: banner is afwezig (DoD 4b, tweede stand
 
 test("detail-scorecard: dekkings-%, grijze niet-meetbare velden, interne velden en legenda", async () => {
   await renderServer(detail);
-  // Legenda met de donkergroen-definitie (Timo-besluit 1).
+  // Legenda met de donkergroen-definitie (Timo-besluit 1). UX-audit 30 jul (item 4):
+  // de legenda noemt het weergavelabel, niet de opgeslagen enum.
   await expect
-    .element(page.getByText(/Dark green = all must fields 100%/))
+    .element(page.getByText(/Dark green = all Required fields 100%/))
     .toBeInTheDocument();
   // Dekkingspercentages: kelvin 100%, cri 50%.
   await expect

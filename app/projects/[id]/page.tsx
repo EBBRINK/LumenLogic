@@ -117,11 +117,13 @@ export default async function RegelsTab({
       />
 
       <section className="mb-8">
-        <div className="mb-2 flex items-baseline justify-between">
+        {/* UX-audit 30 jul (item 12): hier stond "Order = request order. No sort
+            buttons." De volgorde ís nog steeds de aanvraagvolgorde — dat is besluit C-11
+            en het staat afgedwongen in lib/repo/review.ts:42. Alleen de zin is weg: de
+            tabel hoeft niet uit te leggen dat ze geen knop heeft. Voeg dus geen
+            sorteerknoppen toe omdat de disclaimer verdwenen is; dat zou C-11 breken. */}
+        <div className="mb-2">
           <h2 className="text-lg font-medium">Lines ({lines.length})</h2>
-          <p className="text-xs text-muted-foreground">
-            Order = request order. No sort buttons.
-          </p>
         </div>
         <SpecLineTable
           dossierId={dossier.id}

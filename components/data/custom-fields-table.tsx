@@ -20,6 +20,7 @@
 import { useState, useTransition } from "react";
 import { callAction } from "@/lib/next-action-result";
 import type { Compleetheidsniveau } from "@/lib/field-catalog";
+import { niveauLabel } from "@/lib/niveau-labels";
 import {
   CustomFieldForm,
   type BucketOptie,
@@ -63,12 +64,14 @@ const NIVEAU_STIJL: Record<Compleetheidsniveau, string> = {
   nice: "bg-foreground/5 text-muted-foreground",
 };
 
+// UX-audit 30 jul (item 4): de pil droeg het ruwe enum-woord ("wanna"). De opgeslagen
+// waarde is ongewijzigd — alleen het zichtbare label komt uit lib/niveau-labels.ts.
 function NiveauBadge({ niveau }: { niveau: Compleetheidsniveau }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${NIVEAU_STIJL[niveau]}`}
     >
-      {niveau}
+      {niveauLabel(niveau)}
     </span>
   );
 }
@@ -108,7 +111,9 @@ export function CatalogFieldsOverview({
                     className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground"
                   >
                     <span>{f.labelEn}</span>
-                    <span className="shrink-0 opacity-70">{f.niveau}</span>
+                    <span className="shrink-0 opacity-70">
+                      {niveauLabel(f.niveau)}
+                    </span>
                   </li>
                 ))}
               </ul>

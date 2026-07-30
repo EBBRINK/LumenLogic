@@ -74,6 +74,34 @@ test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
   expect(document.body.textContent ?? "").not.toContain("Prijs via Brink");
 });
 
+// UX-audit 30 jul (item 3): de prijs stond op text-2xl en was daarmee de GROOTSTE tekst
+// op de productpagina — groter dan de productnaam. Ijzeren regel 2 zegt dat geld de
+// rangschikking niet raakt; dan hoort het ook niet het luidste element te zijn. De prijs
+// blijft volledig zichtbaar, alleen niet meer groter dan de naam van het product.
+test("tier1: de prijs is zichtbaar maar nooit groter dan de productnaam", async () => {
+  const disclosure = resolveDisclosure("tier1", externZonderProject);
+  await renderServer(
+    <Screen>
+      <ProductCard
+        spec={baseSpec}
+        disclosure={disclosure}
+        price={{ grossPrice: "310.00", currency: "EUR" }}
+        overrides={{}}
+        requestAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("310,00")).toBeInTheDocument();
+  const prijs = document.querySelector<HTMLElement>("[data-price]");
+  const titel = document.querySelector<HTMLElement>('[data-slot="card-title"]');
+  expect(prijs).not.toBeNull();
+  expect(titel).not.toBeNull();
+  const px = (el: Element) => parseFloat(getComputedStyle(el).fontSize);
+  expect(px(prijs!)).toBeLessThan(px(titel!));
+  // En hij staat er nog echt, met het volledige bedrag.
+  expect(prijs!.textContent).toContain("310,00");
+});
+
 test("tier2 gated: 'Request price via Brink', specs wél, prijs niet", async () => {
   const disclosure = resolveDisclosure("tier2", externZonderProject);
   await renderServer(

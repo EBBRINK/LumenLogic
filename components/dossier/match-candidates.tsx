@@ -2,10 +2,11 @@ import { IconCheck, IconSearch } from "./icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "./status-badge";
+import { VERDICT } from "./deviation-table";
 import { cn } from "@/lib/utils";
 import { formatEur } from "@/lib/format";
-import { fieldLabel } from "@/lib/matching/tolerances";
-import type { Candidate } from "./types";
+import { fieldLabelTitle } from "@/lib/matching/tolerances";
+import type { Candidate, Deviation } from "./types";
 
 // Regel-detail, kandidatenkant (functioneel ontwerp §3.6 / C-08). Twee gescheiden lijsten:
 // "Voldoet aantoonbaar" (alle gevraagde velden bewezen binnen marge) en "Mogelijk — data
@@ -14,7 +15,8 @@ import type { Candidate } from "./types";
 //
 // Twee ijzeren regels leven hier zichtbaar:
 //   • Regel 2: prijs wordt getóónd, nooit gebruikt om te sorteren. De volgorde is de
-//     aanvraag-/matcher-rangschikking; geld raakt die codepad nooit.
+//     aanvraag-/matcher-rangschikking; geld raakt die codepad nooit. Sinds de UX-audit
+//     van 30 jul geldt dat ook voor het oog: zie MatchEvidence hieronder.
 //   • Niets stil weglaten: ook zonder passende kandidaat kan de regel eerlijk worden
 //     afgerond (rood/blauw/paars) — elke regel houdt een status.
 
@@ -37,10 +39,84 @@ function specSummary(c: RegelCandidate): string {
   return parts.join(" · ");
 }
 
-function unknownFields(c: RegelCandidate): string[] {
-  return (c.deviations ?? [])
-    .filter((d) => d.verdict === "onbekend")
-    .map((d) => d.field);
+// ── Match-onderbouwing (UX-audit 30 jul, item 3) ────────────────────────────
+//
+// De kaart leidde met de PRIJS: grootste, zwaarste element rechtsboven, terwijl er van de
+// match zelf niets te zien was. Dat is precies de omkering van ijzeren regel 2 — de logica
+// is prijsblind, het oog was dat niet. Nu leidt de kaart met de per-veld-oordelen uit de
+// tolerantietabel (judgeCandidate, lib/matching/tolerances.ts) en staat de prijs op
+// bodygewicht in de grijstint.
+//
+// GEEN VERZONNEN SCORE. De engine levert geen getal, dus er staat geen getal: alleen welk
+// veld is getoetst, tegen welke waarde, en met welke marge-uitkomst. De woorden en kleuren
+// komen uit dezelfde VERDICT-map als de transparantietabel (C-07), dus "geel" betekent
+// hier hetzelfde als daar.
+
+// Eén zin die de kaart samenvat: hoeveel velden binnen de marge, en wat er verder is.
+// "onbekend" is geen verwijt (ontbrekend ≠ afwijkend) maar staat er wel — een kandidaat
+// waarvan je de helft niet weet mag er niet even overtuigend uitzien als een bewezen match.
+function evidenceSummary(deviations: Deviation[]): string {
+  const n = (v: Deviation["verdict"]) =>
+    deviations.filter((d) => d.verdict === v).length;
+  const parts = [
+    `${n("groen")} of ${deviations.length} requested fields within margin`,
+  ];
+  if (n("geel") > 0) parts.push(`${n("geel")} in the yellow margin`);
+  if (n("rood") > 0) parts.push(`${n("rood")} outside the margin`);
+  if (n("onbekend") > 0) parts.push(`${n("onbekend")} without data`);
+  return parts.join(" · ");
+}
+
+// Chiptekst per veld. Gelijk = "exact", anders "gevraagd → geleverd" met het marge-oordeel;
+// zonder data blijft het bestaande "<veld>: no data" (leesbaar label, nooit de camelCase-
+// sleutel — UX-audit bug #8). `fieldLabelTitle` en niet `fieldLabel`: de chip begint met
+// het veld, dus dit is de begin-van-een-regel-vorm (zie lib/matching/tolerances.ts).
+function evidenceText(d: Deviation): string {
+  const label = fieldLabelTitle(d.field);
+  if (d.verdict === "onbekend") return `${label}: no data`;
+  const requested = String(d.requested);
+  const delivered = d.delivered == null ? "—" : String(d.delivered);
+  if (requested === delivered) return `${label} ${requested}: exact`;
+  return `${label} ${requested} → ${delivered}: ${VERDICT[d.verdict].label}`;
+}
+
+function MatchEvidence({ deviations }: { deviations: Deviation[] }) {
+  return (
+    <div className="mt-2 rounded-md bg-muted/40 px-2.5 py-2">
+      {deviations.length === 0 ? (
+        // Geen oordelen betekent niet "alles klopt": de matcher heeft voor deze kandidaat
+        // niets vastgelegd. Dat zeggen we, in plaats van een lege ruimte die als
+        // instemming leest.
+        <p className="text-sm font-medium text-muted-foreground">
+          No field-level verdicts recorded for this candidate.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm font-medium">{evidenceSummary(deviations)}</p>
+          <p className="mt-1.5 flex flex-wrap gap-1.5">
+            {deviations.map((d) => (
+              // Geen `title` met de note: die zou woordelijk herhalen wat de chip al
+              // zichtbaar zegt ("requested 2700, delivered 3000"), en een title bereikt
+              // toetsenbord noch touch. Zie dezelfde afweging in deviation-table.tsx.
+              <span
+                key={d.field}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]",
+                  VERDICT[d.verdict].tint,
+                )}
+              >
+                <span
+                  className={cn("size-1.5 rounded-full", VERDICT[d.verdict].dot)}
+                  aria-hidden
+                />
+                {evidenceText(d)}
+              </span>
+            ))}
+          </p>
+        </>
+      )}
+    </div>
+  );
 }
 
 function CandidateRow({
@@ -57,7 +133,6 @@ function CandidateRow({
   chooseAction: Action;
 }) {
   const specs = specSummary(candidate);
-  const unknown = list === "onvolledig" ? unknownFields(candidate) : [];
   return (
     <li
       className={cn(
@@ -82,31 +157,16 @@ function CandidateRow({
             {candidate.articleCode ?? candidate.supplierArticleCode ?? "—"}
             {specs ? ` · ${specs}` : ""}
           </p>
-          {unknown.length > 0 && (
-            <p className="mt-1.5 flex flex-wrap gap-1.5">
-              {unknown.map((f) => (
-                <span
-                  key={f}
-                  className="inline-flex items-center gap-1 rounded-full bg-status-grey-tint px-2 py-0.5 text-[11px] text-status-grey-ink"
-                >
-                  {/* -dot en niet -ink: dit is het hélder gele driehoekje (amber-500). De
-                      ink-waarde is amber-800 en zou er een bruin vlekje van maken. */}
-                  <span className="text-status-amber-dot" aria-hidden>
-                    ⚠
-                  </span>
-                  {/* Leesbaar veldlabel, geen code-identifier (UX-audit 30 jul, bug #8):
-                      hier stond "beamAngle: no data". */}
-                  {fieldLabel(f)}: no data
-                </span>
-              ))}
-            </p>
-          )}
         </div>
-        {/* Regel 2: prijs tonen, nooit sorteren. */}
-        <span className="shrink-0 tabular-nums font-medium">
+        {/* Regel 2: prijs tonen, nooit sorteren — en sinds de UX-audit van 30 jul ook
+            nooit meer het zwaarste element op de kaart. Zichtbaar en exact, op
+            bodygewicht: geld mag hier meekijken, niet meebeslissen. */}
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
           {formatEur(candidate.grossPrice)}
         </span>
       </div>
+
+      <MatchEvidence deviations={candidate.deviations ?? []} />
       <form action={chooseAction} className="mt-3 flex items-end gap-2">
         <input type="hidden" name="dossierId" value={dossierId} />
         <input type="hidden" name="specLineId" value={specLineId} />
@@ -203,7 +263,13 @@ function ResolutionBlock({
   return (
     <div className="flex flex-col gap-3">
       <section className="rounded-lg border p-4">
-        <h4 className="text-sm font-medium">No matching candidate? Resolve it honestly.</h4>
+        <h4 className="text-sm font-medium">No matching candidate?</h4>
+        {/* UX-audit 30 jul (item 12): dit is de ENIGE plek waar deze belofte nog staat.
+            Ze stond ook op /catalog, in de catalogus-zoeklijst, op het substitutie-
+            document en bij de afwijkingentabel — vier keer een regel uitleggen die
+            nergens te kiezen viel. Hier valt hij wél te kiezen: de drie knoppen
+            hieronder ZIJN de status die de regel houdt. Niet verplaatsen, niet
+            dupliceren. */}
         <p className="mt-0.5 text-xs text-muted-foreground">
           Every line keeps a status — nothing is silently omitted.
         </p>
@@ -234,8 +300,13 @@ function ResolutionBlock({
                 className="mt-1"
               />
             </label>
+            {/* UX-audit 30 jul (item 5): hier stond "Set to Red". O13 bevriest de hue,
+                het badge-label en het geprinte `word` — de badge hiernaast zegt dus nog
+                steeds "Red". Een knop-WERKWOORD valt daarbuiten, en een kleurnaam
+                vertelt niet wat er gebeurt. Deze tekst volgt de zin erboven: de actie
+                ligt bij de klant. */}
             <Button type="submit" size="sm" variant="outline">
-              Set to Red
+              Report back to customer
             </Button>
           </div>
         </form>
@@ -289,12 +360,14 @@ function ResolutionBlock({
             <span className="text-sm font-medium">Outside assortment</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Not lighting — doesn't belong in the catalog. Report explicitly, don't
-            omit.
+            Not lighting — doesn't belong in the catalog.
           </p>
           <div className="mt-2 flex justify-end">
+            {/* Idem als bij rood: de badge houdt de kleurnaam (O13), de knop zegt wat
+                er gebeurt. "Report explicitly, don't omit" is uit de zin hierboven
+                geschrapt — dat herhaalde de belofte drie regels hoger (item 12). */}
             <Button type="submit" size="sm" variant="outline">
-              Set to Purple
+              Mark as outside assortment
             </Button>
           </div>
         </form>

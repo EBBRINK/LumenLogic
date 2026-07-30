@@ -208,7 +208,11 @@ export function CatalogSearch({
           <ResultList title="Provably compliant" items={aantoonbaar} />
           <ResultList
             title="Possible — data incomplete"
-            note="No data is not a rejection: these products are (still) missing data to prove the match. They are never silently omitted."
+            // UX-audit 30 jul (item 12): hier stond "They are never silently omitted."
+            // achteraan. Die belofte staat nu nog op één plek, bij het afrondingsblok in
+            // components/dossier/match-candidates.tsx — daar valt de status te kiezen,
+            // hier valt niets te kiezen. Wat blijft is wat de lijst betekent.
+            note="No data is not a rejection: these products are (still) missing data to prove the match."
             items={onvolledig}
           />
         </div>

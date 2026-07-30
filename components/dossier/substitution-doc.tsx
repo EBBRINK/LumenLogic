@@ -215,11 +215,16 @@ export function SubstitutionDoc({
         </div>
       ) : null}
 
+      {/* UX-audit 30 jul (item 12): "— never silently omitted" is hier weg. Op dit blad
+          is het geen beleidsuitleg maar een herhaling: dat ontbrekende data als "no data"
+          in de tabel staat, laat het blad zélf zien. De belofte staat nog op één plek,
+          bij het afrondingsblok in match-candidates.tsx, waar de status wordt gekozen.
+          De bronvermelding en de prijs-noot blijven: dat zijn feiten over dít document,
+          niet over de app. */}
       <p className="mt-6 text-xs text-muted-foreground">
         Source of all technical and sustainability figures: manufacturer's data
         (brand-provided), not independently verified. Missing data is shown as
-        “no data” — never silently omitted. Price is informational and does not
-        count in the ranking.
+        “no data”. Price is informational and does not count in the ranking.
       </p>
     </article>
   );

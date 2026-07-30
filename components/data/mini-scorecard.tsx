@@ -1,6 +1,7 @@
 // Mini-scorecard (stap 4): 10 blokjes, één per bucket, gekleurd op een gradient naar
 // de dekkingsgraad (Timo-besluit 1: donkergroen = 100% must, GEEN harde 90%-knip).
 // Grijs = bucket zonder meetbare velden of merk zonder producten ("n.v.t.").
+import { niveauLabel } from "@/lib/niveau-labels";
 import { cn } from "@/lib/utils";
 
 export type BucketBlok = {
@@ -39,7 +40,9 @@ export function MiniScorecard({ blokken }: { blokken: BucketBlok[] | null }) {
           title={
             b.ratio === null
               ? `${b.labelEn}: not measurable yet`
-              : `${b.labelEn}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? " (all must fields complete)" : ""}`
+              : // UX-audit 30 jul (item 4): "must" is de opgeslagen enum, niet het woord
+                // dat een merk hoort te lezen. Eén map, ook hier.
+                `${b.labelEn}: ${Math.round(b.ratio * 100)}%${b.mustComplete && b.ratio >= 1 ? ` (all ${niveauLabel("must")} fields complete)` : ""}`
           }
           className={cn(
             "inline-block size-3 rounded-[3px]",

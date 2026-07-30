@@ -15,6 +15,7 @@
 // kan.
 import { useActionState, useState } from "react";
 import type { Compleetheidsniveau } from "@/lib/field-catalog";
+import { niveauLabel } from "@/lib/niveau-labels";
 
 /** De 10 template-buckets. "intern" hoort er per contract nooit bij: een eigen veld gaat
  *  per definitie naar het merk, en bucket 11 is juist wat we NIET vragen. */
@@ -35,16 +36,19 @@ export type VeldFormAction = (
   formData: FormData,
 ) => Promise<VeldFormState>;
 
-// De drie niveaus in één adem — en het must-verhaal staat er letterlijk, want het wijkt
+// De drie niveaus in één adem — en het Required-verhaal staat er letterlijk, want het wijkt
 // AF van wat "must" bij een catalogusveld betekent (plan §2). Een catalogus-must is
 // dragend voor de verwerking (zonder artikelcode is er geen sleutel), dus een ontbrekende
 // kolom wijst het hele bestand af. Een eigen veld kan dat per definitie nooit zijn: het
 // bestond nog niet toen de bestanden die nu onderweg zijn werden verstuurd.
+//
+// UX-audit 30 jul (item 4): de zinnen openden met het ruwe enum-woord ("wanna = …"). De
+// opgeslagen waarden zijn ongewijzigd (`value={n}` hieronder is nog steeds must/wanna/nice);
+// alleen het zichtbare woord komt uit lib/niveau-labels.ts.
 export const NIVEAU_UITLEG: Record<Compleetheidsniveau, string> = {
-  must: "must = weighs the heaviest in the scorecard. A brand file is never rejected because of it — files that were already on their way could not have known this field.",
-  wanna:
-    "wanna = we ask for it and it counts towards the score, but its absence is not a problem.",
-  nice: "nice = welcome extra. Lowest weight in the scorecard.",
+  must: `${niveauLabel("must")} = weighs the heaviest in the scorecard. A brand file is never rejected because of it — files that were already on their way could not have known this field.`,
+  wanna: `${niveauLabel("wanna")} = we ask for it and it counts towards the score, but its absence is not a problem.`,
+  nice: `${niveauLabel("nice")} = welcome extra. Lowest weight in the scorecard.`,
 };
 
 const NIVEAUS: Compleetheidsniveau[] = ["must", "wanna", "nice"];
@@ -165,7 +169,8 @@ export function CustomFieldForm({
                 onChange={() => setNiveau(n)}
                 className="size-4 accent-foreground"
               />
-              {n}
+              {/* `value={n}` blijft de opgeslagen enum; alleen dit woord is de weergave. */}
+              {niveauLabel(n)}
             </label>
           ))}
         </div>

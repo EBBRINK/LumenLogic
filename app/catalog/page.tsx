@@ -132,8 +132,13 @@ export default async function CatalogusPage({
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Catalog</h1>
+      {/* UX-audit 30 jul (item 12): "Price is shown, never sorted." is hier weg. Het
+          bleef waar — ijzeren regel 2 staat en het scherm heeft geen sorteerknop — maar
+          een scherm hoeft zijn eigen regels niet voor te lezen op een plek waar niets te
+          kiezen valt. Alleen de zin is geschrapt; de regel niet. Zet hier dus géén
+          sorteermogelijkheid neer omdat de disclaimer verdwenen is. */}
       <p className="mb-6 text-sm text-muted-foreground">
-        Search the visible catalog freely. Price is shown, never sorted.
+        Search the visible catalog freely.
       </p>
       <CatalogSearch
         brands={brands}
