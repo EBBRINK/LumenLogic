@@ -60,8 +60,14 @@ export function meng<T extends MengCel>(
 // Deze functie verhuist zulke vallen naar een andere scherf door ze te ruilen met een echte cel.
 // Ruilen (in plaats van verplaatsen) houdt de scherfgrootte gelijk; de tegenpartij is altijd een
 // ECHTE cel, dus geen enkele val of tegenproef verandert van buur door andermans reparatie.
-// Bij gelijke geschiktheid wint de scherf met de MINSTE vallen, zodat val-recall een uitspraak
-// blijft over élke scherf en niet alleen over de scherven die er toevallig veel kregen.
+// Bij gelijke geschiktheid wint de scherf met de laagste val-DICHTHEID (vallen per cel), zodat
+// val-recall een uitspraak blijft over élke scherf en niet alleen over de scherven die er
+// toevallig veel kregen.
+//
+// ⚠ Dat moest dichtheid worden en niet aantal. Bij Wever & Ducré telde de laatste scherf 14
+// cellen (de rest van 1.764 gedeeld door 250), had dus altijd het laagste AANTAL vallen, en
+// trok ze daardoor allemaal aan: **11 vallen op 14 cellen (79 %)**, terwijl scherf 7 er één
+// hield. De agent hoefde niet te lezen om te weten dat daar iets was.
 //
 // ⚠ De PLEK binnen de doelscherf is even belangrijk als de scherf zelf. De eerste versie koos de
 // laagste vrije index, en toen stonden bij XAL alle vijf de vallen van scherf 1 op positie 1–5 en
@@ -83,9 +89,13 @@ export function scheidTweelingen<T>(
   rij.forEach((c, i) => posVan.set(c, i));
 
   const vallenPerScherf = new Map<number, number>();
+  const cellenPerScherf = new Map<number, number>();
   rij.forEach((c, i) => {
+    cellenPerScherf.set(scherf(i), (cellenPerScherf.get(scherf(i)) ?? 0) + 1);
     if (soortVan(c) === "val") vallenPerScherf.set(scherf(i), (vallenPerScherf.get(scherf(i)) ?? 0) + 1);
   });
+  /** Vallen per cel in een scherf — een kleine restscherf mag geen magneet worden. */
+  const dichtheid = (s: number) => (vallenPerScherf.get(s) ?? 0) / Math.max(1, cellenPerScherf.get(s) ?? 1);
 
   // Een broncel is nooit de ruilpartner. Anders lost de ene ruil de andere op: verhuis je een
   // echte cel naar de scherf van een al gerepareerde val en blijkt die cel diens bron, dan staat
@@ -122,10 +132,10 @@ export function scheidTweelingen<T>(
       rest++; // geen enkele andere scherf beschikbaar (te weinig scherven) — eerlijk melden
       continue;
     }
-    // Doelscherf: die met de minste vallen (bij gelijkspel de laagste scherf).
+    // Doelscherf: de laagste val-DICHTHEID (bij gelijkspel de laagste scherf).
     let doel = -1;
     for (const s of [...perScherf.keys()].sort((a, b) => a - b)) {
-      if (doel < 0 || (vallenPerScherf.get(s) ?? 0) < (vallenPerScherf.get(doel) ?? 0)) doel = s;
+      if (doel < 0 || dichtheid(s) < dichtheid(doel)) doel = s;
     }
     // Plek BINNEN die scherf: uit de hash, niet de laagste index — anders klonteren de verhuisde
     // vallen aan het begin van de scherf en is de recall weer een patroontoets.
@@ -152,7 +162,7 @@ export function scheidTweelingen<T>(
     if ((vallenPerScherf.get(leeg) ?? 0) > 0) continue;
     let rijkste = -1;
     for (let s = 0; s < aantalScherven; s++) {
-      if (rijkste < 0 || (vallenPerScherf.get(s) ?? 0) > (vallenPerScherf.get(rijkste) ?? 0)) rijkste = s;
+      if (rijkste < 0 || dichtheid(s) > dichtheid(rijkste)) rijkste = s;
     }
     if ((vallenPerScherf.get(rijkste) ?? 0) < 2) break; // niets te verdelen
     const kandidaatVal = rij.find((c, i) => {

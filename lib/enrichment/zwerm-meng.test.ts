@@ -265,3 +265,28 @@ describe("scheidTweelingen — geen scherf zonder val", () => {
     expect(vallenPerScherf(uit.rij).get(0) ?? 0).toBe(0);
   });
 });
+
+describe("scheidTweelingen — een kleine restscherf mag geen valmagneet worden", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  it("kiest op val-DICHTHEID, niet op aantal", () => {
+    // Gezien bij Wever & Ducré: 1.764 cellen bij scherfmaat 250 gaf een laatste scherf van 14.
+    // Die had altijd het laagste AANTAL vallen en trok er daardoor 11 aan — 79 % van zijn cellen.
+    const maat = 100;
+    const rij: C[] = [];
+    for (let i = 0; i < 214; i++) {
+      const e: C = { id: `e${i}`, soort: "echt" };
+      rij.push(e);
+      if (i % 12 === 11) rij.push({ id: `v${i}`, soort: "val", bron: e });
+    }
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const per = new Map<number, { val: number; n: number }>();
+    uit.rij.forEach((c, i) => {
+      const s = Math.floor(i / maat);
+      const e = per.get(s) ?? { val: 0, n: 0 };
+      e.n++;
+      if (c.soort === "val") e.val++;
+      per.set(s, e);
+    });
+    for (const [, e] of per) expect(e.val / e.n).toBeLessThan(0.35);
+  });
+});

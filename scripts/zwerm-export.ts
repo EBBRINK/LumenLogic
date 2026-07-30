@@ -255,10 +255,14 @@ async function main() {
   // hij dus per definitie naast zijn tweeling. Bij een merk dat toevallig klein genoeg is zou het
   // vierde slot dan stilletjes niet werken — precies het soort poort dat formeel dichtstaat en
   // materieel niets tegenhoudt. Daarom in dat geval altijd minstens twee scherven.
-  const maat =
-    vallen.length > 0 && gemengd.length <= scherfMaat
-      ? Math.ceil(gemengd.length / 2)
-      : scherfMaat;
+  // Even grote scherven, geen kleine restscherf. 1.764 cellen bij 250 gaf 7×250 + 1×14, en die
+  // restscherf van 14 trok bij Wever & Ducré 11 van de 83 vallen aan (79 % van zijn cellen).
+  // Door de maat te delen over het AANTAL scherven blijven ze even groot: 8 × 221.
+  const nodig = Math.max(
+    vallen.length > 0 && gemengd.length <= scherfMaat ? 2 : 1,
+    Math.ceil(gemengd.length / scherfMaat),
+  );
+  const maat = Math.ceil(gemengd.length / nodig);
 
   // ── Vierde slot: de val mag zijn TWEELING niet in dezelfde scherf hebben ───
   // Een val is een gekopieerde echte cel. Lag het origineel ernaast, dan is de val te vinden
