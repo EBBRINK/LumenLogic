@@ -18,8 +18,8 @@
 //
 // text-brand-blue is in dark maar 2,54:1 (geen .dark-override voor --brand-blue in
 // app/globals.css — projectbrede zwakte, hier niet gerepareerd) — dark:text-brand-teal
-// trekt dit recht tot ~6,1:1, exact de kit-route die O10/O12 al voor andere elementen op
-// donker kiezen (blauw → teal). De focus-ring gebruikt om diezelfde reden geen
+// trekt dit recht tot 5,47:1 tegen bg-card, exact de kit-route die O10/O12 al voor andere
+// elementen op donker kiezen (blauw → teal). De focus-ring gebruikt om diezelfde reden geen
 // focus-visible:border-ring (de summary heeft geen rand, dus dat was een no-op) maar een
 // losstaande ring mét offset, zoals §7 voorschrijft.
 import { MagicLinkForm } from "./magic-link-form";

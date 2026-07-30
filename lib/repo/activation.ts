@@ -12,7 +12,7 @@
 //   • gehasht opgeslagen              → hashPassword() (scrypt, gezouten) in issue…
 //   • eenmalig                        → claimActivationPin(), atomair op used_at IS NULL
 //   • 7 dagen geldig                  → PIN_TTL_DAYS
-//   • max 5 foute pogingen            → PIN_MAX_ATTEMPTS + attempts-teller
+//   • max 10 foute pogingen           → PIN_MAX_ATTEMPTS + attempts-teller
 //   • één actieve PIN per gebruiker   → primary key op e-mail + upsert
 //   • één keer zichtbaar              → alleen issueActivationPin() geeft klaartekst terug
 //   • geen account-enumeratie         → checkActivationPin() geeft nooit een reden mee en
