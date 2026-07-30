@@ -187,13 +187,37 @@ async function main() {
   // Eén val per 20 echte cellen, minimaal 2. Een val is een ECHTE productnaam gekoppeld aan een
   // waarde die er aantoonbaar NIET in staat. Het juiste antwoord is dus 'nee-niet-in-naam'.
   // Bewust geen verzonnen namen: dan zou een agent de val aan de vorm kunnen herkennen.
-  const aantalVallen = Math.max(2, Math.floor(echte.length / 20));
+  // Minstens één val per scherf, en minstens één per 20 echte cellen — zodat val-recall een
+  // uitspraak is over ÉLKE scherf en niet alleen over de scherven die er toevallig een kregen.
+  // (Gezien in ronde 2: scherf 7 had wel tegenproef-cellen maar geen enkele val.)
+  const nodigPerScherf = Math.ceil(echte.length / scherfMaat);
+  const aantalVallen = Math.max(2, nodigPerScherf, Math.floor(echte.length / 20));
   const vallen: Cel[] = [];
   for (let i = 0; i < aantalVallen; i++) {
     const bron = echte[Math.floor((i * echte.length) / aantalVallen)];
     const echteWaarde = Number(bron.waarde);
-    // Een waarde die gegarandeerd niet in deze naam voorkomt.
-    let nep = String(Number.isFinite(echteWaarde) ? echteWaarde + 7 : "999");
+    // ── De VORM van de vervalsing varieert (30 jul) ─────────────────────────
+    // Eerst was elke val `waarde + 7`. Twee agenten meldden dat ze de vallen herkenden, en
+    // hoewel ze dat aan het celId-voorvoegsel toeschreven, was er een tweede spoor: vier
+    // agenten "verklaarden" de vallen als een parserfout die een 7 aan de kelvin plakt. Een
+    // val met een vaste transformatie is dus aan zijn INHOUD te herkennen, en dan meet de
+    // recall of de agent het patroon doorhad in plaats van of hij de cel las.
+    let nep: string;
+    if (!Number.isFinite(echteWaarde)) {
+      nep = "999";
+    } else if (i % 3 === 0) {
+      nep = String(echteWaarde + 7); // optellen
+    } else if (i % 3 === 1) {
+      // cijfers omdraaien: 2700 → 0072 → 72; bij korte waarden een ander getal uit de reeks
+      const om = String(echteWaarde).split("").reverse().join("").replace(/^0+/, "");
+      nep = om && om !== String(echteWaarde) ? om : String(Math.round(echteWaarde * 1.5));
+    } else {
+      // de waarde van een ANDERE cel met hetzelfde veld — het meest natuurlijke bedrog
+      const zelfdeVeld = echte.filter((c) => c.veld === bron.veld && c.waarde !== bron.waarde);
+      nep = zelfdeVeld.length
+        ? zelfdeVeld[Math.floor((i * zelfdeVeld.length) / aantalVallen) % zelfdeVeld.length].waarde
+        : String(echteWaarde + 3);
+    }
     if (bron.productnamen.some((n) => n.replace(/\s+/g, "").includes(nep))) nep += "3";
     vallen.push({
       ...bron,
@@ -205,7 +229,20 @@ async function main() {
 
   // Vallen tussen de echte cellen mengen, deterministisch (elke n-de plek).
   const alles: Cel[] = [];
-  const extra = [...vallen, ...tegenproef];
+  // Vallen en tegenproef-cellen AFWISSELEND invoegen. Achter elkaar plakken liet ze clusteren:
+  // in ronde 2 kregen de scherven 1–5 alleen vallen en scherf 7 alleen tegenproef-cellen, en
+  // dan is "val-recall 86/86" een uitspraak over de scherven die er een hadden.
+  // Er zijn veel meer vallen dan tegenproef-cellen, dus simpel afwisselen laat de tegenproef
+  // aan het begin opraken en clustert hem in de eerste scherven. Zet de tegenproef-cellen op
+  // gelijkmatig gespreide posities in de gecombineerde lijst.
+  const extra: Cel[] = [...vallen];
+  tegenproef.forEach((t, i) => {
+    const pos = Math.min(
+      extra.length,
+      Math.round(((i + 0.5) * (vallen.length + tegenproef.length)) / Math.max(1, tegenproef.length)),
+    );
+    extra.splice(pos, 0, t);
+  });
   const stap = Math.max(1, Math.floor(echte.length / (extra.length + 1)));
   let vi = 0;
   echte.forEach((c, i) => {
