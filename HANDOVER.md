@@ -4253,3 +4253,42 @@ Een agent zag bovendien iets wat voor de bewijsplicht uitmaakt: **de brondata be
 (U+00A0)** in Otao/Quantum-namen. Een beoordelaar die de naam overtypt in plaats van kopieert
 levert een `bewijsNaam` die niet valideert — het slot doet dan het goede, maar om de verkeerde
 reden. Goed om te weten als er ooit handmatig een antwoord wordt bijgeschreven.
+
+---
+
+## 2026-07-30 — Twee runs die "TAL" heetten waren Metalarte
+
+`verrijk-xal.ts start --merk=TAL` zocht met `ilike '%TAL%'` en nam `const [merk] =` — de eerste
+rij. Dat filter levert **acht merken**: Metalarte, TAL, Castaldi, Rotaliana, Pallucco Italia,
+Luci Italiane, TALA en Metal Lux. De eerste is Metalarte, en Metalarte heeft geen producten.
+
+Ik heb daarop gerapporteerd: *"TAL leverde nul voorstellen op — na de leeg-kolomreparatie is daar
+niets meer te vullen."* Dat was onjuist. **TAL heeft 6.481 producten en 164 voorstellen.** En het
+script `meet-restant-merken.ts`, dat ik in dezelfde adem als onbetrouwbaar bestempelde omdat het
+"164 zei terwijl de run nul gaf", zei precies het goede getal — 164. De run had ongelijk, niet het
+script. (De afwijkingen bij TossB (8), XAL (302) en Kreon (~660) staan nog steeds; die kop-
+waarschuwing blijft dus terecht, maar het TAL-voorbeeld erin was mijn eigen fout.)
+
+**Reparatie:** de merkkeuze weigert nu bij twijfel. Past de opgegeven tekst op meer dan één merk
+en is er geen exacte naamtreffer, dan stopt het script en noemt het de kandidaten. Een lookup die
+bij twijfel de eerste rij pakt, geeft een fout antwoord met dezelfde stelligheid als een goed
+antwoord.
+
+## 2026-07-30 — Elf verouderde runs afgewezen, één run per merk
+
+Er stonden **24 runs op `steekproef` over 15 merken**. Timo tekent per merk, dus zeven openstaande
+Wever & Ducré-runs betekenen zeven regels die er even geldig uitzien, waarvan zes van vóór de
+reparaties van vandaag.
+
+De toets is machinaal: een run van ná de leeg-kolomreparatie draagt `counts.kolomAlGevuld`.
+**Alle zeven W&D-runs misten dat**, ook de nieuwste (19:47, zes minuten vóór de fix) — dus geen
+van de zeven was bruikbaar en er is een verse run gemaakt (`39f25f5d`, 16.005 voorstellen, exact
+gelijk aan de oude: bij W&D waren de kolommen toch al leeg, dus die fix verandert er niets).
+
+Afgewezen via `rejectRun` (`scripts/wijs-verouderde-runs-af.ts`, met `DRY_RUN=1` te bekijken):
+7× W&D, 1× Kreon (`5848a407`, de 32.917-run), 1× XAL (`ea7742ef`), 2× Metalarte (leeg, gevolg van
+de merkverwarring hierboven). Stand nu: **15 runs over 15 merken, precies één per merk.**
+
+⚠ Eén run is bewust ongemoeid gelaten: `902ba6e9` (&Tradition, 9 juli). Die komt niet uit deze
+sessie en het is niet aan mij om andermans werk af te wijzen — maar hij staat wél open, dus hij
+verschijnt in het tekenoverzicht. Timo moet weten dat die van vóór alles van vandaag is.

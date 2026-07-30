@@ -56,11 +56,26 @@ async function main() {
     // één ronde of in drie aanbiedt. De steekproef van 100 verdeelt zich wél over alle velden,
     // dus bij een groot merk draagt de ZWERM de dekking en toetst de steekproef alleen de vorm.
     const velden = vlag("veld", "cri").split(",").map((v) => v.trim()) as Veld[];
-    const [merk] = await db
+    // ── Eén merk, of stoppen ─────────────────────────────────────────────────
+    // `ilike '%TAL%'` levert Metalarte, TAL, Castaldi, Rotaliana, Pallucco Italia, Luci
+    // Italiane, TALA én Metal Lux. Het oude `const [merk] =` pakte daar stilzwijgend de eerste
+    // van: twee runs die "TAL" heetten waren in werkelijkheid Metalarte, gaven 0 producten, en
+    // ik heb dat gerapporteerd als "bij TAL is niets meer te vullen". Een lookup die bij
+    // twijfel de eerste rij kiest, geeft een fout antwoord met dezelfde stelligheid als een
+    // goed antwoord — dus liever weigeren.
+    const kandidaten = await db
       .select({ id: brands.id, name: brands.name })
       .from(brands)
       .where(ilike(brands.name, `%${merkArg}%`));
-    if (!merk) throw new Error(`geen merk gevonden op '${merkArg}'`);
+    const exact = kandidaten.filter((k) => k.name.toLowerCase() === merkArg.toLowerCase());
+    const merk = exact.length === 1 ? exact[0] : kandidaten.length === 1 ? kandidaten[0] : null;
+    if (!merk) {
+      if (kandidaten.length === 0) throw new Error(`geen merk gevonden op '${merkArg}'`);
+      throw new Error(
+        `'${merkArg}' past op ${kandidaten.length} merken: ${kandidaten.map((k) => k.name).join(", ")}.\n` +
+          `Geef de volledige naam; dit script kiest er niet zelf een.`,
+      );
+    }
 
     console.log(`start: ${merk.name}, veld(en) '${velden.join(", ")}' …`);
     const run = await startEnrichmentRun(db, merk.id, "timo (branch)", velden);
