@@ -307,6 +307,99 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
+
+*Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
+`claude/sprint31-pin` (HEAD **c982e1f**, 24 commits) en is **niet gepusht**. Elke push naar
+main deployt binnen seconden naar productie; er is geen preview-stap. Het akkoord hiervoor
+komt van Timo zelf — G32 betekent dat het er **twee** zijn, en dit is de eerste.*
+
+**Wat deploy 1 doet:** wachtwoord-auth komt ERNÁÁST de magic link te staan. De magic link
+blijft werken. Dat is geen tussenoplossing maar de kern van G32: gaat de magic link er in
+één keer uit, dan komt niemand meer binnen — ook niet in `/admin/users` om de eerste PIN aan
+te maken. **Deploy 2 (magic link eruit) mag pas ná stap 9 hieronder.**
+
+### Vóór de push — één minuut, voorkomt een kapotte migratie
+1. **Tel de gebruikers na.** `select email from "user";` op productie. Migratie
+   `0017_org_type_activatie.sql:59-61` noemt drie adressen **letterlijk**
+   (`hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
+   geeft precies díé een `org_admin`-membership in de Brink-org. Staat er inmiddels een
+   vierde adres, dan krijgt dat géén membership en kan het na deploy 2 niet meer inloggen.
+   Dat is de veilige kant om op te falen, maar je wilt het wéten, niet ontdekken.
+2. **Controleer dat `organizations` leeg is** (`select count(*) from organizations;` → 0 bij
+   de meting van 30 jul). Bestaat er al een rij met slug `brink-licht`, dan is 0017 al eens
+   gedraaid of heeft iemand hem handmatig aangemaakt — kijk dan eerst wat er staat.
+   ⚠️ `organizations.slug` heeft **geen unique-index**, en `0017:47` doet
+   `SET org_id = (SELECT id FROM organizations WHERE slug = 'brink-licht')` — een scalaire
+   subquery die omvalt zodra er twee zulke rijen zijn.
+3. **Weet dat de nulmeting licht vervuild is.** Er staat één sessierij van 30 jul 17:13
+   (localhost-IP) in productie, van een bouwsessie die per ongeluk tegen de echte database
+   heeft gedraaid. De rijen van 06:38-06:43 zijn Timo zelf. Geen schemawijziging, `account`
+   is nog steeds leeg.
+
+### ⚠️ Eerst migreren, dán pushen — de volgorde is niet vrij
+**Er draait geen migratie mee op de deploy.** `package.json:7` is kaal `next build`, er is geen
+`vercel.json` en geen build-hook; `db:migrate` (regel 11) is een lokaal commando dat op
+`--env-file=.env.local` leunt. Push je de code eerst, dan draait er productiecode die
+`organizations.type` en `activation_pins` verwacht tegen een database die ze niet heeft —
+`/admin/users` en `/settings/organization` vallen dan om tot je alsnog migreert.
+
+Migratie 0017 is **puur additief** (`ADD COLUMN IF NOT EXISTS` mét default, twee INSERTs, één
+backfill-UPDATE, `CREATE TABLE IF NOT EXISTS`; geen enkele DROP), dus de oude code draait er
+probleemloos naast. Daarom:
+
+```bash
+# 1. Migreren tegen productie. Zet DATABASE_URL van productie in .env.local, of geef een
+#    eigen env-bestand mee. Controleer vóór je dit doet wélke database erin staat.
+bun run db:migrate
+
+# 2. Pas daarna pushen — dit deployt binnen seconden naar productie.
+bash scripts/safe-push.sh c982e1f
+```
+Nooit een kale `git push origin main` — die stuurt élke commit op de lokale main mee, ook die
+van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
+
+### Ná de push — verifiëren in deze volgorde
+4. **Migratie 0017 is toegepast.** `select name from __migrations order by name desc limit 3;`
+   Daarna: één org met slug `brink-licht` en `type = 'intern'`, drie memberships, en de 13
+   dossiers met een `org_id` in plaats van `NULL`.
+5. **De magic link werkt nog** — dit is de belangrijkste controle van deploy 1. Log in als
+   `timo@jouwainstein.com`; de link staat in de Vercel-logs
+   (`vercel logs --environment production --since 15m --expand --no-branch`; `--expand` is
+   verplicht, link is 5 min geldig). Werkt dit niet, **rol dan terug** — zonder magic link is
+   er geen weg meer naar binnen.
+   ⚠️ Verandering om te kennen: sinds deze sprint staat `disableSignUp: true` óók op de
+   magic-link-plugin. Een adres dat wél in de allowlist staat maar **géén** `user`-rij heeft,
+   krijgt nu `new_user_signup_disabled` in plaats van een stil aangemaakt account. Alle drie
+   de huidige adressen hebben een user-rij, dus dit raakt vandaag niemand — maar wie later
+   een adres aan de allowlist toevoegt en magic-link-onboarding verwacht, loopt hierop vast.
+6. **`/admin/users` opent** en toont het PIN-blok plus de statuslijst.
+7. **Het hele rondje met een testadres**, zelfstandig: PIN aanmaken → mailsjabloon kopiëren →
+   `/activate` → code invullen → wachtwoord kiezen → je zit in `/projects` → uitloggen →
+   opnieuw inloggen met dat wachtwoord → je ziet je eigen organisatie. Dit is exact wat
+   `lib/auth-activation.test.ts` op PGlite doet; hier bewijs je het op de echte database.
+8. **Wachtwoord wijzigen** op `/settings`, met opgave van het huidige.
+
+### De poort naar deploy 2
+9. **Timo én Eduard komen allebei aantoonbaar met een wachtwoord binnen.** Niet "het werkt bij
+   mij" — allebei, elk op zijn eigen account. Pas dán mag de magic link eruit, en dat is een
+   apart akkoord van Timo.
+   Wat deploy 2 verder raakt: de allowlist (`allowed_emails`) verliest dan zijn énige
+   gebruiker, want hij hangt uitsluitend onder de magic link. Weghalen of herbestemmen is een
+   bewuste keuze — zie aanname 1 hieronder.
+
+### Wat er bewust NIET in zit, en dus na deploy 1 nog openstaat
+- **Geen rate limiting** op `/activate` en `/login`. Een PIN-controle kost ~46 ms scrypt en het
+  dummy-pad is onbegrensd. Hoort op route/edge-niveau — 3.2a.
+- **Geen route-bewaking.** `/admin/users` en `/settings/organization` zijn voor elke ingelogde
+  gebruiker te openen. De acties weigeren (G36/G39), maar de memberships-tabel toont álle
+  organisaties aan iedereen. Informatielek, geen escalatie — 3.2a.
+- **`saveBrandingAction`** schrijft `organizations` met alleen `requireSession()`: een
+  gebruiker in org A kan de branding van org B overschrijven. Vastgelegd als `BEKENDE_SCHULD`
+  in `lib/repo/authz-deuren.test.ts` — 3.2a.
+- **`addEmailAction`** (`app/settings/actions.ts`) laat elke sessie elk adres aan de allowlist
+  toevoegen — 3.2a.
+
 ## Sprint 3.1 golf 1 — auth-fundament + PIN-laag + org/rollen — 30 jul 2026
 
 Briefing: `docs/sprint3-1-briefing.md`. Dit is stuk 1–3 (fundament); de schermen (stuk 4–6)
