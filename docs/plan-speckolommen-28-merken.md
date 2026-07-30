@@ -64,6 +64,42 @@ zorgvuldigheid vóór het publiceren verlagen ("keur alles goed, we draaien het 
 het tegenwicht — een run die de drempel raakt wordt weggestuurd, zodat terugdraaien nooit het
 goedkoopste pad is.
 
+### Ronde 0 — uitgevoerd, en de stopregel is NIET gehaald
+
+Alle vier de poort-ingrepen staan (P1–P4). Maar de stopregel die bij P2 hoorde — *"zakken de
+17.535 verdenkingen niet naar ~2.500–3.000, dan doet dit niet wat het claimt, en meld je dat in
+plaats van door te gaan"* — is niet gehaald, en dat is de juiste uitkomst.
+
+| stap | verdenkingen op landende voorstellen |
+|---|---|
+| uitgangspunt | 17.535 |
+| na `NON DIM` bij de bron (P1) | **14.159** |
+| na de voorstelpoort (P2/P3) | **12.434** |
+
+De reden staat in de resterende 12.434: **12.417 daarvan (99,9 %) is één vlag,
+`accessoire-context`,** en die is aantoonbaar overwegend een valse positief.
+`ACCESSOIRE` in `verdenking.ts` matcht ADAPTER, DRIVER, INCL en EXCL ergens in de naam. Gemeten
+per merk (`scripts/meet-accessoire-context.ts`):
+
+| merk | vlaggen | waarvan het product zélf het onderdeel is |
+|---|---|---|
+| Prado | 1.870 | **0 (0,0 %)** — 1.740 zijn `- black adapter`, een variantsuffix |
+| TossB | 1.030 | 28 (2,7 %) |
+| Kreon | 2.162 | 92 (4,3 %) |
+
+Het streefgetal hálen had betekend: onderdrukken op deze vlag, en daarmee duizenden juiste
+waarden weggooien — bij Prado zelfs uitsluitend juiste. De vlag blijft dus bestaan als
+**routering voor de zwerm** ("kijk hier eerst") en niet als filter.
+
+Wat de poort wél weert: **1.725 van 147.257 (1,17 %)** — `kelvin:bereik` 489, `afgekapt` 529,
+`meerdere-waarden` 276, `kantelhoek` 182, `buiten-bereik` 23. Per merk: Wever & Ducré 692,
+Sylvania 547, Prado 180. Geweerde voorstellen staan geteld in `enrichment_runs.counts.onderdrukt`,
+want "minder voorstellen" moet te onderscheiden zijn van "minder data".
+
+**Les voor de zwerm-ronden:** een voorfilter dat 87,7 % valse positieven produceert, is geen poort
+maar een prioriteitenlijst. Dat onderscheid hoort in het zwerm-ontwerp: de vlag bepaalt wélke
+cellen als eerste langskomen, niet wélke cellen sneuvelen.
+
 ### Ronde 3 — per merk × veld, in gemeten risicovolgorde
 Niet per merk maar per **veld**, want het risico zit in het veld:
 
