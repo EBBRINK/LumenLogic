@@ -130,7 +130,7 @@ async function main() {
       continue;
     }
     perCel.set(sleutel, {
-      celId: `c${String(perCel.size + 1).padStart(4, "0")}`,
+      celId: `x${String(perCel.size + 1).padStart(4, "0")}`, // voorlopig; hernummerd na het mengen
       veld: it.field,
       waarde: it.value,
       naamvorm: vorm,
@@ -172,7 +172,7 @@ async function main() {
     for (let i = 0; i < Math.min(tegenproefN, kandidaten.length); i++) {
       const k = kandidaten[Math.floor((i * kandidaten.length) / Math.min(tegenproefN, kandidaten.length))];
       tegenproef.push({
-        celId: `t${String(i + 1).padStart(4, "0")}`,
+        celId: `t${String(i + 1).padStart(4, "0")}`, // voorlopig
         veld,
         waarde: k.waarde,
         naamvorm: fragmentVorm(k.naam, veld),
@@ -197,7 +197,7 @@ async function main() {
     if (bron.productnamen.some((n) => n.replace(/\s+/g, "").includes(nep))) nep += "3";
     vallen.push({
       ...bron,
-      celId: `v${String(i + 1).padStart(4, "0")}`,
+      celId: `v${String(i + 1).padStart(4, "0")}`, // voorlopig
       waarde: nep,
       val: true,
     });
@@ -213,6 +213,22 @@ async function main() {
     if ((i + 1) % stap === 0 && vi < extra.length) alles.push(extra[vi++]);
   });
   while (vi < extra.length) alles.push(extra[vi++]);
+
+  // ── celId's hernummeren: geen herkenbaar voorvoegsel meer ─────────────────
+  // Twee agenten meldden onafhankelijk dat ze de ingevoegde cellen aan hun `v`- en `t`-prefix
+  // konden zien ("alle 16 zitten in v-cellen, geen enkele c-cel"). Hun oordelen verwezen
+  // inhoudelijk naar de productnaam, dus de uitslag stond er niet door onder druk — maar een
+  // val die je kunt hérkennen is geen val, en dan meet de recall alleen nog of de agent het
+  // patroon doorhad. Doorlopend hernummeren in de gemengde volgorde; de antwoordsleutel houdt
+  // bij wat wat was, en die krijgen de agents niet.
+  const soortVan = new Map<string, "echt" | "val" | "tegenproef">();
+  alles.forEach((c, i) => {
+    soortVan.set(
+      `${i}`,
+      c.val === true ? "val" : c.celId.startsWith("t") ? "tegenproef" : "echt",
+    );
+    c.celId = `c${String(i + 1).padStart(4, "0")}`;
+  });
 
   // ── scherven schrijven ────────────────────────────────────────────────────
   const map = `zwerm/${runId}`;
@@ -263,12 +279,14 @@ async function main() {
       ),
     );
     scherven.push(pad);
-    for (const c of deel)
+    deel.forEach((c, j) => {
+      const soort = soortVan.get(`${s * scherfMaat + j}`);
       antwoordsleutel[c.celId] = {
-        val: c.val === true,
-        tegenproef: c.celId.startsWith("t"),
+        val: soort === "val",
+        tegenproef: soort === "tegenproef",
         namen: c.productnamen,
       };
+    });
   }
 
   await writeFile(`${map}/antwoordsleutel.json`, JSON.stringify(antwoordsleutel, null, 2));
