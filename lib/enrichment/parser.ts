@@ -62,7 +62,41 @@ function toNumber(raw: string): number {
 
 // Vermogen: getal (komma/punt-decimaal) direct gevolgd door W of Watt. "17,9W" → 17.9,
 // "24 W" → 24, "12.5Watt" → 12.5. Alleen positieve waarden.
+// ── Vier valse wattages, gevonden door de agent-zwerm op Flos (30 jul) ───────
+// `WATT_RE` is `(\d+(?:[.,]\d+)?)\s*(?:watt|w)\b`, en die `\s*` plus de losse `w` maken hem
+// gulzig: élk getal met ergens daarna een W erachter telt. Vier vormen gaan daardoor mis, alle
+// vier zelf nagemeten met deze parser en alle vier door de zwerm aangewezen:
+//
+//   "UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W"  → 90    de CRI, met een losse W als kleurcode
+//   "EASY KAP 80 W-W RND BLK DWLED ARRAY C95"   → 80    typemaat + kleurcode "W-W" (dim-to-warm)
+//   "EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W"  → 5.3   de lampvoet GX5.3
+//   "CIRCLE OF LIGHT Ø300 LED 12X3W"            → 3     per LED; het armatuur is 36 W
+//
+// Gemeten omvang catalogusbreed op landende voorstellen: 1.442 van 71.883 (2,01 %), waarvan
+// 1.412 de NxM-vorm (TossB 1.103, Wever & Ducré 299) en 30 de andere drie.
+//
+// Let op wat GEEN bug is en dus niet geweerd wordt: "1x10W" is één lichtbron van 10 W en daar
+// is 10 het juiste vermogen. Alleen N ≥ 2 maakt de waarde onvolledig. Mijn eerste telling zei
+// 1.529 omdat hij de 1x-vorm meenam; dat was een meetfout, geen bug.
+//
+// Alle vier worden ZWIJGEND overgeslagen in plaats van gerepareerd. Bij "12X3W" zou 36 te
+// berekenen zijn, maar dan neemt de parser een productbesluit (zijn het 12 lichtbronnen in één
+// armatuur, of een set van 12?) en dat is precies wat de ijzeren regel ontbrekend ≠ fout
+// verbiedt. Zwijgen laat de kolom leeg, en een lege kolom kan een betere bron later nog vullen.
+
+// Een getal gevolgd door een losse W die géén vermogen is: "C90 W" (CRI + kleurcode),
+// "80 W-W" (typemaat + dim-to-warm), "GX5.3 W" / "QR-CBC51 W" (lampvoet).
+const WATT_VALS: RegExp[] = [
+  /\bC\d{2,3}\s+W\b/i, // CRI-notatie met kleurcode erachter
+  /\b\d+\s+W-W\b/i, // typemaat gevolgd door de kleurcode W-W
+  /\b(?:GX|GU|GZ|G|QR-CBC)\s*\d+(?:[.,]\d+)?\s+W\b/i, // lampvoet gevolgd door kleurcode
+];
+// Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
+const WATT_PER_BRON = /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*W\b/i;
+
 function parseWatt(name: string): number | undefined {
+  if (WATT_PER_BRON.test(name)) return undefined;
+  if (WATT_VALS.some((re) => re.test(name))) return undefined;
   const raw = firstCapture(name, WATT_RE);
   if (raw == null) return undefined;
   const w = toNumber(raw);

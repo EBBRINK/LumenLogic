@@ -110,3 +110,43 @@ test("naamvormen met meerdere waarden", () => {
   expect([...vormen.keys()]).toEqual(["cri|spot # cri# #w"]);
   expect(vormen.get("cri|spot # cri# #w")).toEqual(new Set(["80", "90"]));
 });
+
+// ── Het product IS zelf een onderdeel (30 jul, na de zwerm op Flos) ──────────
+// Het verschil met `accessoire-context` is het hele punt: dat patroon matcht overal in de naam
+// en vlagt 3.700 gewone armaturen die netjes vermelden dat hun driver meegeleverd is. Deze
+// regel is verankerd aan het BEGIN en raakt 453 producten die werkelijk een los onderdeel zijn.
+test("een voeding of driver aan het begin van de naam vlagt ELK veld", () => {
+  const naam = "POW.SUPPLY SURF. 96W BK END ZEROTRACK PR";
+  expect(vlaggen(naam)).toContain("maxWattage:product-is-onderdeel");
+
+  // Meertalig: de zwerm vond de Italiaanse, Spaanse en afgekorte vormen, die de bestaande
+  // Engelse woordenlijst allemaal miste.
+  for (const n of [
+    "ALIM.LED 24V-60W TRIAC 200-240V CVT-60-2",
+    "ALIMENT.LED 24V-120W DC 90-305V 50/60Hz",
+    "ALIMT.LED 24V-120W 0/1-10VPWM-120-24-OL3",
+    "EQUIPO DC 20W 500mA WU S 110-240V",
+    "TRANSF ALED-8W DC350mA/24VARDITI",
+    "REMOTE KIT 150W GLOWING TR",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+});
+
+test("een armatuur dat zijn driver alleen VERMELDT wordt niet als onderdeel gevlagd", () => {
+  // Dit is de valse positief die het anker voorkomt: 3.700 gewone armaturen tegenover 453
+  // echte onderdelen. Zonder anker zou dit product zijn wattage verliezen.
+  const naam = "Esprit floor, marble base, driver incl., carrara 12W";
+  expect(vlaggen(naam)).not.toContain("maxWattage:product-is-onderdeel");
+  expect(parseProductName(naam).maxWattage).toBe(12);
+});
+
+test("een onderdeel laat ook zijn IP en dimprotocol vallen, niet alleen het vermogen", () => {
+  // Zo'n doos BEZIT werkelijk een IP-klasse en een dimprotocol — alledrie waar over de doos,
+  // alledrie onwaar over een armatuur. Gemeten is ipValue met 5,4 % zelfs het zwaarst geraakte
+  // veld, niet maxWattage (0,3 %).
+  const v = vlaggen("POWER SUPPLY BOX IP67 24V 50W TRIAC");
+  expect(v).toContain("ipValue:product-is-onderdeel");
+  expect(v).toContain("maxWattage:product-is-onderdeel");
+  expect(v).toContain("dimmable:product-is-onderdeel");
+});

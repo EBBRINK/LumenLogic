@@ -70,6 +70,32 @@ const DIM_PROTOCOLLEN = [/\bDALI\b/i, /\bTRIAC\b/i, /\bPHASE\b/i, /\b[01]\s*-\s*
 // Getallen die bij een bijgeleverd of uitgesloten onderdeel horen in plaats van bij het armatuur.
 const ACCESSOIRE = /\b(?:EXCL|INCL|SPARE|ACCESS\w*|DRIVER|CONVERTER|TRAFO|ADAPTER|BRACKET)\b/i;
 
+// ── Het product IS zelf een onderdeel (30 jul, na de zwerm op Flos) ──────────
+// Verschil met ACCESSOIRE hierboven, en dat verschil is het hele punt: die regel matcht overal
+// in de naam en vlagt daarmee 3.700 GEWONE armaturen die netjes vermelden dat hun driver
+// meegeleverd is ("Esprit floor, driver incl., carrara"). Deze regel is verankerd aan het BEGIN
+// van de naam en raakt 453 producten die werkelijk een los onderdeel zijn. Eén anker in plaats
+// van een woordenlijst die per merk blijft groeien.
+//
+// De zwerm vond deze vormen op Flos Architectural en ze zijn alle drie meertalig:
+//   POW.SUPPLY SURF. 96W BK END ZEROTRACK PR   railvoeding (18 cellen)
+//   ALIM.LED / ALIMENT.LED / ALIMT.LED         alimentatore, Italiaans voor voeding (17 cellen)
+//   REMOTE KIT … GLOWING TR                    trafo-set (8 cellen)
+//   EQUIPO DC 20W 500mA                        Spaans voor apparaat/voeding (2 cellen)
+//   TRANS ELEC.LED-17W / TRANSF ALED-8W        transformator (2 cellen)
+//
+// Waarom ALLE velden zwijgen en niet alleen het vermogen: zo'n doos bezít werkelijk een
+// IP-klasse, een vermogen en een dimprotocol. `POWER SUPPLY BOX IP67 24V 50W TRIAC` levert
+// ipValue IP67, maxWattage 50 én dimmable TRIAC — alledrie waar over de doos en alledrie
+// onwaar over een armatuur. Gemeten aandeel per veld op échte onderdelen: ipValue 78 van 1.456
+// landend (5,4 %), dimmable 144, maxWattage 231, en kelvin/cri/beamAngle exact NUL. Het is dus
+// eerder een ip- en dimbaarheidsprobleem dan een wattageprobleem.
+//
+// Merken met echte onderdelen: Wever & Ducré 197 · Flos Architectural 110 · Lombardo 82 ·
+// TossB 38 · Marset 21.
+const ONDERDEEL_START =
+  /^\s*(?:LED\s+)?(?:POW(?:ER)?\.?\s*SUPPLY|ALIM(?:ENT|T)?\.?\s*LED|ALIMENTATOR\w*|ALIMENTATORE|DRIVER|CONVERTER|TRAFO|TRANSF?(?:ORMATOR|ORMER)?\b|NETZTEIL|EQUIPO|REMOTE\s+KIT|VOEDING|POWER\s+FEED)/i;
+
 // Een naam die halverwege ophoudt. Twee signalen: eindigen op een los koppel-/scheidingsteken,
 // of op een LOSSE eenheid-aanduiding die zonder getal betekenisloos is ("… 3000" gevolgd door
 // niets, of een kale "CRI" aan het eind).
@@ -107,6 +133,21 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   const vlag = (veld: Veld, soort: string, uitleg: string) => uit.push({ veld, soort, uitleg });
 
   if (!naam) return uit;
+
+  // ── het product is zelf een onderdeel ─────────────────────────────────────
+  // Vlagt ELK gevuld veld, want geen enkele spec van een voeding of driver beschrijft een
+  // armatuur. Staat vóór de veldtoetsen zodat de reden zichtbaar één en dezelfde is.
+  if (ONDERDEEL_START.test(naam)) {
+    for (const veld of FIELDS) {
+      if (specs[veld] === undefined) continue;
+      vlag(
+        veld,
+        "product-is-onderdeel",
+        `de naam begint met een onderdeel (voeding/driver/trafo), dus deze waarde beschrijft dat onderdeel en niet een armatuur`,
+      );
+    }
+    return uit; // verder toetsen heeft geen zin: alles van dit product zwijgt
+  }
 
   // ── per veld: meer dan één kandidaat ──────────────────────────────────────
   const paren: [Veld, RegExp][] = [

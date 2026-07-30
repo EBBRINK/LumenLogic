@@ -116,6 +116,9 @@ export const ONDERDRUKKENDE_VERDENKINGEN = new Set([
   "kantelhoek",
   "afgekapt",
   "onbekende-klasse",
+  // Het product is zélf een voeding/driver/trafo (naam-begin-anker in verdenking.ts). Geen
+  // enkele spec daarvan beschrijft een armatuur, dus alle zeven velden zwijgen.
+  "product-is-onderdeel",
 ]);
 
 // ── Insert in blokken (30 jul) ───────────────────────────────────────────────

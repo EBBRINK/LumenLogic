@@ -124,3 +124,38 @@ test("FIELDS bevat exact de zeven ondersteunde velden en presence = geparsed", (
   expect(Object.keys(s)).toEqual(["maxWattage"]);
   expect("kelvin" in s).toBe(false);
 });
+
+// ── Vier valse wattages (30 jul, gevonden door de agent-zwerm op Flos) ───────
+// Alle vier zijn echte namen uit de catalogus. WATT_RE is `(\d+)\s*(?:watt|w)\b` en die
+// spatie plus de losse `w` maken hem gulzig genoeg om een CRI, een typemaat, een lampvoet en
+// een per-lichtbron-vermogen als wattage te lezen.
+test("parseWatt zwijgt bij een CRI met een losse kleurcode-W erachter", () => {
+  expect(parseProductName("UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W").maxWattage).toBeUndefined();
+});
+
+test("parseWatt zwijgt bij een typemaat gevolgd door de kleurcode W-W", () => {
+  expect(parseProductName("EASY KAP 80 W-W RND BLK DWLED ARRAY C95").maxWattage).toBeUndefined();
+});
+
+test("parseWatt zwijgt bij een lampvoet gevolgd door een kleurcode", () => {
+  expect(
+    parseProductName("EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W").maxWattage,
+  ).toBeUndefined();
+});
+
+// Bij "12X3W" is 3 het vermogen per LED en 36 dat van het armatuur. Wij vullen NIET 36 in:
+// dat zou een productbesluit zijn (twaalf bronnen in één armatuur, of een set van twaalf?) en
+// de ijzeren regel is ontbrekend ≠ fout. Een lege kolom kan een betere bron later nog vullen.
+test("parseWatt zwijgt bij meerdere lichtbronnen, maar niet bij één", () => {
+  expect(parseProductName("CIRCLE OF LIGHT D300 LED 12X3W").maxWattage).toBeUndefined();
+  expect(parseProductName("TEAR DROP MEDIUM TC-TEL 2X26W").maxWattage).toBeUndefined();
+  // "1x10W" is ÉÉN lichtbron van 10 W — daar is 10 het juiste vermogen en zwijgen zou
+  // 1.412 goede waarden kosten. Dit onderscheid kostte mij een meetfout van 87 rijen.
+  expect(parseProductName("Works IP65 1x10W LED | Batten Light Fitting").maxWattage).toBe(10);
+});
+
+test("de reparatie raakt gewone namen niet", () => {
+  expect(parseProductName("SASSO 100 17,9W 3000K").maxWattage).toBeCloseTo(17.9, 2);
+  expect(parseProductName("EASY KAP 80 FIX RND BLACK PAR 16 GZ10 Max 8W").maxWattage).toBe(8);
+  expect(parseProductName("ENTERO 24W DALI 2700K 36deg").maxWattage).toBe(24);
+});
