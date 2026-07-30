@@ -4208,3 +4208,27 @@ componenten, dus de regel klopt ook daar.
 
 **Dit is nu de grootste van de kandidaten**: samen 61 voorstellen bij één merk, en Marset zakt
 daarmee van 48 afgekeurde cellen naar bijna nul. Nog steeds niet gebouwd.
+
+### Sylvania is geen armaturenmerk, en dat is geen regexprobleem
+
+Scherf 2 van de vier gaf al 34 afkeuringen op 250 cellen, allemaal van hetzelfde soort: de
+lampencatalogus van Sylvania zit tussen de armaturen. Catalogusbreed, en **alle vier de families
+komen uitsluitend bij Sylvania voor**:
+
+| familie | namen | door de poort mét een waarde |
+|---|---:|---:|
+| RefLED (retrofitlamp) | 169 | 81 |
+| LYNX / MINI-LYNX (CFL) | 22 | 20 |
+| BLACKLIGHT / circline (TL) | 18 | 18 |
+| LUXLINE PLUS (TL) | 1 | 1 |
+| **samen uniek** | | **117** |
+
+⚠ **Dit hoort NIET in dezelfde categorie als canopy, alim. en led bulb.** Die drie zijn woorden
+die een onderdeel benoemen, en de regel gaat over positie. Dit is iets anders: een fabrikant die
+naast armaturen ook lampen levert, en beide staan in dezelfde tabel zonder dat iets zegt wélk
+soort product het is. Vier merknaam-regexen erbij lost Sylvania op en niets anders — de volgende
+lampenleverancier begint weer bij nul.
+
+De structurele vraag hoort bij het import-pad, niet bij `verdenking.ts`: krijgt een product een
+soort (armatuur / lamp / driver / accessoire) bij het inlezen, dan valt deze hele klasse weg en
+verdwijnt de helft van de regels hierboven mee. Dat is een besluit voor Timo, geen reparatie.
