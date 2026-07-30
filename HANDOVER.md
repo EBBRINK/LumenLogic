@@ -4232,3 +4232,24 @@ lampenleverancier begint weer bij nul.
 De structurele vraag hoort bij het import-pad, niet bij `verdenking.ts`: krijgt een product een
 soort (armatuur / lamp / driver / accessoire) bij het inlezen, dan valt deze hele klasse weg en
 verdwijnt de helft van de regels hierboven mee. Dat is een besluit voor Timo, geen reparatie.
+
+### Sylvania compleet: 241 van de 904 cellen afgekeurd
+
+Vier scherven binnen. **663 goed · 241 `nee-hoort-bij-onderdeel` (405 producten) · 0 onzeker ·
+val-recall 45/45.** Ruim een kwart van de cellen gaat niet over een armatuur — veruit het hoogste
+van alle merken. Alle 241 zijn lampen: RefLED-reflectorlampen (GU10/MR16/PAR/ES50/R39–R80),
+ToLEDo-retrofits, HPS SHP-T/GROLUX E40, CFL LYNX-D, PIGMY-ovenlamp E14, blacklight-TL.
+
+**En de familienaam-regel loopt op dezelfde klip als alle andere.** `ToLEDo` raakt buiten Sylvania
+vier namen — `Pendant lamp Toledo, brown` en `Table lamp Toledo, brown` van It's About RoMi, waar
+Toledo gewoon een armatuurfamilie is. Ook hier scheidt alleen de context, niet het woord.
+
+Bovendien dekt de familie-regex maar een deel: 581 Sylvania-producten dragen een lampfamilienaam
+(indicatie 380 voorstellen), terwijl de zwerm er 405 producten afkeurde die óók fittingen als
+`E27`, `GU10`, `R7s`, `G12`, `B22`, `T8` dragen. Wie dit met regexen wil oplossen blijft
+familienamen bijschrijven.
+
+Een agent zag bovendien iets wat voor de bewijsplicht uitmaakt: **de brondata bevat harde spaties
+(U+00A0)** in Otao/Quantum-namen. Een beoordelaar die de naam overtypt in plaats van kopieert
+levert een `bewijsNaam` die niet valideert — het slot doet dan het goede, maar om de verkeerde
+reden. Goed om te weten als er ooit handmatig een antwoord wordt bijgeschreven.
