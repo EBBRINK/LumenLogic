@@ -38,6 +38,7 @@ export type ActivateAction = (input: {
 type FormStatus =
   | { kind: "idle" }
   | { kind: "pending" }
+  | { kind: "incomplete_pin" }
   | { kind: "invalid" }
   | { kind: "weak_password" }
   | { kind: "mismatch" }
@@ -75,13 +76,25 @@ export function ActivateForm({
   const [status, setStatus] = useState<FormStatus>({ kind: "idle" });
 
   const busy = status.kind === "pending";
-  const pinInvalid = status.kind === "invalid";
+  const pinIncomplete = status.kind === "incomplete_pin";
+  const pinRejected = status.kind === "invalid";
+  // Beide PIN-foutstaten krijgen dezelfde visuele/aria-behandeling op het veld — alleen de
+  // begeleidende tekst verschilt (zie de twee foutparagrafen verderop).
+  const pinInvalid = pinIncomplete || pinRejected;
   const passwordInvalid = status.kind === "weak_password";
   const confirmInvalid = status.kind === "mismatch";
   const half = pinLength / 2;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Een onvolledige code is een puur formaatprobleem (te weinig cijfers) — géén
+    // serveraanroep waard. `checkActivationPin` zou deze zelf al vóór de pogingenteller
+    // afvangen (PIN_FORMAT in lib/repo/activation.ts), dus dit verbrandt geen poging; het
+    // scheelt alleen de generieke afwijzing voor iets dat de gebruiker nog aan het intypen is.
+    if (pin.length !== pinLength) {
+      setStatus({ kind: "incomplete_pin" });
+      return;
+    }
     // Wachtwoordbevestiging is een pure client-check: geen tweede serveraanroep, geen PIN
     // die daarvoor wordt opgebrand.
     if (password !== confirmPassword) {
@@ -164,7 +177,19 @@ export function ActivateForm({
               value={pin}
               onChange={setPin}
               disabled={busy}
-              aria-describedby={pinInvalid ? "activate-pin-error" : "activate-pin-hint"}
+              // ⚠️ Op het ÉCHTE invoerelement, niet (alleen) op de presentatie-divs: InputOTP
+              // rendert door naar het onderliggende <input>, en dat is wat hulpsoftware ziet.
+              // De slots hieronder krijgen hun eigen aria-invalid voor het visuele rood — dat
+              // werkt al goed — maar zonder deze regel bleef het veld voor een schermlezer
+              // altijd "geldig" (gemeten: aria-invalid: null op #activate-pin).
+              aria-invalid={pinInvalid}
+              aria-describedby={
+                pinIncomplete
+                  ? "activate-pin-incomplete"
+                  : pinRejected
+                    ? "activate-pin-error"
+                    : "activate-pin-hint"
+              }
             >
               <InputOTPGroup>
                 {Array.from({ length: half }, (_, i) => (
@@ -185,7 +210,16 @@ export function ActivateForm({
             <p id="activate-pin-hint" className="text-xs text-muted-foreground">
               {pinLength} digits, from Brink&apos;s activation email.
             </p>
-            {pinInvalid && (
+            {pinIncomplete && (
+              <p
+                id="activate-pin-incomplete"
+                role="alert"
+                className="text-xs text-destructive"
+              >
+                Enter all {pinLength} digits.
+              </p>
+            )}
+            {pinRejected && (
               <p
                 id="activate-pin-error"
                 role="alert"
@@ -212,20 +246,30 @@ export function ActivateForm({
               onChange={(e) => setPassword(e.target.value)}
               disabled={busy}
               aria-invalid={passwordInvalid}
-              aria-describedby="activate-password-hint"
-            />
-            <p
-              id="activate-password-hint"
-              className={
+              aria-describedby={
                 passwordInvalid
-                  ? "text-xs text-destructive"
-                  : "text-xs text-muted-foreground"
+                  ? "activate-password-error"
+                  : "activate-password-hint"
               }
-            >
-              {passwordInvalid
-                ? `That password won't do — use ${minPasswordLength}–${maxPasswordLength} characters.`
-                : `${minPasswordLength}–${maxPasswordLength} characters — no other rules.`}
+            />
+            {/* Vaste, neutrale hint blijft altijd staan (zelfde patroon als de PIN-hint
+                hierboven) — de foutmelding is een APART element dat pas verschijnt, met een
+                eigen role="alert". Eerder stond hier één paragraaf die alleen van tekst en
+                kleur wisselde: een schermlezer kreeg die wijziging nooit aangekondigd (geen
+                live region), en kleur was zo het enige signaal — DESIGN.md §7 verbiedt dat. */}
+            <p id="activate-password-hint" className="text-xs text-muted-foreground">
+              {minPasswordLength}–{maxPasswordLength} characters — no other rules.
             </p>
+            {passwordInvalid && (
+              <p
+                id="activate-password-error"
+                role="alert"
+                className="text-xs text-destructive"
+              >
+                That password won&apos;t do — use {minPasswordLength}–
+                {maxPasswordLength} characters.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
