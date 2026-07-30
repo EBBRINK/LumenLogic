@@ -167,12 +167,29 @@ async function assertSampleReviewed(db: AppDb, runId: string): Promise<void> {
   }
 }
 
+// De numeric-kolommen (db/schema.ts:275,279). Ze zijn GEEN integer, dus ze vielen buiten
+// INTEGER_FIELDS — en daardoor gaf toColumnValue de rauwe string ongewijzigd door aan
+// db.update(). Een cel "OHNE LM" op max_wattage werd zo pas bij Postgres geweigerd, midden in
+// een publish-lus zonder transactie. Zie de Number.isFinite-toets hieronder.
+const NUMERIC_FIELDS = new Set(["maxWattage", "beamAngle"]);
+
 // Value-string (zoals opgeslagen in enrichment_items.value) → kolomwaarde voor products.
-// Integer-kolommen krijgen een number; numeric- en tekstkolommen de string zelf.
+// Integer-kolommen krijgen een number; numeric-kolommen een getoetst getal; tekstkolommen de
+// string zelf. null betekent: dit item overslaan.
+//
+// De numeric-toets is bewust hier en niet alleen in de bron-normalisator: dit is de laatste
+// gedeelde plek vóór de database, en hij vangt élke bron af — ook een toekomstige die zijn
+// eigen filter vergeet. Sinds de publish gebundeld is, is dat geen luxe meer maar dragend: één
+// slechte waarde laat de héle bundel van honderden rijen falen in plaats van alleen zijn eigen
+// rij.
 function toColumnValue(field: string, value: string): number | string | null {
   if (INTEGER_FIELDS.has(field)) {
     const n = parseInt(value, 10);
     return Number.isNaN(n) ? null : n;
+  }
+  if (NUMERIC_FIELDS.has(field)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
   return value;
 }
@@ -415,6 +432,192 @@ export async function setSampleVerdict(
   });
 }
 
+// ── Toepassen in bundels (30 jul) ────────────────────────────────────────────
+// De oude lus deed per product DRIE losse round-trips over de neon-HTTP-driver: een select,
+// een update op products en een update op enrichment_items. Gemeten op de branch
+// (scripts/meet-latentie.ts): 135–152 ms per round-trip, dus 13.407 XAL-producten = 90 minuten
+// en de hele catalogus (106.691 producten) = 12,6 uur.
+//
+// Gemeten winst van bundelen op 500 echte producten (scripts/meet-bundeling.ts):
+//   select : 131 ms/product los  →  1,86 ms/product gebundeld   (70×)
+//   update : 133 ms/product los  →  0,59 ms/product gebundeld  (226×)
+// Daarmee gaat de hele catalogus van 12,6 uur naar ~6,5 minuten.
+//
+// ── Twee dingen die de bundel VEILIGER maken dan de lus, niet alleen sneller ──
+// 1. "Nooit overschrijven" wordt door de DATABASE afgedwongen, niet door een geheugentoets.
+//    `coalesce(nullif(p.kolom,''), v.kolom)` houdt een bestaande waarde altijd vast, ook als
+//    die tussen onze select en onze update door een andere schrijver is gezet. De oude lus las
+//    eerst en schreef daarna: precies het venster waarin een live-write verloren gaat, en op
+//    productie lopen die live-writes door.
+// 2. `tier2_source` wordt per veld gestempeld met exact dezelfde voorwaarde als de vulling
+//    (`case when <kolom leeg> and v.<kolom> is not null`). Een veld dat niet landt, krijgt dus
+//    ook geen herkomststempel — in de oude lus kon dat uiteenlopen zodra er een race was.
+//
+// ── En één ding dat de bundel GEVAARLIJKER maakt, en waarom dat hier hoort ────
+// Eén slechte waarde laat de héle bundel van honderden rijen falen in plaats van alleen zijn
+// eigen rij. Daarom is de Number.isFinite-toets in toColumnValue hierboven geen nette
+// toevoeging maar een voorwaarde: zonder die toets belandde een cel "OHNE LM" ongefilterd op
+// een numeric-kolom.
+const UPDATE_CHUNK = 500;
+
+// De zeven matchvelden met hun kolomnaam en cast. `leegSql` drukt "deze kolom telt als leeg"
+// uit — voor tekstkolommen inclusief de lege string, precies zoals fieldIsEmpty hierboven,
+// zodat de geheugentoets en de databasetoets niet uiteen kunnen lopen.
+const APPLY_FIELDS: {
+  veld: string;
+  kolom: string;
+  cast: string;
+  tekst: boolean;
+}[] = [
+  { veld: "kelvin", kolom: "kelvin", cast: "integer", tekst: false },
+  { veld: "cri", kolom: "cri", cast: "smallint", tekst: false },
+  { veld: "lumenOutput", kolom: "lumen_output", cast: "integer", tekst: false },
+  { veld: "maxWattage", kolom: "max_wattage", cast: "numeric", tekst: false },
+  { veld: "beamAngle", kolom: "beam_angle", cast: "numeric", tekst: false },
+  { veld: "ipValue", kolom: "ip_value", cast: "text", tekst: true },
+  { veld: "dimmable", kolom: "dimmable", cast: "text", tekst: true },
+];
+
+// "is deze kolom leeg?" als SQL-uitdrukking, met p als alias voor products.
+function leegSql(f: (typeof APPLY_FIELDS)[number]) {
+  return f.tekst
+    ? sql.raw(`nullif(p.${f.kolom}, '')`)
+    : sql.raw(`p.${f.kolom}`);
+}
+
+// Past de voorstellen toe in bundels en levert het aantal werkelijk gelande velden.
+// Bewust een aparte functie: hij is los te testen én los te vergelijken met de trage lus.
+async function applyProposals(
+  db: AppDb,
+  byProduct: Map<string, EnrichmentItem[]>,
+): Promise<number> {
+  let applied = 0;
+
+  for (const blok of chunk([...byProduct.keys()], UPDATE_CHUNK)) {
+    // 1. Eén select voor het hele blok in plaats van één per product.
+    const huidig = await db
+      .select()
+      .from(products)
+      .where(inArray(products.id, blok));
+    const perId = new Map(huidig.map((p) => [p.id, p]));
+
+    // 2. In het geheugen bepalen wat er per product te vullen valt.
+    type Rij = {
+      id: string;
+      waarden: Record<string, number | string | null>;
+      source: string;
+      itemIds: string[];
+      velden: string[];
+    };
+    const rijen: Rij[] = [];
+    for (const productId of blok) {
+      const product = perId.get(productId);
+      if (!product) continue;
+      const its = byProduct.get(productId)!;
+      const waarden: Record<string, number | string | null> = {};
+      const itemIds: string[] = [];
+      const velden: string[] = [];
+      let source = "";
+      for (const it of its) {
+        if (!fieldIsEmpty(product as Record<string, unknown>, it.field)) continue;
+        const colVal = toColumnValue(it.field, it.value);
+        if (colVal == null) continue;
+        // Twee voorstellen voor hetzelfde veld op hetzelfde product: de eerste wint, net als
+        // in de oude lus (die overschreef `update[it.field]` wél, maar telde het item dan
+        // dubbel in appliedIds). Hier telt alleen het item dat werkelijk landt.
+        if (waarden[it.field] !== undefined) continue;
+        waarden[it.field] = colVal;
+        itemIds.push(it.id);
+        velden.push(it.field);
+        source = it.source;
+      }
+      if (itemIds.length > 0) rijen.push({ id: productId, waarden, source, itemIds, velden });
+    }
+    if (rijen.length === 0) continue;
+
+    // 3. Eén UPDATE … FROM (VALUES …) voor het hele blok.
+    const values = sql.join(
+      rijen.map(
+        (r) =>
+          sql`(${r.id}::uuid, ${r.source}::text, ${sql.join(
+            APPLY_FIELDS.map(
+              (f) => sql`${r.waarden[f.veld] ?? null}::${sql.raw(f.cast)}`,
+            ),
+            sql`, `,
+          )})`,
+      ),
+      sql`, `,
+    );
+    const kolomNamen = sql.raw(
+      ["id", "src", ...APPLY_FIELDS.map((f) => f.kolom)].join(", "),
+    );
+    const setDelen = sql.join(
+      APPLY_FIELDS.map(
+        (f) =>
+          sql`${sql.raw(f.kolom)} = coalesce(${leegSql(f)}, v.${sql.raw(f.kolom)})`,
+      ),
+      sql`, `,
+    );
+    // Herkomst per veld, met exact dezelfde voorwaarde als de vulling hierboven.
+    const stempel = sql.join(
+      APPLY_FIELDS.map(
+        (f) =>
+          // ::text op de veldnaam is nodig: zonder cast kan Postgres het type van die
+          // parameter niet afleiden (42P18) en weigert hij de hele query te plannen.
+          sql`(case when ${leegSql(f)} is null and v.${sql.raw(f.kolom)} is not null
+                    then jsonb_build_object(${f.veld}::text, v.src) else '{}'::jsonb end)`,
+      ),
+      sql` || `,
+    );
+
+    const terug = await db.execute(sql`
+      update products p set ${setDelen},
+        tier2_source = coalesce(p.tier2_source, '{}'::jsonb) || ${stempel},
+        updated_at = now()
+      from (values ${values}) as v(${kolomNamen})
+      where p.id = v.id
+      returning p.id, ${sql.raw(APPLY_FIELDS.map((f) => `p.${f.kolom}`).join(", "))}`);
+
+    // 4. Alleen de items die WERKELIJK geland zijn als toegepast markeren. De database is
+    //    hier de scheidsrechter, niet onze geheugentoets: raakte een kolom tussentijds
+    //    gevuld door een andere schrijver, dan hield coalesce die waarde vast en hoort ons
+    //    item niet op applied te staan.
+    const na = new Map(
+      ((terug.rows ?? []) as Record<string, unknown>[]).map((r) => [
+        String(r.id),
+        r,
+      ]),
+    );
+    const gelandeItems: string[] = [];
+    for (const r of rijen) {
+      const rij = na.get(r.id);
+      if (!rij) continue;
+      r.velden.forEach((veld, i) => {
+        const f = APPLY_FIELDS.find((x) => x.veld === veld)!;
+        // numeric komt als string terug ("17.90"), integer als number — vergelijk op waarde.
+        const geland = String(rij[f.kolom] ?? "");
+        const bedoeld = String(r.waarden[veld] ?? "");
+        if (geland !== "" && Number.isFinite(Number(geland)) && Number.isFinite(Number(bedoeld))
+          ? Number(geland) === Number(bedoeld)
+          : geland === bedoeld) {
+          gelandeItems.push(r.itemIds[i]);
+        }
+      });
+    }
+
+    // 5. En de items in blokken bijwerken in plaats van per product.
+    for (const itemBlok of chunk(gelandeItems, INSERT_CHUNK)) {
+      await db
+        .update(enrichmentItems)
+        .set({ applied: true })
+        .where(inArray(enrichmentItems.id, itemBlok));
+    }
+    applied += gelandeItems.length;
+  }
+
+  return applied;
+}
+
 // ── Publiceren: voorstellen toepassen op products + blauw/open hermatchen ─────
 // Past alle items toe BEHALVE steekproef-items die als 'fout' gemarkeerd zijn. Vult
 // uitsluitend nog-lege velden (nooit overschrijven), zet products.tier2_source per veld,
@@ -463,41 +666,7 @@ export async function publishRun(
     byProduct.set(it.productId, list);
   }
 
-  let applied = 0;
-  for (const [productId, its] of byProduct) {
-    const [product] = await db
-      .select()
-      .from(products)
-      .where(eq(products.id, productId))
-      .limit(1);
-    if (!product) continue;
-
-    const update: Record<string, unknown> = {};
-    const tier2: Record<string, string> = {
-      ...((product.tier2Source as Record<string, string> | null) ?? {}),
-    };
-    const appliedIds: string[] = [];
-
-    for (const it of its) {
-      if (!fieldIsEmpty(product as Record<string, unknown>, it.field)) continue; // nooit overschrijven
-      const colVal = toColumnValue(it.field, it.value);
-      if (colVal == null) continue;
-      update[it.field] = colVal;
-      tier2[it.field] = it.source; // H-09: herkomst per veld
-      appliedIds.push(it.id);
-    }
-
-    if (appliedIds.length > 0) {
-      update.tier2Source = tier2;
-      update.updatedAt = new Date();
-      await db.update(products).set(update).where(eq(products.id, productId));
-      await db
-        .update(enrichmentItems)
-        .set({ applied: true })
-        .where(inArray(enrichmentItems.id, appliedIds));
-      applied += appliedIds.length;
-    }
-  }
+  const applied = await applyProposals(db, byProduct);
 
   await db
     .update(enrichmentRuns)

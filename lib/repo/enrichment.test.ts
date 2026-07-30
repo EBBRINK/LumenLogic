@@ -749,3 +749,140 @@ test("2.5b: de nieuwe telling geeft exact dezelfde aantallen als de oude LEFT JO
   // vergelijking hierboven niets.
   expect([...oudPerLijst.values()].sort()).toEqual([0, 1, 1, 3]);
 });
+
+// ── De gebundelde publish (30 jul) ───────────────────────────────────────────
+// publishRun deed per product drie losse round-trips (select, update product, update item).
+// Gemeten op de branch: 135–152 ms elk, dus 12,6 uur voor de hele catalogus. De lus is
+// vervangen door één select + één UPDATE … FROM (VALUES …) per blok van 500.
+//
+// Deze tests bewijzen niet de snelheid maar de GELIJKHEID: de gebundelde vorm moet exact
+// dezelfde uitkomst geven als de regels die hij vervangt — inclusief de drie eigenschappen
+// waar het bij een onomkeerbare publish op aankomt.
+
+test("gebundelde publish vult lege velden, laat gevulde ongemoeid en stempelt herkomst per veld", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Bundeltest",
+    name: "ALFA 20W 3000K CRI90",
+    // alles leeg → alle drie de velden moeten landen
+  });
+  // Product 2: kelvin staat AL gevuld met een andere waarde — die mag niet wijken.
+  await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "BETA 30W 4000K CRI80",
+    kelvin: 2700,
+  });
+  // Product 3: de naam draagt niets → geen voorstel, geen stempel.
+  await addProductToBrand(db, { brandId, priceListId, name: "GAMMA plain" });
+
+  const run = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run.id)) {
+    await setSampleVerdict(db, it.id, "goed");
+  }
+  await publishRun(db, run.id, "test");
+
+  const rows = await db.select().from(products).where(eq(products.brandId, brandId));
+  const alfa = rows.find((r) => r.name.startsWith("ALFA"))!;
+  const beta = rows.find((r) => r.name.startsWith("BETA"))!;
+  const gamma = rows.find((r) => r.name.startsWith("GAMMA"))!;
+
+  expect(alfa.kelvin).toBe(3000);
+  expect(alfa.cri).toBe(90);
+  expect(Number(alfa.maxWattage)).toBe(20);
+  // herkomst per veld, niet per product
+  expect(alfa.tier2Source).toMatchObject({
+    kelvin: "parsed-from-name",
+    cri: "parsed-from-name",
+    maxWattage: "parsed-from-name",
+  });
+
+  // NOOIT OVERSCHRIJVEN: kelvin blijft 2700, maar cri/watt landen wél op hetzelfde product…
+  expect(beta.kelvin).toBe(2700);
+  expect(beta.cri).toBe(80);
+  // …en juist dáárom mag er GEEN kelvin-stempel op staan: een veld dat niet landt, krijgt
+  // geen herkomst. In de oude lus konden die twee uiteenlopen.
+  expect((beta.tier2Source as Record<string, string>).kelvin).toBeUndefined();
+  expect((beta.tier2Source as Record<string, string>).cri).toBe("parsed-from-name");
+
+  expect(gamma.tier2Source).toBeNull();
+});
+
+test("een tweede publish op hetzelfde merk voegt niets toe (idempotent)", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+
+  const run1 = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run1.id)) await setSampleVerdict(db, it.id, "goed");
+  const eerste = await publishRun(db, run1.id, "test");
+  expect(eerste.applied).toBeGreaterThan(0);
+
+  // Alles staat nu gevuld. Een verse run stelt dezelfde waarden voor, maar coalesce in de
+  // database houdt de bestaande waarde vast — dus er mag NUL toegepast worden. Zou dit
+  // getal boven nul komen, dan is "vult uitsluitend lege velden" gebroken.
+  const run2 = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run2.id)) await setSampleVerdict(db, it.id, "goed");
+  const tweede = await publishRun(db, run2.id, "test");
+  expect(tweede.applied).toBe(0);
+});
+
+test("applied telt alleen items die werkelijk geland zijn", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Teltest",
+    name: "DELTA 15W 3500K",
+    kelvin: 6500, // bezet → het kelvin-voorstel landt niet
+  });
+
+  const run = await startEnrichmentRun(db, brandId, "test");
+  for (const it of await getSampleItems(db, run.id)) await setSampleVerdict(db, it.id, "goed");
+  const { applied } = await publishRun(db, run.id, "test");
+
+  const items = await getRunItems(db, run.id);
+  const kelvinItem = items.find((i) => i.field === "kelvin")!;
+  const wattItem = items.find((i) => i.field === "maxWattage")!;
+  expect(kelvinItem.applied).toBe(false); // kolom was bezet
+  expect(wattItem.applied).toBe(true);
+  expect(applied).toBe(items.filter((i) => i.applied).length);
+});
+
+test("een onzinnige waarde op een numeric-kolom laat de bundel niet klappen", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Numerictest",
+    name: "EPSILON plain",
+  });
+  const run = await startEnrichmentRun(db, brandId, "test");
+
+  // Handmatig een item met een niet-numerieke waarde op een numeric-kolom, zoals een
+  // leverancierscel "OHNE LM" die langs een bron-normalisator glipt. Vóór de
+  // Number.isFinite-toets in toColumnValue belandde die ongefilterd in de update: in de
+  // oude lus brak dat de lus halverwege af, in een bundel zou het alle 500 rijen meenemen.
+  await db.insert(enrichmentItems).values({
+    runId: run.id,
+    productId,
+    productName: "EPSILON plain",
+    field: "maxWattage",
+    value: "OHNE LM",
+    source: "parsed-from-name",
+    inSample: false,
+  });
+  // en één geldig item ernaast, dat wél moet landen
+  await db.insert(enrichmentItems).values({
+    runId: run.id,
+    productId,
+    productName: "EPSILON plain",
+    field: "kelvin",
+    value: "3000",
+    source: "parsed-from-name",
+    inSample: false,
+  });
+
+  for (const it of await getSampleItems(db, run.id)) await setSampleVerdict(db, it.id, "goed");
+  const { applied } = await publishRun(db, run.id, "test");
+
+  const [p] = await db.select().from(products).where(eq(products.id, productId));
+  expect(p.maxWattage).toBeNull(); // de onzin is geweigerd…
+  expect(p.kelvin).toBe(3000); // …en de goede waarde ernaast is gewoon geland
+  expect(applied).toBe(1);
+});

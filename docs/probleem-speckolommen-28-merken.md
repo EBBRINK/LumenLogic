@@ -329,11 +329,38 @@ XAL 9.807. Alleen Lombardo's `maxWattage` (59.623) is groter dan het hele Prado-
 |---|---|---|
 | kelvin geschreven als `2.7K` | **26.625 namen** (Lombardo 26.617) — de parser leest er **0** | `KELVIN_RE` eist `\d{3,5}` ([parser.ts:43](lib/enrichment/parser.ts:43)). De grootste enkele kelvin-winst in de catalogus zit achter één regex. |
 | naam zegt letterlijk niet-dimbaar | **4.222 namen** — **3.359** krijgen tóch een `dimmable`-voorstel | Dit is geen ontbrekende maar een **omgekeerde** waarde ([parser.ts:120](lib/enrichment/parser.ts:120)). |
-| naam is zelf een driver/converter/trafo | **4.018 namen** (Kreon 1.931, TossB 693) — **3.106** krijgen een `maxWattage`-voorstel | Val 2 op de naam-route: het vermogen van de driver wordt het vermogen van het armatuur. |
+| naam is zelf een driver/converter/trafo | zie de correctie hieronder — **niet 3.106 maar ~158** | Val 2 op de naam-route: het vermogen van de driver wordt het vermogen van het armatuur. |
 
-De twee laatste zijn **verkeerde feiten**, niet gaten, en `publishRun` is onomkeerbaar. Ze moeten
-vóór ronde 3 dicht. De eerste is puur winst en verandert ook de aanvraagkant, want
-`parseProductName` voedt óók `lib/pdf/armaturenboek.ts` — die reparatie verdient een eigen meting.
+Defect 2 is een **verkeerd feit**, geen gat, en `publishRun` is onomkeerbaar. Het moet vóór ronde 3
+dicht. Defect 1 is puur winst en verandert ook de aanvraagkant, want `parseProductName` voedt óók
+`lib/pdf/armaturenboek.ts` — die reparatie verdient een eigen meting.
+
+### Correctie op defect 3 — mijn eerste getal was een bovengrens, geen meting
+
+Plan-agent A betwistte het en had gelijk in de richting. Hertelling
+(`scripts/meet-driver-echt.ts`, `scripts/meet-defecten-scherp.ts`), nu met het onderscheid dat
+telt — **landt het voorstel** (lege kolom) en **ís het product werkelijk een driver**:
+
+| | aantal |
+|---|---|
+| namen met een driverwoord (mijn brede regex) | 4.018 |
+| daarvan met een `maxWattage`-voorstel | 3.106 |
+| daarvan dat werkelijk zou **landen** op een lege kolom | **924** |
+| daarvan waar het product **zelf een driver is** (`DRIVER LCA 100W 24V DALI`) | **158** |
+| namen die de driver alleen **noemen** (`Esprit floor, driver incl., carrara`) | 1.806 |
+
+De 3.106 uit mijn eerste versie telde voorstellen die grotendeels op een al gevulde kolom vielen,
+én rekende module-armaturen mee die de driver alleen vermelden. De echte schade is **158 tot
+924** — twee ordes kleiner. Dat verandert niets aan het besluit (een verkeerd vermogen blijft
+verkeerd en de publish is onomkeerbaar), maar wel aan de urgentie én aan de vorm van de
+reparatie: een kale `\bdriver\b`-guard zou 1.806 gewone armaturen hun wattage afnemen. De guard
+moet **verankerd** zijn (`^DRIVER`, `^LED driver`) en alleen `maxWattage` onderdrukken.
+
+Defect 2 heeft die correctie **niet** nodig — hertelling met dezelfde maatstaf: 4.222 namen,
+3.359 voorstellen, **3.348 landen**. En strikt op `NON DIM`: 3.174 namen, **3.164 landen**.
+
+**Ieder getal dat met een woordregex over productnamen wordt geproduceerd, is een bovengrens.**
+Dat geldt voor de mijne en voor die van de agents; het hoort in elk runrapport te staan.
 
 ## De drie ronden, en waar de opdracht-grens knelt
 
