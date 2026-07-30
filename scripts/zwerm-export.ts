@@ -8,11 +8,31 @@
 // databaseverbinding: schrijft een agent een `sampleVerdict` weg, dan is `assertSampleReviewed`
 // automatisch tevreden en publiceert `publishRun` — dat is de doorgeklikte poort, geautomatiseerd.
 //
-// ── De eenheid is de CEL, niet de rij ────────────────────────────────────────
-// Een cel is `veld | naamvorm | waarde`. 267 voorstellen vallen zo in enkele tientallen cellen,
-// want "BON JOUR 145 BLACK … CRI90" en "BON JOUR 90 BLACK … CRI90" zijn hetzelfde leespatroon
-// met hetzelfde antwoord. De agent beoordeelt het patroon; het aantal producten erachter staat
-// erbij, zodat zichtbaar is hoeveel er aan één oordeel hangt.
+// ── De eenheid is de CEL, en de sleutel is het SPEC-FRAGMENT ─────────────────
+// Een cel is `veld | vorm van het spec-fragment | waarde`, waarbij het fragment de karakters
+// zijn die de waarde voortbrachten (`specSpans()`, parser.ts) plus een venster van ±8 tekens.
+// De agent beoordeelt dat patroon; het aantal producten erachter staat erbij, zodat zichtbaar
+// is hoeveel er aan één oordeel hangt.
+//
+// De sleutel was eerst de HELE productnaam, en dat was te grof: bij Wever & Ducré gaf dat
+// 8.560 cellen (58 scherven) tegen 1.556 op het fragment (11 scherven) — 82 % minder werk voor
+// dezelfde vraag. `kelvin|# led #k b-b #w|2700` voegt `DOMY ON STREX 1.0 LED 2700K B-B` en
+// `SOLID CEILING SURF 1.0 LED 2700K B-B` samen: verschillende families, identieke vraag
+// (betekent `2700K` hier kleurtemperatuur 2700?). Dat samenvoegen ís de winst.
+//
+// ── Waarom de familienaam er NIET in zit, met de meting erbij ────────────────
+// Het tegenargument was: dan belanden `POW.SUPPLY … 96W 48V` en `BELT … 96W 48V` in één cel
+// terwijl ze een ander oordeel verdienen. Gemeten (`scripts/meet-celmenging.ts`) op Flos
+// Architectural — het merk mét losse onderdelen — én mét de door de poort geweerde producten
+// erbij, dus juist de robuustheidstoets voor "wat als het filter iets mist":
+//
+//     cellen met een onderdeel : 57      cellen die onderdeel én armatuur MENGEN : 0
+//
+// Nul, ook bij Wever & Ducré (36 met een onderdeel, 0 gemengd). De botsing waar de familienaam
+// tegen zou beschermen, heeft geen enkele instantie — en hij kostte 12 extra scherven per merk.
+// De vraag "is dit een armatuur?" hoort bovendien in een andere laag: het ankerfilter en de
+// voorstelpoort, waar hij al zit. Daarom draagt de cel de onderdeelvlag als ATTRIBUUT, zodat de
+// agent hem ziet zonder dat de cel erop splitst.
 //
 // ── De vier sloten tegen een leeg antwoord ───────────────────────────────────
 //   1. `oordeel` is een verplichte enum — een ontbrekende cel is `ontbrekend`, niet `goed`.
@@ -29,7 +49,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { assertBranchDb, logGuard } from "./branch-guard";
 import { getRunItems, getEnrichmentRun, nameShape } from "@/lib/repo/enrichment";
-import { parseProductName } from "@/lib/enrichment/parser";
+import { parseProductName, specSpans } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
 
 const [, , runId, ...rest] = process.argv;
@@ -39,6 +59,22 @@ const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) 
 // een agent er één een echt armatuur, dan is het anker te grof. Het juiste antwoord is
 // `nee-hoort-bij-onderdeel`.
 const tegenproefN = Number(rest.find((a) => a.startsWith("--tegenproef="))?.slice(13) ?? 0);
+// Contextvenster om de spec-span. Monotoon in het aantal cellen — er is geen natuurlijk
+// optimum, dus dit is een ontwerpkeuze: genoeg tekens om de buren te zien die de waarde
+// rechtvaardigen ("CRI 90" versus "C90 W"), niet zoveel dat de familienaam terugkomt.
+const CONTEXT = Number(rest.find((a) => a.startsWith("--context="))?.slice(10) ?? 8);
+
+// De vorm van het spec-fragment: de karakters die dit veld voortbrachten, plus context.
+function fragmentVorm(naam: string, veld: string): string {
+  const spans = specSpans(naam)
+    .filter((s) => s.field === veld)
+    .sort((a, b) => a.start - b.start);
+  const s = spans[0];
+  const stuk = s
+    ? naam.slice(Math.max(0, s.start - CONTEXT), Math.min(naam.length, s.end + CONTEXT))
+    : naam;
+  return nameShape(stuk);
+}
 
 type Cel = {
   celId: string;
@@ -64,7 +100,7 @@ async function main() {
   // ── cellen bouwen ─────────────────────────────────────────────────────────
   const perCel = new Map<string, Cel>();
   for (const it of items) {
-    const vorm = nameShape(it.productName);
+    const vorm = fragmentVorm(it.productName, it.field);
     const sleutel = `${it.field}|${vorm}|${it.value}`;
     const bestaand = perCel.get(sleutel);
     if (bestaand) {
@@ -118,7 +154,7 @@ async function main() {
         celId: `t${String(i + 1).padStart(4, "0")}`,
         veld,
         waarde: k.waarde,
-        naamvorm: nameShape(k.naam),
+        naamvorm: fragmentVorm(k.naam, veld),
         aantalProducten: 1,
         productnamen: [k.naam],
         vlaggen: [],
