@@ -77,7 +77,6 @@ export default async function AdminGebruikersPage() {
       state: status?.state ?? "geen",
       expiresAtIso: status?.expiresAt ? status.expiresAt.toISOString() : null,
       usedAtIso: status?.usedAt ? status.usedAt.toISOString() : null,
-      attemptsLeft: status?.attemptsLeft ?? PIN_MAX_ATTEMPTS,
     };
   });
 
@@ -109,7 +108,6 @@ export default async function AdminGebruikersPage() {
           issueAction={issuePinAction}
           pinLength={PIN_LENGTH}
           pinTtlDays={PIN_TTL_DAYS}
-          pinMaxAttempts={PIN_MAX_ATTEMPTS}
         />
         <MembershipsBlock memberships={rows} />
       </div>

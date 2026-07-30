@@ -434,16 +434,10 @@ main gepusht.**
     geëxporteerd en laat zonder `revokeOtherSessions: true` andere sessies leven (gemeten).
     App-code moet altijd `changeOwnPassword` gebruiken. Echt dichtzetten kan alleen op
     routeniveau — `/change-password` staat via `app/api/auth/[...all]/route.ts` in de router.
-17. **⚠️ `dark:text-brand-teal` op de magic-link-onthulling is een nieuw ontwerpbesluit dat om
-    Timo's ratificatie vraagt.** Het lost een echte fout op: dat label haalde in dark 2,54:1,
-    tegen de 4,5:1 die §7 eist; met teal is het 5,47:1 (gemeten tegen `bg-card`, niet tegen
-    `--background` — de bouwsessie rekende 6,1:1 en zat daarmee 12% te gunstig). De redenering
-    volgt Timo's eigen lijn in O10 (blauw→teal op donker, want blauw haalt daar maar 2,25:1),
-    **maar O10 gaat over de focus-ring en O12 over een accentlijn — geen van beide over de
-    tekstkleur van een bedieningslabel.** Dit is de enige `dark:text-brand-teal` in de hele
-    codebase. `docs/DESIGN.md` §11 opent met "Niets hiervan zelf invullen"; daarom staat het
-    hier als besluit en niet als voldongen feit. Gevolg als het blijft: één label is teal op
-    donker terwijl ~30 outline-knoppen blauw blijven.
+17. **`dark:text-brand-teal` op de magic-link-onthulling — goedgekeurd (besluit G37).** Het
+    label haalde in dark 2,54:1, tegen de 4,5:1 die §7 eist; met teal is het 5,47:1 (gemeten
+    tegen `bg-card`). Het is de enige `dark:text-brand-teal` in de codebase: de ~30
+    outline-knoppen blijven blauw-op-donker tot `--brand-blue` een `.dark`-override krijgt.
 
 ### De gauntlet-loop: wat de critics hebben tegengehouden
 Vier onderdelen, elk met een builder en een aparte critic. Wat de critics vonden en wat dat
@@ -475,8 +469,12 @@ zijn naam belooft**:
   projectbreed (~30 admin-actions doen hetzelfde) en hoort bij 3.2a — **maar dit is de enige
   action die credentials slaat, en een route-allowlist dekt server-actions niet vanzelf.**
   Hoogste restrisico van dit item; zou vóór deploy 1 afgedekt moeten zijn.
-- **`app/projects/actions.ts:652`** — een `rules-of-hooks`-eslint-error die eruitziet als een
-  echte bug, geen stijlkwestie. `bun run lint` geeft 19 errors + 12 warnings, alle 19 in
+- **`app/projects/actions.ts:652` is GEEN bug — niet "repareren".** Deze sessie meldde hier
+  eerst een `rules-of-hooks`-error; nagemeten is het een fout-positief. `useAiSuggestion`
+  (`lib/repo/ai-suggestions.ts:124`) is een gewone `async` repo-functie die `db` als eerste
+  argument neemt, geen React-hook; ESLint ziet alleen de `use`-prefix — van de functie én van
+  de aanroepende `useAiSuggestionAction` — en concludeert dat er een hook conditioneel wordt
+  aangeroepen. Laat staan. `bun run lint` geeft verder 19 errors + 12 warnings, alle in
   bestanden die dit item niet aanraakt.
 - **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `hello@noplasticfloralfoam.com` en
   `timo@jouwainstein.com` in de allowlist, terwijl productie `timo@jouwainstein.com` en

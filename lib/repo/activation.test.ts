@@ -137,7 +137,7 @@ test("een PIN met een verkeerde vorm wordt geweigerd zonder de teller aan te rak
   expect((await getActivationPinStatus(db, email)).attempts).toBe(0);
 });
 
-test("PARALLEL gokken: hoogstens 5 pogingen worden beoordeeld (het slot is atomair)", async () => {
+test("PARALLEL gokken: hoogstens PIN_MAX_ATTEMPTS pogingen worden beoordeeld (het slot is atomair)", async () => {
   const db = await createTestDb();
   const { pin, email } = await issueActivationPin(db, { email: "parallel@extern.nl" });
   const fout = pin === "00000000" ? "11111111" : "00000000";
@@ -151,7 +151,7 @@ test("PARALLEL gokken: hoogstens 5 pogingen worden beoordeeld (het slot is atoma
   );
   expect(uitslagen.every((u) => !u.ok)).toBe(true);
 
-  // Precies 5 slots afgeschreven, geen enkele meer — de overige 55 kwamen niet eens tot
+  // Precies PIN_MAX_ATTEMPTS slots afgeschreven, geen enkele meer — de rest kwam niet eens tot
   // een verificatie.
   const status = await getActivationPinStatus(db, email);
   expect(status.attempts).toBe(PIN_MAX_ATTEMPTS);
@@ -173,7 +173,7 @@ test("PARALLEL gokken met de juiste code ertussen: hoogstens één slaagt", asyn
     invoer.map((p) => checkActivationPin(db, email, p)),
   );
   const geslaagd = uitslagen.filter((u) => u.ok);
-  // Er zijn maar 5 slots; de juiste code kan er hoogstens 5 van pakken.
+  // Er zijn maar PIN_MAX_ATTEMPTS slots; de juiste code kan er hoogstens dat aantal van pakken.
   expect(geslaagd.length).toBeLessThanOrEqual(PIN_MAX_ATTEMPTS);
 
   const claims = await Promise.all(
@@ -182,7 +182,7 @@ test("PARALLEL gokken met de juiste code ertussen: hoogstens één slaagt", asyn
   expect(claims.filter(Boolean).length).toBeLessThanOrEqual(1);
 }, 60_000);
 
-test("max 5 foute pogingen: daarna is de PIN dood, ook mét de juiste code", async () => {
+test("max PIN_MAX_ATTEMPTS foute pogingen: daarna is de PIN dood, ook mét de juiste code", async () => {
   const db = await createTestDb();
   const { pin, email } = await issueActivationPin(db, { email: "brute@extern.nl" });
   const fout = pin === "00000000" ? "11111111" : "00000000";
@@ -192,7 +192,7 @@ test("max 5 foute pogingen: daarna is de PIN dood, ook mét de juiste code", asy
     expect((await getActivationPinStatus(db, email)).attempts).toBe(i);
   }
 
-  // De zesde poging — met de JUISTE PIN — faalt. Alleen een nieuwe PIN van Brink helpt nog.
+  // De poging dáárna — met de JUISTE PIN — faalt. Alleen een nieuwe PIN van Brink helpt nog.
   expect(await checkActivationPin(db, email, pin)).toEqual({ ok: false });
   expect(await claimActivationPin(db, email)).toBe(false);
   const status = await getActivationPinStatus(db, email);

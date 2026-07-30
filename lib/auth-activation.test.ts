@@ -228,7 +228,7 @@ test("faalpad: dezelfde PIN een tweede keer gebruiken faalt en laat het wachtwoo
   expect(nog.response.user.email).toBe(email);
 });
 
-test("faalpad: na 5 foute pogingen is de PIN dood — de zesde poging faalt mét de juiste code", async () => {
+test("faalpad: na PIN_MAX_ATTEMPTS foute pogingen is de PIN dood — de volgende poging faalt mét de juiste code", async () => {
   const db = await createTestDb();
   const auth = testAuth(db);
   const { pin, email } = await issueActivationPin(db, { email: "vijfmaal@extern.nl" });

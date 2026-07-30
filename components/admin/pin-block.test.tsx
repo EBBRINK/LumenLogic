@@ -118,7 +118,7 @@ test("statuslijst: elke toestand toont zijn label als tekst, NOOIT een 8-cijferi
   expect(document.body.textContent).not.toMatch(/\b\d{8}\b/);
 });
 
-test("een bestaande gebruiker zonder verse PIN toont status én resterende pogingen, maar geen code", async () => {
+test("een bestaande gebruiker zonder verse PIN toont status en vervaldatum, maar nooit de code of een pogingenteller", async () => {
   await renderServer(
     <Screen>
       <PinBlockScreen />
@@ -127,11 +127,17 @@ test("een bestaande gebruiker zonder verse PIN toont status én resterende pogin
   await expect
     .element(page.getByText("actief@voorbeeld.nl"))
     .toBeInTheDocument();
-  // .first(): zowel de 'actief'- als de 'geblokkeerd'-rij tonen "… attempts left".
-  await expect
-    .element(page.getByText(/attempts left/).first())
-    .toBeInTheDocument();
+  await expect.element(page.getByText(/^until /).first()).toBeInTheDocument();
   expect(document.body.textContent).not.toContain(FIXED_PIN);
+
+  // G38: het aftellende getal is uit de interface gehaald — niet als tekst, en ook niet
+  // als kaal getal in de statusregel. De eindstatus zelf blijft wél staan, want zonder
+  // "Locked" ziet Brink bij een supportvraag niet waarom een code niet meer werkt.
+  expect(document.body.textContent).not.toMatch(/attempts left/i);
+  expect(document.body.textContent).not.toMatch(/\d+\s+attempts/i);
+  await expect
+    .element(page.getByText("Locked (max attempts used)"))
+    .toBeInTheDocument();
 });
 
 test("statuslijst op mobiel: badge en knop staan op dezelfde x-positie voor elke rij", async () => {

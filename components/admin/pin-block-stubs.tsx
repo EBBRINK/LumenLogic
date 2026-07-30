@@ -37,7 +37,6 @@ export function PinBlockScreen() {
       issueAction={issueHappy}
       pinLength={8}
       pinTtlDays={7}
-      pinMaxAttempts={5}
     />
   );
 }
@@ -50,7 +49,6 @@ export function PinBlockLeeg() {
       issueAction={issueHappy}
       pinLength={8}
       pinTtlDays={7}
-      pinMaxAttempts={5}
     />
   );
 }
@@ -66,7 +64,6 @@ export function PinBlockMetFout() {
       })}
       pinLength={8}
       pinTtlDays={7}
-      pinMaxAttempts={5}
     />
   );
 }
@@ -81,7 +78,6 @@ export function PinBlockMetSessieRedirect() {
       }}
       pinLength={8}
       pinTtlDays={7}
-      pinMaxAttempts={5}
     />
   );
 }

@@ -26,13 +26,20 @@ import type { AppDb } from "./db";
 import { logEvent } from "./events";
 import { addMembership } from "./orgs";
 
-// Besluit G34. 8 cijfers past op shadcn's InputOTP met REGEXP_ONLY_DIGITS; 7 dagen is
-// bewust langer dan Entra's 1 uur omdat Brink handmatig mailt en de ontvanger later kijkt
-// (Entra staat tot 30 dagen toe). 5 pogingen is de Entra-orde van grootte: 10^8 mogelijke
-// PIN's met 5 pogingen geeft een raadkans van 5 op 100 miljoen.
+// Besluit G34, bijgesteld door G38. 8 cijfers past op shadcn's InputOTP met
+// REGEXP_ONLY_DIGITS; 7 dagen is bewust langer dan Entra's 1 uur omdat Brink handmatig
+// mailt en de ontvanger later kijkt (Entra staat tot 30 dagen toe).
+//
+// G38 verhoogt de pogingenlimiet van 5 naar 10 — en dat getal verdwijnt uit de interface
+// (zie components/admin/pin-block.tsx). De afweging erachter, zodat niemand hem opnieuw
+// hoeft te maken: de limiet gaat NIET over vertypen maar over geautomatiseerd raden.
+// 8 cijfers = 10^8 combinaties en scrypt kost ~46 ms, dus serieel duurt uitputtend raden
+// ~27 dagen — maar met 200 parallelle verzoeken ~3 uur, en dat past ruim binnen de 7 dagen
+// dat een PIN leeft. Vandaar 10 en niet "helemaal weg": 10 is ruim genoeg dat een mens er
+// in de praktijk nooit tegenaan loopt, en laag genoeg dat geautomatiseerd raden dood is.
 export const PIN_LENGTH = 8;
 export const PIN_TTL_DAYS = 7;
-export const PIN_MAX_ATTEMPTS = 5;
+export const PIN_MAX_ATTEMPTS = 10;
 
 // Adressen worden overal in dit project genormaliseerd (trim + lowercase); de CHECK op
 // activation_pins.email dwingt hetzelfde af in de database.

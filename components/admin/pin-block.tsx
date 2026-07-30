@@ -36,7 +36,6 @@ export type PinUserRow = {
   state: PinState;
   expiresAtIso: string | null;
   usedAtIso: string | null;
-  attemptsLeft: number;
 };
 
 export type IssuePinResult =
@@ -187,14 +186,12 @@ export function PinBlock({
   issueAction,
   pinLength,
   pinTtlDays,
-  pinMaxAttempts,
 }: {
   organizations: OrgOption[];
   users: PinUserRow[];
   issueAction: IssuePinAction;
   pinLength: number;
   pinTtlDays: number;
-  pinMaxAttempts: number;
 }) {
   const [justIssued, setJustIssued] = useState<
     Extract<IssuePinResult, { ok: true }> | null
@@ -375,11 +372,10 @@ export function PinBlock({
           <CardTitle>Issue a PIN</CardTitle>
           <p className="text-sm text-muted-foreground">
             Creates the account if it doesn&apos;t exist yet and gives it a{" "}
-            {pinLength}-digit PIN, valid for {pinTtlDays} days with{" "}
-            {pinMaxAttempts} attempts. You email it yourself — the template
-            appears above once it&apos;s issued. Issuing again always
-            replaces any PIN this address already has, valid or expired —
-            that&apos;s also how a forgotten password is solved.
+            {pinLength}-digit PIN, valid for {pinTtlDays} days. You email it
+            yourself — the template appears above once it&apos;s issued. Issuing
+            again always replaces any PIN this address already has, valid or
+            expired — that&apos;s also how a forgotten password is solved.
           </p>
         </CardHeader>
         <CardContent>
@@ -514,20 +510,15 @@ export function PinBlock({
                       >
                         {STATE_LABEL[u.state]}
                       </Badge>
-                      {/* Twee losse regels i.p.v. één met een "·"-koppelteken: die ene
-                          regel brak op smalle schermen midden in de zin ("… 4 attempts" /
-                          "left" op de volgende regel) — een weeswoord, geen bewuste
-                          afbreking (ronde-1-critic). */}
+                      {/* G38: het aftellende getal ("nog N pogingen") is hier weg. De
+                          eindstatus "Locked" blijft wél staan — anders ziet Brink bij een
+                          supportvraag niet wáárom een code niet meer werkt. Alleen het
+                          getal verdwijnt, niet de uitkomst. */}
                       {(u.state === "actief" || u.state === "geblokkeerd") &&
                         u.expiresAtIso && (
-                          <>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              until {formatDateTime(u.expiresAtIso)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {u.attemptsLeft} attempts left
-                            </p>
-                          </>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            until {formatDateTime(u.expiresAtIso)}
+                          </p>
                         )}
                       {u.state === "gebruikt" && u.usedAtIso && (
                         <p className="mt-1 text-xs text-muted-foreground">

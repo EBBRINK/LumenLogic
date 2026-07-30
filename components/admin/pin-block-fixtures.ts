@@ -26,7 +26,6 @@ export const users: PinUserRow[] = [
     state: "geen",
     expiresAtIso: null,
     usedAtIso: null,
-    attemptsLeft: 5,
   },
   {
     email: "actief@voorbeeld.nl",
@@ -35,7 +34,6 @@ export const users: PinUserRow[] = [
     state: "actief",
     expiresAtIso: "2026-08-05T09:00:00.000Z",
     usedAtIso: null,
-    attemptsLeft: 4,
   },
   {
     email: "gebruikt@voorbeeld.nl",
@@ -44,7 +42,6 @@ export const users: PinUserRow[] = [
     state: "gebruikt",
     expiresAtIso: "2026-07-20T09:00:00.000Z",
     usedAtIso: "2026-07-15T11:22:00.000Z",
-    attemptsLeft: 5,
   },
   {
     email: "verlopen@voorbeeld.nl",
@@ -53,7 +50,6 @@ export const users: PinUserRow[] = [
     state: "verlopen",
     expiresAtIso: "2026-07-10T09:00:00.000Z",
     usedAtIso: null,
-    attemptsLeft: 5,
   },
   {
     email: "geblokkeerd@voorbeeld.nl",
@@ -62,7 +58,6 @@ export const users: PinUserRow[] = [
     state: "geblokkeerd",
     expiresAtIso: "2026-08-01T09:00:00.000Z",
     usedAtIso: null,
-    attemptsLeft: 0,
   },
 ];
 
