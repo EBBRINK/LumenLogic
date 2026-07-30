@@ -1351,7 +1351,46 @@ inlogpad betekent één set tests, één flow om aan Brink over te dragen in wee
 oppervlak dat de route-allowlist van 3.2a moet afdekken. Prijs: intern doorloopt zelf ook het
 PIN-rondje (wat meteen de scherpste test van 3.1 is) en er is geen tweede deur meer als de
 wachtwoordflow stukloopt — de 3.1-briefing moet daarom een uitgeschreven terugvalstap bevatten
-(direct DB-ingrijpen) vóór de magic-link-plugin eruit gaat.
+(direct DB-ingrijpen) vóór de magic-link-plugin eruit gaat. *Opgelost met G32: de terugvalstap is
+niet DB-ingrijpen maar een tweede deploy — magic link blijft staan tot de wachtwoordflow bewezen is.*
+
+**Besluiten G29 t/m G34 (Timo, 30 jul) — uit de grill-sessie over 3.1.** De volledige uitwerking
+staat in `docs/sprint3-1-briefing.md`; hier alleen de besluiten zelf.
+
+- **G29 — de kwaliteitslat is tweelaags.** Hard: Microsoft Entra's *Temporary Access Pass* (exact
+  hetzelfde mechanisme als C10 — admin genereert een tijdelijke code, gebruiker zet er zelf
+  credentials mee, code één keer zichtbaar) plus NIST SP 800-63A. Visueel: shadcn `InputOTP` voor
+  de code-invoer en het bestaande `/settings`-scherm als maatstaf voor de rest. Bewust géén vreemde
+  tool als visuele referentie — die zou de builder nabouwen en met de brand kit botsen.
+- **G30 — `lib/auth.ts` wordt testbaar.** Nu importeert hij `db` uit `@/db/client` (hard aan Neon),
+  en **geen enkele test in het project raakt Better Auth** — het riskantste onderdeel van de app is
+  ook het enige ongeteste. Wordt `createAuth(db)`, zodat de hele flow op PGlite draait. Zonder deze
+  haak is de critic in de gauntlet loop geen inspecteur maar een tweede mening.
+- **G31 — het accounttype komt op de organisatie**: `organizations.type` = `intern` | `extern` |
+  `brand`. Lost de mismatch op tussen de twee rollenmodellen die naast elkaar bestonden: de enum
+  `membership_role` (`calculator`/`werkvoorbereider`/`projectleider`/`org_admin` — petten binnen een
+  org) en de vier inlogtypen uit de G21-kaart (`Intern`/`Intern super admin`/`User`/`Brand`). Die
+  assen staan haaks op elkaar; het inlogtype hoort bij de org, de pet bij de membership.
+  Brink = één `intern`-org, elke klant een `extern`-org, elk merk een `brand`-org.
+- **G32 — twee deploys, magic link laatst eruit.** Alle drie de bestaande accounts hebben
+  `password = NULL` (gemeten 30 jul), dus G27 in één keer uitvoeren zou iedereen buitensluiten,
+  Timo incluis. Deploy 1 zet wachtwoord-auth ernáást; pas als Timo én Eduard bewezen met wachtwoord
+  binnenkomen gaat in deploy 2 de magic-link-plugin eruit. Volgt ijzeren regel 4 (default = veilig).
+  **Twee losse deploy-akkoorden van Timo nodig.**
+- **G33 — de gauntlet loop draait in twee golven, met een stopconditie.** Golf 1: één builder +
+  één critic op het fundament (auth, PIN-laag, org/rollen) tot de harde lat groen is. Golf 2: drie
+  builders parallel op de drie schermen, elk met een eigen critic. Reden voor golven in plaats van
+  zes parallelle builders: anders dan bij de game uit de bronmethode zijn de stukken hier sterk
+  gekoppeld (`lib/auth.ts`, `db/schema.ts`, de migratieketen) — parallel loslaten geeft merge-puin,
+  geen snelheid. **Stopconditie:** de harde lat is objectief en laat de loop vanzelf stoppen; de
+  visuele lat krijgt een plafond van **3 rondes**, daarna gaan de screenshots naar Timo. Zonder
+  plafond blijft een critic altijd "de grootste zwakte" vinden en loopt het eeuwig door op smaak.
+- **G34 — de PIN-parameters.** 8 cijfers · 7 dagen geldig · eenmalig · max 5 foute pogingen waarna
+  de PIN sterft · één actieve PIN per gebruiker (een nieuwe overschrijft de oude). De 7 dagen wijken
+  bewust af van Entra's default van 1 uur: die gaat uit van een admin die naast de gebruiker staat,
+  terwijl Brink handmatig mailt en de ontvanger later kijkt (Entra staat tot 30 dagen toe). Een
+  ingelogde gebruiker mag zelf zijn wachtwoord wijzigen met opgave van zijn huidige wachtwoord —
+  C10 regelde alleen "vergeten", niet "veranderen".
 
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
