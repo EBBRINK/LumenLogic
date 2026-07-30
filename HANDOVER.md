@@ -512,12 +512,31 @@ middel is de harness, niet productie.
 
 ### De testsuite is load-gevoelig — lees dit vóór je een rood cijfer gelooft
 De volle suite geeft op deze machine wisselende uitslagen die niets met de code te maken
-hebben. Gemeten op deze branch: 1189 groen / 3 rood (`components/dossier/pdf-upload.test.tsx`,
-`components/data/custom-fields.test.tsx`). Diezelfde bestanden geïsoleerd: **48/48 en 14/14
-groen**. Op `origin/main` vielen in een volle run 36 tests om, verspreid over 9 bestanden,
-inclusief precies deze twee. Geen van beide bestanden zit in de diff van dit item.
+hebben. **Drie volle runs achter elkaar op exact dezelfde commit:**
+
+| run | duur | rood |
+|---|---|---|
+| 1 | 101 s | 3 tests / 2 bestanden (`pdf-upload`, `custom-fields`) |
+| 2 | 118 s | 2 tests / 2 bestanden (`activate`, `custom-fields`) |
+| 3 | 176 s | 9 tests / 8 bestanden (`analytics-tiles`, `custom-fields`, `dossier-tabs`, `screens`, `login`, `password-block`, `settings`, `events`) |
+
+De verzameling verschilt per run, de duur varieert met een factor 1,7, en run 3 sleept
+bestanden mee die dit item **niet aanraakt** — `settings.test.tsx`, `dossier-tabs`,
+`analytics-tiles`, `screens`. Het zijn vrijwel allemaal screenshot-tests die op ~20 s
+timeouten. Ter vergelijking mat de review op `origin/main` 36 rood over 9 bestanden in één
+volle run.
+
+**Elk testbestand van dit item, geïsoleerd gedraaid — 135 tests, alles groen:**
+`lib/repo/activation` 18 · `lib/auth-activation` 14 · `db/migration-0017` 6 ·
+`components/activate` 17 · `components/admin/pin-block` 21 · `components/login` 17 ·
+`components/settings/password-block` 16 · `components/settings/settings` 16 ·
+`components/org` 7 · `scripts/cleanup-testdata` 3.
+
 **Conclusie: geen regressie.** Draai bij twijfel het verdachte bestand geïsoleerd; "de volle
-suite is groen" is op deze machine geen bruikbaar signaal, in geen van beide richtingen.
+suite is groen" is op deze machine geen bruikbaar signaal, in geen van beide richtingen — en
+"de volle suite is rood" evenmin. Dit verdient een eigen opruimklus (parallellisme omlaag of
+de screenshot-timeout omhoog); zolang dat er niet is, kost elke sessie tijd aan het uitsluiten
+van spookregressies.
 
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
