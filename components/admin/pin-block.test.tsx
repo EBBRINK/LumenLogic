@@ -7,6 +7,19 @@
 // vraagt. Zelfde patroon als components/settings/settings.test.tsx en
 // components/dossier/pdf-upload.test.tsx (die laatste voor de reden achter de losse
 // "use client"-stubs, zie pin-block-stubs.tsx).
+//
+// Ronde-1-critic ving dat de mobiele screenshots niet lieten zien wat hun naam beloofde: een
+// kaal `page.screenshot({ path })` van de HELE pagina sneed de content af zodra hij langer
+// was dan de standaardviewport. Ronde-2-poging (viewport oprekken naar de contenthoogte)
+// loste de afsnijding op maar verving hem door een nieuw probleem: de harness schaalt boven
+// een bepaalde hoogte het hele beeld proportioneel terug (375px breed werd 109–193px breed
+// op schijf) — onbeoordeelbaar klein.
+//
+// De echte oplossing (ronde-2-terugkoppeling): viewport op de ware apparaatmaat laten staan
+// (375×812 / 1280×800) en per BLOK screenshotten i.p.v. de hele pagina — elk blok is op
+// zichzelf korter dan de viewport, dus er valt niets af te snijden en niets te schalen.
+// `element:` wijst naar één specifieke kaart (data-testid op pin-block.tsx), niet naar de
+// volledige #pin-screen-wrapper zoals de vorige poging.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -25,13 +38,30 @@ const viewports = {
 
 function Screen({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background p-6 text-foreground">
+    <div
+      data-testid="pin-screen"
+      className="min-h-screen bg-background p-6 text-foreground"
+    >
       <main className="mx-auto w-full max-w-6xl">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">Users</h1>
         <div className="flex flex-col gap-6">{children}</div>
       </main>
     </div>
   );
+}
+
+// Screenshot van precies één blok (testid), op de ware apparaatviewport — zie het
+// bestandscommentaar hierboven.
+async function screenshotBlock(testId: string, path: string) {
+  await page.screenshot({ element: page.getByTestId(testId), path });
+}
+
+// De organisatie is nu verplicht in het aanmaakformulier (ronde-1-critic: zonder org krijgt
+// de nieuwe user geen membership en duikt hij niet op in de statuslijst). Playwright's
+// selectOptions matcht op waarde óf zichtbare optietekst; de optietekst hier is
+// "Aannemer Zuid (extern)" (zie pin-block.tsx: `{o.name} ({o.type})`).
+async function kiesOrganisatie() {
+  await page.getByLabelText("Organization").selectOptions("Aannemer Zuid (extern)");
 }
 
 afterEach(() => {
@@ -49,10 +79,15 @@ for (const theme of ["light", "dark"] as const) {
           <PinBlockScreen />
         </Screen>,
       );
-      await expect.element(page.getByText("PIN status")).toBeInTheDocument();
-      await page.screenshot({
-        path: `./pin-block-status.${theme}.${device}.test.png`,
-      });
+      // Wacht op de LAATSTE rij (niet alleen de koptekst hierboven) vóór de capture —
+      // dat is precies wat ronde 1 miste: de kop stond er, de rijen (nog) niet zichtbaar.
+      await expect
+        .element(page.getByText("geblokkeerd@voorbeeld.nl"))
+        .toBeInTheDocument();
+      await screenshotBlock(
+        "pin-status-card",
+        `./pin-block-status.${theme}.${device}.test.png`,
+      );
     });
   }
 }
@@ -99,6 +134,32 @@ test("een bestaande gebruiker zonder verse PIN toont status én resterende pogin
   expect(document.body.textContent).not.toContain(FIXED_PIN);
 });
 
+test("statuslijst op mobiel: badge en knop staan op dezelfde x-positie voor elke rij", async () => {
+  // Regressietest voor de grootste ronde-1-bevinding: op 375px landde het rechterblok van
+  // elke rij op een andere horizontale positie omdat het meewrapte binnen een
+  // justify-between-rij. Nu staat elke rij op precies twee sub-rijen (flex-col), dus de
+  // linkerrand van het badge-blok moet voor alle vijf statussen identiek zijn.
+  await page.viewport(375, 812);
+  await renderServer(
+    <Screen>
+      <PinBlockScreen />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("geblokkeerd@voorbeeld.nl"))
+    .toBeInTheDocument();
+  // Rechtstreeks over alle badge-elementen: elke rij heeft precies één badge, in
+  // dezelfde volgorde als de fixture (geen/actief/gebruikt/verlopen/geblokkeerd).
+  const badges = Array.from(
+    document.querySelectorAll('[data-slot="badge"]'),
+  ) as HTMLElement[];
+  expect(badges.length).toBe(5);
+  const lefts = badges.map((b) => b.getBoundingClientRect().left);
+  for (const left of lefts) {
+    expect(left).toBe(lefts[0]);
+  }
+});
+
 test("lege lijst toont een nette melding in plaats van een leeg gat", async () => {
   await renderServer(
     <Screen>
@@ -109,13 +170,15 @@ test("lege lijst toont een nette melding in plaats van een leeg gat", async () =
 });
 
 // ── Toestand 2: het moment ná het aanmaken van een PIN ────────────────────────────
-async function issueEnWacht() {
+async function issueEnWacht(name?: string) {
   await renderServer(
     <Screen>
       <PinBlockScreen />
     </Screen>,
   );
   await page.getByLabelText("Email").fill("nieuw@voorbeeld.nl");
+  if (name) await page.getByLabelText(/Name/).fill(name);
+  await kiesOrganisatie();
   await page
     .getByRole("button", { name: "Create account & issue PIN" })
     .click();
@@ -124,15 +187,30 @@ async function issueEnWacht() {
     .toBeInTheDocument();
 }
 
+// Het volledige "pin-issued-panel" (titel + waarschuwing + PIN-vak + mailsjabloon) is op
+// 375px breed zelf al hoger dan de mobiele viewport — een sjabloon van 14 regels wrapt op
+// die breedte tot ~27 zichtbare regels, wat neerkomt op eigen scrollgedrag binnen de pagina
+// (normaal voor een webpagina, geen gebrek). Voor een beoordeelbare screenshot knippen we
+// daarom in drie kleinere, elk ruim binnen de viewport passende delen: de titel+waarschuwing,
+// het PIN-vak, en het mailsjabloon apart — samen tonen ze precies hetzelfde moment.
 for (const theme of ["light", "dark"] as const) {
   for (const [device, viewport] of Object.entries(viewports)) {
     test(`pin-blok: net aangemaakte PIN (${theme}, ${device})`, async () => {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
-      await issueEnWacht();
-      await page.screenshot({
-        path: `./pin-block-issued.${theme}.${device}.test.png`,
-      });
+      await issueEnWacht("Anna Vogel");
+      await screenshotBlock(
+        "pin-issued-header",
+        `./pin-block-issued-header.${theme}.${device}.test.png`,
+      );
+      await screenshotBlock(
+        "pin-issued-code",
+        `./pin-block-issued-code.${theme}.${device}.test.png`,
+      );
+      await screenshotBlock(
+        "pin-issued-template",
+        `./pin-block-issued-template.${theme}.${device}.test.png`,
+      );
     });
   }
 }
@@ -149,24 +227,54 @@ test("net aangemaakte PIN: staat voluit, met vervaldatum en de eenmalige-waarsch
     .element(page.getByText(/You can only see this once/))
     .toBeInTheDocument();
   // "Valid until" + jaartal: het exacte uur/dag hangt af van de tijdzone van de
-  // testrunner (formatDateTime gebruikt geen vaste timeZone), dus alleen het jaartal
-  // toetsen — de precieze notatie is een presentatiedetail, geen gedragscontract.
-  await expect.element(page.getByText(/Valid until.*2026/)).toBeInTheDocument();
+  // testrunner tenzij formatDateTime een vaste zone gebruikt — dat doet hij nu
+  // (Europe/Amsterdam), maar we toetsen hier alleen het jaartal: de precieze notatie
+  // is een presentatiedetail, geen gedragscontract.
+  // .first(): het mailsjabloon-textarea bevat dezelfde "Valid until …"-zin nogmaals.
+  await expect
+    .element(page.getByText(/Valid until.*2026/).first())
+    .toBeInTheDocument();
 });
 
-test("het mailsjabloon bevat de PIN en de vervaldatum, en heeft zijn eigen kopieerknop", async () => {
+test("het mailsjabloon bevat de PIN, de vervaldatum, het e-mailadres en een klikbare activatielink", async () => {
   await issueEnWacht();
   const template = document.querySelector<HTMLTextAreaElement>(
     '[aria-label="Email template for the user"]',
   );
   expect(template?.value).toContain(FIXED_PIN);
-  expect(template?.value).toContain("Your Lumen Logic account is ready");
+  expect(template?.value).toContain("nieuw@voorbeeld.nl");
+  // Absoluut (met protocol) en met het adres voorgevuld — een relatief "/activate" is
+  // voor de ontvanger onbruikbaar (ronde-1-critic, punt 1+2).
+  expect(template?.value).toMatch(
+    /https?:\/\/\S+\/activate\?email=nieuw%40voorbeeld\.nl/,
+  );
+  expect(template?.value).toContain("Brink Licht created your Lumen Logic account");
+  // Geen "You can ignore it" meer als advies bij een onverwachte mail (ronde-1-critic,
+  // punt 5) — dat liet een levende PIN gewoon zeven dagen actief staan. Nu: meld het.
+  expect(template?.value).not.toContain("You can ignore it");
+  expect(template?.value).toContain("Let us know");
   await expect
     .element(page.getByRole("button", { name: "Copy email text" }))
     .toBeInTheDocument();
   await expect
     .element(page.getByRole("button", { name: "Copy PIN" }))
     .toBeInTheDocument();
+});
+
+test("het mailsjabloon groet met de opgegeven naam in plaats van een kaal 'Hi,'", async () => {
+  await issueEnWacht("Anna Vogel");
+  const template = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Email template for the user"]',
+  );
+  expect(template?.value).toContain("Hi Anna Vogel,");
+});
+
+test("zonder naam valt de groet netjes terug, geen kale 'Hi,'", async () => {
+  await issueEnWacht();
+  const template = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Email template for the user"]',
+  );
+  expect(template?.value).toContain("Hi there,");
 });
 
 test("reissue vanaf de statuslijst toont dezelfde eenmalige PIN-weergave", async () => {
@@ -176,7 +284,9 @@ test("reissue vanaf de statuslijst toont dezelfde eenmalige PIN-weergave", async
     </Screen>,
   );
   // .first(): elke rij behalve 'geen' toont "Issue new PIN"; de eerste is de
-  // 'actief'-rij (actief@voorbeeld.nl) — het gedrag is hetzelfde voor elke rij.
+  // 'actief'-rij (actief@voorbeeld.nl) — het gedrag is hetzelfde voor elke rij. Reissue
+  // gebruikt nooit het formulier (dus ook geen org-keuze nodig): het adres heeft al een
+  // membership.
   await page
     .getByRole("button", { name: "Issue new PIN" })
     .first()
@@ -189,6 +299,24 @@ test("reissue vanaf de statuslijst toont dezelfde eenmalige PIN-weergave", async
     .toBeInTheDocument();
 });
 
+test("Organization is verplicht: zonder keuze blokkeert de browser de submit, geen PIN verschijnt", async () => {
+  await renderServer(
+    <Screen>
+      <PinBlockScreen />
+    </Screen>,
+  );
+  await page.getByLabelText("Email").fill("zonder-org@voorbeeld.nl");
+  // Bewust GEEN kiesOrganisatie() hier.
+  await page
+    .getByRole("button", { name: "Create account & issue PIN" })
+    .click();
+  // De native HTML5-validatie op het verplichte <select> voorkomt de submit — er
+  // verschijnt dus geen "PIN for …"-paneel.
+  expect(
+    document.body.textContent?.includes("PIN for zonder-org@voorbeeld.nl"),
+  ).toBe(false);
+});
+
 test("uitgifte-fout blijft zichtbaar op het scherm en toont geen PIN", async () => {
   await renderServer(
     <Screen>
@@ -196,6 +324,7 @@ test("uitgifte-fout blijft zichtbaar op het scherm en toont geen PIN", async () 
     </Screen>,
   );
   await page.getByLabelText("Email").fill("fout@voorbeeld.nl");
+  await kiesOrganisatie();
   await page
     .getByRole("button", { name: "Create account & issue PIN" })
     .click();
@@ -216,6 +345,7 @@ test("een verlopen sessie tijdens het uitgeven meldt zich eerlijk als 'signedOut
     </Screen>,
   );
   await page.getByLabelText("Email").fill("sessie@voorbeeld.nl");
+  await kiesOrganisatie();
   await page
     .getByRole("button", { name: "Create account & issue PIN" })
     .click();

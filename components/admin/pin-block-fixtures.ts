@@ -9,6 +9,9 @@ import type { IssuePinAction, OrgOption, PinUserRow } from "./pin-block";
 
 export const FIXED_PIN = "48127593";
 export const FIXED_EXPIRES_AT_ISO = "2026-08-06T14:32:00.000Z";
+// Zelfde vorm als buildActivateUrl() in app/admin/users/actions.ts (host + ?email=), maar
+// met een vast test-domein — de echte action leest de host uit de inkomende request.
+const ACTIVATE_HOST = "https://app.lumenlogic.example";
 
 export const organizations: OrgOption[] = [
   { id: "org-1", name: "Aannemer Zuid", type: "extern" },
@@ -64,11 +67,14 @@ export const users: PinUserRow[] = [
 ];
 
 // Happy path: elke aanroep (nieuw account of herhaling) geeft dezelfde vaste PIN terug,
-// zodat de asserts in de test deterministisch zijn.
+// zodat de asserts in de test deterministisch zijn. name/activateUrl variëren wél met de
+// input, zoals de echte action.
 export const issueHappy: IssuePinAction = async (input) => ({
   ok: true,
   email: input.email,
   pin: FIXED_PIN,
   expiresAtIso: FIXED_EXPIRES_AT_ISO,
   userCreated: !input.orgId,
+  activateUrl: `${ACTIVATE_HOST}/activate?email=${encodeURIComponent(input.email)}`,
+  name: input.name?.trim() || null,
 });

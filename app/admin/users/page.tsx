@@ -38,21 +38,42 @@ export default async function AdminGebruikersPage() {
   }));
 
   // PIN-status per bekende gebruiker (§3a: nooit de code zelf, alleen getActivationPinStatus
-  // — die draagt de hash niet eens mee). "Bekend" = heeft een membership; een PIN uitgegeven
-  // zonder organisatie duikt hier pas op zodra er alsnog een membership bijkomt. Dat is een
-  // bewuste beperking van dit scherm, niet van de repo-laag — zie het eindrapport.
-  const uniqueEmails = [...new Set(memberships.map((m) => m.email))];
+  // — die draagt de hash niet eens mee). "Bekend" = heeft minstens één membership; de PIN-
+  // uitgifteknop op dit scherm vereist inmiddels een organisatie (pin-block.tsx), dus elk
+  // nieuw account krijgt er een en duikt meteen hier op. Iemand met meerdere memberships
+  // (verschillende orgs/rollen) krijgt hieronder ÉÉN rij die alle orgs/rollen samenvoegt —
+  // niet één rij per membership, zoals de vorige versie deed. Die versie mapte over
+  // `memberships` i.p.v. over unieke e-mailadressen terwijl de lijst-key `u.email` was: bij
+  // twee memberships voor hetzelfde adres gaf dat een React-keycollisie én twee
+  // "Issue new PIN"-knoppen voor dezelfde persoon (ronde-1-critic).
+  const byEmail = new Map<
+    string,
+    { display: string; orgNames: Set<string>; roles: Set<string> }
+  >();
+  for (const m of memberships) {
+    const key = m.email.toLowerCase().trim();
+    const entry = byEmail.get(key) ?? {
+      display: m.email,
+      orgNames: new Set<string>(),
+      roles: new Set<string>(),
+    };
+    entry.orgNames.add(m.orgName);
+    for (const r of m.roles ?? []) entry.roles.add(r);
+    byEmail.set(key, entry);
+  }
+  const uniqueEmailKeys = [...byEmail.keys()];
   const statuses = await Promise.all(
-    uniqueEmails.map((email) => getActivationPinStatus(db, email)),
+    uniqueEmailKeys.map((email) => getActivationPinStatus(db, email)),
   );
   const statusByEmail = new Map(statuses.map((s) => [s.email, s]));
 
-  const pinUsers: PinUserRow[] = memberships.map((m) => {
-    const status = statusByEmail.get(m.email.toLowerCase().trim());
+  const pinUsers: PinUserRow[] = uniqueEmailKeys.map((key) => {
+    const entry = byEmail.get(key)!;
+    const status = statusByEmail.get(key);
     return {
-      email: m.email,
-      orgName: m.orgName,
-      roles: (m.roles ?? []) as string[],
+      email: entry.display,
+      orgName: [...entry.orgNames].join(", "),
+      roles: [...entry.roles],
       state: status?.state ?? "geen",
       expiresAtIso: status?.expiresAt ? status.expiresAt.toISOString() : null,
       usedAtIso: status?.usedAt ? status.usedAt.toISOString() : null,
