@@ -109,6 +109,43 @@ Onafhankelijk nagemeten door de sprintmaster: branch `cri` 13.407 met stempel
 is dat een toekomstig boek dat CRI vraagt op een gewone SASSO of een STRETTA nu een echt antwoord
 krijgt in plaats van `onbekend`.
 
+## Productie-run (30 jul, na expliciete go van Timo in de chat)
+
+Dezelfde bewerking opnieuw op `ep-hidden-sound-atud2oha` — géén merge van de branch, zelfde
+code, nieuwe run `ea7742ef`.
+
+| controle | uitkomst |
+|---|---|
+| nulmeting op productie zelf | identiek aan de branch-nulmeting → vergelijking geldig |
+| steekproef | **exact dezelfde 100 rijen en waarden** als de goedgekeurde branch-steekproef |
+| droogloop | 0 gevuld vóór, 13.407 verwacht ná |
+| toegepast | **13.407** (verwacht 13.407) |
+| hermatcht | 4 spec-regels |
+| duur | 90,0 min |
+| XAL `cri` ná | 13.407, **alle** met `tier2_source {"cri":"parsed-from-name"}`, 0 zonder |
+| globaal `cri` | 13.410 = 13.407 + de 3 die er al stonden → **geen bestaande waarde aangeraakt** |
+| nameting | 0 van 117 regels veranderd; tno stil; rang≤50 4/4, top-1 2/4 |
+| doorwerking | Lw001/Lw002 `cri onbekend → groen`; Lr301/Lr303 blijven `onbekend` (SASSO PRO draagt geen CRI) |
+
+Productie gedraagt zich dus exact als de branch — de repetitie was een geldige voorspelling.
+
+### De poort passeren zonder hem te breken
+
+De guard staat fail-closed op `LUMENLOGIC_DB=branch`. Voor deze run is een tweede, expliciet
+benoemde modus toegevoegd (`--productie`) met omgekeerde eisen: de bedoeling moet in het commando
+staan, de endpoint **moet** gelijk zijn aan die in `.env.local`, de branch-marker mag níét gezet
+zijn, en zonder leesbare `.env.local` is er geen doorgang. Bewust niet gedaan: de marker in
+`.env.local` zetten of de marker-eis optioneel maken — beide maken de poort permanent stuk in
+plaats van hem één keer bewust te passeren. Zes tests erbij, 17 totaal.
+
+### Eén valse zekerheid onderweg
+
+De eerste vergelijking van de productie-steekproef met de branch-steekproef meldde `IDENTIEK`
+terwijl **beide bestanden leeg waren**: de uitdraai was mislukt omdat de `--productie`-vlag
+ontbrak, en `diff` op twee lege bestanden meldt gelijkheid. Er staat nu een telling voor die aan
+beide kanten op 100 moet uitkomen vóór het oordeel telt. Precies de faalvorm die dit spoor
+elders al beschreef: een leeg antwoord leest als goedkeuring.
+
 ## Terugdraaien, mocht het nodig zijn
 
 Niet uitgevoerd, wel uitgeschreven. De kolommen terugzetten is één UPDATE

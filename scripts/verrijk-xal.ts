@@ -29,16 +29,24 @@ import {
   setSampleVerdict,
   startEnrichmentRun,
 } from "@/lib/repo/enrichment";
-import { assertBranchDb, logGuard } from "./branch-guard";
+import { assertBranchDb, assertProductieDb, logGuard } from "./branch-guard";
 
 type Veld = (typeof FieldNames)[number];
 
 const [, , cmd, ...rest] = process.argv;
 const vlag = (naam: string, val: string) =>
   rest.find((a) => a.startsWith(`--${naam}=`))?.slice(naam.length + 3) ?? val;
+// Zie branch-guard.ts: --productie zet de bedoeling in het commando en stelt omgekeerde eisen.
+// Nodig omdat óók het aanmaken van een run en het beoordelen van de steekproef schrijfacties
+// zijn — de productie-run is niet alleen de publish.
+const naarProductie = rest.includes("--productie");
 
 async function main() {
-  logGuard(await assertBranchDb(process.cwd()));
+  const poort = naarProductie
+    ? await assertProductieDb(process.cwd())
+    : await assertBranchDb(process.cwd());
+  if (naarProductie) console.log(`\n🔴 PRODUCTIE — endpoint ${poort.endpoint}\n`);
+  else logGuard(poort);
   const { db } = await import("@/db/client");
 
   if (cmd === "start") {

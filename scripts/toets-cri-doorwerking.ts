@@ -18,7 +18,7 @@ import { extractPagesFromPdf } from "@/lib/pdf/extract";
 import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
 import { evaluateSpecLine, type SpecRequest } from "@/lib/matching/engine";
 import { GRONDWAARHEID } from "./eval/grondwaarheid";
-import { assertBranchDb, logGuard } from "./branch-guard";
+import { assertBranchDb, assertProductieDb, logGuard } from "./branch-guard";
 
 const EVAL_DIR =
   process.env.EVAL_DIR ?? path.join(os.homedir(), "Downloads", "lumenlogic-testset");
@@ -26,8 +26,14 @@ const EVAL_DIR =
 // De vier raadhuis-regels met XAL-merk én CRI-eis — de enige die konden bewegen.
 const CODES = ["Lr301", "Lr303", "Lw001", "Lw002"];
 
+const naarProductie = process.argv.includes("--productie");
+
 async function main() {
-  logGuard(await assertBranchDb(process.cwd()));
+  const poort = naarProductie
+    ? await assertProductieDb(process.cwd())
+    : await assertBranchDb(process.cwd());
+  if (naarProductie) console.log(`\n\ud83d\udd34 PRODUCTIE (read-only) — endpoint ${poort.endpoint}`);
+  else logGuard(poort);
   const { db } = await import("@/db/client");
   const { brands } = await import("@/db/schema");
   const brandNames = (await db.select({ name: brands.name }).from(brands)).map((b) => b.name);
