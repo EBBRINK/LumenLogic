@@ -4048,3 +4048,45 @@ de zwerm zichtbaar.
   `cob` zou 6.235 armaturen raken om er 2 te winnen.
 - **`molla`**: 18 namen. Zelfs vooraan is het niet veilig — `MOLLA W LED 3000K WHITE` van Artemide
   Architectural is een armatuurfamilie. Werkelijk een klem: 2 producten bij Lombardo.
+
+---
+
+## 2026-07-30 — XAL: de eerste schone zwerm, en wat "schoon" hier wel en niet betekent
+
+Run `ef2a0071-2ba6-4e5d-a8bc-72f898975a96`, 228 echte cellen, 2 scherven.
+**228 goed · 0 afgekeurd · 0 onzeker · val-recall 11/11 · 0 onbeslist ⇒ `✓ SCHOON`.**
+
+Dit is de eerste ronde waarin de verwerker geen enkel bezwaar teruggeeft. Drie kanttekeningen die
+er meteen bij horen, anders leest "schoon" ruimer dan het is:
+
+1. **Tegenproef 0/0 — het ankerfilter is niet getoetst.** Net als bij Kreon zijn er in deze run
+   geen als onderdeel geweerde producten om mee te mengen.
+2. **XAL is een makkelijke valmeting.** Vrijwel elke XAL-cel draagt `CRI90`; een vervalste 97 of
+   93 valt dan op zonder dat je de cel hoeft te lezen. De 11/11 is dus eerlijk verdiend maar zegt
+   minder dan dezelfde score bij Lombardo, waar de wattages over tientallen waarden lopen.
+3. **De ronde ervóór was ongeldig en is opnieuw gedraaid** — zie hieronder.
+
+### De reparatie van het derde lek maakte het eerste terug
+
+`scheidTweelingen` koos als ruilpartner de laagste vrije index. Gevolg: **alle vijf de vallen van
+scherf 1 kwamen op positie 1–5 en alle zes van scherf 2 op 0–5.** De agent zag het meteen — *"de
+vijf afkeuringen zitten allemaal direct na c0001, aan het begin van de scherf"* — en dat is exact
+de vaste-positie-fout die `meng()` een paar uur eerder had opgelost.
+
+Vierde keer dat een lek in de vallen pas aan de UITKOMST zichtbaar werd en nooit aan de code. Dat
+is nu geen incident meer maar een eigenschap van hoe ik hieraan werk: de test die ik erbij schrijf
+dekt telkens de fout die ik al gezien had.
+
+**Daarom controleert de exporteur nu zichzelf.** `controleerVallen()` (lib/enrichment/zwerm-meng.ts)
+stelt vier vragen aan de scherven zoals ze op schijf komen, en de exporteur drukt het antwoord af
+vóór er één agent leest:
+
+| vraag | de ronde die eraan onderdoor ging |
+|---|---|
+| staat er in élke scherf een val? | ronde 2, scherf 7 |
+| staan ze op een vaste stap? | Kreon (elke 20e cel) |
+| klonteren ze in een kwart van de scherf? | XAL (positie 0–5) |
+| staat een val naast een cel met dezelfde naam én vorm? | Lombardo (186 van 196) |
+
+De test bouwt alle vier de historische bugs na. Eén functie, twee gebruikers — geen vijfde geval
+van twee lagen die apart over hetzelfde oordelen.
