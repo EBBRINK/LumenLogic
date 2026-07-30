@@ -2324,3 +2324,41 @@ een armatuur-regel? Dit is dezelfde vraag als de `accessoire-context`-vlag in
 `220-200V` (aflopend spanningsbereik) en `2200-31000K` staan in namen van 56–59 tekens — dus
 compleet ingelezen, niet afgekapt. Typefouten in de bronprijslijst. Vastgelegd zodat een
 volgende sessie ze niet als import- of parserfout aanmerkt.
+
+### 4. Twee dingen voor de overdracht naar het kolom-spoor (30 jul)
+
+**De `NON DIM`-fix raakt ook de aanvraagkant.** `parseDimmable` leest `DIM` uit `NON DIM` — het
+streepje/de spatie is een woordgrens, dus `\bDIM\b` matcht en de ontkenning wordt genegeerd. Bij
+XAL zijn dat 2.800 producten (3.376 over alle merken), vrijwel allemaal accessoires
+(aansluitdozen, plafondkappen). De waarde is niet onzeker maar **omgekeerd**.
+
+De fix hoort in `lib/enrichment/parser.ts`, en juist dáárom raakt hij meer dan de verrijking:
+`parseProductName` wordt ook door de aanvraagkant gebruikt
+([lib/pdf/armaturenboek.ts:131](lib/pdf/armaturenboek.ts:131)), dus een bestek dat "NON DIM"
+vraagt verandert mee. **Die fix vraagt dus een eigen nulmeting/nameting**, niet alleen een
+verrijkingsmeting — en tno is daar het scherpste meetpunt, want dat vraagt dimbaarheid op al
+zijn regels.
+
+**`publishRun` doet drie losse verzoeken per product.** In de publish-lus
+([enrichment.ts:414–447](lib/repo/enrichment.ts:414)) staan drie awaited queries: één `select`
+per product met voorstellen, plus — alleen waar iets landt — een `update` op `products` en een
+`update` op `enrichment_items`. Er is geen transactie en geen batching; de neon-**http**-driver
+maakt van elke query een aparte round-trip.
+
+Gemeten latency vanaf een werkstation: **139 ms per round-trip**. Daarmee klopt de XAL-run:
+13.407 × 3 × 139 ms ≈ 93 min voorspeld, **90 min gemeten** (branch 91,3, productie 90,0).
+
+Voor de schaal naar 28 merken telt niet het aantal voorstellen maar het aantal **producten**:
+
+| aanpak | round-trips | bij 139 ms |
+|---|---|---|
+| veld-voor-veld, alle merken (157.682 landende voorstellen) | ~473.000 | **~18 uur** |
+| alle velden per merk in één run | minder (groepering per product), maar plus selects voor producten waar niets landt | tussen 12 en 18 uur |
+
+⚠️ Reken niet met de 328.871 voorstellen — dat geeft ~38 uur en overschat: lang niet elk voorstel
+landt, en meerdere voorstellen op hetzelfde product delen één passage door de lus. Het exacte
+getal vraagt een telling van distinct producten met ≥1 landend voorstel; die is nog niet gedaan.
+
+Wie dit wil terugbrengen: één bulk-`update ... from (values ...)` per blok van 1.000 producten
+haalt er twee ordes af. Dat is een wijziging aan beproefde code en hoort niet in dezelfde run als
+een datavulling — eerst apart bewijzen op een branch.

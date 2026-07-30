@@ -469,6 +469,32 @@ Noot bij het getal: 139 ms is de latency vanaf hier naar de branch. Op Vercel dr
 de database en is het een fractie daarvan — dit cijfer zegt iets over *onze* publish-run vanaf een
 script, niet over de app in productie.
 
+## De regel die uit dit hele spoor volgt: tel eerst, vergelijk daarna
+
+Eén formulering, drie keer bevestigd:
+
+> **Elke vergelijking moet eerst tellen dát er iets is, vóór hij vergelijkt wát het is.**
+> Een leeg resultaat is geen goedkeuring — het is een mislukte meting die zich als goedkeuring
+> voordoet.
+
+De drie verschijningsvormen die we tegenkwamen:
+
+1. **`diff` op twee lege bestanden meldt gelijkheid.** Bij de productie-run vergeleek ik de
+   steekproef met de goedgekeurde branch-steekproef; de uitdraai was mislukt (ontbrekende
+   `--productie`-vlag, dus de poort blokkeerde hem) en de vergelijking meldde vrolijk `IDENTIEK`.
+   Beide kanten waren nul regels. De fix: eerst toetsen dat er aan beide kanten 100 rijen staan,
+   pas dan oordelen.
+2. **Een lege bevindingenlijst leest als "alles goedgekeurd".** Daarom moet elke controlerende
+   agent terugmelden hoeveel regels hij werkelijk gelezen heeft
+   (`docs/probleem-steekproef-zwerm.md`).
+3. **Een ongereviewde steekproef publiceerde ooit gewoon mee.** Vóór de reparatie van 20 jul
+   blokkeerde alleen een expliciete `fout` één item; alles zonder oordeel ging door
+   ([enrichment.ts:57](lib/repo/enrichment.ts:57)).
+
+Alle drie hebben dezelfde vorm: *afwezigheid van bewijs* werd gelezen als *bewijs van
+afwezigheid van problemen*. Dat is de duurste fout die een meetinstrument kan maken, want hij
+maakt het instrument onzichtbaar kapot.
+
 ## Vangrails die niet mogen sneuvelen
 
 - **Alles op de Neon-branch.** Guard is fail-closed op een positief signaal: `LUMENLOGIC_DB=branch`
