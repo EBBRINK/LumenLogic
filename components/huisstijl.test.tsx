@@ -354,6 +354,53 @@ test("radius-schaal levert exact de kit-waarden 4/6/8px", async () => {
   if (card) expect(getComputedStyle(card).borderRadius).toBe("8px");
 });
 
+// ── Geometrie (stap 2) ──────────────────────────────────────────────────────
+
+test("knop en invoerveld halen de kit-maten: 44px hoog, radius 6px", async () => {
+  await render(controls, "Specimen — bediening");
+  const button = document.querySelector<HTMLElement>(
+    '[data-slot="button"][data-size="default"]',
+  );
+  const input = document.querySelector<HTMLElement>('[data-slot="input"]');
+  const buttonStyle = getComputedStyle(button!);
+  const inputStyle = getComputedStyle(input!);
+
+  expect(buttonStyle.height, "knophoogte kit §7").toBe("44px");
+  expect(inputStyle.height, "veldhoogte kit §7").toBe("44px");
+  expect(buttonStyle.borderRadius, "knopradius kit §7").toBe("6px");
+  expect(inputStyle.borderRadius, "veldradius kit §7").toBe("6px");
+  expect(buttonStyle.fontSize, "knoptekst kit §7 (15px)").toBe("15px");
+  expect(buttonStyle.fontWeight, "knoptekst kit §7 (600)").toBe("600");
+});
+
+test("de compacte knopmaten blijven bewust onder 44px (O9)", async () => {
+  // Dit is een vastgelegde afwijking van kit §7, geen vergissing: 56 plekken in
+  // dense tabellen en toolbars. Deze test bestaat om te voorkomen dat iemand ze
+  // later "corrigeert" naar 44px.
+  await render(controls, "Specimen — bediening");
+  for (const size of ["xs", "sm", "icon-xs", "icon-sm"] as const) {
+    const el = document.querySelector<HTMLElement>(
+      `[data-slot="button"][data-size="${size}"]`,
+    );
+    const height = Number.parseFloat(getComputedStyle(el!).height);
+    expect(height, `maat ${size} hoort compact te blijven`).toBeLessThan(44);
+  }
+});
+
+test("het invoerveld heeft een grijs vlak dat bij focus wit wordt", async () => {
+  await render(controls, "Specimen — bediening");
+  const input = document.querySelector<HTMLElement>('[data-slot="input"]');
+  // Kit §7: veld #F5F7FA, bij focus #FFFFFF.
+  expect(getComputedStyle(input!).backgroundColor).toBe("rgb(245, 247, 250)");
+  input!.focus();
+  expect(document.activeElement).toBe(input);
+  // :focus-visible wordt pas in het volgende frame doorgerekend.
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await expect
+    .poll(() => getComputedStyle(input!).backgroundColor)
+    .toBe("rgb(255, 255, 255)");
+});
+
 test("het logo-palet zit niet in de interface-tokens", async () => {
   await render(controls, "Specimen — bediening");
   const root = getComputedStyle(document.documentElement);
