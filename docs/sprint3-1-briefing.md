@@ -129,7 +129,14 @@ De 13 bestaande dossiers krijgen de Brink-org.
 
 ---
 
-## 5. De zes stukken
+## 5. Zes stukken — als kaart, niet als voorschrift
+
+⚠️ **Deze paragraaf en §6 zijn NIET bindend.** Ze zijn er zodat je niet vanaf nul hoeft te
+denken en zodat de bekende valkuilen benoemd zijn. Je mag de indeling volledig negeren en het
+anders opknippen als je een betere volgorde ziet — leg dan wel uit waarom. Wat wél bindend is:
+§3 (de lat), §4 (de besluiten) en §7 (de grenzen). Het *wat* ligt vast, het *hoe* is aan jou.
+
+
 
 1. **Auth-fundament** — `lib/auth.ts` van module naar `createAuth(db)`; `emailAndPassword`
    erbij (zit in de core van `better-auth ^1.6.23`, géén extra plugin). `account.password`
@@ -153,6 +160,8 @@ Stuk 1–3 is het fundament. 4, 5 en 6 leunen erop en zijn onderling wél onafha
 ---
 
 ## 6. Hoe je bouwt: de gauntlet loop (besluit G33)
+
+*De methode zelf is bindend; de golfindeling hieronder is een suggestie — zie §5.*
 
 Methode: **builder bouwt, een aparte critic beoordeelt.** De builder beoordeelt zijn eigen werk
 nooit — een agent die iets gemaakt heeft is beter in het verdedigen van zijn keuzes dan in het
