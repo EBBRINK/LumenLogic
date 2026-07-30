@@ -1,0 +1,1309 @@
+{
+ "koppelsleutels": [
+  {
+   "merk": "andtradition",
+   "tabel": "brink_andtradition_raw",
+   "rijen": 80995,
+   "koppelKolom": "PRODUCT NUMBER",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 539
+  },
+  {
+   "merk": "marset",
+   "tabel": "brink_marset_raw",
+   "rijen": 2172,
+   "koppelKolom": "EU-REF",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 2172
+  },
+  {
+   "merk": "artemide",
+   "tabel": "brink_artemide_raw",
+   "rijen": 10281,
+   "koppelKolom": "CODE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 10281
+  },
+  {
+   "merk": "muuto",
+   "tabel": "brink_muuto_raw",
+   "rijen": 1936,
+   "koppelKolom": "ITEM NO.",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 276
+  },
+  {
+   "merk": "aromas",
+   "tabel": "brink_aromas_raw",
+   "rijen": 1991,
+   "koppelKolom": "Reference",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 1987
+  },
+  {
+   "merk": "nordlux",
+   "tabel": "brink_nordlux_raw",
+   "rijen": 1037,
+   "koppelKolom": "Item no.",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 1027
+  },
+  {
+   "merk": "axolight",
+   "tabel": "brink_axolight_raw",
+   "rijen": 15862,
+   "koppelKolom": "CODE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 15858
+  },
+  {
+   "merk": "northern",
+   "tabel": "brink_northern_raw",
+   "rijen": 838,
+   "koppelKolom": "No.",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 309
+  },
+  {
+   "merk": "brickinthewall",
+   "tabel": "brink_brickinthewall_raw",
+   "rijen": 21383,
+   "koppelKolom": "",
+   "koppelDoel": "",
+   "koppelTreffers": 0
+  },
+  {
+   "merk": "nyta",
+   "tabel": "brink_nyta_raw",
+   "rijen": 234,
+   "koppelKolom": "Item No.",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 233
+  },
+  {
+   "merk": "CLS",
+   "tabel": "brink_cls_raw",
+   "rijen": 1022,
+   "koppelKolom": "Artikel",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 1016
+  },
+  {
+   "merk": "Prado",
+   "tabel": "brink_prado_raw",
+   "rijen": 7321,
+   "koppelKolom": "product code",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 7321
+  },
+  {
+   "merk": "Egoluce",
+   "tabel": "brink_egoluce_raw",
+   "rijen": 8376,
+   "koppelKolom": "ARTICOLO",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 8376
+  },
+  {
+   "merk": "Roger Pradier",
+   "tabel": "brink_rogerpradier_raw",
+   "rijen": 7747,
+   "koppelKolom": "REFERENCE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 7747
+  },
+  {
+   "merk": "estiluz",
+   "tabel": "brink_estiluz_raw",
+   "rijen": 1095,
+   "koppelKolom": "REFERENCE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 1085
+  },
+  {
+   "merk": "serien",
+   "tabel": "brink_serien_raw",
+   "rijen": 1956,
+   "koppelKolom": "Artikelnummer",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 1955
+  },
+  {
+   "merk": "flos",
+   "tabel": "brink_flos_raw",
+   "rijen": 19872,
+   "koppelKolom": "SKU",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 19872
+  },
+  {
+   "merk": "sylvania",
+   "tabel": "brink_sylvania_raw",
+   "rijen": 4020,
+   "koppelKolom": "Item",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 4020
+  },
+  {
+   "merk": "goodmojo",
+   "tabel": "brink_goodmojo_raw",
+   "rijen": 42,
+   "koppelKolom": "",
+   "koppelDoel": "",
+   "koppelTreffers": 7
+  },
+  {
+   "merk": "tal",
+   "tabel": "brink_tal_raw",
+   "rijen": 6481,
+   "koppelKolom": "Article Reference",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 6481
+  },
+  {
+   "merk": "iaromi (It's About RoMi)",
+   "tabel": "brink_iaromi_raw",
+   "rijen": 1336,
+   "koppelKolom": "Item code",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 426
+  },
+  {
+   "merk": "tossb (TossB)",
+   "tabel": "brink_tossb_raw",
+   "rijen": 2953,
+   "koppelKolom": "CODE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 2942
+  },
+  {
+   "merk": "kreon",
+   "tabel": "brink_kreon_raw",
+   "rijen": 14026,
+   "koppelKolom": "reference",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 14025
+  },
+  {
+   "merk": "valerie",
+   "tabel": "brink_valerie_raw",
+   "rijen": 256,
+   "koppelKolom": "brand_id",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 90
+  },
+  {
+   "merk": "leucos",
+   "tabel": "brink_leucos_raw",
+   "rijen": 754,
+   "koppelKolom": "CODE",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 721
+  },
+  {
+   "merk": "weverducre",
+   "tabel": "brink_weverducre_raw",
+   "rijen": 8124,
+   "koppelKolom": "Article number",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 8119
+  },
+  {
+   "merk": "lombardo",
+   "tabel": "brink_lombardo_raw",
+   "rijen": 65360,
+   "koppelKolom": "coalesce(\"CODICE\", \"Code\")",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 65360
+  },
+  {
+   "merk": "xal",
+   "tabel": "brink_xal_raw",
+   "rijen": 31420,
+   "koppelKolom": "Code",
+   "koppelDoel": "supplier_article_code",
+   "koppelTreffers": 31420
+  }
+ ],
+ "stap1Klaar": [
+  {
+   "merk": "muuto",
+   "tabel": "brink_muuto_raw",
+   "koppelKolom": "ITEM NO.",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "BULB SPECIFICATION - KELVIN",
+   "veld": "kelvin",
+   "bruikbareRijen": 20,
+   "gaatOverArmatuur": true,
+   "bewijs": "180 van 276 gekoppelde rijen zijn niet-leeg, maar de meeste waarden dragen een eenheid of scheidingsteken: '3000K', '2700K', '2.500K', '2.700K', en 12 rijen '2200K-3000K' (tunable white, een bereik). Kaal viercijferig ( ~ '^[0-9]{4}$' ) zijn 40 rijen: '2700' en '3000'. Van die 40 hebben er 20 een lampvoet in BULB RECCOMENDADTION - LAMP BASE ('G9') - daar beschrijft de waarde het meegeleverde losse peertje, dat de klant kan vervangen, dus die vallen af (zelfde val als Valerie). De resterende 20 rijen hebben LAMP BASE = '-' en BULB INCLUDED = 'Yes': geintegreerde LED, dus de waarde IS de kleurtemperatuur van het armatuur. Nuance bij de aangekondigde val: gemeten is kelvin NOOIT gevuld bij BULB INCLUDED = 'No' (alle 180 gevulde rijen staan op 'Yes'); alle 96 lege rijen zijn de E27/E14-armaturen zonder lamp. De kolom bevat hier dus geen puur aanbevolen-lamp-waarden, wel meegeleverde-losse-lamp-waarden.",
+   "kanttekening": "Twee onderbouwingen in het voorstel kloppen niet, wat de 'schone scheiding' minder schoon maakt dan gepresenteerd. (1) Het voorstel stelt: 'alle 96 lege rijen zijn de E27/E14-armaturen zonder lamp'. Gemeten group by BULB INCLUDED over de 276 gekoppelde rijen: 'Yes'=180 (180 kelvin gevuld), 'No'=70 (0 gevuld), '-'=26 (0 gevuld). De 96 lege rijen zijn dus 70 E27/E14-rijen PLUS 26 rijen met LAMP BASE='-' EN BULB INCLUDED='-', die geen enkele lampinformatie dragen en dus niet als 'E27/E14 zonder lamp' te duiden zijn. (2) Gemeten group by CHANGEABLE BULB: de waarde is '-' voor alle 276 rijen. Die kolom bevestigt de conclusie 'geintegreerde LED' dus nergens; de hele afleiding rust op alleen LAMP BASE='-' + BULB INCLUDED='Yes'. Voor deze 20 rijen houdt de conclusie stand omdat Leaf en Tip herkenbaar geintegreerde armaturen zijn, maar de regel is niet generiek herbruikbaar voor de overige 132 rijen van de 152-populatie."
+  },
+  {
+   "merk": "muuto",
+   "tabel": "brink_muuto_raw",
+   "koppelKolom": "ITEM NO.",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "BULB SPECIFICATION - WATT",
+   "veld": "max_wattage",
+   "bruikbareRijen": 10,
+   "gaatOverArmatuur": true,
+   "bewijs": "174 gevulde rijen, maar het gros draagt een eenheid of een decimale komma: '14W', '19W', '5,5W', '3,0 W', '6,7', '10,9'. Kaal geheel getal zijn 30 rijen; 20 daarvan horen bij een G9-voet (vermogen van het meegeleverde peertje, niet van het armatuur - precies de Valerie-val), dus blijven 10 rijen over met LAMP BASE = '-' en BULB INCLUDED = 'Yes'. Bij die geintegreerde LED-armaturen is het opgenomen vermogen tegelijk het maximum, dus bruikbaar als max_wattage.",
+   "kanttekening": "De 10 rijen zijn geselecteerd op TYPOGRAFIE, niet op betekenis, en dat levert een inconsistent matcher-oordeel op tussen twee identieke 8W-armaturen. Gemeten: `where \"BULB SPECIFICATION - WATT\" ~ '^[0-9]+$'` group by waarde geeft precies 2 groepen: '3' (20 rijen, base_streep=0, dus allemaal G9) en '8' (10 rijen, base_streep=10, allemaal LAMP BASE='-'). De stap-1-opbrengst is dus EEN enkele distinct waarde (8) op 10 rijen = 3,6% van 276. Tegelijk gemeten: `LAMP BASE='-' AND BULB INCLUDED='Yes'` = 152 rijen. De Leaf-lampen zitten in diezelfde geintegreerde-LED-populatie (LAMP BASE='-', BULB INCLUDED='Yes', CATEGORY='Lighting') en zijn OOK 8 W, maar staan er als '8W' en vallen daarom af. Resultaat na stap 1: Tip Table Lamp max_wattage=8, Leaf Table Lamp max_wattage=NULL, terwijl het allebei 8 W geintegreerde-LED-tafellampen van hetzelfde merk zijn. Omdat wattage met een percentage-tolerantie wordt vergeleken, komt de Tip wel in een 'circa 8 W'-filter en de fysiek gelijkwaardige Leaf stilzwijgend niet. De scheidslijn is uitsluitend de letter 'W' in de bron. Advies: samen met de eenheid-strip naar stap 2, dan wordt de hele populatie van 152 in een keer consistent gevuld."
+  },
+  {
+   "merk": "muuto",
+   "tabel": "brink_muuto_raw",
+   "koppelKolom": "ITEM NO.",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "BULB SPECIFICATION - LUMEN",
+   "veld": "lumen_output",
+   "bruikbareRijen": 11,
+   "gaatOverArmatuur": true,
+   "bewijs": "165 gevulde rijen, meestal met eenheid ('750lm', '180 lm', '370 lm') en soms met proza erachter ('1099 lm (max intensity). 3 steps 100%, 50%, 20%.'). Kaal geheel getal zijn 31 rijen ('200', '230', '190', '330'); na aftrek van de G9-rijen blijven 11 rijen over met LAMP BASE = '-' en BULB INCLUDED = 'Yes', dus lichtstroom van de armatuur zelf.",
+   "kanttekening": "Zelfde typografie-artefact, en de opbrengst is 2 distinct waarden. Gemeten: `where \"BULB SPECIFICATION - LUMEN\" ~ '^[0-9]+$'` group by waarde = 31 rijen: '200' (20, waarvan base_streep=10), '230' (6, base_streep=0), '190' (4, base_streep=0), '330' (1, base_streep=1). Na de G9-aftrek blijven inderdaad 11 rijen over - dat klopt - maar dat zijn 200 (10x) en 330 (1x), dus twee waarden. De Leaf-lampen (9 rijen, dezelfde geintegreerde-LED-populatie, LAMP BASE='-' + BULB INCLUDED='Yes') hebben 370 lm en vallen uitsluitend af door het achtervoegsel ' lm'. Zo krijgt Tip Table lumen_output=200 en Leaf Table NULL, terwijl beide gemeten lichtstroom in de bron hebben staan. Bij een percentage-tolerantie op lumen betekent dat: de ene helft van dezelfde productgroep doet mee aan het filter en de andere helft verdwijnt, puur op schrijfwijze. Advies: naar stap 2 samen met de eenheid-strip."
+  },
+  {
+   "merk": "nordlux",
+   "tabel": "brink_nordlux_raw",
+   "koppelKolom": "Item no.",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "Lumen",
+   "veld": "lumen_output",
+   "bruikbareRijen": 312,
+   "gaatOverArmatuur": true,
+   "bewijs": "312 van 1037 rijen zijn gevuld (725 NULL) en alle 312 zijn een kaal geheel getal: count filter (\"Lumen\" ~ '^[0-9]+$') = 312, count met afwijkend formaat = 0. Geen bereiken, geen eenheid, geen placeholders. Alle 312 joinen ook echt op brink_products. Kruiscontrole met Socket bewijst dat het om de armatuur gaat en niet om een los peertje: Lumen is gevuld bij Socket='LED Module' (293 van 305), 'SolarLed' (13 van 13) en 'G13' (6 van 6, LED-battens 'Works IP65 1x10W LED'), en is 0 van 313 bij E27, 0 van 182 bij GU10, 0 van 122 bij E14, 0 van 19 bij G9. Precies de fittingrijen — waar de lumenwaarde die van het peertje zou zijn — zijn leeg gelaten."
+  },
+  {
+   "merk": "northern",
+   "tabel": "brink_northern_raw",
+   "koppelKolom": "No.",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "IP code",
+   "veld": "ip_value",
+   "bruikbareRijen": 282,
+   "gaatOverArmatuur": true,
+   "bewijs": "group by op de 309 Lighting-rijen geeft precies drie uitkomsten: 'IP20' 261x, 'IP44' 21x, NULL 27x. Geen placeholders, geen bereiken, geen afwijkend formaat - de schrijfwijze is identiek aan ons doelformaat ('IP20'), dus 282 rijen kunnen 1-op-1 door. Kruiscontrole met Lamp socket toont dat de waarde per armatuur varieert (IP44 bij zowel E27 128->16 als Integrated LED), dus het is de behuizingsklasse van de armatuur, niet van een lamp. Er is geen buurkolom die hierop lijkt (Northern heeft geen Schutzklasse-achtige kolom); 'Energy class' en 'Classification' zijn iets anders en zijn niet gebruikt."
+  },
+  {
+   "merk": "Prado",
+   "tabel": "brink_prado_raw",
+   "koppelKolom": "product code",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "driver",
+   "veld": "dimmable",
+   "bruikbareRijen": 1980,
+   "gaatOverArmatuur": true,
+   "bewijs": "group by driver: 'dali' 1180, '0-10V' 800, 'CRI90+' 92, 'CRI97' 92, leeg 5157. De 1980 rijen met 'dali'/'0-10V' zijn protocolnamen die zonder bewerking in een tekstkolom kunnen. Kruiscontrole met type: dali komt voor bij acrotrack (800), acrobat (240) en pendant (140), 0-10V bij acrotrack (800) — allemaal armatuurtypen, geen losse driver (type='driver' heeft 31 rijen en die hebben de driver-kolom leeg). Het protocol staat ook letterlijk in de product name van dezelfde rij ('acrotrack mini long black ano dali 2700K 20°pc CRI97'). De 184 rijen met 'CRI90+'/'CRI97' zijn kolomverschuiving (type='acrobat surface box' en 'trim spot outdoor'; dezelfde CRI staat ook in lightcolour) en tellen NIET mee. Let op: waarde is kleine letters ('dali'), casing-normalisatie is de enige twijfel.",
+   "kanttekening": "Een bewijsregel in het voorstel klopt niet zoals opgeschreven: 'Het protocol staat ook letterlijk in de product name van dezelfde rij'. Gemeten: `select driver, count(*), count(*) filter (where lower(\"product name\") like '%dali%') from brink_prado_raw where driver in ('dali','0-10V') group by 1` geeft 0-10V 800/800 in de naam, maar dali slechts 940 van 1180 — de 240 rijen type='acrobat' (allemaal 'acrobat surface duo ... 90+') noemen dali niet in hun naam. Ik heb die 240 handmatig nagelopen en ze zijn NIET verschoven (size=mini, trim/trimless='surface duo', beamangle, lightcolour en finish type staan allemaal correct), dus de conclusie blijft overeind — maar de kruiscontrole dekt maar 80% van de dali-rijen en moet niet als sluitend bewijs worden hergebruikt."
+  },
+  {
+   "merk": "serien",
+   "tabel": "brink_serien_raw",
+   "koppelKolom": "Artikelnummer",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "Schutzart",
+   "veld": "ip_value",
+   "bruikbareRijen": 1886,
+   "gaatOverArmatuur": true,
+   "bewijs": "group by geeft exact vier waarden, allemaal al in ons formaat: IP20 (1439), IP40 (240), IP30 (159), IP44 (48); 70 NULL. Geen '-' of andere plaatshouders. LET OP: de buurkolom Schutzklasse (I 1784 / II 46 / '-' 48) is de elektrische beschermingsklasse en mag NOOIT in ip_value.",
+   "kanttekening": "De vier waarden en de telling kloppen exact (group by: IP20 1439 / IP40 240 / IP30 159 / IP44 48 / NULL 70 = 1886, en alle 1886 landen op een product: de join brink_serien_raw.Artikelnummer = brink_products.supplier_article_code geeft 1955 van 1956 rijen, 1-op-1, uitsluitend brand_name='Serien Lighting'; de enige niet-matchende rij AC8503 'Oberflaechenfaecher' is overal leeg). Maar 89 van die 1886 rijen zijn GEEN armatuur: 'select count(*) from brink_serien_raw where \"Schutzart\" is not null and coalesce(\"Leuchtmittel\",''-'')=''-'' and coalesce(\"CCT K\",''-'')=''-'' and \"Systemleistung W\" is null' = 89, waarvan 56 een expliciete accessoire-naam dragen (regex optik|baldachin|reflektor|front|abdeck|adapter|ersatz|zubeh). Voorbeelden met Beschreibung en netto-prijs: LD1301 'LYD Wall Front IP44' / 'IP44 Front Spiegel' / 159.66 euro -> Schutzart IP44; CU8542 'OPTIK M/L Glaslinse wide' / 'Fassung transluzent, Glaslinse weit 48 graden' / 50.42 euro -> IP20; BP1001 'BALDACHINPROFIL 2' / 'gebuerstet' / 281.51 euro -> IP20; AP1107 'APP Wall Front' / 'Front Grau' / 84.03 euro -> IP20; ook 'REFLEX2 Ceiling M Reflektor' (4x) en de 'Wandabdeckung'-rijen. Dit zijn losse fronten, lenzen, reflectoren en plafondkappen, geen lichtbron. Waarom dat hier fataal is: bij Serien is er geen enkel ander veld om ze uit te filteren -- 'select count(*), count(category_path), count(light_source), count(lamp_foot), count(description) from brink_products where brand_name=''Serien Lighting''' geeft 1955 producten met 0 gevulde category_path, 0 light_source, 0 lamp_foot, 0 description, en ip_value/kelvin/max_wattage/cri/lumen staan alle vijf op 0. ip_value wordt dus de ENIGE spec op die rijen. Concreet fout oordeel van de matcher: op een uitvraag 'IP44 wandarmatuur' passeert LD1301 (een frontplaat van 159 euro) de IP-poort groen en komt als geldig armatuur in de resultaten, terwijl 'ip lager dan gevraagd = altijd rood' juist bedoeld is als harde poort. Advies: vul ip_value alleen op rijen met een lichtbron (Leuchtmittel <> '-' / CCT K of Systemleistung gevuld), of markeer de 89 rijen eerst als niet-armatuur. Bruikbaar aantal wordt dan 1797, niet 1886."
+  },
+  {
+   "merk": "serien",
+   "tabel": "brink_serien_raw",
+   "koppelKolom": "Artikelnummer",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "CCT K",
+   "veld": "kelvin",
+   "bruikbareRijen": 1283,
+   "gaatOverArmatuur": true,
+   "bewijs": "Alleen de zuiver 4-cijferige waarden zijn bruikbaar: 2700 (540), 3000 (531), 4000 (212) = 1283. Niet meegeteld: '-' (237), NULL (169), 'OHNE LM' (70), 'DIM2WARM 2200-3000' (46), 'TUNABLE WHITE 2200-5000' (44), 'LM' (24), 'D2W' (23), 'DIM2WARM 1800-3000' (18), 'TUNEABLE WHITE 2200-4000' (16), 'TW' (16), 'TUNEABLE WHITE 2700-5000' (8), 'TUNABLEWHITE 2200-5000' (2). Armatuur-check: alle 1283 numerieke rijen hebben Leuchtmittel='LED' (geintegreerd), geen enkele staat op een fittingwaarde als G4/E27; de 'OHNE LM'-rijen hebben Leuchtmittel='-' of NULL."
+  },
+  {
+   "merk": "serien",
+   "tabel": "brink_serien_raw",
+   "koppelKolom": "Artikelnummer",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "Systemleistung W",
+   "veld": "max_wattage",
+   "bruikbareRijen": 1400,
+   "gaatOverArmatuur": true,
+   "bewijs": "1422 rijen bevatten een kaal geheel getal (geen eenheid, geen '-'): 20 (253), 33 (133), 82 (123), 40 (102), 30 (96) enz. Daarvan hebben er 1400 Leuchtmittel='LED' — systeemvermogen van het armatuur incl. driver. De overige 22 zijn NIET meegeteld: 4x 'LED E27' 13 W (JOB Table, meegeleverd peertje) en 18x sokkelarmaturen (G4/3xG4/5xG4: POPPY Floor 35/105/100 W) waar het getal de lampbelasting is. 534 rijen zijn NULL."
+  },
+  {
+   "merk": "serien",
+   "tabel": "brink_serien_raw",
+   "koppelKolom": "Artikelnummer",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "Regelung",
+   "veld": "dimmable",
+   "bruikbareRijen": 1193,
+   "gaatOverArmatuur": true,
+   "bewijs": "Enkelvoudige protocolwaarden die direct in een tekstveld kunnen: DALI (426), TRIAC (420), CASAMBI (347) = 1193. Niet meegeteld: '-' (391), ON/OFF (108), SENSORIK (63), INTEGR. (55), NULL (51), 'DALI + SENSOR' (31), 'ON/OFF+SENSOR' (24), 'TRIAC + 0–10 V' (20), 'DALI 2CH' (8), 'DALI 2CH + CASAMBI' (8), 'SENSORIK UND CASAMBI' (2), 'CASAMBI (DALI)' (2). Betreft de driver/regeling van het armatuur zelf.",
+   "kanttekening": "42 van de 1193 voorgestelde rijen beschrijven NIET het armatuur maar het retrofit-peertje dat de klant er zelf in draait — precies val 2. Kruis met Leuchtmittel: `select \"Regelung\",\"Leuchtmittel\",count(*) from brink_serien_raw where \"Regelung\" in ('DALI','TRIAC','CASAMBI') group by 1,2` geeft DALI 426/426 op LED en CASAMBI 347/347 op LED (schoon), maar TRIAC 378 op LED en 42 op een FITTING: G9 (11+4+1+3+1 = 20 incl. '2 × G9','3 × G9','4 × G9'), R7S 8, GU10 4, E27 4, B15D 3, plus G4/E14-kroonluchters (20 × G4, 40 × G4, 60 × G4, 20 × E14, 40 × E14, 60 × E14). Harde bevestiging dat er geen geintegreerde lichtbron/driver in zit: `select count(*), count(*) filter (where \"Systemleistung W\" is null), string_agg(distinct \"CCT K\",' | ') from brink_serien_raw where \"Regelung\"='TRIAC' and \"Leuchtmittel\"<>'LED'` → n=42, Systemleistung W is NULL bij alle 42, en CCT K is uitsluitend '-' of 'LM' (nooit een kelvinwaarde). Voorbeelden: AN1013 ANNEX Ceiling S (G9), OE1007 ONE EIGHTY Suspension L (E27), RF1006 REEF Suspension 3 (3 × G9). MATCHER-GEVOLG: dimmable wordt als protocol vergeleken. Een spec 'TRIAC-dimbaar' zet deze 42 op groen, terwijl het armatuur zelf geen driver heeft — of het dimt hangt volledig af van welk G9/E27-peertje de installateur erin zet. Dat is een onterecht groen oordeel op een armatuur dat de aannemer daarna niet gedimd krijgt. FIX: neem 1151 rijen (DALI 426 + CASAMBI 347 + TRIAC 378) en filter op \"Leuchtmittel\"='LED'; de 42 socket-rijen horen op stap 2 met de fitting erbij, niet op stap 1."
+  },
+  {
+   "merk": "tossb (TossB)",
+   "tabel": "brink_tossb_raw",
+   "koppelKolom": "CODE",
+   "koppelDoel": "supplier_article_code",
+   "kolom": "LUMEN",
+   "veld": "lumen_output",
+   "bruikbareRijen": 803,
+   "gaatOverArmatuur": true,
+   "bewijs": "1480 van 2953 rijen zijn niet-leeg, maar slechts 803 zijn een kale integer (regex '^[0-9]+$'), bv 400, 740, 600, 2680. De rest is NIET bruikbaar zonder bewerking: 637 rijen met x of + ('6x400' 181x, '3x600' 96x, '878+439' 29x) en 627 rijen met letters, waar door kolomverschuiving de BULB-string in LUMEN staat ('24W LED3000K' 10x, '37W LED 2700K' 10x). Armatuur-of-onderdeel gekruist met BULB: van de 803 kale integers staan er 785 op een rij met geintegreerde LED (BULB bevat 'LED') en 18 op rijen met '4W 350mA 2700K' (ook geintegreerd, MODEL zegt 'GRID SPOT Ceiling Arm ... 1x4W LED 45 graden 2700K - 350mA'). NUL van de 803 staat op een rij waar BULB een sterretje heeft ('15W (E27)*', '8W (GU10)*' - lamp niet meegeleverd); van die 893 sterretjes-rijen heeft er geen enkele een kale integer in LUMEN. De kale-integerwaarde is ook altijd de totale afgifte, want meervoudige lichtbronnen staan juist wel als '6x400'. Alle 803 rijen koppelen ook daadwerkelijk aan een product (gemeten met de join op CODE).",
+   "kanttekening": "De bewering 'de kale-integerwaarde is ook altijd de totale afgifte, want meervoudige lichtbronnen staan juist wel als 6x400' is aantoonbaar onjuist voor 12 van de 803 rijen. TossB's eigen conventie is PER LICHTBRON: `select \"BULB\",\"LUMEN\",count(*) from brink_tossb_raw where \"LUMEN\" ~ '^[0-9]+[xX][0-9]+$' group by 1,2` geeft '6x4W LED 2700K' → '6x400' (181x), '8x4W' → '8x400' (48x), '2x8W 2200-2850K' → '2x1385' (6x) — de N in de LUMEN-cel is het aantal bronnen, het tweede getal de afgifte per bron. Bij de DICE-familie is die multiplier weggevallen en staat er een KALE integer die dus per bron is: `select \"CODE\",\"MODEL\",\"BULB\",\"LUMEN\" from brink_tossb_raw where \"MODEL\" ilike '%DICE%'` → T105C1DWL 'S1 - 8W LED 2700K' LUMEN 800, T105C2DWL 'S2 - 2x8W LED 2700K' LUMEN 800, T105C4DWL 'M3 - 3x8W LED 2700K' LUMEN 800. Eén, twee én drie lichtbronnen leveren volgens de kolom allemaal 800 lm. Meting van de omvang: `select count(*) from brink_tossb_raw where \"LUMEN\" ~ '^[0-9]+$' and \"BULB\" ~ '^[0-9]+\\s*[xX]'` → 24 rijen, waarvan 12 aantoonbaar per-bron (2x8W→800: 8 rijen, 3x8W→800: 4 rijen) en 12 CONICAL-rijen die wél totaal lijken (5x4W→1470, 7x4W→1970, 9x4W→2737, ruwweg proportioneel) maar niet los te bewijzen zijn. MATCHER-GEVOLG: lumen kent percentage-tolerantie. DICE M3 (3x8W, reëel ~2400 lm) komt als 800 in de kolom. Een uitvraag '2000 lm ±20%' laat dit armatuur ver buiten bereik vallen — een fout-negatief dat de klant nooit ziet; omgekeerd wint hij een uitvraag '800 lm' die hij met 2400 lm ruim overschiet. FIX: sluit op stap 1 de 24 rijen uit waar BULB met een 'Nx'-multiplier begint (802−24 = 779 rijen blijven schoon); die 24 horen op stap 2 waar de multiplier uit BULB verrekend wordt."
+  }
+ ],
+ "stap2Wachtrij": [
+  {
+   "merk": "andtradition",
+   "kolom": "PRODUCT NAME",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Vrije tekst, wattage moet eruit geknipt worden EN het gaat niet over de armatuur. Slechts 5 van de 539 rakende rijen bevatten een W-waarde en dat zijn stuk voor stuk losse lichtbronnen/onderdelen: '2,5W LED incl. Base Pad Lucca SC51', 'LED Unit 3W Flowerpot Portable Lamp VP9', 'Light source 1W SC52 & SC53 & MF1 & SH8', 'Light source 3W G4 LED Setago JH27 & Pivot ATD7', 'Tala Sphere lll light source 7W Bonnet Chandelier SC91...'. Kruiscontrole met CATEGORY bevestigt: dit zijn Spare parts-rijen. Zulke waarden mogen niet als max_wattage van een armatuur landen."
+  },
+  {
+   "merk": "andtradition",
+   "kolom": "PRODUCT NAME",
+   "veld": "dimmable",
+   "waaromNietStap1": "1 van de 539 rijen noemt dimmen ('Dimmability: 100% - 50% - 20% - 0%' bij de Flowerpot VP9 LED Unit). Geen protocol (geen DALI/TRIAC/PUSH/1-10V), vrije tekst, en opnieuw een LED-unit in plaats van de armatuur. Vertaling naar een protocolwaarde is niet mogelijk."
+  },
+  {
+   "merk": "andtradition",
+   "kolom": "ENVIRONMENT",
+   "veld": "ip_value",
+   "waaromNietStap1": "Bevat alleen 'Indoor' (80.855) en 'Outdoor' (140) over de hele tabel. Dat is geen IP-waarde maar een gebruiksklasse; er bestaat geen betrouwbare vertaling Indoor->IP20 / Outdoor->IP44/65. Omdat ip lager dan gevraagd altijd rood is in de matcher, is een geraden waarde hier direct schadelijk."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kelvin zit alleen verstopt in vrije tekst en in twee onverenigbare notaties: 234 rijen met de korte suffix-vorm (bv. 'AMBROSIA 120 MATT GOLD 22K' = 2200K, ook 27K/30K) en 41 rijen met een voluit geschreven waarde ('ATLAS 2700K'). Beide vragen om parsing plus vertaling van 22K naar 2200. Bovendien blijkt bij kruising met ITEM TYPE dat een deel van de 4-cijferige treffers COMPONENT-rijen zijn met een ingekochte lamp erin ('MAS LEDspot VLE D 9.5-75W 927 PAR30S 25D 2700K' = een Philips-peertje, niet de armatuur)."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "max_wattage",
+   "waaromNietStap1": "200 rijen bevatten een W-waarde, altijd midden in de omschrijving en met eenheid ('CANOPY 20W 24V TRIAC GOLD'). Naast strippen van de eenheid speelt hetzelfde probleem als bij Valerie: de treffers zijn overwegend CANOPY-driverblokken en meegeleverde lampen, dus het vermogen van een voeding of peertje, niet van het armatuur. Vereist filteren op ITEM TYPE/Product Family voor het bruikbaar is."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "ip_value",
+   "waaromNietStap1": "110 rijen bevatten een IP-token ('CALA 140 IP65 IROKO-BROWN'). De waarde staat in vrije tekst en moet uitgeknipt worden. Ook staan er COMPONENT- en accessoire-rijen tussen ('CALA SHADE IP65 -BROWN', 'DIMMER CASAMBI IP65 BLACK'): de IP-graad van een kap of dimmer is niet die van de armatuur."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "dimmable",
+   "waaromNietStap1": "433 rijen noemen een dim-term (TRIAC, DALI, CASAMBI, PUSH, 1-10). Het protocol moet uit de zin geknipt en genormaliseerd worden, en de treffers zitten bijna allemaal op CANOPY-voedingen en losse dimmers, dus ze beschrijven de driver die je erbij kiest en niet per se de armatuur zelf."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Slechts 37 rijen bevatten een lm-token, ingebed in vrije tekst met eenheid. Te weinig dekking en te veel bewerking; ook hier eerst uitzoeken of het de armatuur of het meegeleverde lichtbron-onderdeel betreft."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "cri",
+   "waaromNietStap1": "42 rijen bevatten CRI/Ra-achtige tekst, vrijwel altijd als onderdeel van een lampcode (de '927' in 'MAS LEDspot ... 927' betekent Ra90/2700K). Dat is een codering die vertaald moet worden en die bovendien over de ingekochte lamp gaat, niet over het armatuur. Omdat cri als MINIMUM wordt vergeleken, is een verkeerd overgenomen waarde direct misleidend."
+  },
+  {
+   "merk": "marset",
+   "kolom": "Descripción",
+   "veld": "beam_angle",
+   "waaromNietStap1": "22 rijen bevatten een gradenteken of een straalhoekcode ('25D' in de Philips-lampcode). Vergt parsing en vertaling, en beschrijft de meegeleverde/aanbevolen lamp in plaats van de armatuur."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "kelvin",
+   "waaromNietStap1": "De tabel heeft geen enkele techniekkolom - alleen CODE, DESCRIPTION, NEW, CATALOGUE, FAMILY en twee prijskolommen. Alle specs zitten als tokens in een afgekorte omschrijving van max 40 tekens: 3466 rijen bevatten een '####K'-token ('PARABOLA 100 ADJ. 60 4000K BCO', 'A.24 C SHARP MOD 2700K XFLOOD 2352MM BLK') en nog eens 1930 rijen dragen alleen de driecijferige fabrikantencode 930/940/927 ('SHARP RCS TRIM 8X22W 930 WFL EXT.DRV BLK'), waarin 9=CRI90 en 30=3000K. Beide vormen vergen parsen; de 9xx-code vergt bovendien kennis van de codering."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "cri",
+   "waaromNietStap1": "Geen losse CRI-waarde in de data. Alleen af te leiden uit het eerste cijfer van diezelfde 9xx-code (1930 rijen: 930 -> CRI 90, 940 -> CRI 90 bij 4000K). Dat is decoderen, geen overnemen - en de matcher gebruikt cri als MINIMUM, dus een verkeerd gedecodeerde 9 is direct schadelijk."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "ip_value",
+   "waaromNietStap1": "113 van 10281 rijen bevatten een IP-token ('HELGOLAND 120 FIX IP44 3000K FL NRO'). Moet uit de zin geknipt worden. Let op: 'Arch. Outdoor' staat in CATALOGUE bij veel meer rijen dan die 113, dus ontbrekende IP betekent hier niet IP20 - en ip lager dan gevraagd is altijd rood."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "beam_angle",
+   "waaromNietStap1": "1485 rijen bevatten een graden-token ('ADJ. 60', 'LED3000K 2X9', '2X14'), vaak met een vermenigvuldiger ervoor (aantal lichtpunten x hoek). Daarnaast staan er woord-labels als WFL/WFLOOD/XFLOOD/FL/SP/NARROW die pas via een merkspecifieke tabel graden worden. Splitsen en vertalen dus."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "max_wattage",
+   "waaromNietStap1": "1082 rijen bevatten een W-token, meestal als 'aantal x vermogen' ('SHARP RCS.TRIM.16X 44W', '8X22W', '2X5.5W'). De losse 44 is het vermogen per module, niet van het armatuur - dat vergt vermenigvuldiging, dus bewerking."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Nul rijen bevatten 'lm' of 'lumen'. Lumen komt in deze bron helemaal niet voor, ook niet als tekst - dit veld is uit brink_artemide_raw niet te vullen, met of zonder bewerking."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "dimmable",
+   "waaromNietStap1": "1416 rijen bevatten een dim-token, maar door elkaar als protocol ('VECTOR 75 3P DALI 930 WF BCP') en als kale eigenschap ('SHARP SMD 12X33W 930 WFLOOD DIM BLACK'). Het protocol moet uit de zin geknipt en genormaliseerd; 'DIM' zonder protocol is voor onze kolom waardeloos."
+  },
+  {
+   "merk": "artemide",
+   "kolom": "DESCRIPTION",
+   "veld": "(voorwaarde vooraf: armatuur-of-onderdeel)",
+   "waaromNietStap1": "De bron mengt armaturen met accessoires: 'SHARP REFRACTIVE KIT LOUVRES 1 UNIT NRO', 'FUNIVIA CABLE 10 MT BLACK', 'ALPHABET OF LIGHT W A UPPERCASE+ SUPP.'. Er is geen kolom die dat onderscheidt (FAMILY en CATALOGUE zijn puur indelend, CATALOGUE kent alleen Design / Arch. Indoor / Arch. Outdoor). Elke extractieregel moet dus eerst een armatuur-filter krijgen, anders krijgen kabels en louvre-kits een kelvin."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "BULB SPECIFICATION - KELVIN",
+   "veld": "kelvin",
+   "waaromNietStap1": "De 160 overige gevulde rijen vergen bewerking: 'K'-suffix strippen ('3000K'), duizendtalpunt weghalen ('2.500K' -> 2500), en 12 rijen zijn een bereik '2200K-3000K' (tunable white) dat geen enkele waarde oplevert die de matcher EXACT kan vergelijken - daar hoort een aparte beslissing bij. Bovendien moet elke regel eerst filteren op LAMP BASE = '-', anders belandt de kleurtemperatuur van een los G9-peertje in de armatuurkolom."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "BULB SPECIFICATION - WATT",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Eenheid strippen ('14W', '3,0 W') en decimale komma naar punt ('5,5W' -> 5.5, '6,7' -> 6.7) voordat het in een numerieke kolom kan; plus hetzelfde armatuur-filter op LAMP BASE. Let ook op: bij BULB INCLUDED = 'No' (E27/E14) is deze kolom leeg, dus het echte max_wattage van die 70 armaturen staat nergens in deze bron."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "BULB SPECIFICATION - LUMEN",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Eenheid strippen ('750lm', '180 lm') en bij enkele rijen proza wegknippen ('1099 lm (max intensity). 3 steps 100%, 50%, 20%.'), plus het armatuur-filter op LAMP BASE."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "DIMMABLE FUNCTION",
+   "veld": "dimmable",
+   "waaromNietStap1": "Slechts 41 van 276 rijen zijn gevuld, en de waarden zijn geen protocol: 39x 'Yes' en 2x '3 steps: 100%, 50%, 20%' (dat laatste is stapdimmen op de armatuur zelf). Nul rijen noemen DALI, 1-10V, TRIAC of push. Onze kolom verwacht een protocol, dus 'Yes' moet vertaald of als onbekend-maar-dimbaar behandeld worden - een ontwerpbeslissing, geen overname."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "(geen kolom) ip_value",
+   "veld": "ip_value",
+   "waaromNietStap1": "brink_muuto_raw heeft geen IP-kolom. Een IP-token komt in het hele vrije-tekstblok (PRODUCT DESCRIPTION, ADDITIONAL INFORMATION 1-3, SAFETY & REGULATIONS) bij slechts 4 van de 276 rijen voor. Extractie uit proza voor 1,4% dekking; bovendien mag ontbreken hier nooit als IP20 worden ingevuld, want te laag is altijd rood."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "(geen kolom) cri",
+   "veld": "cri",
+   "waaromNietStap1": "Geen CRI-kolom. Een CRI/Ra-achtige vermelding komt in de vrije tekst bij 12 van de 276 rijen voor. Extractie uit proza, en cri is een MINIMUM-vergelijking, dus een fout gelezen getal is meteen schadelijk."
+  },
+  {
+   "merk": "muuto",
+   "kolom": "(geen kolom) beam_angle",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Geen stralingshoekkolom. 17 van de 276 rijen noemen iets beam-achtigs in vrije tekst. Muuto is bovendien decoratieve verlichting, waar de hoek zelden gespecificeerd wordt - deze bron kan het veld praktisch niet vullen."
+  },
+  {
+   "merk": "aromas",
+   "kolom": "Description",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kleurtemperatuur staat alleen in lopende tekst, niet in een eigen kolom: 1054 van 1991 rijen bevatten een patroon [0-9]{4}K binnen zinnen als 'LARI WALL LAMP. LED STRIP 9W 900lm 2700K TRIAC DIMMABLE 24V. / STRIPED CLEAR GLASS'. Vereist parsen; bovendien noemt 1036 rijen een fitting (E27/E14/G9/G4/GU10) en 142 rijen expliciet 'Bulb incl', dus per rij moet nog beslist worden of de waarde de armatuur of het meegeleverde peertje beschrijft."
+  },
+  {
+   "merk": "aromas",
+   "kolom": "Description",
+   "veld": "max_wattage",
+   "waaromNietStap1": "1107 van 1991 rijen bevatten een wattpatroon in prozatekst ('9W', '3x9W', '8,5W'). Eenheid strippen, vermenigvuldigers (3x9W) oplossen en armatuur-vs-lamp beslissen (142 rijen 'Bulb incl') zijn alle drie bewerkingen."
+  },
+  {
+   "merk": "aromas",
+   "kolom": "Description",
+   "veld": "lumen_output",
+   "waaromNietStap1": "322 van 1991 rijen bevatten '<getal> lm' in de prozatekst ('600lm'); eenheid strippen en uit de zin lichten is bewerking. Bij fittingrijen is de lm-waarde bovendien die van het aanbevolen/meegeleverde peertje."
+  },
+  {
+   "merk": "aromas",
+   "kolom": "Description",
+   "veld": "ip_value",
+   "waaromNietStap1": "Slechts 28 van 1991 rijen noemen een IP-code, en dan vaak dubbel ('IP20/IP44.', 'IP20 / IP44') omdat de tekst meerdere varianten van dezelfde familie beschrijft. Uit de zin knippen en de dubbelwaarde beslechten is bewerking."
+  },
+  {
+   "merk": "nordlux",
+   "kolom": "Description",
+   "veld": "ip_value",
+   "waaromNietStap1": "Geen IP-kolom in de tabel. 125 van 1037 rijen noemen een IP-code in de vrije marketingtekst ('Suitable for in- and outdoor use (IP65)'); de code moet uit de zin geknipt worden. Vaak staat er ook 'IP20 / IP44' voor meerdere varianten."
+  },
+  {
+   "merk": "nordlux",
+   "kolom": "Item name",
+   "veld": "ip_value",
+   "waaromNietStap1": "34 van 1037 productnamen dragen de IP-graad in de titel ('Works IP65 1x10W LED | Batten Light Fitting | Grey'). Vereist splitsen van de naam; dekt bovendien maar 3% van de rijen."
+  },
+  {
+   "merk": "nordlux",
+   "kolom": "Item name",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Wattage zit alleen als fragment in de naam ('1x10W', '2x18W'). Eenheid strippen en de vermenigvuldiger uitrekenen zijn bewerkingen; er is geen aparte wattagekolom."
+  },
+  {
+   "merk": "nordlux",
+   "kolom": "Description",
+   "veld": "kelvin",
+   "waaromNietStap1": "54 van 1037 rijen noemen een kelvinwaarde ergens in de vrije tekst; parsen nodig en dekking is te laag om als kolom te tellen."
+  },
+  {
+   "merk": "nordlux",
+   "kolom": "Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "41 van 1037 rijen noemen dimmen in prozatekst ('Dimmable'), zonder protocol. Onze kolom wil het protocol (TRIAC/DALI/1-10V), dus dit vraagt vertaling en is meestal niet eens af te leiden."
+  },
+  {
+   "merk": "axolight",
+   "kolom": "DESCRIPTION 2",
+   "veld": "kelvin",
+   "waaromNietStap1": "De tabel heeft maar 6 kolommen (section, COLLECTION, CODE, DESCRIPTION 1, DESCRIPTION 2, PRICE) en geen enkele speckolom. Kelvin zit als tekstfragment IN de omschrijving: 14796 van 15862 rijen matchen '[0-9]{4}K', met exact twee waarden: 2700K (7467x) en 3000K (7329x). Vereist regex-extractie uit vrije tekst plus het strippen van de K -> bewerking, dus stap 2. DESCRIPTION 1 is dezelfde tekst in het Italiaans."
+  },
+  {
+   "merk": "axolight",
+   "kolom": "DESCRIPTION 2",
+   "veld": "beam_angle",
+   "waaromNietStap1": "9110 rijen bevatten een gradenteken, bv 'AMY ADJUST. DOWNLIGHT 6 W 2700K 36 graden WHITE'. Getal moet uit de zin worden geknipt en het gradenteken gestript -> bewerking."
+  },
+  {
+   "merk": "axolight",
+   "kolom": "DESCRIPTION 2",
+   "veld": "max_wattage",
+   "waaromNietStap1": "7428 rijen bevatten een wattpatroon ('6 W'), midden in de omschrijving. Extractie + eenheid strippen nodig. Let op: bij ACCESSORIES (64 rijen) en DRIVERS (46 rijen) slaat een watt-waarde op het onderdeel/de driver, niet op een armatuur; filter eerst op section='PRODUCTS' (15752 rijen)."
+  },
+  {
+   "merk": "axolight",
+   "kolom": "DESCRIPTION 2",
+   "veld": "ip_value",
+   "waaromNietStap1": "Slechts 60 rijen bevatten een IP-patroon in de tekst (0,4%); ook dat is extractie uit vrije tekst. Te dun en niet zonder bewerking."
+  },
+  {
+   "merk": "axolight",
+   "kolom": "DESCRIPTION 2",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Niet aanwezig: 0 rijen bevatten 'lm' of 'lumen'. Idem CRI: 0 rijen bevatten 'CRI' of 'Ra'. Deze twee velden zijn in deze bron domweg niet te halen."
+  },
+  {
+   "merk": "northern",
+   "kolom": "Kelvin",
+   "veld": "kelvin",
+   "waaromNietStap1": "61 van 309 Lighting-rijen gevuld, maar 52 daarvan staan als '2700k' (kleine k als eenheid) en maar 9 als kale '2700'. De eenheid moet gestript worden -> bewerking. Inhoudelijk is de kolom wel zuiver: alle 61 gevulde rijen hebben Lamp socket='Integrated LED' en Bulb included='Yes', dus het gaat om de LED IN de armatuur, niet om een aanbevolen peertje. Na het strippen van de 'k' zijn alle 61 rijen bruikbaar."
+  },
+  {
+   "merk": "northern",
+   "kolom": "Watt",
+   "veld": "max_wattage",
+   "waaromNietStap1": "290 van 309 gevuld, maar ELKE waarde draagt de eenheid ('6W', '60W', '8 W' met spatie) - strippen nodig, plus een rommelwaarde '7W base E27/5.5W E14 horns' die gesplitst moet worden. Bovendien is de betekenis gemengd, kruis met Lamp socket/Bulb included: bij Integrated LED (bv '6W' 38x, Bulb included=Yes) is het het opgenomen vermogen van de armatuur, maar bij E27/G9/GU10 met Bulb included='No' (bv '11W' 45x, '60W' 36x, '100W' 34x) is het een maximum- of aanbevolen lampvermogen. Dat onderscheid moet expliciet gemaakt worden voordat er iets in max_wattage mag."
+  },
+  {
+   "merk": "northern",
+   "kolom": "Lumen",
+   "veld": "lumen_output",
+   "waaromNietStap1": "91 van 309 gevuld; 82 daarvan als '1600 lm'/'527 lm' (eenheid strippen) en 9 als kaal getal. Erger nog: de grootste groep, 36 rijen met '1600 lm', heeft Lamp socket='G9' en Bulb included='No' - dat is de lichtstroom van het aanbevolen peertje, niet van de armatuur. Die mogen nooit door. Blijft over: 55 Integrated-LED-rijen, waarvan er maar 9 kaal genoteerd staan."
+  },
+  {
+   "merk": "northern",
+   "kolom": "Dimmable",
+   "veld": "dimmable",
+   "waaromNietStap1": "Waarden zijn 'Yes' (226) en 'No' (57), een ja/nee-vlag. Ons veld dimmable bevat een PROTOCOL - gemeten in brink_products: DALI (19123), 1-10V (1866), Casambi (205), TRIAC (29). 'Yes' is geen protocol, dus dit kan niet zonder vertaling en levert ook na vertaling geen protocolwaarde op."
+  },
+  {
+   "merk": "northern",
+   "kolom": "Dimmer type",
+   "veld": "dimmable",
+   "waaromNietStap1": "113 van 309 gevuld met 'Integrated dimmer' (42), 'Hand dimmer' (42), '3 step touch dimmer' (22), 'Foot dimmer' (7). Dat beschrijft het fysieke bedieningsorgaan, niet het dimprotocol dat de matcher vergelijkt. Vertaling naar DALI/1-10V/TRIAC is hieruit niet af te leiden; hooguit bruikbaar als bewijs dat het armatuur dimbaar is."
+  },
+  {
+   "merk": "northern",
+   "kolom": "(geen)",
+   "veld": "cri",
+   "waaromNietStap1": "Northern heeft geen CRI- of Ra-kolom en geen bundelhoek-kolom; cri en beam_angle zijn uit deze bron niet te halen, ook niet met bewerking."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kelvin zit als deelstring in één samengestelde omschrijving, nooit als losse waarde: 'Moor 1 LED 800LM 230VAC IP20 DIM DALI CRI90 2700°K'. 19875/21378 rijen bevatten een [0-9]+°K-patroon. Vereist extractie plus het strippen van '°K'; bovendien dragen de DIMtoWARM-rijen een bereik in plaats van één waarde (bv. '200Cent Pro Adj Trimless 700LM IP54 DIMtoWARM 30° WHITE' heeft helemaal geen K, en andere varianten een tunable bereik), wat de matcher's EXACTE kelvin-vergelijking niet aankan."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Lumen zit in dezelfde tekst als '800LM' (20806/21378 rijen matchen [0-9]+LM). Eenheid moet eraf. Extra bewerking nodig bij multi-spot-rijen: '2x750LM', '3x500LM', '4x1000LM' — daar moet per armatuur worden besloten of het 750 of 1500/2250/4000 lumen is. Nooit rechtstreeks over te nemen."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "ip_value",
+   "waaromNietStap1": "'IP20'/'IP54' staat als los woord middenin de zin (13487/21378 rijen bevatten IP[0-9]{2}). De waarde zelf ('IP20') is qua formaat wél identiek aan onze tekstkolom, maar hij moet uit de omschrijving worden gesneden — dat is extractie, dus stap 2. Let op: de resterende ~7900 rijen noemen geen IP; die mogen niet stilzwijgend op IP20 worden gezet, want IP lager dan gevraagd is bij de matcher altijd rood."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "cri",
+   "waaromNietStap1": "Geschreven als 'CRI90' (aan elkaar) in 2882/21378 rijen. Het prefix 'CRI' moet eraf. De overige 18496 rijen noemen geen CRI; leeglaten, niet raden, want cri is een MINIMUM-filter."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Stralingshoek staat als '18°', '32°', '44°' in de tekst. Gevaarlijk om te extraheren: hetzelfde graden-teken staat óók in '2700°K', dus een naïeve [0-9]+° regex pakt de kleurtemperatuur mee (20445/21378 rijen matchen dat patroon, veel meer dan er echte hoeken zijn). Bovendien dragen sommige rijen 'ZOOM' in plaats van een getal ('200Cent Pro Swing Track CASAMBI 700LM IP20 3000°K ZOOM SAND'). Vereist een regex die °K expliciet uitsluit."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "Protocol staat als los woord in de omschrijving: 'DIM DALI', 'Phase DIM', 'DIM 1-10V', 'CASAMBI', 'on/off', 'DIMtoWARM' (7421/21378 rijen matchen een van deze termen). Moet naar één genormaliseerd protocol worden vertaald, en 'on/off' betekent juist NIET dimbaar — dus vertaling, geen overname."
+  },
+  {
+   "merk": "brickinthewall",
+   "kolom": "Description",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Praktisch afwezig: slechts 159/21378 rijen bevatten een W-getal, en dat zijn overwegend driver-/voedingsregels, niet het armatuurvermogen. Niet bruikbaar als bron voor max_wattage."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Description",
+   "veld": "cri",
+   "waaromNietStap1": "Er is geen enkele spec-kolom in deze tabel; alles zit in vrije-tekst-omschrijvingen. 'CRI 90' komt in slechts 8 van de 234 rijen voor en het prefix moet eraf. Bovendien zijn 3 van die 8 rijen losse lampen ('Light bulb E14, LED filament, matt, 630 lm, 2700 K, CRI 90, 5 W' met Item No. 'LM E14 630') — dat is de CRI van het los verkochte peertje, niet van een armatuur. Alleen de 5 armatuur-rijen (May Uplight/Sidelight/Downlight, Pi, Tau) mogen mee."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Description",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Lumen staat in de zin als '4500 lm' of '523lm' (8/234 rijen), eenheid moet eraf en de schrijfwijze wisselt (met en zonder spatie). Zelfde onderdeel-val als bij CRI: 630 lm / 1055 lm / 806 lm horen bij de losse E14/E27-lampen, niet bij een armatuur."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Description",
+   "veld": "kelvin",
+   "waaromNietStap1": "Slechts 6/234 rijen bevatten een K-waarde en 5 daarvan zijn een BEREIK: 'LED: dim-to-warm 1800K – 3000K'. Onze kelvin-kolom wordt EXACT vergeleken, dus een bereik kan er niet zonder beslissing in. De enige losse waarde ('2700 K') staat op de lamp-rijen, niet op een armatuur."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "Het protocol is af te leiden uit 'Dali power supply unit' (4 rijen) resp. 'Casambi power supply unit' (4 rijen) en 'Phase cut power supply unit', maar dat zijn de LOSSE VOEDINGEN — aparte artikelen (Item No. 'May PUD', 'May PUC', 'May PDP'). De armatuur zelf zegt hooguit 'dim-to-warm'. Het protocol moet dus via de bijbehorende voeding worden afgeleid, niet uit de armatuurrij overgenomen."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Description",
+   "veld": "max_wattage",
+   "waaromNietStap1": "13/234 rijen bevatten een W-getal en dat is telkens het driver-vermogen van een losse voeding ('Dali power supply unit for May Uplight, CC, 700mA, 32W, 27-47V') of het vermogen van een los peertje ('9 W' bij Light bulb E27). Geen enkele armatuurrij noemt een eigen max_wattage. Mag nooit als max_wattage van een armatuur worden overgenomen."
+  },
+  {
+   "merk": "nyta",
+   "kolom": "Notes",
+   "veld": "-",
+   "waaromNietStap1": "Voor de volledigheid gemeten: 211/234 leeg, de rest bevat energielabel-teksten ('This luminaire contains built-in LED lamps of the energy class E') en logistieke opmerkingen. Raakt geen van onze zeven velden; ook niet als stap-2-bron bruikbaar."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "kelvin",
+   "waaromNietStap1": "Vrije tekst, geen aparte kolom. 138 van 1022 rijen bevatten een 4-cijferige K-waarde (bv 'CLS Focus Micro G2 2700K 95CRI Zwart'); de waarde moet uit de zin geknipt en de 'K' gestript worden."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "cri",
+   "waaromNietStap1": "123 rijen bevatten een CRI-notatie, meestal als achtervoegsel '95CRI' in de omschrijving. Vraagt knippen en omzetten naar int."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "ip_value",
+   "waaromNietStap1": "79 rijen bevatten een 'IPxx'-token in de vrije tekst; moet uit de zin geknipt worden en soms staan er twee waarden (IP20/IP65) in een regel."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "lumen_output",
+   "waaromNietStap1": "94 rijen bevatten een getal gevolgd door 'lm'; eenheid strippen en uit de zin knippen."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "dimmable",
+   "waaromNietStap1": "406 rijen noemen DALI/DMX/0-10V/dim ergens in de tekst, maar vaak als productsoort ('LDC-41 GIII DMX LED dimmer', 'CLS ND UNI non dim driver') — dat zijn losse dimmers/drivers, geen armatuurprotocol. Vraagt parsing plus een armatuur-of-onderdeel-check."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Omschrijving",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Slechts 35 rijen bevatten een graden-notatie in de vrije tekst; knippen en eenheid strippen nodig."
+  },
+  {
+   "merk": "CLS",
+   "kolom": "Serie",
+   "veld": "geen van de zeven",
+   "waaromNietStap1": "Slechts 96 van 1022 rijen gevuld en de inhoud is een familienaam ('Focus Compact G3', 'Emerald M'), geen technische waarde. Kolommen Valuta, Eenheid (993x 'stuks') en Verkoopprijs zijn commercie, geen spec."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "lightcolour",
+   "veld": "kelvin",
+   "waaromNietStap1": "Samengestelde waarde: '2700K - CRI97' (2163), '3000K - CRI97' (2163), '3000K - CRI90+' (1308), '2700K - CRI90+' (1308), plus kaal '2700K'/'3000K' (117+117). Vraagt splitsing op ' - ' én strippen van de 'K' voordat het een int is. 7176 rijen gevuld, 145 leeg."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "lightcolour",
+   "veld": "cri",
+   "waaromNietStap1": "Zelfde kolom, tweede helft: 'CRI97' -> 97 is te doen, maar 'CRI90+' (2616 rijen) is een ondergrens-notatie die eerst geinterpreteerd moet worden. 234 rijen ('2700K'/'3000K' kaal) hebben helemaal geen CRI. Vraagt splitsing + prefix strippen."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "beamangle",
+   "veld": "beam_angle",
+   "waaromNietStap1": "6934 rijen gevuld, maar altijd met graadteken plus lenscode: '40°gl' (1752), '10°pc' (1118), '40°pc' (918), '20°pc' (910), '60°pc' (750), '25°gl' (404), '30°pc' (280), '50°pc' (280), '60°gl' (260), '15°gl' (254), '25°pc' (8). Zowel '°' als het achtervoegsel gl/pc moeten eraf voor er een getal overblijft. 387 leeg."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "adapter",
+   "veld": "dimmable",
+   "waaromNietStap1": "Bevat driverspecs als '230V - dali dim - 350mA' (96), '230V - non dim - 350mA' (96), '230V - dali dim - 500mA' (48), '230V - non dim - 500mA' (48), '230V - dali dim - 700mA' (24), '230V - non dim - 700mA' (24). Het protocol zit midden in een samengestelde string en de meeste waarden ('black adapter' 940, 'white adapter' 800, 'CC' 180, '24V - 350mA' 168) zeggen niets over dimmen. Bovendien beschrijft deze kolom de bijgeleverde/los te kiezen adapter — armatuur-of-onderdeel moet eerst uitgezocht worden."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "product name",
+   "veld": "kelvin / cri / dimmable / beam_angle",
+   "waaromNietStap1": "Vrije tekst met alles erin: 7180 rijen met een K-waarde, 6826 met CRI, 2449 met een dimprotocol. Alleen bruikbaar na parsing; alle waarden staan al beter gestructureerd in lightcolour/beamangle/driver."
+  },
+  {
+   "merk": "Prado",
+   "kolom": "geen",
+   "veld": "max_wattage / lumen_output / ip_value",
+   "waaromNietStap1": "Deze drie velden zitten nergens in deze tabel. Gemeten op product name: 0 rijen met een lm-waarde, 29 met een W-waarde (allemaal accessoire-/driverregels), 11 met een IPxx-token. Er is geen kolom voor wattage, lumen of IP-graad. 'size' (mini/micro/d57), 'lenght' (90H/50H), 'trim / trimless', 'long /short', 'finish type' en col_15 (alu/brass = materiaal) raken geen van onze zeven velden."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "DESCRIZIONE",
+   "veld": "kelvin",
+   "waaromNietStap1": "Vrije Italiaanse omschrijving, geen spec-kolom. Kelvin zit als los token in de tekst ('LANCIA TONDA PLAF. 70 2700K'): 6537 van 8376 rijen bevatten [0-9]{4}K, group by op de gevangen waarde geeft 3000 (2276), 2700 (2125), 4000 (2125), 1800 (8), 2200 (2), 5000 (1), null (1839). Vergt regex-extractie uit de tekst, dus stap 2. Let op: 40 van die rijen zijn losse lampen ('LAMP. G9 3,2W 3000K'), geen armatuur — die moeten eruit."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "ARTICOLO",
+   "veld": "kelvin",
+   "waaromNietStap1": "De artikelcode draagt een kleurtemperatuur-suffix die 1-op-1 correspondeert met de tekst: /XW=2700K (2252 rijen), /WW=3000K (2439), /W=4000K (2255), geen suffix 1430. Dit is een merkcode die vertaald moet worden naar een getal, dus stap 2. Kan wel als kruiscontrole op DESCRIZIONE dienen."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "DESCRIZIONE",
+   "veld": "beam_angle",
+   "waaromNietStap1": "355 rijen bevatten een gradenwaarde ('STAR 4 350mA 4000K 60°', '... 18°'); ook als suffix in ARTICOLO (/60, /18). Moet uit de tekst gesneden en van het gradenteken ontdaan worden."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "DESCRIZIONE",
+   "veld": "dimmable",
+   "waaromNietStap1": "511 rijen bevatten DIM/DALI/1-10/PUSH ('MUSA 40 LED 4000K DIM DALI'). Protocol moet uit de zin gehaald en genormaliseerd worden."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "DESCRIZIONE",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Slechts 153 rijen bevatten een W-waarde, en die staan bijna allemaal op onderdelen: drivers ('ALIM. LED 24V 70W IP67') en losse lampen ('LAMP. GU10 3W 3000K'). Dat is het vermogen van het onderdeel, niet van de armatuur — mag alleen na filtering op armaturen mee."
+  },
+  {
+   "merk": "Egoluce",
+   "kolom": "DESCRIZIONE",
+   "veld": "ip_value",
+   "waaromNietStap1": "Maar 74 rijen bevatten een IP-token, en dat zijn vrijwel uitsluitend voedingen ('ALIM. LED 350mA 14W IP67'), dus de IP-graad van de driver, niet van het armatuur. Extractie plus onderdeel-filter nodig."
+  },
+  {
+   "merk": "Roger Pradier",
+   "kolom": "DESCRIPTION",
+   "veld": "ip_value",
+   "waaromNietStap1": "Vrije Engelse volzin, geen spec-kolom. IP zit midden in de tekst: 7353 van 7747 rijen bevatten IP[0-9]{2}; substring-group-by geeft IP65 (3297), IP44 (3271), IP67 (416), IP55 (189), IP66 (144), IP54 (20), IP23 (16), niets (394). Waarde moet uit de zin gesneden worden, en bij de variant 'Built-in IP65 LED module' slaat de IP formeel op de ingebouwde module — dat vraagt een keuze, dus stap 2."
+  },
+  {
+   "merk": "Roger Pradier",
+   "kolom": "DESCRIPTION",
+   "veld": "kelvin",
+   "waaromNietStap1": "2815 rijen bevatten een kleurtemperatuur, maar geschreven als '2700°K' / '3000°K' met gradenteken. Zonder het strippen van '°K' is dit geen int. Waarschuwing: mijn eerste regex met [0-9]+° ving 2835 rijen die geen stralingshoek zijn maar juist deze '2700°K'-notatie — beam_angle mag daar niet uit gelezen worden."
+  },
+  {
+   "merk": "Roger Pradier",
+   "kolom": "DESCRIPTION",
+   "veld": "max_wattage",
+   "waaromNietStap1": "2901 rijen bevatten een W-waarde ('LED 35W 2700°K'). Getal moet uit de zin en van de eenheid ontdaan. Bovendien: 4627 rijen noemen een fitting (E27/E14/G9/GU10) tegenover 2896 met LED, dus bij de fitting-rijen slaat een eventueel wattage op de (aanbevolen/meegeleverde) lamp, niet op de armatuur — dat moet gekruist worden voor het overgenomen mag worden."
+  },
+  {
+   "merk": "Roger Pradier",
+   "kolom": "DESCRIPTION",
+   "veld": "dimmable",
+   "waaromNietStap1": "472 rijen noemen een protocol ('dimmable Dali', 'dimmable 1-10 Volt'). Protocolnaam moet uit de zin gehaald en genormaliseerd worden."
+  },
+  {
+   "merk": "Roger Pradier",
+   "kolom": "DESCRIPTION",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Er is geen echte hoek in graden: na uitsluiten van de '°K'-notatie blijven 216 rijen met een los gradengetal over, en die gaan over 'symmetric/asymmetric' optiek en montagehoeken, niet over een stralingshoek. Alleen bruikbaar na handmatige verificatie; niet automatisch overnemen."
+  },
+  {
+   "merk": "estiluz",
+   "kolom": "LAMP DESCRIPTION",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Vrije tekst; graden komen in slechts 10 van 1095 rijen voor en die rijen zijn LOSSE OPTIEKEN, geen armaturen (bv '/ / 30º aluminium optic lens for volta / revolta / morse'). Extractie nodig EN het getal hoort bij een accessoire, dus vermoedelijk helemaal afwijzen."
+  },
+  {
+   "merk": "estiluz",
+   "kolom": "REFERENCE",
+   "veld": "max_wattage",
+   "waaromNietStap1": "VALSE VRIEND. Het achtervoegsel ziet eruit als wattage (_20W, _26W, _96W, _2626W) maar is een afwerkings-/kleurcode: 20W = Metallic Gold, 26W = Black, 742661M = zwart/satijngoud met witte baldakijn. Gemeten met group by op split_part(REFERENCE,'_',3): waarden als '262661W' en '742626M' kunnen geen wattage zijn. Nooit als vermogen inlezen."
+  },
+  {
+   "merk": "serien",
+   "kolom": "CRI Ra",
+   "veld": "cri",
+   "waaromNietStap1": "GEEN ENKELE rij is direct bruikbaar: elke gevulde waarde draagt een groter-dan-teken, deels met spatie: '>97' (564), '>90' (455), '>95' (230), '> 95' (120), '>80' (48), '> 90' (47). Plus '-' (316) en NULL (176). Strippen van '>' en spatie nodig; daarbij ook beslissen dat '>90' als minimum 90 (of 91) telt, wat de matcher als MINIMUM vergelijkt."
+  },
+  {
+   "merk": "serien",
+   "kolom": "CCT K",
+   "veld": "kelvin",
+   "waaromNietStap1": "149 rijen bevatten een BEREIK of een code in plaats van een waarde: 'DIM2WARM 2200-3000', 'DIM2WARM 1800-3000', 'TUNABLE/TUNEABLE WHITE 2200-5000 / 2200-4000 / 2700-5000', plus de codes 'D2W' (23), 'TW' (16), 'LM' (24). Vergt splitsing in min/max en een aparte behandeling voor tunable white, omdat kelvin EXACT wordt vergeleken."
+  },
+  {
+   "merk": "serien",
+   "kolom": "Regelung",
+   "veld": "dimmable",
+   "waaromNietStap1": "177 rijen met samenstellingen of niet-protocollen: 'DALI + SENSOR' (31), 'ON/OFF+SENSOR' (24), 'TRIAC + 0–10 V' (20), 'DALI 2CH' (8), 'DALI 2CH + CASAMBI' (8), 'CASAMBI (DALI)' (2), 'SENSORIK UND CASAMBI' (2), plus 'ON/OFF' (108) dat 'niet dimbaar' betekent en dus vertaling vereist, en 'SENSORIK' (63) / 'INTEGR.' (55) die geen dimprotocol zijn."
+  },
+  {
+   "merk": "serien",
+   "kolom": "Systemleistung W",
+   "veld": "max_wattage",
+   "waaromNietStap1": "De 22 niet-LED-rijen (4x 'LED E27' 13 W meegeleverd peertje, 18x G4/E14-sokkelarmaturen) zijn lamp- of sokkelbelasting, niet het systeemvermogen van een geintegreerd armatuur. Vereist een kruiscontrole op Leuchtmittel voor je ze wel of niet overneemt."
+  },
+  {
+   "merk": "serien",
+   "kolom": "Beschreibung",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Slechts 24 van 1956 rijen noemen graden ('Glaslinse weit 48°', 'Glaslinse eng 32°', 40°, 55°) en die rijen zijn LOSSE OPTIEK-accessoires (Produktname 'OPTIK S/M/L/XS Glaslinse'), geen armaturen. Extractie uit vrije tekst nodig EN de waarde hoort bij een onderdeel; waarschijnlijk afwijzen in plaats van importeren."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kelvin staat als afgekorte code in de vrije tekst, niet als getal: 7026 van 19872 rijen bevatten een patroon als '30K'/'27K'/'40K' (bv. 'L.SHADOW SPOT 45 BLACK 48V 30K C90 FL LE'). Vereist knippen uit de naam plus vermenigvuldigen met 100 (30K -> 3000). Nooit direct bruikbaar."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "cri",
+   "waaromNietStap1": "CRI staat als 'C90'/'C80'-token in de artikelnaam, 6915 van 19872 rijen. Vereist extractie uit de tekst en het strippen van de letter C. Bovendien is 'C..' in sommige rijen een kleur-/finishcode, dus er is ook nog een validatie nodig."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Bundel staat als letterafkorting (FL/MD/NA/SP/WFL) in de naam, 8193 van 19872 rijen. Dat is geen getal in graden maar een merkspecifieke klasse die eerst naar graden vertaald moet worden via een Flos-tabel; die vertaling verschilt bovendien per armatuurserie."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "dimmable",
+   "waaromNietStap1": "Protocolhints (DALI, DA, 1-10, PUSH, CASAMBI) zitten als losse tokens in de naam, 3209 van 19872 rijen. Vereist extractie en normalisatie naar een protocolwaarde; 'DA' is bovendien ook het achtervoegsel van complete SKU's, dus fuzzy matchen levert vals-positieven."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Slechts 304 van 19872 rijen dragen een W-token in de naam, en die moet uit de tekst geknipt en van de eenheid ontdaan worden. Te weinig dekking en te veel bewerking voor stap 1."
+  },
+  {
+   "merk": "flos",
+   "kolom": "Article name",
+   "veld": "ip_value",
+   "waaromNietStap1": "Maar 57 van 19872 rijen bevatten een 'IP..'-token in de artikelnaam. Extractie uit vrije tekst nodig en de dekking is verwaarloosbaar; het ontbreken van IP in de naam betekent hier niet IP20."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "kelvin",
+   "waaromNietStap1": "De enige plek waar kleurtemperatuur staat is de vrije omschrijving, 476 van 4020 rijen met een K-patroon ('...4W 33-640 4000K 136mm G5'). Daarnaast staat het bij LED-lampen als 3-cijferige code ('827', '840') waarvan alleen cijfer 2-3 de kelvin vormt (827 -> 2700). Beide vormen vereisen extractie en vertaling."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "ip_value",
+   "waaromNietStap1": "770 van 4020 rijen bevatten een 'IP..'-token in de omschrijving; er is geen aparte IP-kolom. Vereist extractie uit vrije tekst, en het ontbreken van het token zegt niets over de werkelijke IP-graad."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "max_wattage",
+   "waaromNietStap1": "2343 van 4020 rijen bevatten een W-token, maar dat is bij het grootste deel van deze prijslijst (groepen FLUO, LED, BLACKLIGHT, SPG) het vermogen van de LAMP zelf, niet van een armatuur. Voor de armatuurrijen (Item Prc.Group Desc = 'SYLVANIA PROF.') zou het wel kloppen, maar dan nog moet het uit de tekst geknipt en van de eenheid ontdaan worden. Extractie plus armatuur-of-lamp-filter nodig."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Lumen staat alleen als token in de omschrijving bij de Toledo-LED-lampen ('TOLEDO GLS 806LM 827 B22 SL'). Vereist extractie en het strippen van 'LM'; bovendien gaat het daar om losse lampen, niet om armaturen."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "dimmable",
+   "waaromNietStap1": "Stuurprotocollen staan als tokens in de omschrijving ('DALI', '1-10') bij bv. de RANA-armaturen. Vereist extractie en normalisatie naar een protocolwaarde; er is geen aparte kolom."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Item Desc.50NL ",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Slechts 93 van 4020 rijen bevatten iets dat op een bundelhoek lijkt, en dan als token in de vrije tekst. Extractie nodig en de dekking is verwaarloosbaar."
+  },
+  {
+   "merk": "sylvania",
+   "kolom": "Energy Class",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Gevuld in 549 van 4020 rijen, maar de waarde is een energielabel (A t/m G), geen van onze zeven velden. Hoort nergens naartoe; hier alleen genoemd om te voorkomen dat iemand hem alsnog inleest."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Colour temp",
+   "veld": "kelvin",
+   "waaromNietStap1": "Waarde draagt altijd de eenheid: gemeten group by geeft 3000K (2289), 2700K (2248), NULL (961), 4000K (717), 1800-3000K (266). 5254 rijen matchen ^[0-9]{4}K$ en nul rijen zijn een kale integer, dus de K moet er af voordat het in kelvin (int) kan. De 266 rijen 1800-3000K zijn tunable/dim-to-warm-bereiken en leveren helemaal geen enkele kelvinwaarde op. Positief: de waarde gaat wel over het armatuur zelf - bij losse accessoires (CONVERTER 230V LED 24V ... , DINRAIL) is de kolom leeg. Let op bij verwerking: 299 gevulde rijen zijn MODULE-regels (bv '2U MODULE 3x LUXEON M 230V 3000K', 'LUDO 3-LAMPS MODULE BULLED CI 2700K') - dat zijn losse lichtmodules van TALs modulaire systeem, geen complete armatuur; die zijn het kruisen waard voordat je ze wegschrijft."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Name",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Vrije tekst waar de straalhoek in verstopt zit; gemeten: 2597 van 6481 namen bevatten een gradenwaarde (bv 'CLEVER TRACK 230V 24° 2700K MAINS DIMMABLE', 'MINI SCOOP TRACK 230V 9° 3000K'). Vereist extractie uit de string, geen directe kolomwaarde."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Name",
+   "veld": "dimmable",
+   "waaromNietStap1": "Gemeten: 2603 namen bevatten een dimprotocol-term (DALI / DIM / 1-10V / PHASE / TRIAC / CASAMBI), bv 'MAINS DIMMABLE' of '(DALI THROUGH WIRE)'. Moet uit de tekst geknipt en naar een protocolwaarde vertaald worden ('MAINS DIMMABLE' is fase-dimmen, niet letterlijk ons protocol)."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Name",
+   "veld": "ip_value",
+   "waaromNietStap1": "Gemeten: 224 namen bevatten een IP-code (bv 'CONVERTER 230V LED 24V 20VA IP67', 'LEDCONVERTER REMOTE 48V 70W IP20'). Extractie uit vrije tekst nodig; bovendien slaat een deel van die treffers op converters/accessoires, niet op een armatuur - kruisen met de productsoort is verplicht."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Name",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Gemeten: 193 namen bevatten een wattwaarde, maar dat zijn overwegend converter-/driverregels (bv 'LEDCONVERTER IN-TRACK 48V 100W') waar het vermogen van de voeding is, niet van het armatuur. Zelfde val als Valerie's 'Max Wattage': extractie plus productsoort-controle nodig, dus zeker geen stap 1."
+  },
+  {
+   "merk": "tal",
+   "kolom": "Name",
+   "veld": "cri",
+   "waaromNietStap1": "Gemeten: 164 namen noemen CRI. Waarde moet uit de string gehaald worden en de notatie varieert; geen aparte kolom beschikbaar."
+  },
+  {
+   "merk": "iaromi (It's About RoMi)",
+   "kolom": "Description",
+   "veld": "max_wattage / dimmable",
+   "waaromNietStap1": "De tabel heeft helemaal geen technische kolommen - alleen Item code, Description, Packed, Buying price, RRP, Mark up, EAN code, HS Code, Brand. Description is vrije tekst en levert bovendien vrijwel niets: gemeten over de 428 RoMi-rijen 0x kelvin (regex '[0-9]{4} ?K'), 0x IP, 0x lumen, 0x graden, 6x een wattage en 15x 'dim'. En die treffers zijn de VAL: ik heb ze uitgelezen en het zijn stuk voor stuk losse lampen, geen armaturen - 'LED bulb filament/E27 dimmable', 'LED spot lamp GU10 dimmable', 'LED bulb sphere dia.4.5cm E14 4W'. Dat wattage hoort bij het peertje, niet bij een armatuur, en mag dus nooit in max_wattage. Praktisch onbruikbaar; parsen levert hooguit ruis op."
+  },
+  {
+   "merk": "tossb (TossB)",
+   "kolom": "LUMEN",
+   "veld": "lumen_output",
+   "waaromNietStap1": "637 rijen dragen een rekenkundige uitdrukking in plaats van een getal: '6x400' (181), '3x600' (96), '4x400' (68), '878+439' (29), '800+400' (5). Die moeten vermenigvuldigd/opgeteld worden voor je een totaal hebt. Daarnaast 627 rijen waarin door een kolomverschuiving de BULB-tekst is beland ('24W LED3000K'); dat is helemaal geen lumenwaarde en moet eerst herkend en verworpen worden."
+  },
+  {
+   "merk": "tossb (TossB)",
+   "kolom": "BULB",
+   "veld": "max_wattage / kelvin / beam_angle",
+   "waaromNietStap1": "Samengestelde string die drie van onze velden tegelijk bevat en dus gesplitst moet worden: '4W LED 45 graden 2700K' (197), '6W LED 25 graden 2700K' (186), '6x4W LED 2700K' (181). Bovendien de armatuur-of-onderdeel-val: 893 rijen eindigen op een sterretje ('15W (E27)*' 206x, '8W (GU10)*' 118x, '5W (G9)*' 100x, '12W (G53)*' 51x) - daar staat het wattage van een NIET meegeleverde lamp met fitting, dat mag nooit in max_wattage. Alleen de 1648 rijen met geintegreerde LED zijn kandidaat, en dan nog moet '6x4W' vermenigvuldigd en '2W/4W/10W LED 2700K' (30x, instelbaar) apart afgehandeld. 20 rijen bevatten zelfs een kaal getal ('2520', '2150') - kolomverschuiving, dat is lumen, geen bulb."
+  },
+  {
+   "merk": "tossb (TossB)",
+   "kolom": "MODEL",
+   "veld": "dimmable / kelvin / beam_angle / max_wattage",
+   "waaromNietStap1": "Vrije tekst met alles erin: 'THIN 150mm - 13W LED 2700K - Dim Triac', 'CIRCUS DIABOLO SB 100mm - 6W LED 2700K - Dim Dali'. Twee bewerkingen nodig. Eerst forward-fill: MODEL is maar op 895 van 2953 rijen gevuld (30%) omdat het een samengevoegde kopcel per productgroep is - de kleurvarianten eronder hebben MODEL null (zie de VERSION-rijen black/white/brushed alu). Daarna pas parsen. Gemeten: 277 rijen noemen een dim-protocol (Triac/Dali/Dali2), 261 een hoek in graden. Voor dimmable is dit de enige bron in de hele tabel."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kelvin zit als tekstfragment in de vrije productomschrijving, niet in een eigen kolom: 'Holon 60, directional, 48V-track, low louvre, black, 4000K, CRI90, LED, 12,7W, 18,2°, ON-OFF.'. Gemeten 12035 van 14026 rijen (86%) bevatten een patroon [0-9]{4}K. Vereist extractie + strippen van de K-suffix, dus stap 2. Extra risico: een deel van de rijen zijn losse lampen/drivers, geen armatuur (bv 'mr16 led cc gu5,3 300-350ma 36G 2700k 18vdc', 'LED driver, DALI dimmable') — die kelvin hoort bij het lampje, niet bij een armatuur, dus er is ook nog een armatuur-of-onderdeel-filter nodig."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "cri",
+   "waaromNietStap1": "CRI zit in dezelfde vrije tekst, in wisselende schrijfwijzen: 'CRI90', 'cri90', 'CRI 90', 'CRI95+', 'CRI80'. Gemeten 11587 van 14026 rijen bevatten een CRI/Ra-achtig patroon (die telling bevat ruis omdat 'ra' ook in gewone woorden voorkomt). Vereist parsing en het afvangen van de '+'-notatie, dus stap 2."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Wattage staat als '8,4W', '12,7W', '25,7W/m', '2x2W' midden in de omschrijving. Gemeten 11656 van 14026 rijen bevatten een cijfer gevolgd door W. Vereist extractie, komma-naar-punt conversie, en het herkennen van per-meter- en multiplier-notaties. Bovendien is een deel van de wattages van drivers/lampen in plaats van armaturen."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Lumen staat als '650lm', '1400lm', '5000lm' in de vrije tekst. Gemeten 4402 van 14026 rijen (31%). Vereist extractie plus strippen van 'lm', dus stap 2."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Beam staat als '40°', '18,2°', '69°' in de vrije tekst en bij lampen als '36G'. Slechts 7 rijen matchen de G-notatie; de graden-notatie zit met een °-teken in de tekst. Vereist extractie, strippen van ° en komma-decimaal conversie, dus stap 2."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "ip_value",
+   "waaromNietStap1": "IP staat als 'IP44', 'IP67' in de vrije tekst. Gemeten 798 van 14026 rijen (5,7%). Vereist extractie uit de zin; bovendien slaat de IP soms op een accessoire in dezelfde regel ('Aplis 40, louvre IP44, white' beschrijft de louvre-variant). Stap 2 met controle."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "name",
+   "veld": "dimmable",
+   "waaromNietStap1": "Protocol staat als losse woorden in de tekst: '1-10V', 'DALI', 'ON/OFF', 'ON-OFF', 'phase dimmable', 'dimmable (1-10V)'. Gemeten 4875 van 14026 rijen bevatten zo'n woord. Vereist extractie plus normalisatie naar één protocolvocabulaire (ON-OFF vs ON/OFF is hetzelfde), dus stap 2. Let op: 4875 telt ook de driver-regels mee ('LED driver, DALI dimmable') — dat is het protocol van de driver, niet per se van een armatuur."
+  },
+  {
+   "merk": "kreon",
+   "kolom": "EUR",
+   "veld": "n.v.t.",
+   "waaromNietStap1": "Prijskolom, geen van onze zeven technische velden. Bovendien: geld mag de matching nooit raken."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Max Wattage",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Klassieke val, gemeten en bevestigd: van de 82 gevulde rijen zijn er 75 de waarde '4' in combinatie met Fitting Type='E27', Bulb Included='YES', Bulb Replaceable='YES', Quantity Of Lamps='1' — dat is het meegeleverde E27-peertje, niet de armatuur. Alleen de 7 rijen met Fitting Type='internal LED PCB' en Bulb Replaceable='NO' (5x '8', 2x '6') gaan echt over de armatuur. De kolom kan dus nooit ongefilterd mee; hij is pas bruikbaar na een conditionele selectie op Fitting Type, en dan voor slechts 7 van de 256 rijen."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Dimming Function",
+   "veld": "dimmable",
+   "waaromNietStap1": "Bevat alleen JA/NEE, geen protocol: gemeten op de 90 Lighting-rijen 'NO' 80x, 'YES' 8x, leeg 2x. Onze dimmable-kolom is een protocolveld (DALI, 1-10V, fase); 'YES' zegt niet welk protocol. Vertaling/aanvulling nodig en de protocolinformatie ontbreekt zelfs helemaal in de bron."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Protection Class",
+   "veld": "ip_value",
+   "waaromNietStap1": "Buurkolom-val: dit is de ELEKTRISCHE beschermingsklasse, gemeten waarden 'Class I' (55) en 'Class II' (27), leeg (8). Dat is niet de IP-graad en mag nooit naar ip_value. De tabel heeft geen enkele IP-kolom; er is dus geen bron voor ip_value bij dit merk."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Adjustable Beam Direction",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Buurkolom-val op naam: dit is JA/NEE of de lichtrichting verstelbaar is ('NO' 43, 'YES' 39, leeg 8), geen stralingshoek in graden. Onbruikbaar voor beam_angle in welke bewerking dan ook."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Bulb Kelvin",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kolom bestaat wel maar is gemeten 100% leeg: alle 90 Lighting-rijen zijn NULL. Bovendien zou hij, gezien de naam en de kruising met Bulb Included='YES', over het meegeleverde peertje gaan en niet over de armatuur."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Bulb Lumen",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Idem: gemeten 100% leeg (90 van 90 Lighting-rijen NULL), en zou over de lamp gaan, niet over de armatuur."
+  },
+  {
+   "merk": "valerie",
+   "kolom": "Description / Short Description",
+   "veld": "kelvin, ip_value, dimmable",
+   "waaromNietStap1": "Vrije tekstvelden; als daar al specificaties in staan moeten ze eruit geparseerd worden. Per definitie stap 2, en voor Valerie sowieso onbetrouwbaar omdat de gestructureerde kolommen de armatuur-specs niet dragen."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LIGHT SOURCE",
+   "veld": "kelvin",
+   "waaromNietStap1": "Waarde is 'LED 2700K' (356 rijen) of 'LED 3000K' (356 rijen); het prefix 'LED ' en het achtervoegsel 'K' moeten eraf voordat er een int overblijft. Dezelfde kolom bevat bovendien 7 rijen die helemaal geen kleurtemperatuur zijn ('GU10' 3x, 'E27' 2x, '24Vdc 135W - PUSH DIM; 0/1-10V; DALI' 2x, '24Vdc 135W - ON OFF' 2x) en 33 lege rijen (de JJ-sheet). Gemengde kolom, dus vertaling plus filtering nodig."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LIGHT SOURCE",
+   "veld": "dimmable",
+   "waaromNietStap1": "Slechts 4 rijen dragen een protocol, en dan verpakt in een samengestelde string ('24Vdc 135W - PUSH DIM; 0/1-10V; DALI', '24Vdc 135W - ON OFF'). Splitsen op '-' en op ';' nodig; 750 van de 754 rijen zeggen niets over dimmen."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LIGHT SOURCE",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Wattage zit alleen in dezelfde 4 samengestelde strings ('24Vdc 135W - ...'); eenheid strippen en uit de string knippen nodig."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 2700K",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Eén cel bevat vier gegevens tegelijk: '8000325 1 x 16W 1490 lm CRI≥90 LED MODULE 2700K' (artikelnr, aantal x wattage, lumen, CRI). Volledige parsing nodig. Bovendien slechts 24 gevulde rijen, en het is een KEUZE-module: de rij biedt 2700K óf 3000K aan, met verschillende lumen (1490 vs 1600). De armatuurrij zelf heeft dus geen enkele waarde tot de keuze gemaakt is."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 2700K",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Zie boven: '1490 lm' zit midden in een samengestelde string, eenheid strippen nodig, en de waarde hoort bij de optionele module, niet bij de armatuur zelf."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 2700K",
+   "veld": "cri",
+   "waaromNietStap1": "'CRI≥90' zit in dezelfde samengestelde string; het teken ≥ moet weg en het getal eruit geknipt. 24 gevulde rijen."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 3000K",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Identiek aan LED MODULE 2700K: samengestelde string '8000327 1 x 16W 1600 lm CRI≥90 LED MODULE 3000K', 24 gevulde rijen, en het is het alternatief van dezelfde keuze — twee kandidaatwaarden voor één armatuurrij."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 3000K",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Zie boven; lumen verschilt bovendien per kleurtemperatuur (1600 lm bij 3000K tegen 1490 lm bij 2700K), dus zonder gekozen module is er geen eenduidige waarde."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "LED MODULE 3000K",
+   "veld": "cri",
+   "waaromNietStap1": "Zie boven: 'CRI≥90' uit een samengestelde string knippen."
+  },
+  {
+   "merk": "leucos",
+   "kolom": "Descrizione-Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "Vrije tekst met protocollen erin verstopt ('JJ BIG - Pendant / LED / Push-dim; 0/1-10V; DALI / matte white (A SCELTA MODULO ...)'). Tweetalig IT/EN, met haakjes en keuze-instructies. Alleen met tekstextractie bruikbaar; 33 gevulde rijen."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Article Name (60)",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kelvin staat middenin de artikelnaam: 'DOMY ON STREX 1.0 LED 2700K B-B'. 5391 rijen bevatten een 4-cijferig getal gevolgd door K (8 verschillende waarden); knippen en 'K' strippen nodig. Kruiscontrole op 'Etim class description': 5092 van die 5391 zijn een echte armatuur, de rest is LED driver, LED-lamp/Multi-LED, lampenkap of 'No ETIM classification - part of fixture' — die mogen niet mee. Losse kolom 'Description' bevat 0 keer een K-waarde."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Description",
+   "veld": "cri",
+   "waaromNietStap1": "CRI zit als 'CRI90' aan het eind van een samengestelde specstring ('8W 220-240VAC DIM CRI90', 5350 rijen met een CRI-patroon). Het prefix 'CRI' moet eraf. 28 van die rijen horen bij accessoires/onderdelen volgens 'Etim class description' en moeten eruit gefilterd."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Description",
+   "veld": "max_wattage",
+   "waaromNietStap1": "6512 rijen bevatten een wattage, maar altijd verweven in vrije tekst en in drie onderling verschillende betekenissen: vast LED-vermogen ('8W 220-240VAC DIM CRI90'), maximaal lampvermogen van een fitting ('max. 12W GU10 100-240VAC', 'max. 2x12W GU10 100-240VAC' — die 2x moet uitgerekend) en een bereik bij schakelbare drivers ('6/9W 350/500mA 17V CRI90'). Eenheid strippen, 'max.' interpreteren, bereik oplossen en de 2x vermenigvuldigen — allemaal bewerking."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "3672 rijen noemen iets over dimmen, maar als losse woorden in de specstring: 'DIM', 'NON DIM', 'DALI-2', 'DALI'. 'NON DIM' betekent juist NIET dimbaar en zou bij naief matchen op 'DIM' fout in onze kolom belanden; bovendien is 'DIM' geen protocolnaam. Extractie plus vertaling naar een protocolwaarde nodig."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Description",
+   "veld": "ip_value",
+   "waaromNietStap1": "Slechts 95 rijen bevatten een IP-patroon in 'Description' (301 in 'Article Name (60)'), telkens midden in vrije tekst. Op 8124 rijen is dat te weinig en het vergt knippen; voor de matcher is IP bovendien hard (lager dan gevraagd = rood), dus raden mag niet."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Description",
+   "veld": "lumen_output",
+   "waaromNietStap1": "Maar 12 van de 8124 rijen noemen een lm-waarde, en dan binnen de vrije tekst. Praktisch onbruikbaar; zeker geen kant-en-klare kolom."
+  },
+  {
+   "merk": "weverducre",
+   "kolom": "Long Description (120)",
+   "veld": "kelvin",
+   "waaromNietStap1": "Dit is letterlijk 'Article Name (60)' plus 'Description' aan elkaar geplakt ('DOMY ON STREX 1.0 LED 2700K B-B 6W 48V NON DIM CRI90'). Zelfde extractiewerk, geen extra informatie — hooguit een fallback als de losse kolommen leeg zijn."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "DESCRIZIONE",
+   "veld": "kelvin",
+   "waaromNietStap1": "Kleurtemperatuur zit in de vrije tekst als afgekorte token, bv 'Delta 0 Simmetrico LED  2.7K 30W Bianco' of 'CNC 35 2.0 T LED D 2.2K 2W Nero'. 61.344 van 65.360 rijen (DESCRIZIONE + Description samen) dragen zo'n K-token, maar er is geen enkele rij waarin de waarde als kaal getal staat: '2.7K' moet naar 2700, '2.2K' naar 2200. Parsing + eenheidsconversie nodig, dus stap 2."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "DESCRIZIONE",
+   "veld": "max_wattage",
+   "waaromNietStap1": "Wattage staat in dezelfde beschrijvingstekst als '6W', '30W', '6,5W' (Italiaanse komma). 59.383 van 65.360 rijen bevatten een W-token. Vereist uitknippen van het getal, strippen van de 'W' en komma->punt-conversie; nooit direct bruikbaar."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "DESCRIZIONE",
+   "veld": "dimmable",
+   "waaromNietStap1": "Protocol staat soms achteraan de beschrijving ('Delta 2 Simmetrico LED  2.2K 100W Nero Dali'). Slechts 4.864 van 65.360 rijen bevatten een dim-token, en de rest zwijgt (afwezigheid bewijst niet 'niet-dimbaar'). Extractie + normalisatie naar protocolnaam nodig."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "Description",
+   "veld": "kelvin / max_wattage / dimmable",
+   "waaromNietStap1": "Kolom van het cable-blad (bron='cable', 32.364 rijen); zelfde vrije-tekstformaat als DESCRIZIONE ('Ago Wall LED 24V  4K 6W Grigio H'). Zelfde parsing nodig. Let op: dit blad beschrijft kabellengte-varianten van dezelfde armaturen, geen losse kabels."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "Classe energetica",
+   "veld": "geen (valstrik)",
+   "waaromNietStap1": "Kolomnaam suggereert een energieklasse-letter, maar 27.670 gevulde rijen bevatten uitsluitend URL's naar PDF's (https://www.lombardo.it/energy-class-download/...). Geen enkele waarde raakt een van onze zeven velden. Niet gebruiken."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "ALTA POTENZA",
+   "veld": "geen",
+   "waaromNietStap1": "Alleen 'No' (23.632) en 'Si' (9.364) - een ja/nee-vlag voor hoog vermogen, geen wattage en geen ander doelveld. Niet bruikbaar, ook niet na bewerking."
+  },
+  {
+   "merk": "lombardo",
+   "kolom": "Cable length",
+   "veld": "geen",
+   "waaromNietStap1": "Waarden '5 m', '7,5 m', '10 m', '15 m', '20 m' - kabellengte, valt buiten onze zeven doelvelden."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "kelvin",
+   "waaromNietStap1": "De rauwe tabel heeft maar vijf databkolommen (Code, Description, Weight, Tariff Nr., EUR); alle techniek zit in een enkele vrije-tekstregel, bv 'SASSO 100 SQ IP44 WF CRI90 DL 15,2/22,7W cob LED 3000K 450/650mA/MAX 40VDC'. 27.852 van 31.420 rijen bevatten een 4-cijferig K-token, maar altijd midden in de zin. Extractie nodig, plus omgaan met tunable/multi-waarden."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "max_wattage",
+   "waaromNietStap1": "28.368 van 31.420 rijen bevatten een W-token, maar vaak als bereik of duo ('15,2/22,7W', '17,9W', '13,8W') met Duitse komma. Splitsen, kiezen van de max en komma->punt nodig."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "cri",
+   "waaromNietStap1": "13.503 van 31.420 rijen bevatten 'CRI80' / 'CRI90' als woord in de zin. Het prefix moet eraf voordat het een getal is; bovendien zwijgt 57% van de rijen, dus afwezigheid mag niet als waarde gelden."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "ip_value",
+   "waaromNietStap1": "Slechts 2.090 van 31.420 rijen bevatten een IP-token ('IP44'). Het token heeft toevallig ons formaat, maar staat midden in een lange beschrijving en moet er uitgeknipt worden. Bovendien: geen IP in de tekst betekent niet IP20 - dat zou de matcher (IP lager dan gevraagd = rood) onterecht groen laten kleuren."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "dimmable",
+   "waaromNietStap1": "17.699 rijen bevatten DALI/DIM/non DIM/PUSH-tokens, inclusief negaties ('non DIM') en losse varianten ('DALI SEPARATELY'). Zonder normalisatie zou 'non DIM' als dimbaar binnenkomen."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Description",
+   "veld": "beam_angle",
+   "waaromNietStap1": "Maar 1.295 van 31.420 rijen bevatten een gradenteken ('| 180°'), en dan meestal binnen de samengestelde UNICO-configuratieregels. Extractie nodig en dekking te laag om betrouwbaar te zijn."
+  },
+  {
+   "merk": "xal",
+   "kolom": "Weight / Tariff Nr. / EUR",
+   "veld": "geen",
+   "waaromNietStap1": "Gewicht (kg), douanetariefnummer en prijs. Vallen buiten onze zeven doelvelden; EUR is bovendien commercie en mag de matching niet raken. Lumen komt in de hele tabel niet als getal voor: 0 rijen met een lm-waarde, de 3.394 treffers op het woord 'lumen' zijn allemaal typenamen als 'HIGH LUMEN'."
+  }
+ ],
+ "geblokkeerd": []
+}
