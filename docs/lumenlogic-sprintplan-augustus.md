@@ -1190,10 +1190,24 @@ door de sprintmaster dichtgetimmerd.** Wat vaststaat als probleem dat het moet o
 - Werkwijze: een design-/IA-notitie in `docs/` met de nieuwe boom (elk scherm → nieuwe plek),
   waarop Timo tekent, dán bouwen. Screenshots light/dark × mobile/desktop, zelf bekeken.
 
-*2.0b — visuele afwerking (wacht op de brand kit).* Zodra Timo de brand kit levert: het geheel
-"voorbeeldig op papier" zetten en dan doorvoeren — kleur, typografie, componenten. Volgt de
-`frontend-design`-werkwijze (reference-first). **Start niet vóór de kit er is;** tot dan is 2.0b
-alleen voorbereiding.
+*2.0b — visuele afwerking.* Kleur, typografie, componenten op basis van de brand kit
+(`/Users/timowittkamp/Downloads/lumenlogic_brand_kit.md`, geleverd 29 jul).
+
+**Besluit G23 (Timo, 29 jul) — de brand kit is leidend, trouw bouwen.** De sprintmaster meldde dat
+de kit botst met Timo's eigen frontend-design-veto's (Inter-font, card-grids met teal-linkerstreep,
+schaduwen op elke card, drie blauwtinten i.p.v. één accent) én dat de kit zichzelf tegenspreekt
+(v1.0 vs v2.0) en logo-/font-assets mist. Timo kiest bewust: **merk-autoriteit wint, bouw 1:1 op de
+kit** — dit overschrijft voor dit project de smaakregels uit de `frontend-design`-skill (die skill
+staat dat expliciet toe: merk/DESIGN.md > skill). Openstaand: de echte logo-/font-bestanden nog op
+te halen bij Eduard; tot dan gelabelde placeholders, niets van het web halen.
+
+**Besluit G24 (Timo, 29 jul) — 2.0b splitst in papier-nu / bouw-later.** De grill-me + plan-fase
+(DESIGN.md uit de kit + token-plan + plan-review) is puur papier en raakt geen code, dus die draait
+**nu, parallel aan 2.0a**. De **bouw-fase wacht tot 2.0a geland is op origin/main** — 2.0a
+herschrijft juist nav, layout en `globals.css`-tokens; 2.0b-code daar bovenop zou botsen. Twee
+chips: een paper-chip (eindigt op een door Timo getekende DESIGN.md + implementatieplan) en daarna
+een bouw-chip. Dark mode: de app heeft al light/dark, dus de kit-§14-dark-palette wordt toegepast
+(niet "optional future" laten liggen).
 
 **2.1 — Interne stuur-analytics op echte events** (~5 u)
 Uitsluitend de widgets die vandaag écht data hebben; een blok zonder data toont "nog geen data",
