@@ -1311,13 +1311,47 @@ zijn de eerste schrap, want 2.0 is de prioriteit.
 installateur die er die week doorheen loopt. Zelfde logica als week 1 — je bouwt dát
 merkgegevens binnen kunnen stromen, niet dat een merk het die week ook doet.
 
+**Nulmeting bij aanvang (sprintmaster, 30 jul, productie-Neon via `psql`):** `organizations` **0** ·
+`memberships` **0** · `user` **3** · `events` **1430** · `project_dossiers` **13** · `products`
+**211.317**. De 22-jul-meting (0 organisaties, 0 memberships) staat er dus nog steeds — week 2 heeft
+daar niets aan veranderd. Consequentie voor de briefingen: **3.2a kan niets scopen wat nog niet
+bestaat.** Er is geen enkele organisatie, geen enkele membership en dus geen enkele rol; het
+`organizations`/`memberships`-schema staat er wél (`db/schema.ts:907-934`, met `membership_role`-enum
+op `:124`) maar is nooit gevuld. Het aanmaken van de eerste organisatie + memberships hoort daarom
+bij 3.1 (dat is precies wat "Brink maakt een account aan en koppelt het aan een organisatie" doet),
+niet bij 3.2a — anders bouwt 3.2a scoping op lege verzamelingen en bewijst de test niets. Ook
+gemeten: er is **geen `middleware.ts`** op `origin/main`, dus de route-allowlist van 3.2a moet
+per-route server-side (in `lib/session.ts`-laag of per `page.tsx`), niet via middleware — 37
+`page.tsx`-routes in `app/`.
+
 **3.1 — Onboarding externen: PIN → wachtwoord** (~8 u) — *mechanisme gekozen 16 jul (besluit C10);
 het oorspronkelijke Resend/e-mail-ontwerp is vervallen met besluit 6.*
 - *Given* Brink in de instellingen, *when* Brink een gebruiker aanmaakt en aan een organisatie koppelt, *then* krijgt dat account een **tijdelijke PIN**.
 - *Given* die PIN, *when* de gebruiker hem invult, *then* kiest hij direct een wachtwoord; dat wachtwoord zijn daarna zijn inloggegevens en hij zit in de juiste organisatie.
 - *Given* een gebruiker die zijn wachtwoord vergeet, *when* hij zich bij Brink meldt, *then* geeft Brink een **nieuwe PIN** — zelfde pad als onboarding, géén apart resetmechanisme, geen mail nodig.
-- Nog te bepalen bij het ontwerp (klein, geen blocker): hoe de PIN de gebruiker bereikt (out-of-band — telefonisch/persoonlijk) · PIN-lengte, geldigheidsduur, eenmalig gebruik, rate limiting · of intern (Timo/Eduard) ook overgaat of op magic link blijft.
+- ~~Nog te bepalen: hoe de PIN de gebruiker bereikt · of intern ook overgaat~~ → **beantwoord 30 jul, besluiten G26 en G27.** Nog open (klein, geen blocker): PIN-lengte, geldigheidsduur, eenmalig gebruik, rate limiting.
 - ⚠️ **Raakt Better Auth**: de app draait nu op magic link **zonder** wachtwoorden. Dit is een wissel naar wachtwoord-auth (andere plugin, hashing, sessieflow) — schat dat in vóór week 3 begint.
+
+**Besluit G26 (Timo, 30 jul) — de PIN gaat per handmatige mail van Brink zelf, niet uit de app.**
+De sprintmaster legde drie afleveropties voor (eenmalig tonen / opvraagbaar houden / tonen met
+kopieerbaar berichtje). Timo's antwoord: *"Wij sturen gewoon zelf een mailtje op met een pin. We
+moeten gewoon in admin de pin kunnen aanmaken en daarna kunnen we die zelf naar mailen zetten. We
+maken gewoon zelf een layout voor het verzenden."* Dus: **de app genereert en toont de PIN in
+`/admin`, met een kopieerknop en een kopieerbaar tekstsjabloon; de app verstuurt zélf niets.** Het
+mailkanaal is Brinks eigen mailbox — besluit 6 (geen mailverzending vanuit Lumen Logic) blijft
+daarmee volledig overeind, en de "out-of-band, telefonisch/persoonlijk"-formulering uit C10 wordt
+hiermee vervangen door "handmatige mail door Brink". *Aanname van de sprintmaster, niet expliciet
+door Timo bevestigd:* de PIN is **eenmalig zichtbaar bij aanmaken** en staat daarna gehasht in de
+database — kwijt betekent een nieuwe PIN genereren, precies het pad dat C10 al voor "wachtwoord
+vergeten" voorschrijft. Wordt bevestigd of teruggedraaid in de 3.1-briefing.
+
+**Besluit G27 (Timo, 30 jul) — iedereen gaat over naar wachtwoord; magic link verdwijnt.** Ook
+intern (Timo/Eduard) logt straks in met wachtwoord; er blijft géén tweede inlogpad naast staan. Eén
+inlogpad betekent één set tests, één flow om aan Brink over te dragen in week 4, en de helft van het
+oppervlak dat de route-allowlist van 3.2a moet afdekken. Prijs: intern doorloopt zelf ook het
+PIN-rondje (wat meteen de scherpste test van 3.1 is) en er is geen tweede deur meer als de
+wachtwoordflow stukloopt — de 3.1-briefing moet daarom een uitgeschreven terugvalstap bevatten
+(direct DB-ingrijpen) vóór de magic-link-plugin eruit gaat.
 
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
@@ -1334,6 +1368,17 @@ het oorspronkelijke Resend/e-mail-ontwerp is vervallen met besluit 6.*
 **Risico's & plan B:** ~~onboarding-mechanisme niet op tijd gekozen~~ → **opgelost 16 jul met besluit C10** (PIN → wachtwoord); het resterende risico is de omvang van de Better-Auth-wissel, niet de keuze · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
 
 **Technische schuld & vooruitwerk (bufferuren):** GitHub-repo-transfer naar Brink-org alvast doen (laag risico, uit het spike-draaiboek) · minimale monitoring vóór externen: uptime-check + Vercel-foutalerts (~1 u) · restjes 2.U.
+
+**Besluit G28 (Timo, 30 jul) — de Neon-eigendomsvraag is geparkeerd tot week 4.** De sprintmaster
+legde voor of de database een Vercel-Marketplace-resource is of een los Neon-project (het bepaalt of
+de database met de Vercel-projectoverdracht meegaat of een eigen eigenaarswissel nodig heeft, en het
+blokkeert stap 4 van het migratiedraaiboek). Timo: *"Dat is een harde voorwaarde voor week 4. We
+zijn nu in week 3 … ik snap niet helemaal wat je bedoelt."* Afgesproken lijn: **niet deze week
+oplossen, en niet nogmaals aan Timo vragen in week 3.** De week-4-sprintmaster stelt de vraag
+opnieuw mét uitleg van het verschil en de gevolgen — of zoekt het zelf uit in de
+Vercel-integratiepagina en het Neon-dashboard en legt de uitkomst vast in
+`docs/spike-2.3-migratie-draaiboek.md`. Fout van de sprintmaster om dit als open vraag bij een
+week-3-start neer te leggen zonder de gevolgen uit te leggen.
 
 ### Week 4 (10–14 aug) — alles op naam van Brink
 
