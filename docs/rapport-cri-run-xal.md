@@ -88,6 +88,27 @@ merk waar de dekking bínnen een productfamilie uiteenloopt, kan het effect wél
   als dimbaar gepubliceerd worden — de omgekeerde waarde.
 - De vier hermatchte regels zijn het volledige onomkeerbare deel van deze operatie.
 
+## Conclusies van het XAL-spoor (overgenomen na verificatie, 30 jul)
+
+Onafhankelijk nagemeten door de sprintmaster: branch `cri` 13.407 met stempel
+`{"cri":"parsed-from-name"}` op alle; productie `cri` 0 en verrijkt 0, onaangeraakt.
+
+1. **XAL zit aan zijn naam-plafond.** Na dimbaarheid valt er niets meer uit XAL-namen te halen.
+   Lumen en beam zijn de beperkende velden, en XAL zet nooit `lm` in de naam — dat gat vraagt een
+   andere bron, geen betere parser.
+2. **Ongelijke naamdekking bínnen één merk is een echt verschijnsel.** `SASSO PRO` zet geen CRI in
+   de naam, de gewone `SASSO` wel. Dat verklaart waarom Lr301/Lr303 niet konden profiteren, en het
+   is een waarschuwing voor elk volgend merk: dekking is geen merk-eigenschap maar een
+   serie-eigenschap.
+3. **Dat de rang niet verschoof was geluk, geen garantie.** De CRI-dekking was binnen elke
+   kandidatenlijst uniform — allemaal 0 of allemaal +1. Bij een merk met gemengde dekking bínnen
+   één lijst kan het wél schuiven. De rangcontrole in `scripts/vergelijk-meting.ts` blijft daarom
+   staan, ook als hij bij XAL niets vond.
+
+**Waarde van deze run, eerlijk gesteld:** op de vier testcases verandert zichtbaar niets. De winst
+is dat een toekomstig boek dat CRI vraagt op een gewone SASSO of een STRETTA nu een echt antwoord
+krijgt in plaats van `onbekend`.
+
 ## Terugdraaien, mocht het nodig zijn
 
 Niet uitgevoerd, wel uitgeschreven. De kolommen terugzetten is één UPDATE
