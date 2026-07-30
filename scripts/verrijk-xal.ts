@@ -51,15 +51,19 @@ async function main() {
 
   if (cmd === "start") {
     const merkArg = vlag("merk", "XAL");
-    const veld = vlag("veld", "cri") as Veld;
+    // Meerdere velden in één run mag: --veld=cri,kelvin,maxWattage. Dat scheelt ronden in de
+    // opzet, niet in zwermwerk — de zwerm rekent per cel, en die cellen bestaan of je ze nu in
+    // één ronde of in drie aanbiedt. De steekproef van 100 verdeelt zich wél over alle velden,
+    // dus bij een groot merk draagt de ZWERM de dekking en toetst de steekproef alleen de vorm.
+    const velden = vlag("veld", "cri").split(",").map((v) => v.trim()) as Veld[];
     const [merk] = await db
       .select({ id: brands.id, name: brands.name })
       .from(brands)
       .where(ilike(brands.name, `%${merkArg}%`));
     if (!merk) throw new Error(`geen merk gevonden op '${merkArg}'`);
 
-    console.log(`start: ${merk.name}, uitsluitend veld '${veld}' …`);
-    const run = await startEnrichmentRun(db, merk.id, "timo (branch)", [veld]);
+    console.log(`start: ${merk.name}, veld(en) '${velden.join(", ")}' …`);
+    const run = await startEnrichmentRun(db, merk.id, "timo (branch)", velden);
     const counts = run.counts as Record<string, number>;
     console.log(`run ${run.id}`);
     console.log(`  producten ${counts.producten} · voorstellen ${counts.geparsed} · steekproef ${counts.steekproef}`);
