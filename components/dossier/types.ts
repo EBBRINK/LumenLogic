@@ -144,11 +144,16 @@ export type ReviewItem = {
   // de OcrCard — zodat de reviewer het boek naast de gelezen waarden kan leggen.
   sourcePage?: number | null;
   importRunId?: string | null;
-  // Heeft de run opgeslagen paginabeelden? false = AI-tekstroute (stap 3 fase B):
-  // dan linkt de OcrCard naar het markdown-controlespoor van de importrun in
-  // plaats van naar het (niet-bestaande) paginabeeld. undefined = onbekend
-  // (oudere aanroepers/fixtures) → gedraagt zich als vanouds (beeldlink).
-  hasPageImages?: boolean;
+  // Bestaat het paginabeeld van DEZE regel (run + eigen source_page)? false =
+  // AI-tekstroute (stap 3 fase B, geen beelden) óf een run met maar een deel van
+  // zijn pagina's in beeld (UX-audit 30 jul, bug #2): dan linkt de OcrCard naar het
+  // markdown-controlespoor van de importrun in plaats van naar het niet-bestaande
+  // paginabeeld — dat gaf een kale 404. undefined = onbekend (oudere
+  // aanroepers/fixtures) → gedraagt zich als vanouds (beeldlink).
+  hasPageImage?: boolean;
+  // De ruwe tabelregel zoals de import hem las (ImportRow.rawText), afgekapt in de
+  // repo-laag. Dít is waartegen de reviewer de gelezen velden vergelijkt.
+  sourceText?: string | null;
 };
 
 // Zoekresultaat op de rood-kaart (handmatig linken) — uit visible_products.

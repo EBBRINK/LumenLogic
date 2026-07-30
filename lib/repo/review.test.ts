@@ -5,7 +5,15 @@
 // die rode ongematchte regels als wachtend meetelt.
 import { expect, test } from "vitest";
 import { and, asc, eq } from "drizzle-orm";
-import { events, projectDossiers, specLineCandidates, specLines } from "@/db/schema";
+import {
+  events,
+  importRuns,
+  ocrPageImages,
+  projectDossiers,
+  specLineCandidates,
+  specLines,
+  type ImportRow,
+} from "@/db/schema";
 import { addProductToBrand, createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { runMatcher } from "@/lib/repo/matching";
 import {
@@ -409,4 +417,110 @@ test("linkManualProduct weigert een niet-zichtbaar product (regel 3)", async () 
   await expect(
     linkManualProduct(db, { specLineId: line.id, productId: invisible, actor: ACTOR }),
   ).rejects.toThrow(/not visible/);
+});
+
+// UX-audit 30 jul, bug #2: de OCR-kaart linkt naar /ocr-image/<run>/<page> — een
+// PAGINA-resource. De vlag in de wachtrijquery keek alleen of de RUN érgens beelden
+// had, dus een run met gedeeltelijke beelddekking (een vision-fout of budgetstop
+// haalt de beeldrij van een mislukte pagina weer weg) liet de link óók renderen op
+// kaarten wier eigen source_page geen beeld heeft → kale 404. Deze test pint de
+// per-pagina-correlatie én dat de vlag een échte boolean is (geen 't'/'f'-string).
+// Tweede helft: de kaart moet de ruwe tabelregel kunnen tonen — die komt uit
+// import_runs.rows (ImportRow.rawText) van de eigen run.
+async function seedOcrRunMetHalveBeelddekking() {
+  const db = await createTestDb();
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "OCR-beelddekking" })
+    .returning();
+  const rows: ImportRow[] = [
+    {
+      fixtureCode: "Ld105",
+      quantity: null,
+      brandText: "XAL",
+      productText: "UNICO Q4",
+      source: "ocr",
+      rawText: "Ld105  XAL  UNICO Q4 2700K  IP20  9W",
+      page: 3,
+      checked: true,
+    },
+    {
+      fixtureCode: "Ld106",
+      quantity: null,
+      brandText: "XAL",
+      productText: "UNICO Q4",
+      source: "ocr",
+      rawText: "Ld106  XAL  UNICO Q4 3000K  IP20  9W",
+      page: 7,
+      checked: true,
+    },
+  ];
+  const [run] = await db
+    .insert(importRuns)
+    .values({
+      dossierId: dossier.id,
+      source: "ocr",
+      status: "bevestigd",
+      ocrStatus: "gestopt",
+      rows,
+    })
+    .returning();
+  // Alléén pagina 3 heeft een beeldrij — pagina 7 verloor die (vision-fout).
+  await db.insert(ocrPageImages).values({
+    importRunId: run.id,
+    page: 3,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1109,
+    bytes: new Uint8Array([1, 2, 3]),
+  });
+  const gemaakt = await db
+    .insert(specLines)
+    .values(
+      [3, 7].map((page, i) => ({
+        dossierId: dossier.id,
+        fixtureCode: i === 0 ? "Ld105" : "Ld106",
+        brandText: "XAL",
+        productText: "UNICO Q4",
+        source: "ocr" as const,
+        sourcePage: page,
+        importRunId: run.id,
+        reviewKind: "ocr" as const,
+        sortOrder: i,
+      })),
+    )
+    .returning();
+  return { db, dossierId: dossier.id, runId: run.id, lines: gemaakt };
+}
+
+test("wachtrij: paginabeeld-vlag is per PAGINA, niet per run (geen link naar een 404)", async () => {
+  const s = await seedOcrRunMetHalveBeelddekking();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  const metBeeld = pending.find((r) => r.sourcePage === 3);
+  const zonderBeeld = pending.find((r) => r.sourcePage === 7);
+
+  // Echte booleans (niet 't'/'f'): de UI test op `!== false`, dus dat moet hard zijn.
+  expect(metBeeld?.hasPageImage).toBe(true);
+  expect(zonderBeeld?.hasPageImage).toBe(false);
+});
+
+test("wachtrij: OCR-regel draagt zijn ruwe brontekst uit import_runs.rows", async () => {
+  const s = await seedOcrRunMetHalveBeelddekking();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending.find((r) => r.fixtureCode === "Ld105")?.sourceText).toBe(
+    "Ld105  XAL  UNICO Q4 2700K  IP20  9W",
+  );
+  expect(pending.find((r) => r.fixtureCode === "Ld106")?.sourceText).toBe(
+    "Ld106  XAL  UNICO Q4 3000K  IP20  9W",
+  );
+});
+
+test("wachtrij: niet-OCR-regels vragen de brontekst niet op (blijft null)", async () => {
+  const s = await seedTwoCleanYellow();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending.length).toBe(1);
+  expect(pending[0].reviewKind).toBe("geel");
+  expect(pending[0].sourceText).toBeNull();
+  // Zonder import_run_id is er ook geen paginabeeld.
+  expect(pending[0].hasPageImage).toBe(false);
 });

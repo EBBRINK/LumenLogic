@@ -134,7 +134,8 @@ const pending: ReviewItem[] = [
 ];
 
 // OCR-controle (bouwstap 7/8): een regel uit een beeld-PDF mét herkomst — de kaart
-// toont het paginanummer en linkt naar het opgeslagen paginabeeld (de échte bron, B6).
+// toont het paginanummer en linkt naar het opgeslagen paginabeeld (de échte bron, B6),
+// plus de ruwe tabelregel zoals de import hem las (UX-audit 30 jul).
 const ocrItem: ReviewItem = {
   id: "s5",
   fixtureCode: "Ld105",
@@ -146,6 +147,21 @@ const ocrItem: ReviewItem = {
   reqColor: null,
   sourcePage: 14,
   importRunId: "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+  hasPageImage: true,
+  sourceText: "Ld105  XAL  UNICO Q4 2700K  IP20  9W  650lm  36°  wit",
+};
+
+// Zelfde run, andere pagina — en van DIE pagina staat geen beeld in ocr_page_images
+// (vision-fout/budgetstop halen de beeldrij weer weg, dus een run kan een deel van
+// zijn pagina's in beeld hebben). De run-brede vlag liet hier tóch de beeldlink
+// renderen → kale 404 (UX-audit 30 jul, bug #2). Verwacht: de tekstlink.
+const ocrItemZonderBeeld: ReviewItem = {
+  ...ocrItem,
+  id: "s6",
+  fixtureCode: "Ld106",
+  sourcePage: 15,
+  hasPageImage: false,
+  sourceText: "Ld106  XAL  UNICO Q4 3000K  IP20  9W  650lm  36°  zwart",
 };
 
 const done: ReviewItem[] = [
@@ -240,7 +256,9 @@ const shots = {
     <Screen>
       <ReviewQueue
         dossierId="d1"
-        pending={[ocrItem]} // OcrCard mét paginanummer + "View page image"-link
+        // Twee OcrCards: mét paginabeeld ("View page image") en zonder beeld van
+        // die pagina ("View source text") — beide met hun ruwe brontekst.
+        pending={[ocrItem, ocrItemZonderBeeld]}
         done={[]}
         decideAction={noopAction}
         linkAction={noopAction}
@@ -365,9 +383,46 @@ test("ocr-kaart toont paginanummer en linkt naar het paginabeeld", async () => {
   );
   expect(el.getAttribute("target")).toBe("_blank"); // boek náást de review
 
+  // De kaart toont de ruwe tabelregel: zonder dat citaat is "is de lezing correct?"
+  // een vraag zonder materiaal (UX-audit 30 jul).
+  await expect
+    .element(page.getByText(/UNICO Q4 2700K\s+IP20\s+9W/))
+    .toBeInTheDocument();
+
   // De bevestig-actie blijft de bestaande 'gecontroleerd'-knop.
   await expect
     .element(page.getByRole("button", { name: /Checked/ }))
+    .toBeInTheDocument();
+});
+
+// Bug #2 (UX-audit 30 jul): dezelfde run, een pagina zónder beeldrij. De vlag is nu
+// per pagina, dus deze kaart mag GEEN beeldlink dragen — die gaf een kale 404 —
+// maar de bestaande tekst-fallback naar het markdown-controlespoor van de run.
+test("ocr-kaart zonder beeld van díe pagina linkt naar de brontekst, niet naar het beeld", async () => {
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderBeeld]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  expect(page.getByRole("link", { name: /View page image/ }).query()).toBeNull();
+
+  const link = page.getByRole("link", { name: /View source text/ });
+  await expect.element(link).toBeInTheDocument();
+  const el = link.element() as HTMLAnchorElement;
+  expect(el.getAttribute("href")).toBe(
+    `/projects/d1/import/${ocrItemZonderBeeld.importRunId}`,
+  );
+  expect(el.getAttribute("target")).toBe("_blank");
+
+  // Paginanummer én brontekst blijven staan — de reviewer weet waar het vandaan komt.
+  await expect.element(page.getByText(/Read from page/)).toBeInTheDocument();
+  await expect
+    .element(page.getByText(/UNICO Q4 3000K\s+IP20\s+9W/))
     .toBeInTheDocument();
 });
 

@@ -59,9 +59,12 @@ function toReviewItem(r: QueueRow): ReviewItem {
     // OCR-herkomst voor de "View page image"-link op de OcrCard (bouwstap 7/8).
     sourcePage: r.sourcePage,
     importRunId: r.importRunId,
-    // Leesroute-regels hebben geen paginabeelden → de kaart linkt dan naar het
-    // markdown-controlespoor (stap 3 fase B).
-    hasPageImages: r.hasPageImages,
+    // Geen paginabeeld voor déze pagina (leesroute-run, of een OCR-run met maar
+    // een deel van zijn pagina's in beeld) → de kaart linkt naar het
+    // markdown-controlespoor in plaats van naar een 404 (UX-audit 30 jul).
+    hasPageImage: r.hasPageImage,
+    // Ruwe brontekst van de regel — waartegen de reviewer de lezing vergelijkt.
+    sourceText: r.sourceText,
   };
 }
 

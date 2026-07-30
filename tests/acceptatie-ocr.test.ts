@@ -290,6 +290,15 @@ test("B7: source ocr + sourcePage; groen/rood → reviewKind 'ocr', matcher-geel
   const ocrItem = queue.pending.find((p) => p.fixtureCode === "Lp301")!;
   expect(ocrItem.sourcePage).toBe(1);
   expect(ocrItem.importRunId).toBe(runId);
+  // UX-audit 30 jul: de vlag geldt per PAGINA — pagina 1 van deze run heeft een
+  // beeldrij, dus de kaart mag de beeldlink dragen.
+  expect(ocrItem.hasPageImage).toBe(true);
+  // …en de kaart krijgt de ruwe tabelregel mee om de lezing tegen te vergelijken.
+  // Lp301 staat óók op pagina 3 (duplicaat "(nogmaals)"); de wachtrij pakt de rij
+  // van de eigen source_page — de winnende lezing, niet het duplicaat.
+  expect(ocrItem.sourceText).toBe("Lp301 XAL SASSO 100 SQ SP CEIL 3000K");
+  // De matcher-gele regel is geen OCR-review → geen brontekst opgehaald.
+  expect(queue.pending.find((p) => p.fixtureCode === "Lw102")!.sourceText).toBeNull();
   expect(await getRedLinkLines(db, dossierId)).toHaveLength(0);
 }, 30_000);
 

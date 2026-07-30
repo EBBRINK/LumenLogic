@@ -5,10 +5,20 @@
 // werkvoorraad op de review-pagina ("Niet gevonden — handmatig linken"). Rood is een
 // STATUS, geen review-flag — die regels krijgen dus geen reviewKind, maar een eigen query.
 import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { ocrPageImages, specLineCandidates, specLines } from "@/db/schema";
+import {
+  importRuns,
+  ocrPageImages,
+  specLineCandidates,
+  specLines,
+} from "@/db/schema";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
+
+// Hoeveel tekens ruwe brontekst de review-kaart maximaal krijgt. Bewust in SQL
+// afgekapt: de kaart toont een citaat van één tabelregel, geen paginatranscript —
+// zo sleept de wachtrijquery geen kilobytes leestekst mee per regel.
+const SOURCE_TEXT_CAP = 240;
 
 export async function getReviewQueue(db: AppDb, dossierId: string) {
   const rows = await db
@@ -34,7 +44,46 @@ export async function getReviewQueue(db: AppDb, dossierId: string) {
       // een 404. Bewust een EXISTS zonder ook maar één kolom van ocr_page_images
       // te selecteren (B2-harde eis: alléén getOcrPageImage raakt de bytes-kolom;
       // deze query blijft volledig bytes-vrij).
-      hasPageImages: sql<boolean>`exists (select 1 from ${ocrPageImages} where ${ocrPageImages.importRunId} = ${specLines.importRunId})`,
+      //
+      // UX-audit 30 jul (bug #2): de EXISTS was alleen op de RUN gecorreleerd,
+      // terwijl /ocr-image/<run>/<page> een specifieke PAGINA opzoekt. Een run met
+      // beelden voor een deel van zijn pagina's — bereikbaar via een vision-fout of
+      // een budgetstop, die de beeldrij van de mislukte pagina weer verwijdert
+      // (processOcrPage) — liet de link dus óók renderen op kaarten wier eigen
+      // source_page géén beeldrij heeft: klik → kale 404. Nu per pagina
+      // gecorreleerd, zodat de vlag exact betekent "het paginabeeld van DEZE regel
+      // bestaat". source_page null → false → de kaart valt terug op de tekstlink.
+      hasPageImage: sql<boolean>`exists (select 1 from ${ocrPageImages} where ${ocrPageImages.importRunId} = ${specLines.importRunId} and ${ocrPageImages.page} = ${specLines.sourcePage})`,
+      // Wat de import van DEZE regel las (UX-audit 30 jul, tweede helft van bug #2):
+      // de OCR-kaart vraagt "is de lezing correct?" maar toonde alleen de al
+      // geparste velden — niets om tegen te vergelijken. De ruwe tabelregel staat
+      // per gelezen rij in import_runs.rows (ImportRow.rawText, gezet door
+      // verwerkGelezenRegels voor zowel de beeld- als de tekstroute). We halen
+      // alléén dat ene tekstveld op, niet de hele rows-array.
+      // Alleen voor OCR-reviews: anders zou élke regel van het dossier de
+      // rows-array van zijn run laten uitklappen, terwijl geen andere kaart de
+      // brontekst toont. Keuze bij meerdere rijen met dezelfde armatuurcode (een
+      // boek noemt een code op meerdere pagina's): eerst de rij van de eigen
+      // source_page, dan de 'checked' rij — dat is de winnende (rijkste) lezing
+      // waaruit de regelvelden komen.
+      // Twee bewuste voorzichtigheden in de SQL: jsonb_array_elements klapt op een
+      // niet-array (zou de héle review-pagina 500'en op één rare run), en een
+      // ::int-cast klapt op een niet-numerieke page — vandaar de typeof-guard en
+      // een vergelijking in jsonb zelf.
+      sourceText: sql<string | null>`case when ${specLines.reviewKind} = 'ocr' then (
+        select left(elem->>'rawText', ${sql.raw(String(SOURCE_TEXT_CAP))})
+        from ${importRuns} ir
+        cross join lateral jsonb_array_elements(
+          case when jsonb_typeof(ir."rows") = 'array' then ir."rows" else '[]'::jsonb end
+        ) as elem
+        where ir.id = ${specLines.importRunId}
+          and elem->>'fixtureCode' = ${specLines.fixtureCode}
+          and elem->>'rawText' is not null
+        order by
+          case when elem->'page' = to_jsonb(${specLines.sourcePage}) then 0 else 1 end,
+          case when elem->'checked' = 'true'::jsonb then 0 else 1 end
+        limit 1
+      ) end`,
     })
     .from(specLines)
     .where(eq(specLines.dossierId, dossierId))

@@ -400,20 +400,37 @@ function OcrCard({
   // B6: de échte bron van een OCR-regel is het opgeslagen paginabeeld — toon het
   // paginanummer en link ernaar (nieuw tabblad) zodat de reviewer het boek naast
   // de gelezen waarden kan leggen. Alleen als de regel zijn herkomst draagt.
-  // Leesroute-regels (AI-tekstroute, stap 3 fase B) delen reviewKind 'ocr' maar
-  // hun run heeft GEEN paginabeelden (hasPageImages === false uit de review-
-  // query) — blind naar /ocr-image linken gaf een 404. Dan linkt de kaart naar
-  // het markdown-controlespoor van de importrun, met hetzelfde paginanummer als
+  // hasPageImage komt per PAGINA uit de review-query (UX-audit 30 jul, bug #2):
+  // false = er is geen beeld van déze pagina — een leesroute-run (AI-tekstroute,
+  // stap 3 fase B, die reviewKind 'ocr' deelt maar nooit beelden heeft) óf een
+  // OCR-run die maar een deel van zijn pagina's in beeld kreeg. Blind naar
+  // /ocr-image linken gaf dan een kale 404; nu linkt de kaart naar het
+  // markdown-controlespoor van de importrun, met hetzelfde paginanummer als
   // tekst. undefined (fixtures/oudere aanroepers) blijft de beeldlink: bestaand
   // OCR-gedrag ongewijzigd.
   const hasSource = item.importRunId != null && item.sourcePage != null;
-  const hasImage = item.hasPageImages !== false;
+  const hasImage = item.hasPageImage !== false;
   return (
     <>
       <p className="text-sm text-muted-foreground">
         Check the imported line — OCR import can misread characters. Confirm if the
         line is correct, or open it for another match.
       </p>
+      {/* De ruwe tabelregel zoals de import hem las: zonder dit citaat vraagt de
+          kaart om een controle zonder het te controleren materiaal te tonen
+          (UX-audit 30 jul). Bewust compact — twee regels via line-clamp, de hele
+          (al in de repo-laag afgekapte) tekst zit in de title-tooltip. */}
+      {item.sourceText && (
+        <p
+          className="line-clamp-2 border-l-2 pl-2.5 font-mono text-xs leading-snug text-muted-foreground"
+          title={item.sourceText}
+        >
+          <span className="font-sans font-medium text-foreground">
+            Source text
+          </span>{" "}
+          {item.sourceText}
+        </p>
+      )}
       {hasSource && (
         <p className="text-sm text-muted-foreground">
           Read from page{" "}
