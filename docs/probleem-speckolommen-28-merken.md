@@ -401,6 +401,29 @@ gemeten parserdefecten. Een plan dat ronde 2 als "kolomroute met bewerking" beha
 als "naam-route", beschrijft de werkelijkheid niet — en dat verschil bepaalt of je één normalisator
 bouwt of twee.
 
+## Wat de matcher toestaat — zelf nagelezen, want het begrenst elke normalisatie
+
+De normalisatieregels mogen niet strenger of losser zijn dan het oordeel dat erop volgt. Nagelezen
+in `lib/matching/tolerances.ts`:
+
+| veld | oordeel | wat dat toestaat |
+|---|---|---|
+| `judgeKelvin` | `delivered === requested` — **exact** | een bereik platslaan naar een representant is actief schadelijk: een bestek dat 4000 vraagt krijgt **rood** op een product dat 4000 aantoonbaar kan leveren |
+| `judgeCri` | `delivered >= requested` | `">97"` → 97 is semantisch sound; de ondergrens gaat door een ondergrens-toets |
+| `judgeIp` | `got >= req` | een hogere IP is groen. Let op: `parseIp` plukt met `/(\d{2})/` het eerste tweetal uit wíllekeurige tekst — een kolomverwisseling faalt hier stil, niet luid |
+| `judgeDimmable` | substring in **beide** richtingen na strippen | `"DALI 2CH + CASAMBI"` geeft groen op een DALI-vraag: samengestelde protocollen doorgeven is correct, niet slordig. En `"ON/OFF"` zou als "ander protocol" **geel** worden gelezen in plaats van "kan niet dimmen" — daarom moet die cel zwijgen |
+| `judgeBeamAngle` | ±10° groen, ±25° geel, daarboven rood | **een band, anders dan kelvin** |
+
+Die laatste regel is een verschil dat geen van de voorgangersdocumenten noemt en dat er voor
+ronde 2 toe doet: **bundelhoek verdraagt wél een representant en kleurtemperatuur niet.** Een
+`beamangle`-cel `"25-35"` mag als 30 landen (afwijking 5°, binnen groen); een `CCT K`-cel
+`"2200-5000"` mag dat nooit. De "bereik"-uitkomst in `supplier-cell.ts` hoort dus per veld te
+verschillen, niet uniform te zwijgen.
+
+Verder nagelezen: `UNCONFIRMED_TIER2_SOURCES` bevat alleen `"optic-code"`
+([engine.ts:197](lib/matching/engine.ts:197)). Een `supplier-column:*`-label hoort daar níét in —
+staat het er wel in, dan kan geen enkel veld uit de kolomroute groen worden.
+
 ## Wat er beslist moet worden vóór er iets gebouwd wordt
 
 1. **Supabase-toegang** (blokkade 1). Zonder dit zijn ronde 1 en 2 dood. Als hij er komt: éérst
