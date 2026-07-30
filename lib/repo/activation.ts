@@ -64,18 +64,23 @@ export function generatePin(): string {
 // ~46 ms en ~32 MB (scrypt N=16384, r=16), en het dummy-pad is per definitie onbegrensd: er
 // is geen rij die dood kan gaan, dus een ongeauthenticeerde beller kan er onbeperkt werk
 // mee opstoken. Waarom hier tóch géén rem in deze laag zit:
-//   • De dúre kant is nu wél begrensd waar dat kan: een échte verificatie kost hoogstens
-//     PIN_MAX_ATTEMPTS per PIN (het slot hierboven), en een PIN met een verkeerde vórm
-//     kost helemaal niets meer (PIN_FORMAT).
-//   • In Node/Bun draait scrypt op de libuv-threadpool (4 threads by default), dus het
-//     gelijktijdige geheugengebruik binnen één instance is inherent begrensd op ~128 MB.
+//   • De dúre kant is begrensd waar dat kan: een échte verificatie kost hoogstens
+//     PIN_MAX_ATTEMPTS per PIN (het slot hierboven). Dat een verkeerd gevórmde PIN niets
+//     meer kost (PIN_FORMAT) helpt tegen typefouten, niet tegen een vloed — die stuurt
+//     gewoon acht cijfers. Reken het niet mee als maatregel.
 //   • Een teller in dit proces zou op Vercel schijnveiligheid zijn: elke invocatie is een
 //     eigen isolate, dus een vloed start gewoon nieuwe instances met elk een verse teller.
 //     Een comment die suggereert dat het beschermd is, is erger dan geen comment.
-//   • Exact dezelfde blootstelling heeft Better Auth' eigen /sign-in/email al: die doet óók
-//     een volledige verificatie per foute poging. Better Auth' rate limiter dekt alleen zijn
-//     eigen router (node_modules/better-auth/dist/api/rate-limiter/index.mjs), dus zodra je
-//     auth.api.* vanuit een server action aanroept, geldt hij daar net zo min.
+//   • In Node/Bun draait scrypt op de libuv-threadpool (4 threads by default). Dat begrenst
+//     het gelijktijdige gehéugen binnen één instance op ~128 MB — maar niet de wachtrij:
+//     wachtende aanroepen stapelen zich op. Het faalgedrag is dus oplopende latency en
+//     functie-timeouts, niet OOM. Onbeschikbaarheid blijft bereikbaar; alleen crasht het niet.
+//   • Better Auth' eigen /sign-in/email doet óók een volledige verificatie per foute poging,
+//     maar is via de HTTP-route wél beschermd: de rate limiter staat in productie standaard
+//     aan (context/create-context.mjs — `options.rateLimit?.enabled ?? isProduction`) met
+//     /sign-in* op 3 per 10 s. De gelijkstelling gaat pas op zodra je auth.api.* vanuit een
+//     server action aanroept — dan zit je buiten die router. En de standaard-opslag van die
+//     limiter is "memory", dus per instance: op Vercel is ook dát grotendeels papier.
 // De echte rem hoort dus één laag hoger, op de route/edge, en geldt dan voor /activate én
 // /login tegelijk. Staat als openstaand punt voor 3.2a in HANDOVER.md.
 let dummyHashPromise: Promise<string> | null = null;

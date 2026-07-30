@@ -140,8 +140,14 @@ export async function redeemActivationPin(
  * Bestaat als eigen functie en niet als "roep `auth.api.changePassword` aan" omdat Better
  * Auth andere sessies alléén intrekt met `revokeOtherSessions: true`, en die vlag vergeten
  * is precies de fout die je nooit ziet: het wachtwoord wijzigt, de oude sessie leeft door,
- * en de wijziging voelt als een remedie zonder er één te zijn. Hier staat de vlag altijd
- * aan — dat is een garantie van deze laag, geen keuze van de aanroeper.
+ * en de wijziging voelt als een remedie zonder er één te zijn. Hier staat de vlag altijd aan.
+ *
+ * ⚠️ Dat is een garantie van DEZE functie, niet van het systeem. `auth.api.changePassword`
+ * blijft gewoon geëxporteerd en laat zonder de vlag andere sessies leven — gemeten door de
+ * critic van golf 1: wachtwoord gewijzigd, sessie van het tweede apparaat daarna nog geldig.
+ * Er is niets dat die aanroep tegenhoudt; de afdwinging is een afspraak. Roep in app-code
+ * altijd déze functie aan. Wie het echt dicht wil zetten, moet dat op routeniveau doen —
+ * `/change-password` staat via app/api/auth/[...all]/route.ts gewoon in de router.
  *
  * De sessie van de aanroeper zelf blijft geldig: Better Auth geeft er een verse voor terug.
  * Zet het cookie uit `headers` (in een server action doet nextCookies dat vanzelf).
