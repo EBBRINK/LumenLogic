@@ -295,3 +295,20 @@ test("een draadloze besturingsmodule is een onderdeel, een armatuur met CONTROL 
   ).not.toContain("maxWattage:product-is-onderdeel");
   expect(parseProductName("ROUND CONTROL MINI Arm 550mm - 6W LED 2700K").maxWattage).toBe(6);
 });
+
+// INNER COVER/REFLECTOR is ONDUBBELZINNIG een los inzetstuk: de fitting die er soms bij staat
+// is de lamp waarvoor het stuk bedoeld is, niet een fitting op dít product. Die kregen door de
+// fitting-uitzondering eerst ten onrechte geen vlag — de zwerm wees ze aan.
+test("een inner reflector is een onderdeel, ook als er een lamptype in de naam staat", () => {
+  for (const n of [
+    "BOX MINI PAR16 INNER REFLECTOR B max. 10W",
+    "RAY INNER COVER A max. 10W",
+    "DOCUS INNER COVER G max. 10W",
+  ]) {
+    expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
+  }
+  // SHADE blijft de fitting-uitzondering houden: dit is een écht armatuur.
+  expect(
+    vlaggen("ROOMOR WALL SURF 1.0 PAR16 B NO SHADE max. 15W GU10 100-240VAC"),
+  ).not.toContain("maxWattage:product-is-onderdeel");
+});

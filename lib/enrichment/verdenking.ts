@@ -126,7 +126,18 @@ const DRIVER_TYPECODE = /\bDRIVER\s+D\d\b/i;
 // 1.0 PAR16 B NO SHADE max. 15W GU10" is een écht armatuur, en dat zijn er 31. Die dragen een
 // FITTING, en bij een armatuur mét fitting is "max. 15W" juist de geldige lampbelasting.
 // Gemeten: 44 namen met "max. <n>W" zonder fitting-token, waarvan 39 door deze termen gedekt.
-const ACCESSOIRE_MAXW = /\b(?:INNER\s+(?:COVER|REFLECTOR)|SHADE|LED\s+PLUG|COVER\s+RING)\b/i;
+// Twee klassen, want ze verdragen de fitting-uitzondering verschillend.
+//
+// ONDUBBELZINNIG: "INNER COVER" en "INNER REFLECTOR" zijn per definitie een los inzetstuk. De
+// fitting die er soms bij staat is de lámp waarvoor het stuk bedoeld is, niet een fitting op
+// dit product — "BOX MINI PAR16 INNER REFLECTOR B max. 10W" is een reflector vóór een PAR16,
+// geen armatuur mét PAR16. Die kregen door de fitting-uitzondering ten onrechte GEEN vlag; de
+// zwerm wees ze aan (5 cellen) en ze zijn met 60 producten / 46 landende wattages klein maar
+// echt.
+const ACCESSOIRE_ALTIJD = /\bINNER\s+(?:COVER|REFLECTOR)\b/i;
+// DUBBELZINNIG: `SHADE` staat óók in "ROOMOR WALL SURF 1.0 PAR16 B NO SHADE max. 15W GU10" —
+// 31 échte armaturen. Daar is de fitting-uitzondering juist nodig.
+const ACCESSOIRE_MAXW = /\b(?:SHADE|LED\s+PLUG|COVER\s+RING)\b/i;
 const MAX_WATT = /\bmax\.?\s*\d+(?:[.,]\d+)?\s*W\b/i;
 const LAMP_FITTING_BREED =
   /\b(?:E27|E14|E40|B15D|G4|G9|G13|GX53|GX5\.3|GU10|GU5\.3|GZ10|R7S|QT14|QT-14|S14d?|T5|T8|PAR\d\d|MR\d\d|A6\d|G9\d|QR-CBC\d*|C35|ST64)\b/i;
@@ -212,7 +223,9 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   // Een kap/reflector/plug MET een max.-opgave maar ZONDER fitting: de lampbelasting hoort bij
   // het armatuur eronder, niet bij het plaatje.
   const isKapMetMaxW =
-    ACCESSOIRE_MAXW.test(naam) && MAX_WATT.test(naam) && !LAMP_FITTING_BREED.test(naam);
+    MAX_WATT.test(naam) &&
+    (ACCESSOIRE_ALTIJD.test(naam) ||
+      (ACCESSOIRE_MAXW.test(naam) && !LAMP_FITTING_BREED.test(naam)));
   if (
     ONDERDEEL_START.test(naam) ||
     ONDERDEEL_STERK.test(naam) ||
