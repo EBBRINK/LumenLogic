@@ -358,17 +358,21 @@ wachten op Eduards woff2's voordat er iets kan landen.
 
 Vier dingen die tijdens het bouwen bleken en die de rest van het plan raken.
 
-1. **De suite is niet groen te krijgen, om een reden buiten dit werk.** Ongeveer 275 db-tests
-   vallen om op `Invalid FS bundle size: 971 !== 6293225` — de PGlite-WASM-bundel in de
-   gedeelde `node_modules` is 971 bytes in plaats van 6,3 MB. Geverifieerd pre-existing door de
-   wijzigingen te stashen. Niet aangeraakt: die map is gedeeld met parallelle sessies. De
-   component- en app-tests (28 bestanden, alle screenshot-tests) draaien wél en zijn de basis
-   waarop stap 1 en 3 zijn beoordeeld. **Voor de volgende bouwer: verwacht geen groene
-   `bun vitest run` tot dit is opgelost.**
-2. **Twee component-tests falen pre-existing.** `components/dossier/pdf-upload.test.tsx` kan
-   niet importeren (zelfde kapotte install), en `components/data/custom-fields.test.tsx` flaket
-   op één archiveertest, maar alléén in de volle batch — losstaand draait hij groen. Beide
-   falen ook zonder de huisstijlwijzigingen; niet gaan zoeken in de tokens.
+1. **Draai `bun install` in je eigen worktree vóór je de suite vertrouwt.** Een verse worktree
+   heeft 0 pakketten; Bun lost dan omhoog op naar de `node_modules` van de hoofdrepo. Dat werkt
+   voor de component-tests, maar de db-tests vallen om op
+   `Invalid FS bundle size: 971 !== 6293225`. Die melding is misleidend: de PGlite-bundel is
+   níet corrupt (`pglite.data` is intact, 6.293.225 bytes) — hij ligt buiten de Vite-root en de
+   browsertest krijgt daardoor geen bestand maar een foutpagina van ~971 bytes. Na
+   `bun install` in de worktree draait de volledige suite: **983 van 986 tests groen, 82 van 84
+   bestanden.**
+2. **Twee bestanden falen alleen in de volle run, niet op zichzelf.**
+   `components/data/custom-fields.test.tsx` (archiveertest) en
+   `components/dossier/pdf-upload.test.tsx` (screenshot) draaien geïsoleerd samen 57/57 groen.
+   Voor custom-fields is dit met een gematchte controle vastgesteld: in dezelfde batch faalt hij
+   óók zonder de huisstijlwijzigingen, en met de drie bestanden tijdelijk terug op `origin/main`
+   draait hij 3/3 groen — net als 3/3 mét de wijzigingen. Lastafhankelijk, geen regressie.
+   **Bestempel deze twee niet als regressie voordat je ze los hebt gedraaid.**
 3. **`page.viewport()` wordt geklemd door het headless browservenster.** "Mobile" is in deze
    repo feitelijk 333×720 en "desktop" 1152×720, ongeacht wat je opgeeft — een viewport groter
    dan het venster wordt verkleind in plaats van vergroot. Geldt voor álle bestaande
