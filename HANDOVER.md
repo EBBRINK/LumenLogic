@@ -4016,3 +4016,35 @@ gewonnen, 0 van de 486 geraakt); voor `Drive` is de balans 3 tegen 3 en dus geen
 catalogus zelf: Lombardo voert tientallen artikelnummers onder één identieke naam (60× `Ago
 Applique LED 2.2K 5W Bianco`). Voor de agent is het wel verspilde ruimte — drie voorbeelden die
 één voorbeeld zijn. Kandidaat voor de volgende exportronde: toon DISTINCTE namen.
+
+### Uitslag Lombardo (run `d7dbd69a`)
+
+| oordeel | cellen | producten |
+|---|---:|---:|
+| goed | 3.908 | 59.350 |
+| onzeker | 7 | 192 |
+| nee-hoort-bij-onderdeel | 18 | 27 |
+
+val-recall 196/196 · tegenproef 12/12 · 0 onbeslist · 0 ongeldige scherven.
+De verwerker zegt **niet schoon** en dat blijft staan: 25 cellen dragen bezwaar.
+
+**De 18 echte afkeuringen zijn samen 27 producten** en vallen in vier groepen: 12× `Alim.`
+(voeding), 2× `Drive/Sensore`, 2× `Led Cob Cree … Cri80/Cri95` (losse COB-chip), 2× `Molla Vetri
+Componi` (glasklem). Allemaal poortlekken, allemaal hierboven gemeten.
+
+**De 7 `onzeker` zijn geen twijfel maar een fout-positief die we kennen.** De agent zag de vlag
+`accessoire-context` op `Lula Bracket 150 LED 2.2K 12W` en durfde niet te kiezen. De catalogus
+beslist het wel: `Lula LED 2.2K 12W Nero` bestaat óók zonder "Bracket" — het is dezelfde armatuur
+in de wandbeugel-uitvoering, 168 van de 390 Lula's. Catalogusbreed draagt `bracket` 406 namen over
+15 merken, waaronder `SANTORINI WALL BRACKET GREY` van Marset: het woord beschrijft de montagewijze
+van een armatuur, niet een los onderdeel. Dit is precies de 87,7 % fout-positief waarom
+`accessoire-context` niet in `ONDERDRUKKENDE_VERDENKINGEN` staat — nu ook aan de andere kant van
+de zwerm zichtbaar.
+
+### Nog twee termen gemeten, geen regel waard
+
+- **`cob`**: 6.274 namen, waarvan **6.164 van XAL** waar COB gewoon de lichttechniek in een
+  armatuurnaam is. Slechts 2 producten (Lombardo) zijn werkelijk een losse chip. Een regel op
+  `cob` zou 6.235 armaturen raken om er 2 te winnen.
+- **`molla`**: 18 namen. Zelfs vooraan is het niet veilig — `MOLLA W LED 3000K WHITE` van Artemide
+  Architectural is een armatuurfamilie. Werkelijk een klem: 2 producten bij Lombardo.
