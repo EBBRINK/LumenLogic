@@ -7,6 +7,7 @@ import type {
   ReviewCandidate,
   ReviewItem,
 } from "@/components/dossier/types";
+import { formatDate } from "@/lib/format";
 import { getOpenSuggestionsByLine } from "@/lib/repo/ai-suggestions";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
@@ -30,16 +31,11 @@ import {
 // op zo'n kaart werkt via de query-string (?regel&zoek, zelfde patroon als /catalog):
 // de mens zoekt, de server leest visible_products — nooit ongevraagde suggesties
 // (ijzeren regel 4).
-const dateFmt = new Intl.DateTimeFormat("nl-NL", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
+// Eén datumformaat voor de hele app (UX-audit 30 jul, bug #9): hier stond een eigen
+// nl-NL-formatter, `09-07-2026`. `null` blijft `null` — die betekent hier "nog niet
+// beoordeeld" en dat is iets anders dan een onleesbare datum.
 function fmtDate(value: Date | string | null): string | null {
-  if (!value) return null;
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? null : dateFmt.format(d);
+  return value ? formatDate(value) : null;
 }
 
 type QueueRow = Awaited<ReturnType<typeof getReviewQueue>>["pending"][number];

@@ -16,6 +16,7 @@ import {
 } from "@/lib/repo/enrichment";
 import { measureHitRate } from "@/lib/repo/evaluation";
 import { getActor, requireSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 export async function startRunAction(formData: FormData) {
   await requireSession();
@@ -54,9 +55,20 @@ export async function rejectRunAction(formData: FormData) {
   redirect("/data/enrichment");
 }
 
+// UUID-GUARD (bug #1, commit 8811d95 "Uuid-guard sluitend"). `brand_load_queue.id` is een
+// uuid-kolom: gaat er iets anders in `eq(...)`, dan gooit Postgres `invalid input syntax
+// for type uuid` (22P02), die fout wordt nergens afgevangen en de gebruiker krijgt een 500.
+// Bij een server-action is het formveld gewoon POST-body — een handmatige of kapotte
+// submit is dus geen theorie. Een niet-uuid is hier geen fout maar een no-op: er ís geen
+// rij die zo heet, en de knop hoort dan simpelweg niets te doen.
+function queueIdFrom(formData: FormData): string | null {
+  const raw = String(formData.get("queueId") ?? "").trim();
+  return isUuid(raw) ? raw : null;
+}
+
 export async function markLoadedAction(formData: FormData) {
   await requireSession();
-  const queueId = String(formData.get("queueId") ?? "").trim();
+  const queueId = queueIdFrom(formData);
   if (!queueId) return;
   await markBrandLoaded(db, queueId, await getActor());
   revalidatePath("/data/loading");
@@ -67,11 +79,14 @@ export async function markLoadedAction(formData: FormData) {
 // niet op de inlaadwachtrij. Afvoeren, niet als ingeladen markeren — dat zou onwaar zijn.
 export async function dismissBrandLoadAction(formData: FormData) {
   await requireSession();
-  const queueId = String(formData.get("queueId") ?? "").trim();
+  const queueId = queueIdFrom(formData);
   if (!queueId) return;
   await dismissBrandLoad(db, queueId, await getActor());
   revalidatePath("/data/loading");
   revalidatePath("/data");
+  // /analytics leest brand_load_queue ook (de inlaad-tegel). Zonder deze regel bleef die
+  // tegel het afgevoerde merk tonen tot de cache vanzelf verliep.
+  revalidatePath("/analytics");
 }
 
 export async function measureAction(formData: FormData) {

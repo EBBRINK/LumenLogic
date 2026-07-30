@@ -14,7 +14,7 @@ import {
   type SampleItem,
 } from "./enrichment-panels";
 import { BrandLoadQueue, type QueueRow } from "./brand-load-queue";
-import { DataCards } from "./data-cards";
+import { DATA_CARDS, DataCards } from "./data-cards";
 import {
   isCoverageGap,
   PriceListStatusTable,
@@ -173,6 +173,19 @@ const screens = {
       <EvaluationPanel lines={[]} runs={[]} measureAction={noopAction} />
     </Screen>
   ),
+  // UX-audit 30 jul: de hub met zes kaarten, inclusief de nieuwe Loading-ingang.
+  // De badges zijn dezelfde die app/data/page.tsx voedt.
+  "hub-kaarten": (
+    <Screen>
+      <DataCards
+        badge={{
+          "/data/enrichment": 1,
+          "/data/price-lists": 3,
+          "/data/loading": 2,
+        }}
+      />
+    </Screen>
+  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -182,7 +195,14 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        // `document.body` bestaat altijd, ook als de boom nog niets heeft getekend — het
+        // inlaadscherm bevat sinds de bevestigingsdialoog een client-component, en die
+        // eerste render leverde een blanco PNG op. Wachten tot er écht tekst staat.
+        await expect
+          .poll(() => document.body.textContent?.trim().length ?? 0, {
+            timeout: 5000,
+          })
+          .toBeGreaterThan(20);
         await page.screenshot({ path: `./data-${name}.${theme}.${device}.test.png` });
       });
     }
@@ -231,11 +251,60 @@ test("inlaadwachtrij: elke wachtende rij biedt óók 'Not a brand'", async () =>
   expect(
     page.getByRole("button", { name: "Not a brand" }).elements().length,
   ).toBe(2);
-  const dismissForms = document.querySelectorAll("form");
-  const queueIds = Array.from(dismissForms)
+});
+
+// ── BLOCKER, reparatie 30 jul ─────────────────────────────────────────────────────────
+// "Not a brand" was één klik op een ghost-knop en daarachter een harde delete: geen undo,
+// geen archief, geen scherm waar een afgevoerde rij nog te zien is, en de frequency (over
+// álle projecten opgeteld) weg. Twee commits eerder is ConfirmActionDialog gebouwd voor
+// precies dit gevaar en aangesloten op twee mínder ingrijpende deletes.
+test("inlaadwachtrij: 'Not a brand' vraagt eerst, en submit niets vóór de bevestiging", async () => {
+  await renderServer(
+    <Screen>
+      <BrandLoadQueue
+        rows={queue}
+        markLoadedAction={noopAction}
+        dismissAction={noopAction}
+      />
+    </Screen>,
+  );
+
+  await expect.element(page.getByText("Vergaderruimte")).toBeInTheDocument();
+
+  // Vóór de bevestiging is er GEEN form dat de rij kan afvoeren: de enige queueId-formulieren
+  // in de tabel zijn die van "Mark as loaded" (twee wachtende rijen).
+  const idsVooraf = Array.from(document.querySelectorAll("form"))
     .map((f) => f.querySelector<HTMLInputElement>('input[name="queueId"]')?.value)
     .filter(Boolean);
-  expect(queueIds).toContain("q3");
+  expect(idsVooraf).toHaveLength(2);
+
+  // De knop draagt het gewicht van zijn gevolg: destructive, niet ghost.
+  const trigger = page.getByRole("button", { name: "Not a brand" }).last();
+  expect(trigger.element().className).toContain("destructive");
+
+  await trigger.click();
+
+  // De vraag noemt het doel bij naam en zegt wat er verdwijnt — inclusief de telling.
+  await expect
+    .element(page.getByText("Remove Vergaderruimte from the queue?"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/requested 9× across all projects/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText(/no undo and no archive/)).toBeInTheDocument();
+  // Er is een weg terug.
+  await expect
+    .element(page.getByRole("button", { name: "Cancel" }))
+    .toBeInTheDocument();
+
+  // Pas nu bestaat het formulier dat de rij écht afvoert, met het juiste id.
+  const idsNa = Array.from(document.querySelectorAll("form"))
+    .map((f) => f.querySelector<HTMLInputElement>('input[name="queueId"]')?.value)
+    .filter(Boolean);
+  expect(idsNa).toContain("q3");
+  expect(idsNa).toHaveLength(3);
+
+  await page.screenshot({ path: "./data-inladen-bevestiging.light.test.png" });
 });
 
 // Zonder de actie mag de knop er niet zijn — het blok blijft bruikbaar voor aanroepers
@@ -439,6 +508,65 @@ test("data-hub: de prijslijst-badge telt élk dekkingsgat, niet alleen de verlop
   await expect
     .element(page.getByText("3", { exact: true }))
     .toBeInTheDocument();
+});
+
+// ── /data/loading als zesde hub-kaart (besluit Timo 30 jul) ──────────────────────────
+// Dit gaat BEWUST in tegen docs/rol-schermen-kaart-2.0a.md ("blijft technisch bestaan;
+// niet in de hub-kaarten"). De inlaadwachtrij was daardoor alleen via de URL of één
+// Analytics-tegel te bereiken. Zie de toelichting in data-cards.tsx; deze test staat er
+// zodat de kaart niet stilzwijgend teruggehaald wordt naar vijf.
+test("data-hub: Loading is de zesde kaart en linkt naar /data/loading", async () => {
+  expect(DATA_CARDS).toHaveLength(6);
+  expect(DATA_CARDS.at(-1)?.href).toBe("/data/loading");
+  // Geen dubbele ingangen: elke kaart één keer.
+  expect(new Set(DATA_CARDS.map((c) => c.href)).size).toBe(6);
+
+  await renderServer(
+    <Screen>
+      <DataCards badge={{}} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: /^Loading/ }))
+    .toBeInTheDocument();
+  const link = page.getByRole("link", { name: /^Loading/ }).element();
+  expect(link.getAttribute("href")).toBe("/data/loading");
+});
+
+test("data-hub: de Loading-badge telt de wachtende rijen, niet de ingeladen", async () => {
+  // Dezelfde telling als app/data/page.tsx op de rijen van listBrandLoadQueue.
+  // q1 en q3 wachten, q2 is ingeladen — een badge van 3 zou het openstaande werk
+  // overdrijven en het scherm dat hij aanwijst tegenspreken.
+  const waiting = queue.filter((q) => q.status === "wachtend").length;
+  expect(waiting).toBe(2);
+  expect(queue).toHaveLength(3);
+
+  await renderServer(
+    <Screen>
+      <DataCards badge={{ "/data/loading": waiting }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: /^Loading/ }))
+    .toBeInTheDocument();
+  const link = page.getByRole("link", { name: /^Loading/ }).element();
+  expect(link.textContent).toContain("2");
+});
+
+// De badge hangt aan href, precies zoals die van Enrichment en Price lists: bij 0 hoort
+// er niets te staan, anders leest een lege wachtrij als openstaand werk.
+test("data-hub: een lege wachtrij geeft geen Loading-badge", async () => {
+  await renderServer(
+    <Screen>
+      <DataCards badge={{ "/data/loading": 0 }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: /^Loading/ }))
+    .toBeInTheDocument();
+  const link = page.getByRole("link", { name: /^Loading/ }).element();
+  expect(link.querySelector("span")).toBeNull();
+  expect(link.textContent).not.toContain("0");
 });
 
 // Eén presentatie voor de levensfase (components/admin/brand-lifecycle-badge.tsx), dezelfde

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dossier/status-badge";
 import type { MatchStatus } from "@/components/dossier/status";
+import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type FormAction = (formData: FormData) => void | Promise<void>;
@@ -37,15 +38,8 @@ function pct(hitRate: string | number): string {
   return `${Math.round(Number(hitRate) * 100)}%`;
 }
 
-function fmtDate(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleString("nl-NL", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+// Eén datumformaat voor de hele app (UX-audit 30 jul, bug #9): hier stond een eigen
+// nl-NL-formatter zónder jaar ("09-07, 14:22") terwijl metingen over maanden lopen.
 
 export function EvaluationPanel({
   lines,
@@ -192,7 +186,7 @@ export function EvaluationPanel({
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.label}</TableCell>
                   <TableCell className="text-muted-foreground tabular-nums">
-                    {fmtDate(r.createdAt)}
+                    {formatDateTime(r.createdAt)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {pct(r.hitRate)}

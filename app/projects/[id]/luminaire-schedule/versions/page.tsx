@@ -7,6 +7,7 @@ import type {
   VersionSnapshotLine,
 } from "@/components/dossier/version-history";
 import type { MatchStatus } from "@/components/dossier/status";
+import { formatDate } from "@/lib/format";
 import { getDossier } from "@/lib/repo/dossiers";
 import {
   datasheetsByProducts,
@@ -22,12 +23,6 @@ import { snapshotAction } from "./actions";
 // Armaturenboek-versies (G-02/03/04): binnen de dossier-layout → fragment. De layout levert
 // de kop + tabs; deze pagina rendert de versiehistorie, de diff tussen twee versies en van de
 // nieuwste versie de regels mét locatie en datasheets.
-const dateFmt = new Intl.DateTimeFormat("nl-NL", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
 function toLine(
   r: ArmatuurSnapshotRow,
   datasheets?: { filename: string; url: string }[],
@@ -121,7 +116,7 @@ export default async function VersiesPage({
       version: v.version,
       note: v.note,
       actor: v.actor,
-      createdAt: dateFmt.format(new Date(v.createdAt)),
+      createdAt: formatDate(v.createdAt),
       lineCount: snapshotRows(v.snapshot).length,
       compareHref: prev ? `?from=${prev.id}&to=${v.id}` : null,
     };

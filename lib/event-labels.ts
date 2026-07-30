@@ -1,3 +1,5 @@
+import { acronymWord, capitalizeFirst, splitIdentifier } from "@/lib/acronyms";
+
 // Leesbare labels voor event-acties. Sprint 2.0a: het Event-log-scherm onder Data heeft een
 // EIGEN kopie nodig, niet een import — `components/analytics-view.tsx` blijft byte-stabiel
 // (guardrail 1, HANDOVER.md "Fase 2 afgerond": het is het fundament van 2.1 en mag niet
@@ -9,6 +11,10 @@
 // pillen als `leesroute_specs_backfilled` op het scherm. De map is aangevuld en de
 // weergave loopt nu via `eventLabel()`, dat een onbekende sleutel alsnog leesbaar maakt.
 // Uitbreiden gebeurt HIER; de analytics-bestanden blijven onaangeraakt.
+//
+// Correctie 30 jul: de commit die dit aanvulde schreef "~120 labels". Nageteld zijn het er
+// **102**. Wat wél klopt: van de 97 verschillende acties die de codebase logt ontbreekt er
+// geen enkele.
 export const ACTION_LABEL: Record<string, string> = {
   search: "Search",
   match: "Match",
@@ -128,20 +134,9 @@ export const ACTION_LABEL: Record<string, string> = {
   xis_phase_changed: "XIS phase changed",
 };
 
-// Woorden die als afkorting op het scherm horen; anders zou de fallback er "Ocr" of "Ai"
-// van maken. Alleen nodig voor sleutels die (nog) niet in ACTION_LABEL staan.
-const ACRONYMS: Record<string, string> = {
-  ai: "AI",
-  ocr: "OCR",
-  pdf: "PDF",
-  pdl: "PDL",
-  xis: "XIS",
-  llm: "LLM",
-  csv: "CSV",
-  api: "API",
-  id: "ID",
-  url: "URL",
-};
+// De afkortingentabel stond hier als privékopie; hij staat nu in lib/acronyms.ts omdat
+// `fieldLabel()` in lib/matching/tolerances.ts er precies zo een nodig had en er zonder
+// stond ("IP" werd daar "Ip"). Eén tabel, twee vangnetten.
 
 /**
  * Leesbaar label voor één event-actie. Onbekende sleutels worden niet ruw doorgegeven maar
@@ -151,13 +146,34 @@ const ACRONYMS: Record<string, string> = {
 export function eventLabel(action: string): string {
   const known = ACTION_LABEL[action];
   if (known) return known;
-  const words = action.split("_").filter(Boolean);
+  const words = splitIdentifier(action);
   if (words.length === 0) return action;
-  return words
-    .map((w, i) => {
-      const acronym = ACRONYMS[w];
-      if (acronym) return acronym;
-      return i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w;
-    })
-    .join(" ");
+  return capitalizeFirst(words.map(acronymWord).join(" "));
+}
+
+// Entiteiten zoals ze in de events-tabel staan. Reparatie 30 jul: de Entity-badge in het
+// event-log rendert de ruwe kolomwaarde — er stond letterlijk `spec_line` op het scherm.
+// Bug #8 ("geen ontwikkelaarstaal") hield één kolom te vroeg op.
+const ENTITY_LABEL: Record<string, string> = {
+  brand: "Brand",
+  brand_upload: "Brand upload",
+  dossier: "Project",
+  import_run: "Import",
+  lead: "Lead",
+  organization: "Organization",
+  price_list: "Price list",
+  product: "Product",
+  quote: "Quote",
+  search: "Search",
+  spec_line: "Line",
+  xis_export: "XIS export",
+};
+
+/** Leesbaar label voor de entiteit van een event; zelfde vangnet als `eventLabel()`. */
+export function entityLabel(entity: string): string {
+  const known = ENTITY_LABEL[entity];
+  if (known) return known;
+  const words = splitIdentifier(entity);
+  if (words.length === 0) return entity;
+  return capitalizeFirst(words.map(acronymWord).join(" "));
 }

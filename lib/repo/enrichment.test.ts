@@ -384,6 +384,19 @@ test("dismissBrandLoad op een onbekend id doet niets en gooit niet", async () =>
   expect(res).toBeNull();
 });
 
+// REPARATIE 30 jul, bevinding 2: de queueId komt uit FormData en ging ongefilterd in
+// `eq(brandLoadQueue.id, …)`. Dat is een uuid-kolom, dus Postgres gooit `invalid input
+// syntax for type uuid` (22P02) — nergens afgevangen, dus een 500. Eén commit ná
+// 8811d95 "Uuid-guard sluitend". Beide wachtrij-acties, want het gat in markBrandLoaded
+// was ouder.
+test("de wachtrij-acties gooien niet op een id dat geen uuid is", async () => {
+  const db = await createTestDb();
+  for (const rommel of ["not-a-uuid", "", "1", "'; drop table brands; --"]) {
+    await expect(dismissBrandLoad(db, rommel, "tester")).resolves.toBeNull();
+    await expect(markBrandLoaded(db, rommel, "tester")).resolves.toBeNull();
+  }
+});
+
 // O5: de hermatch is alias-aware. Een regel met boek-woord 'Intralight' krijgt via de
 // gecureerde alias de canonieke wachtrij-key 'intralighting'; als Intra-lighting later
 // producten krijgt moet markBrandLoaded die regel pakken — zonder de alias-map bleef

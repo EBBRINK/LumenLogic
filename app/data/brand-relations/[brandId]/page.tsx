@@ -12,6 +12,7 @@ import { BrandMessageBlock } from "@/components/data/brand-message-block";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
 import { BrandVisibilityBlock } from "@/components/data/brand-visibility-block";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
+import { formatDate } from "@/lib/format";
 import { TemplateUploadCard } from "@/components/data/template-upload-card";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
 import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
@@ -173,7 +174,9 @@ export default async function MerkrelatieDetailPage({
                     {String(upload.payload?.filename ?? "Filled template")}
                   </Link>
                   <span className="ml-2 text-xs text-muted-foreground tabular-nums">
-                    {upload.createdAt.toISOString().slice(0, 10)}
+                    {/* Eén datumformaat (UX-audit 30 jul, bug #9): hier stond een
+                        kale ISO-slice, "2026-07-30". */}
+                    {formatDate(upload.createdAt)}
                   </span>
                 </li>
               ))}

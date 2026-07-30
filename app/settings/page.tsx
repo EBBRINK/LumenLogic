@@ -7,7 +7,6 @@ import { XisBlock } from "@/components/settings/xis-block";
 import type { XisEnvironment } from "@/components/settings/xis-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  getLlmSpend,
   getLlmSpendByPurpose,
   getSetting,
   listAllowedEmails,
@@ -27,17 +26,22 @@ export default async function InstellingenPage() {
   // zodat je jezelf niet kunt uitsluiten (UX-audit bug #5).
   const session = await requireSession();
 
-  const [emails, budget, spent, spendByPurpose, xisEnv, xisKey] =
-    await Promise.all([
-      listAllowedEmails(db),
-      getSetting<number>(db, "llm_budget_eur"),
-      getLlmSpend(db),
-      // Volledige uitsplitsing (UX-audit 30 jul, bug #10): eerder twee losse queries op
-      // 'vangnet' en 'ocr', waardoor 'leesroute' stil in het totaal bleef zitten.
-      getLlmSpendByPurpose(db),
-      getSetting<string>(db, "xis_environment"),
-      getSetting<string>(db, "xis_api_key"),
-    ]);
+  const [emails, budget, spendByPurpose, xisEnv, xisKey] = await Promise.all([
+    listAllowedEmails(db),
+    getSetting<number>(db, "llm_budget_eur"),
+    // Volledige uitsplitsing (UX-audit 30 jul, bug #10): eerder twee losse queries op
+    // 'vangnet' en 'ocr', waardoor 'leesroute' stil in het totaal bleef zitten.
+    getLlmSpendByPurpose(db),
+    getSetting<string>(db, "xis_environment"),
+    getSetting<string>(db, "xis_api_key"),
+  ]);
+
+  // Het totaal is de som van de uitsplitsing, niet een tweede query (reparatie 30 jul).
+  // getLlmSpend() en getLlmSpendByPurpose() draaien over exact dezelfde rijen met exact
+  // dezelfde where-clausule; twee ongebundelde queries konden dus alleen nog uiteenlopen
+  // door een rij die er tussen de twee bij komt — en dan zegt het scherm dat de
+  // uitsplitsing niet optelt, precies de klacht van bug #10.
+  const spent = spendByPurpose.reduce((som, r) => som + r.eur, 0);
 
   const environment: XisEnvironment =
     xisEnv === "productie" ? "productie" : "sandbox";

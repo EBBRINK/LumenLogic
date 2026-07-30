@@ -2592,3 +2592,39 @@ De XIS-dialoog wordt **niet** meer in zijn geheel verborgen: hij is ook de enige
   → 200 dialoogtriggers, **0** dialoog-inhoud in de DOM (Radix portalt de inhoud pas bij openen),
   4631 DOM-knopen totaal (~23 per rij, lineair) en ~334 ms render. Geen reden tot herontwerp;
   hier genoteerd zodat de volgende die het ziet niet opnieuw gaat meten.
+
+---
+
+## 2026-07-30 — Eén locale-regel voor getallen en datums (besluit Timo)
+
+`docs/DESIGN.md` kent geen locale-regel, en per DESIGN.md-regel 2 hoort zo'n gat bij Timo. Hij
+is gesteld en luidt:
+
+> **Getallen en bedragen volgen de EU-conventie** (`211.317`, `€ 265,00`). **Datums dragen een
+> geschreven maand** (`30 Jul 2026`, met tijd `30 Jul 2026, 12:24`), 24-uursklok.
+
+De motivering staat ook als commentaar in `lib/format.ts`. Kort: het argument "en-GB, want de UI
+is Engels" is gesneuveld — dat zou net zo goed `211,317` afdwingen, en dat willen we niet. Het
+échte argument is smaller: de dd/mm-vs-mm/dd-verwarring bestaat alleen bij een datum in lóuter
+cijfers. Een geschreven maand is in elke locale maar op één manier te lezen en staat daarom prima
+naast EU-getallen. De `en-GB`-locale in de formatter is dus een implementatiedetail voor de
+woordvolgorde dag-maand-jaar, geen uitspraak over de rest van de app.
+
+**Tijdzone: `Europe/Amsterdam`, hard gepind in beide formatters.** Dit was een echte
+productiefout, geen cosmetica. Zonder `timeZone` volgt `Intl` de tijdzone van het proces —
+lokaal Europe/Amsterdam, **op Vercel UTC**. Een event van 11:00 stond in productie dus als
+"09:00" op het scherm, in een formaat dat er gezaghebbend uitziet en de zone niet noemt. De
+gebruikers zijn Nederlands en de events zijn hun werkdag. Bijvangst: de weergave is nu ook in
+de tests deterministisch — `TZ=UTC bun vitest run lib/format.test.ts` hoort groen te zijn, en
+dat is de test die telt.
+
+**Kale kalenderdatums.** `price_lists.valid_until`, `quotes.quote_date` en
+`manual_price_valid_until` zijn `date()`-kolommen: die waarden hebben geen tijdstip en dus geen
+zone. `formatDate()` herkent de vorm `YYYY-MM-DD` en leest hem zoals hij er staat, in plaats van
+er een zone overheen te zetten (dat is de klassieke off-by-one: middernacht UTC wordt in een
+zone vóór UTC de vorige dag). Eén scherpe rand blijft: geef zo'n waarde als **string** door, niet
+als `new Date(...)` — dan is de zone-informatie al weg vóór de formatter hem ziet.
+
+**Nog open:** `app/projects/[id]/quote/page.tsx` heeft nog een eigen `nl-NL`-datumformatter
+(regel ~86). Die stond tijdens deze ronde bij een parallelle sessie; hij hoort ook naar
+`formatDate()`.

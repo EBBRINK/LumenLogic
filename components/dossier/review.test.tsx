@@ -387,8 +387,10 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
     .toBeInTheDocument();
 
   // UX-audit 30 jul (bug #8): de afwijkingenlijst op de kaart droeg de ruwe veldsleutel.
+  // Reparatie 30 jul (bevinding 3): het label begint een lijstitem, dus het is de
+  // begin-van-de-regel-vorm — één conventie met de Field-kolom van de afwijkingentabel.
   await expect
-    .element(page.getByText(/beam angle: requested 24 → delivered 36/))
+    .element(page.getByText(/Beam angle: requested 24 → delivered 36/))
     .toBeInTheDocument();
   expect(document.body.textContent).not.toContain("beamAngle");
 });

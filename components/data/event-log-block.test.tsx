@@ -96,8 +96,63 @@ test("events: payload staat als sleutel/waarde-lijst, niet als ruwe JSON", async
     </Screen>,
   );
   await expect.element(page.getByText("Status:")).toBeInTheDocument();
-  await expect.element(page.getByText("rood")).toBeInTheDocument();
+  // Reparatie 30 jul, bevinding 5: de statuswaarden zijn NL enum-waarden in de database
+  // ("rood"); op het scherm horen ze Engels, net als overal elders in de app.
+  await expect.element(page.getByText("red")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("rood");
   expect(document.body.textContent).not.toContain('{"status"');
+});
+
+// Reparatie 30 jul, bevinding 5: de vorige versie haalde élke payload-sleutel door
+// fieldLabel(). Die sleutels zijn interne loggegevens en voor een groot deel Nederlands —
+// `reden`, `regelsMetSegment`, `tekstLengte` werden zo "Reden:", "Regels met segment:",
+// "Tekst lengte:": ontwikkelaarstaal met een nette pet op. Zonder Engels label: verbergen.
+test("events: een payload-sleutel zonder Engels label wordt verborgen, niet geraden", async () => {
+  await renderServer(
+    <Screen>
+      <EventsBlock
+        events={[
+          {
+            id: "e20",
+            entity: "import_run",
+            action: "leesroute_segmenten_verrijkt",
+            actor: "systeem",
+            createdAt: "2026-07-06T09:00:00Z",
+            payload: {
+              reden: "no_key",
+              regelsMetSegment: 12,
+              tekstLengte: 4096,
+              // Eén sleutel die er wél in staat: de rij mag niet zomaar leeg worden.
+              lineCount: 12,
+            },
+          },
+        ]}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Lines:")).toBeInTheDocument();
+  for (const dutch of [
+    "Reden",
+    "reden",
+    "Regels met segment",
+    "regelsMetSegment",
+    "Tekst lengte",
+    "tekstLengte",
+  ]) {
+    expect(document.body.textContent).not.toContain(dutch);
+  }
+});
+
+// Reparatie 30 jul, bevinding 6: bug #8 hield één kolom te vroeg op — de Entity-badge
+// rendeerde de ruwe kolomwaarde, dus er stond `spec_line` op het scherm.
+test("events: de entiteit-badge draagt een label, geen snake_case-kolomwaarde", async () => {
+  await renderServer(
+    <Screen>
+      <EventsBlock events={events} />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Line", { exact: true })).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("spec_line");
 });
 
 // UX-audit 30 jul (bug #8): de kern van de fix is de FALLBACK. `ocr_page_done` staat niet
@@ -137,6 +192,10 @@ test("events: een onbekende actie lekt niet ruw maar wordt een zin", async () =>
 
 // UX-audit 30 jul (bug #9): het log droeg zijn eigen nl-NL-formatter zónder jaar
 // ("6 jul, 11:00") terwijl het log over maanden loopt. Eén formatter, mét jaar.
+//
+// Reparatie 30 jul, bevinding 8: deze assert klopte alleen op een machine die op UTC+2
+// staat — onder `TZ=UTC` (zoals Vercel draait) rendeerde de cel "09:00" en viel de test om.
+// De formatter pint nu Europe/Amsterdam, dus 09:00Z is hier én in productie 11:00.
 test("events: het moment draagt een jaartal en is Engels", async () => {
   await renderServer(
     <Screen>

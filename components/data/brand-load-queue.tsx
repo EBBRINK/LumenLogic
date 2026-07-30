@@ -1,6 +1,7 @@
 // Blauw-inlaadwachtrij (H-08): merken die als datagat (blauw) gevraagd zijn, gesorteerd op
 // hoe vaak. "Markeer als ingeladen" hermatcht meteen alle blauwe/open regels van dat merk.
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
   Table,
   TableBody,
@@ -56,7 +57,13 @@ export function BrandLoadQueue({
           const wachtend = r.status === "wachtend";
           return (
             <TableRow key={r.id}>
-              <TableCell className="font-medium">{r.displayName}</TableCell>
+              {/* whitespace-normal: TableCell zet van zichzelf `whitespace-nowrap`, dus
+                  zonder dit kan de tabel bij 375px nergens smaller worden dan de som van
+                  alle voluit gezette tekst — en dan schuift de Action-kolom het beeld uit
+                  (reparatie 30 jul, bevinding 11). */}
+              <TableCell className="whitespace-normal font-medium">
+                {r.displayName}
+              </TableCell>
               <TableCell className="text-right tabular-nums">
                 {r.frequency}×
               </TableCell>
@@ -73,25 +80,51 @@ export function BrandLoadQueue({
               </TableCell>
               <TableCell className="text-right">
                 {wachtend ? (
-                  <div className="flex items-center justify-end gap-2">
+                  // Reparatie 30 jul, bevinding 11: op 375px stond "Not a brand" volledig
+                  // buiten beeld en was zelfs "Mark as lo…" afgekapt. Onder sm stapelen de
+                  // twee knoppen; vanaf sm staan ze weer naast elkaar.
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
                     <form action={markLoadedAction}>
                       <input type="hidden" name="queueId" value={r.id} />
-                      <Button type="submit" size="sm" variant="outline">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        variant="outline"
+                        className="h-auto w-full py-1 whitespace-normal sm:h-7 sm:w-auto sm:py-0 sm:whitespace-nowrap"
+                      >
                         Mark as loaded
                       </Button>
                     </form>
                     {dismissAction && (
-                      <form action={dismissAction}>
-                        <input type="hidden" name="queueId" value={r.id} />
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="ghost"
-                          title={`Remove ${r.displayName} from the load queue — it is not a brand`}
-                        >
-                          Not a brand
-                        </Button>
-                      </form>
+                      // BLOCKER, reparatie 30 jul. Dit was één klik op een `ghost`-knop —
+                      // de mínst opvallende bediening van de rij — en daarachter zat een
+                      // harde DELETE zonder undo, zonder archief en zonder enig scherm
+                      // waar een afgevoerde rij nog te zien is. Weg is ook de `frequency`,
+                      // opgeteld over álle projecten; die telling is niet te reconstrueren.
+                      //
+                      // Twee commits eerder is components/confirm-action-dialog.tsx
+                      // gebouwd voor precies dit gevaar en aangesloten op de spec-regel en
+                      // de login-allowlist — allebei mínder ingrijpend dan deze (een
+                      // spec-regel is van één dossier, deze rij is app-breed). Dezelfde
+                      // dialoog dus, en `destructive` in plaats van `ghost`: het gewicht
+                      // van de knop hoort bij het gevolg te passen.
+                      <ConfirmActionDialog
+                        trigger={
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            className="h-auto w-full py-1 whitespace-normal sm:h-7 sm:w-auto sm:py-0 sm:whitespace-nowrap"
+                          >
+                            Not a brand
+                          </Button>
+                        }
+                        title={`Remove ${r.displayName} from the queue?`}
+                        description={`${r.displayName} was requested ${r.frequency}× across all projects. Removing it deletes the queue row and that count for good — there is no undo and no archive. The lines that requested it stay blue, and the same text can return through a new import.`}
+                        confirmLabel="Not a brand"
+                        action={dismissAction}
+                        fields={{ queueId: r.id }}
+                      />
                     )}
                   </div>
                 ) : (

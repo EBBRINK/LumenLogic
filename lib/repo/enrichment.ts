@@ -44,6 +44,7 @@ import { runMatcher } from "./matching";
 import { brandKeyOf } from "@/lib/matching/engine";
 import { FIELDS, parseProductName } from "@/lib/enrichment/parser";
 import { OPTIC_SOURCE, opticBeamAngle } from "@/lib/enrichment/optic-code";
+import { isUuid } from "@/lib/uuid";
 
 // De parser-veldnamen komen 1-op-1 overeen met de kolomnamen in products (db/schema.ts),
 // dus een geparste key kan rechtstreeks als drizzle-set-sleutel dienen. Alleen de coërcie
@@ -643,13 +644,25 @@ export async function dismissBrandLoad(
   queueId: string,
   actor?: string,
 ): Promise<{ displayName: string } | null> {
+  // `brand_load_queue.id` is een uuid-kolom. Zonder deze regel gooit Postgres op een
+  // niet-uuid `invalid input syntax for type uuid` (22P02) en wordt dat een 500. Hier, en
+  // niet alléén in de server-action: dezelfde reden waarom lib/repo/brand-portal.ts de
+  // guard in de gedéélde resolver heeft — anders geeft elke nieuwe aanroeper hem opnieuw.
+  if (!isUuid(queueId)) return null;
   const [q] = await db
     .select()
     .from(brandLoadQueue)
     .where(eq(brandLoadQueue.id, queueId))
     .limit(1);
   if (!q) return null;
-  await db.delete(brandLoadQueue).where(eq(brandLoadQueue.id, queueId));
+  // LOGGEN VÓÓR DELETEN, met opzet (reparatie 30 jul). `db.transaction()` bestaat hier
+  // niet: neon-http (productie) gooit daarop — zie de toelichting in lib/repo/ocr.ts en
+  // template-return.ts. Twee losse schrijfacties dus, en dan is de volgorde het enige
+  // wat je nog kunt kiezen. Andersom (delete, dan loggen) kan de rij weg zijn zonder één
+  // spoor als het loggen faalt, en dat is precies de belofte van ijzeren regel 5 — met de
+  // frequency, opgeteld over álle projecten, als enige verlies. Nu is de slechtste
+  // uitkomst een event voor een rij die er nog staat: zichtbaar, en met één klik te
+  // herhalen.
   await logEvent(db, {
     entity: "brand",
     entityId: null,
@@ -662,6 +675,7 @@ export async function dismissBrandLoad(
       reason: "not_a_brand",
     },
   });
+  await db.delete(brandLoadQueue).where(eq(brandLoadQueue.id, queueId));
   return { displayName: q.displayName };
 }
 
@@ -671,6 +685,8 @@ export async function markBrandLoaded(
   queueId: string,
   actor?: string,
 ): Promise<{ rematched: number } | null> {
+  // Zelfde uuid-guard als bij dismissBrandLoad; dit gat was hier ouder.
+  if (!isUuid(queueId)) return null;
   const [q] = await db
     .select()
     .from(brandLoadQueue)
