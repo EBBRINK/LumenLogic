@@ -3969,3 +3969,50 @@ maxWattage op. De regel uit ronde 4 vangt dit catalogusbreed.
 een motor ópnemen, geen motoren. Een grove `light engine`-regel zou precies die vijf weren. Zelfde
 patroon als `TRACK ADAPTER` (192 XAL-armaturen) en `POWER SUPPLY`: de term staat in beide rollen
 in de catalogus, en alleen de POSITIE scheidt ze. Er is hier geen regel gebouwd.
+
+---
+
+## 2026-07-30 — Lombardo-zwerm: twee poortlekken en een vierde manier waarop de val zich verraadt
+
+Run `d7dbd69a-4836-4a52-a430-55255bc0a136`, 3.933 echte cellen, 17 scherven van 250.
+
+### De val verraadt zich nu aan zijn TWEELING
+
+Vijf agents schreven het onafhankelijk op, in hun eigen woorden: *"elke nee-cel is een duplicaat
+van een naastgelegen goede cel — zelfde naamvorm en dezelfde productnamen, alleen het getal is
+fout"*, *"opzettelijk geplante afwijkers"*, *"gif-cellen"*. Dat klopt: `zwerm-export.ts` bouwt een
+val door een ECHTE cel te kopiëren en de waarde te vervalsen, en die kopie belandt in dezelfde
+scherf als het origineel. De positie is nu willekeurig, het voorvoegsel is weg, de vervalsingsvorm
+varieert — maar zolang het origineel ernaast ligt, is de val herkenbaar zonder hem te lezen.
+
+**Vierde slot, nog te bouwen:** de bron van een val hoort NIET in dezelfde scherf te zitten. Dat
+stond al als uitgesteld punt in de vorige sessie; vijf onafhankelijke meldingen maken het urgent.
+Tot dat er is, geldt voor Kreon én Lombardo: **de val-recall is een ondergrens, geen bewijs van
+zorgvuldig lezen.**
+
+### Twee poortlekken die de zwerm vond, beide Italiaans
+
+| vorm | waar | door de poort mét een waarde | risico van een grove regel |
+|---|---|---|---|
+| `Alim.` / `Alim` (alimentatore = voeding) | Lombardo 93, Egoluce 65, Flos 15, Artemide Arch. 6 | **37** (48 werden al geweerd op een andere grond) | 486 namen dragen `ALIM` NIET vooraan — `ALPHABET OF LIGHT S ALIM 6MT`, `KIT ALIM. BLL`. Een regel op de hele naam raakt die |
+| `Drive` (zonder r) | 6 in totaal | **6** | 3 daarvan zijn `FARETTO DRIVE 24V 4000K` — *faretto* is Italiaans voor spot, dus **Drive is daar een familienaam** |
+
+Zelfde vorm als `TRACK ADAPTER`, `POWER SUPPLY` en `light engine`: de term staat in beide rollen
+in de catalogus en alleen de POSITIE scheidt ze. Voor `Alim.` is een vooraan-regel gratis (37
+gewonnen, 0 van de 486 geraakt); voor `Drive` is de balans 3 tegen 3 en dus geen regel waard.
+**Geen van beide is gebouwd** — dit gaat door de gewone cyclus: probleem, plan, dan pas bouwen.
+
+### Wat WEL bevestigd is
+
+- **De tegenproef werkt.** Vier `Driver …`-producten die de poort weerde zijn ononderscheidbaar
+  meegemengd; alle vier werden door de agents `nee-hoort-bij-onderdeel` genoemd. Het anker is dus
+  niet te grof — dat is de toets die bij Kreon niet gedaan kón worden.
+- **Namen die met driver/converter/voeding/trafo BEGINNEN**: 537 in de catalogus, over 12 merken,
+  en **nul** komen er met een waarde door de poort (`scripts/meet-driver-vooraan.ts`).
+
+### Een detail in de scherfopbouw
+
+434 cellen (10,5 %) tonen drie keer dezelfde productnaam. Dat is geen exportfout maar de
+catalogus zelf: Lombardo voert tientallen artikelnummers onder één identieke naam (60× `Ago
+Applique LED 2.2K 5W Bianco`). Voor de agent is het wel verspilde ruimte — drie voorbeelden die
+één voorbeeld zijn. Kandidaat voor de volgende exportronde: toon DISTINCTE namen.
