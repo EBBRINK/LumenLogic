@@ -389,11 +389,32 @@ Nemen we dimbaarheid mee, dan vervalt die controle: tno vraagt dimbaarheid op al
 gaat dus meebewegen. Dat is een concreet argument voor gefaseerd vullen dat vóór deze meting niet
 op tafel lag.
 
-**Eén concrete voorspelling voor de nameting.** Lr302 vraagt CRI≥92. XAL-namen dragen `CRI90`
-(11 raadhuis-regels vragen ≥90, dus 90 is de gangbare XAL-waarde). 90 < 92 → `judgeCri` geeft
-**rood**. Krijgt Lr302 na de vulling XAL-kandidaten, dan wordt die regel rood — en dat is de
-categorie *eerlijker geworden*, niet regressie: het bestek vraagt 92 en XAL levert 90. Als de
-nameting dit precies zo laat zien, is dat bevestiging dat de keten werkt, geen alarm.
+**De voorspelling voor de nameting — herzien op 30 jul.** Een CRI-eis is niet genoeg; er moet ook
+een XAL-kandidaat zijn. Uit de nulmeting-JSON blijkt dat maar **vier** raadhuis-regels merk XAL
+dragen:
+
+| regel | status | rang | vraagt |
+|---|---|---|---|
+| Lr301 | geel | 1 | CRI≥90 |
+| Lr303 | geel | 1 | CRI≥90 |
+| Lw001 | open | 2 | CRI≥90 |
+| Lw002 | geel | 2 | CRI≥90 |
+
+De overige 27 raadhuis-regels zijn Bega (8), Exenia, Etap of merkloos (17). Die kunnen door een
+XAL-vulling niet bewegen, hoeveel CRI ze ook vragen.
+
+Rood is bij deze vier **niet** de verwachting: ze vragen alle CRI≥90 en XAL draagt 90, 95, 97 of
+98. Rood kan alleen als de best passende kandidaat CRI80 blijkt te dragen.
+
+> ⚠️ **Eerder fout voorspeld, hier vastgelegd zodat het niet terugkomt.** Ik schreef dat `Lr302`
+> rood zou worden omdat die CRI≥92 vraagt terwijl XAL 90 levert. `Lr302` is een **Exenia**-regel
+> en staat op `blauw` — dat merk is niet ingeladen. Ik nam aan dat de hele `Lr3xx`-serie XAL was
+> omdat `Lr301` en `Lr303` dat zijn. Een XAL-vulling raakt die regel niet.
+
+**De controlegroep is sterker dan gedacht.** `tno` heeft óók vier XAL-regels (`Lr302`–`Lr305`,
+alle `open`, alle met een XAL top-1 kandidaat) — maar geen enkele tno-regel vraagt CRI. Dan telt
+`cri` niet mee in `judgeCandidate` en niet in `specScoreSql`. Juist omdát er XAL-kandidaten zijn,
+is stilstand een echte toets: het bewijst dat de vulling alleen werkt via het gevraagde veld.
 
 Meetnoot: `kvk` (0/48) en `dordrecht` (0/18) lezen zonder `--ai` geen enkele regel — die hebben
 de leesroute respectievelijk OCR nodig, met echte betaalde calls
