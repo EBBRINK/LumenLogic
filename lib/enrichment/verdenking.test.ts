@@ -282,3 +282,16 @@ test("besturingsapparatuur draagt de schakellast, niet een armatuurvermogen", ()
     ),
   ).toBe(true);
 });
+
+// Draadloze besturingsmodule, gevonden in de derde zwermronde. Gemeten: 48 namen met
+// "WIRELESS … CONTROL", 4 met een landend wattage. Het KALE woord CONTROL mag niet — dat
+// raakt 128 namen waaronder TossB's "ROUND CONTROL MINI Arm 550mm - 6W LED", een armatuur.
+test("een draadloze besturingsmodule is een onderdeel, een armatuur met CONTROL in de naam niet", () => {
+  expect(
+    vlaggen("STREX WIRELESS CASAMBI CONTROL B 8W").some((v) => v.endsWith(":product-is-onderdeel")),
+  ).toBe(true);
+  expect(
+    vlaggen("ROUND CONTROL MINI Arm 550mm - 6W LED 2700K - Dim Triac"),
+  ).not.toContain("maxWattage:product-is-onderdeel");
+  expect(parseProductName("ROUND CONTROL MINI Arm 550mm - 6W LED 2700K").maxWattage).toBe(6);
+});

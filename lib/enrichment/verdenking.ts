@@ -134,7 +134,12 @@ const LAMP_FITTING_BREED =
 // Besturingsapparatuur die met zijn eigen soortnaam begint. `DIMMER` staat in 20 namen over zes
 // merken en levert maar 2 landende wattages op — klein, maar het is per definitie de
 // SCHAKELLAST en nooit het vermogen van een armatuur.
-const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b/i;
+//
+// `WIRELESS … CONTROL` staat erbij na de derde zwermronde: "STREX WIRELESS CASAMBI CONTROL B 8W"
+// is een draadloze besturingsmodule. Gemeten 48 namen, 4 met een landend wattage, alle vier W&D.
+// Het KALE woord CONTROL mag niet: dat raakt 128 namen waaronder TossB's "ROUND CONTROL MINI Arm
+// 550mm - 6W LED 2700K", en dat is gewoon een armatuur.
+const BESTURING = /^\s*DIMMER\b|\bDALI\s+SELV\s+DEVICE\b|\bWIRELESS\b[^|]*\bCONTROL\b/i;
 
 // Twee termen mogen ÓÓK verderop in de naam staan, en dat is geen verzwakking van het anker
 // maar een gemeten uitzondering. "POWER SUPPLY" en "SURF. POWER" zijn samenstellingen die niet
