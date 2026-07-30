@@ -141,7 +141,12 @@ De 13 bestaande dossiers krijgen de Brink-org.
    memberships voor de 3 bestaande users.
 4. **Admin-scherm** — PIN aanmaken/tonen/kopieerbaar mailsjabloon in `/admin/users`.
 5. **Activatiescherm** — nieuw `/activate`: `InputOTP` + wachtwoord kiezen.
-6. **Loginscherm** — `app/login/page.tsx` van magic link naar wachtwoord.
+6. **Loginscherm** — `app/login/page.tsx` krijgt het wachtwoordpad **ernáást** het bestaande
+   magic-link-pad. ⚠️ **Corrigeert een fout in de eerste versie van deze briefing** (zie G35):
+   daar stond "van magic link naar wachtwoord", en dat botst frontaal met G32. Zou deploy 1 de
+   magic link meteen weghalen, dan komt niemand meer binnen — ook niet in `/admin` om de eerste
+   PIN aan te maken. Magic link eruit halen is **deploy 2**, een aparte stap ná bewezen
+   wachtwoord-login.
 
 Stuk 1–3 is het fundament. 4, 5 en 6 leunen erop en zijn onderling wél onafhankelijk.
 

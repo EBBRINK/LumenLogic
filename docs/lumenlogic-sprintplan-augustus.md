@@ -1392,6 +1392,19 @@ staat in `docs/sprint3-1-briefing.md`; hier alleen de besluiten zelf.
   ingelogde gebruiker mag zelf zijn wachtwoord wijzigen met opgave van zijn huidige wachtwoord —
   C10 regelde alleen "vergeten", niet "veranderen".
 
+**Besluit G35 (30 jul) — sprintmasterfout: de 3.1-briefing sprak zichzelf tegen op het lock-out-risico.**
+De bouwsessie vond binnen enkele minuten een spanning tussen G32 en stuk 6 van de briefing. G32 zegt
+"wachtwoord-auth eerst ernáást, magic link pas eruit als Timo én Eduard bewezen met wachtwoord
+binnenkomen"; stuk 6 zei "loginscherm van magic link naar wachtwoord". Met 0 van de 3 accounts met een
+wachtwoord zou het uitvoeren van stuk 6 in deploy 1 iederéén buitensluiten — ook uit `/admin`, waar de
+eerste PIN aangemaakt moet worden. Precies de kip-ei die G32 juist moest voorkomen. De bouwsessie loste
+het correct op (deploy 1 = beide paden naast elkaar) en meldde het als aanname in plaats van stil door
+te bouwen — dat is exact het gedrag dat de werkwijze vraagt. Briefing gecorrigeerd bij stuk 6.
+**Les:** een besluit in een tabel opnemen is niet genoeg; als de uitwerkingsparagraaf het besluit
+tegenspreekt, wint in de praktijk de paragraaf, want daar bouwt de sessie uit. Dit is de zevende
+briefingfout die door een bouwsessie is gevangen sinds week 1 — het vangnet werkt, de briefingdiscipline
+nog niet.
+
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
 - *Given* de project-queries, *then* zijn lijst, detail, regels, review, estimate en importruns org-gescoped — een extern account kan geen enkel object van een andere org opvragen (directe-URL-test).
