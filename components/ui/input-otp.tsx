@@ -54,13 +54,19 @@ function InputOTPSlot({
       className={cn(
         // Beweging: 150ms ease-out (kit §8). Geen schaalsprong — alleen rand en vlak.
         //
-        // Breedte is elastisch, geen vaste w-10. Acht vakjes van 40px plus tussenruimte
-        // meten ~388px en passen dus niet op een telefoon van 375px: het achtste vakje viel
-        // stil weg achter de overflow van de kaart. `flex-1` met een ondergrens van 28px en
-        // een bovengrens van 40px laat de rij meekrimpen tot hij past en houdt hem op
-        // desktop op de maat uit de kit. Hoogte blijft 44px (kit §6, minimum voor elk
-        // invoerveld) — er wordt dus niets aan de raakvlakhoogte opgeofferd.
-        "relative flex h-11 w-full max-w-10 min-w-7 flex-1 items-center justify-center rounded-lg border border-input bg-muted text-base font-medium tabular-nums transition-colors outline-none",
+        // Breedte is elastisch, geen vaste w-10: acht vakjes van 40px meten ~390px en pasten
+        // niet op een telefoon van 375px — het achtste vakje viel stil weg achter de overflow
+        // van de kaart.
+        //
+        // `flex-1 min-w-0` zónder boven- of ondergrens is hier bewust. Een `max-w` laat de
+        // vakjes op hun maximum staan terwijl de groep wél de halve rij opeist: de rest wordt
+        // dode ruimte binnen de groep en je krijgt een gat midden in de code (gemeten: 78px
+        // op 1280px, dertien keer de eigen tussenruimte). Een `min-w` doet het omgekeerde en
+        // laat de rij onder ~352px alsnog buiten de kaart lopen. Zonder allebei verdeelt de
+        // rij zich altijd exact over de beschikbare breedte en loopt hij op elke maat gelijk
+        // met de andere velden. Hoogte blijft 44px (kit §6) — aan de raakvlakhoogte wordt
+        // niets opgeofferd, alleen aan de breedte, en de rij is samen één invoerveld.
+        "relative flex h-11 w-full min-w-0 flex-1 items-center justify-center rounded-lg border border-input bg-muted text-base font-medium tabular-nums transition-colors outline-none",
         "data-[active=true]:z-10 data-[active=true]:border-ring data-[active=true]:bg-background data-[active=true]:ring-3 data-[active=true]:ring-ring/10",
         "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[active=true]:aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         className,
