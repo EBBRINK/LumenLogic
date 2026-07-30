@@ -65,6 +65,15 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-primary-hover: var(--primary-hover);
   --color-primary-active: var(--primary-active);
+
+  /* Navigatiebalk. Een eigen laagje omdat de balk een DONKER vlak in een LICHT
+     canvas is: --foreground, --muted-foreground, --border en --ring hebben daar
+     allemaal de verkeerde waarde. Zie DESIGN.md O12. */
+  --color-nav: var(--nav);
+  --color-nav-foreground: var(--nav-foreground);
+  --color-nav-muted: var(--nav-muted);
+  --color-nav-accent: var(--nav-accent);
+  --color-nav-border: var(--nav-border);
 }
 
 /* LumenLogic-huisstijl. Waarden staan als hex, letterlijk zoals in de brand kit
@@ -126,6 +135,21 @@
   --success-foreground: #ffffff;
   --warning: #ff9500;
   --warning-foreground: #1a1a1a;
+
+  /* Navigatiebalk — bewuste toevoeging BOVENOP de kit, zie DESIGN.md O12.
+     De kit wijst navy toe aan CTA's en nadruk (§3) en zet wit als app-canvas;
+     een navy chrome-balk staat er niet in. Timo heeft er expliciet om gevraagd.
+     Alleen kit-kleuren, niets afgeleid.
+
+     Deze vijf staan BEWUST niet in .dark: de balk is in beide standen hetzelfde
+     donkere vlak, dus §14 is hier ook in light de juiste bron. Ze overschrijven
+     zou een tweede navy verzinnen die de kit niet levert. De huisstijltest pint
+     dat vast door ze in LIGHT_TOKENS én DARK_TOKENS te zetten. */
+  --nav: #1a1f3a; /* §3 Dark Canvas — navy */
+  --nav-foreground: #ffffff; /* §3 Wit: tekst op kleur — 16,1:1 */
+  --nav-muted: #b0b8c4; /* §14 Text Secondary — 8,1:1 op navy */
+  --nav-accent: #1ba89a; /* §3 Accent Teal — 5,5:1; §8 gebruikt teal al als accentlijn op navy */
+  --nav-border: #3a4254; /* §14 Border */
 }
 
 /* Dark mode is verplicht (besluit G24), niet optioneel zoals kit §14 suggereert.

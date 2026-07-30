@@ -2,7 +2,7 @@
 // het merkportaal ("Brand portal" → /brand). De actieve sectie wordt centraal bepaald
 // (longest-prefix-wint), anders lichten op /data/brand-relations zowel "Data" als
 // "Brand relations" op. Pure resolver-tests + screenshots licht/donker × mobiel/desktop.
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { activeNavHref, NAV_ITEMS } from "./nav-items";
@@ -81,6 +81,80 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// renderServer rendert asynchroon door; eerst op een element wachten, anders zijn
+// de querySelectors hieronder nog leeg. Zelfde patroon als huisstijl.test.tsx.
+async function renderNav() {
+  await renderServer(nav);
+  await expect
+    .element(page.getByRole("link", { name: "Brand relations" }))
+    .toBeInTheDocument();
+}
+
+// ── Merkkleuren in de balk (sprint 2.0b, DESIGN.md O11/O12) ──────────────────
+// De balk is een navy vlak in een wit canvas: een bewuste toevoeging bovenop de
+// kit. Deze assertions staan er zodat een latere bouwer hem niet "terugzet naar
+// de kit" — dat zou een regressie zijn, geen correctie.
+
+for (const theme of ["light", "dark"] as const) {
+  test(`balk is navy met leesbare items (${theme})`, async () => {
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    await renderNav();
+    const header = document.querySelector("header")!;
+    // Mode-invariant: in béide standen hetzelfde navy vlak. De --nav-*-tokens
+    // worden bewust niet in .dark overschreven.
+    expect(getComputedStyle(header).backgroundColor).toBe("rgb(26, 31, 58)");
+
+    const active = document.querySelector('[aria-current="page"]')!;
+    const sActive = getComputedStyle(active);
+    expect(sActive.color).toBe("rgb(255, 255, 255)"); // 16,1:1 op navy
+    expect(sActive.borderBottomColor).toBe("rgb(27, 168, 154)"); // teal, 5,5:1
+    expect(sActive.borderBottomWidth).toBe("2px");
+    expect(sActive.fontWeight).toBe("500");
+
+    // Dit is de assertie die #B0B8C4 vastzet. Een "opruimactie" naar
+    // --muted-foreground (#8E9BA8) laat hem falen — en dat is de bedoeling.
+    const inactive = page
+      .getByRole("link", { name: "Catalog", exact: true })
+      .element();
+    const sInactive = getComputedStyle(inactive);
+    expect(sInactive.color).toBe("rgb(176, 184, 196)"); // 8,1:1 op navy
+    // 2px gereserveerd op inactief: geen hoogtesprong bij navigeren.
+    expect(sInactive.borderBottomWidth).toBe("2px");
+  });
+}
+
+test("in de balk staat alleen het beeldmerk, en dat bestand wordt echt geserveerd", async () => {
+  await renderNav();
+  const header = document.querySelector("header")!;
+  const imgs = header.querySelectorAll("img");
+  // Eén beeldmerk. Géén lockup: dat bevat het #0A0A0A-woordmerk (1,23:1 op navy).
+  expect(imgs.length).toBe(1);
+  const img = imgs[0] as HTMLImageElement;
+  expect(img.getAttribute("src")).toBe("/brand/lumenlogic_logo.svg");
+  // alt="" houdt de toegankelijke naam van de link precies "Lumen Logic".
+  expect(img.getAttribute("alt")).toBe("");
+  await expect
+    .element(page.getByRole("link", { name: "Lumen Logic" }))
+    .toBeInTheDocument();
+  // Faalt luid als het bestand ontbreekt, in plaats van als kapot-plaatje-icoon
+  // in een screenshot te belanden.
+  await expect.poll(() => img.naturalWidth).toBeGreaterThan(0);
+});
+
+test("de focus-outline in de balk is teal, niet blauw", async () => {
+  // Blauw #2D5A8C haalt op navy 2,27:1 en faalt kit §11 ("altijd zichtbaar").
+  // Let op: dit moet écht toetsenbordfocus zijn. Een kale el.focus() zet op een
+  // <a> geen :focus-visible (anders dan op een tekstveld, waar het altijd matcht),
+  // en dan meet je de globale outline-ring/50 uit globals.css in plaats van deze.
+  await renderNav();
+  await userEvent.keyboard("{Tab}");
+  const focused = document.activeElement as HTMLElement;
+  expect(focused.tagName).toBe("A");
+  expect(focused.matches(":focus-visible")).toBe(true);
+  expect(getComputedStyle(focused).outlineColor).toBe("rgb(27, 168, 154)");
+  expect(getComputedStyle(focused).outlineWidth).toBe("2px");
+});
 
 test("gerenderde balk markeert alleen Brand relations op /data/brand-relations", async () => {
   await renderServer(nav);

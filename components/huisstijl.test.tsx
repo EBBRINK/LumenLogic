@@ -288,6 +288,13 @@ const LIGHT_TOKENS = {
   "--brand-slate": "#3f4a5c",
   "--success": "#1ba89a",
   "--warning": "#ff9500",
+  // Navigatiebalk (DESIGN.md O12). Staan hier én in DARK_TOKENS met dezelfde
+  // waarden: dat is de assertie die vastlegt dat de balk mode-invariant is.
+  "--nav": "#1a1f3a",
+  "--nav-foreground": "#ffffff",
+  "--nav-muted": "#b0b8c4",
+  "--nav-accent": "#1ba89a",
+  "--nav-border": "#3a4254",
 } as const;
 
 const DARK_TOKENS = {
@@ -300,6 +307,13 @@ const DARK_TOKENS = {
   "--muted-foreground": "#b0b8c4",
   "--border": "#3a4254",
   "--ring": "#1ba89a", // besluit O10: teal in dark
+  // Identiek aan light: de balk blijft in dark hetzelfde navy vlak. Overschrijft
+  // iemand deze tokens later in .dark, dan valt deze test om. Zie DESIGN.md O12.
+  "--nav": "#1a1f3a",
+  "--nav-foreground": "#ffffff",
+  "--nav-muted": "#b0b8c4",
+  "--nav-accent": "#1ba89a",
+  "--nav-border": "#3a4254",
 } as const;
 
 test("tokenwaarden light komen letterlijk uit de brand kit", async () => {
