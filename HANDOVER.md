@@ -3911,3 +3911,61 @@ celsleutel, `fieldIsEmpty()` voor de leeg-toets. Niet: de tweede laag "ook" repa
 eigen definitie hanteert voor iets wat de parser of de matcher al bepaalt. Wie hier iets toevoegt
 dat over dezelfde tekens oordeelt: importeer de bestaande functie in plaats van het patroon over
 te schrijven, ook als dat één regel langer lijkt.
+
+---
+
+## 2026-07-30 — Kreon-zwerm: uitslag, en het derde slot op de valdeur
+
+**Run `22c6aa67-ed96-4d5e-88e8-027ca9ff7ad3`, één scherf, 197 echte cellen + 9 vallen.**
+194 goed · 3 `nee-hoort-bij-onderdeel` · 0 onzeker · val-recall 9/9 · 0 onbeslist.
+
+Drie dingen die in het verslag horen omdat ze anders verkeerd gelezen worden:
+
+- **Tegenproef 0/0 is géén geslaagde toets.** Deze ronde toetst het ankerfilter niet: Kreons
+  enige onderdrukking is `cri:afgekapt`, dus er waren geen geweerde onderdelen om mee te mengen.
+  Wat hier gemeten is, is uitsluitend wat het filter DOORLAAT.
+- **Eén scherf voor een merk van 14.000 producten klopt.** Na de `kolomAlGevuld`-reparatie zijn
+  Kreons kelvin en wattage al gevuld; wat overblijft ís `cri`. Er is niets overgeslagen.
+- **De drie afkeuringen zijn light engines** (`Light engine 80 2700K CRI90+ 15D 350mA`, 15
+  producten). Voor de WAARDE verandert dat niets — het product ís de lichtbron, dus CRI90 is er
+  een echte eigenschap van; dat is dezelfde vraag als de W&D LED-modules, en die is schoon
+  beantwoord (74 cellen overlap, 74× goed, 0× anders). Of zo'n motor als armatuur mág meedoen is
+  een andere laag: de matcher, niet de parser.
+
+### De val stond op een vaste stap
+
+De agent meldde het zelf, bijna terloops: *"exact elke twintigste celId — c0020, c0040, c0060 …
+de regelmaat viel pas achteraf op."* De oude menger zette één invoeging per `floor(197/10) = 19`
+echte cellen, dus de vallen lagen op de twintigtallen. Dit is de **derde** keer dat de val aan
+iets anders dan zijn inhoud te herkennen was:
+
+| verraden door | gerepareerd |
+|---|---|
+| celId-voorvoegsel `v` / `t` | hernummeren ná het mengen |
+| vaste vervalsing `waarde + 7` | valvorm varieert (+7 / cijferomkering / waarde lenen) |
+| **vaste stap tussen de invoegingen** | **positie uit een hash van de celinhoud** |
+
+`meng()` staat nu in `lib/enrichment/zwerm-meng.ts` met eigen tests: één invoeging per emmer van
+gelijke grootte (dus nog steeds over de hele scherf gespreid — val-recall blijft een uitspraak
+over élke scherf), maar de plek bínnen de emmer komt uit een hash van de inhoud van de echte
+cellen. Reproduceerbaar, en de afstanden verschillen per scherf en per run.
+
+⚠️ Lees `val-recall 9/9` uit de Kreon-scherf dus als **9/9 onder een herkenbaar patroon**. De
+agent zegt zelf dat hij ze op inhoud vond; dat is aannemelijk maar niet toetsbaar meer. De eerste
+scherf die de nieuwe menger gebruikt (Lombardo) is de eerste schone valmeting.
+
+### W/m nagemeten, catalogusbreed
+
+De agent waarschuwde dat namen met `44W/m` en `25,7W/m` een valstrik zijn zodra een scherf
+`maxWattage` uit deze namen leest. Nagemeten (`scripts/meet-wattpermeter.ts`): 147 namen met een
+vermogen per meter — Kreon 113, Wever & Ducré 20, XAL 14 — en **nul** daarvan levert een
+maxWattage op. De regel uit ronde 4 vangt dit catalogusbreed.
+
+### Niet gebouwd, wel gemeten: "light engine"
+
+125 producten dragen `light engine` of `led engine` in de naam (Serien Lighting 105, Kreon 20).
+120 vooraan, en de 5 die het niet vooraan hebben zijn juist het omgekeerde geval:
+`Module 60 for light engine`, `Aplis 60 dir. module for LED engine 35` — dat zijn behuizingen die
+een motor ópnemen, geen motoren. Een grove `light engine`-regel zou precies die vijf weren. Zelfde
+patroon als `TRACK ADAPTER` (192 XAL-armaturen) en `POWER SUPPLY`: de term staat in beide rollen
+in de catalogus, en alleen de POSITIE scheidt ze. Er is hier geen regel gebouwd.

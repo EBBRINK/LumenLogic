@@ -51,6 +51,7 @@ import { assertBranchDb, logGuard } from "./branch-guard";
 import { getRunItems, getEnrichmentRun, nameShape } from "@/lib/repo/enrichment";
 import { parseProductName, specSpans } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
+import { meng } from "@/lib/enrichment/zwerm-meng";
 
 const [, , runId, ...rest] = process.argv;
 const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) ?? 40);
@@ -227,7 +228,8 @@ async function main() {
     });
   }
 
-  // Vallen tussen de echte cellen mengen, deterministisch (elke n-de plek).
+  // Vallen en tegenproef tussen de echte cellen mengen — deterministisch, maar niet op een
+  // vaste stap (zie `meng()`).
   const alles: Cel[] = [];
   // Vallen en tegenproef-cellen AFWISSELEND invoegen. Achter elkaar plakken liet ze clusteren:
   // in ronde 2 kregen de scherven 1–5 alleen vallen en scherf 7 alleen tegenproef-cellen, en
@@ -243,13 +245,11 @@ async function main() {
     );
     extra.splice(pos, 0, t);
   });
-  const stap = Math.max(1, Math.floor(echte.length / (extra.length + 1)));
-  let vi = 0;
-  echte.forEach((c, i) => {
-    alles.push(c);
-    if ((i + 1) % stap === 0 && vi < extra.length) alles.push(extra[vi++]);
-  });
-  while (vi < extra.length) alles.push(extra[vi++]);
+  // De invoegposities komen uit `meng()` (lib/enrichment/zwerm-meng.ts): hash-gestuurd binnen
+  // gelijke emmers, dus gespreid maar niet op een vaste stap. Los getest.
+  alles.push(
+    ...meng(echte, extra, (s) => createHash("sha256").update(s).digest()),
+  );
 
   // ── celId's hernummeren: geen herkenbaar voorvoegsel meer ─────────────────
   // Twee agenten meldden onafhankelijk dat ze de ingevoegde cellen aan hun `v`- en `t`-prefix
