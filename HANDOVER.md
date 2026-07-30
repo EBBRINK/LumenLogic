@@ -3298,54 +3298,104 @@ codefout, en geen van de vijf raakt iets uit dit blok.
 
 ---
 
-## Sprint 3.1 — G36: wie mag een activatie-PIN uitgeven (2026-07-30)
+## Sprint 3.1 — G36/G39: wie mag lidmaatschappen en PIN's uitdelen (2026-07-30)
 
-Besluit G36 van Timo: **intern (`organizations.type = 'intern'`) mag alles; een `org_admin`
+Besluit **G36** (Timo): intern (`organizations.type = 'intern'`) mag alles; een `org_admin`
 mag alleen binnen zijn eigen organisatie en mag de `org_admin`-rol niet toekennen; een gewone
-gebruiker mag niets.** Plus de eerste zin: wie van Brink een PIN krijgt, is org_admin van zijn
-eigen organisatie. Aanleiding: `issuePinAction` had alleen `requireSession()`, dus élke
-ingelogde gebruiker kon een PIN uitgeven voor élk adres — en een PIN is een wachtwoordreset.
-**Niets gecommit, niets gepusht**; het werk staat in de working tree van `claude/sprint31-pin`.
+gebruiker mag niets. Plus zin 1: wie van Brink een PIN krijgt, is org_admin van zijn eigen
+organisatie. Besluit **G39** (Timo, na de eerste critic-ronde) bepaalt de vórm: **een token
+dat de aanroeper meedraagt is nooit een autorisatiemechanisme** — de bevoegdheid wordt in de
+schrijfaanroep zelf uit de sessie en de database afgeleid. **Niets gecommit door mij; de
+sprintmaster heeft het vastgelegd in `9fae44d` / `02cef52`.**
 
-- `lib/repo/authz.ts` (nieuw) — de beslissing. `decidePinIssue()` is puur (geen db) en is de
-  plek waar G36 letterlijk staat; `authorizePinIssue()` haalt de feiten op, logt elke
-  weigering en geeft bij "ja" een `PinIssueGrant` terug.
-- **De grant is de poort, niet een check.** `issueActivationPin(db, grant, { name, now })`
-  neemt geen los adres/org/rollen/actor meer aan. Het merk op `PinIssueGrant` is een privé
-  symbool: buiten `authz.ts` valt er geen grant te schrijven (tsc), en `isPinIssueGrant()`
-  weigert een gecaste of onbetypeerde poging (runtime). Uitgeven zónder autorisatie kan dus
-  niet, in plaats van "mag niet".
-- `/admin/users` toont alleen wat de server toestaat: een org_admin ziet één organisatie in
-  de select, geen `org_admin`-vinkje, alleen zijn eigen mensen in de PIN-statuslijst, en geen
-  knop bij een collega-beheerder. Dat is gemak — de action weigert hetzelfde zonder formulier.
+- `lib/repo/authz.ts` (nieuw) — `decideMembershipAuthority()` is de kern: puur, geen
+  database, en letterlijk de drie regels van G36. `decidePinIssue()` en
+  `decideMembershipChange()` zijn er de twee toepassingen van.
+- **Twee deuren, één regel.** `issuePinAsActor()` (PIN-scherm) en
+  `changeMembershipAsActor()` (organisatiescherm) autoriseren én schrijven in één aanroep.
+  Ze krijgen alleen `actorEmail` uit de sessie — identiteit, geen autorisatie: wélke rechten
+  daarbij horen zoekt de laag zelf vers op. Doeladres, org en rollen zijn de vráág.
+- `app/settings/organization/actions.ts` deed tot dit item **alleen `requireSession()`**.
+  Dat was een volledige omweg om G36: een gewone gebruiker zette zichzelf via
+  `addMemberAction` in de interne org en was daarna volgens regel 1 almachtig (gemeten door
+  de critic). Beide actions lopen nu door dezelfde laag.
+
+**Wat de code nu wél en niet garandeert — precies, want dit ging drie keer mis**
+1. **Wel:** de twee server actions die lidmaatschappen en PIN's schrijven, bepalen de
+   bevoegdheid op het moment van schrijven uit de database, met een actor die uit de sessie
+   komt. Niets uit het formulier of de invoer weegt mee in "mag hij dit" — vastgelegd met
+   twee tests die de mutant `actorEmail: formData.get("actorEmail") ?? session…` doden (die
+   mutant liet eerder 31 tests groen én gaf volledige escalatie).
+2. **Wel:** `lib/repo/authz-deuren.test.ts` leest de échte bronnen van `app/`, `components/`
+   en `lib/` en faalt op vier vormen van een nieuwe deur: named import (ook onder alias),
+   namespace-import, dynamische import, en een directe `insert/update/delete` op
+   `memberships` of `activation_pins`. Elke vorm heeft een eigen zelftest, en twee vormen
+   zijn met een echte overtreding in echte bestanden nagemeten.
+3. **Niet:** de kale schrijffuncties blijven aanroepbaar — ze zijn er voor migraties, seeds
+   en tests. "App-code gaat langs de laag" is een afspraak die door punt 2 wordt bewaakt,
+   geen slot in de code. De eerste versie van dit item claimde zo'n slot (een "grant" met een
+   privé symbool); dat is met één object-spread gebroken en door G39 afgeschaft.
+4. **Niet gedekt door de bewaker** (staat ook in zijn kopcommentaar): rauwe SQL via
+   `db.execute`, een modulepad dat uit strings wordt opgebouwd, code in `db/` en `scripts/`,
+   een nieuwe hulpfunctie ín de schrijflaag zelf, en testinfrastructuur (`*.test.ts(x)`,
+   `*-stubs.tsx`, `lib/test-actions.ts`). Die laatste uitzondering is bewust: een bewaker die
+   elke stub meldt, wordt uitgezet en bewaakt daarna niets.
+5. **Niet:** dit zegt niets over routes. Wie `/admin/users` of `/settings/organization`
+   überhaupt mag openen, is item **3.2a**.
 
 **Aannames en open eindes (vervolg op de nummering van golf 1/2)**
-18. **G36's twee zinnen verzoend met een bootstrap-regel.** Krijgt een organisatie die nog
-    géén org_admin heeft haar eerste lid van een *interne* uitgever, dan wordt die persoon
-    org_admin — ook als het vinkje uit stond. Een org_admin doorloopt die regel nooit (zijn
-    org heeft per definitie een beheerder, maar de code steunt niet op dat toeval: de
-    bootstrap wordt op zijn pad niet eens aangeroepen). Zo is zin 1 waar door de vorm van de
-    code en zin 2 absoluut. De toegekende rollen komen terug in `IssuePinResult.roles` en
-    staan op het scherm, zodat een automatisch toegekende beheerdersrol nooit onzichtbaar is.
+18. **G36's twee zinnen verzoend met een bootstrap-regel op het PIN-pad.** Krijgt een
+    organisatie die nog géén org_admin heeft haar eerste lid van een *interne* uitgever, dan
+    wordt die persoon org_admin — ook als het vinkje uit stond. Een org_admin doorloopt die
+    regel nooit (de code roept hem op zijn pad niet aan, dus regel 2 steunt niet op het
+    toeval dat zijn eigen org al een beheerder heeft). Het organisatiescherm bootstrapt
+    **niet**: daar wijs je een beheerder expliciet aan, en dat mag alleen intern.
 19. **Een org_admin die de org_admin-rol probeert te geven, krijgt niets** — geen account,
-    geen membership, geen PIN. Bewust géén "wel aanmaken, rol stilletjes weglaten": dan denkt
-    hij dat er een tweede beheerder is.
-20. **Een org_admin mag alleen een volstrekt onbekend adres of een lid van zijn eigen org als
-    doel hebben.** Een adres dat elders lid is, een collega-beheerder, hijzelf, of een
-    bestaand account zonder membership: geweigerd. Anders is een PIN een overnameknop voor
-    een account met meer rechten dan hij mag uitdelen. Gevolg: hij kan zijn eigen wachtwoord
-    niet via een PIN resetten — dat gaat via `/settings` of via Brink.
-21. **Eén foutmelding voor élke bevoegdheidsweigering** ("You can't issue a PIN here…"), zodat
-    de melding niet verraadt of een adres of organisatie bestaat. Alleen een vormloos adres en
-    een verdwenen organisatie (die een interne uitgever sowieso in zijn lijst ziet) krijgen een
-    eigen tekst.
-22. **De memberships-tabel op `/admin/users` is nog steeds ongescoopt**: iedereen die de
-    pagina opent ziet alle organisaties en alle adressen. Die tabel heeft geen knoppen; het
-    afschermen ervan is org-scoping over routes en hoort bij **3.2a**, samen met de vraag of
-    `/admin/*` überhaupt voor externen bereikbaar mag zijn.
-23. **`lib/repo/activation.test.ts` en `lib/auth-activation.test.ts` halen hun grants nu langs
-    de échte poort** (een interne uitgever, `verseDb()` + `grant()`-helper) in plaats van
-    `issueActivationPin` rechtstreeks te voeden. Twee tests daar veranderden van betekenis:
-    "vormloos adres" toetst nu dat er geen grant komt, en "onbekende organisatie" toetst het
-    tweede slot ín `issueActivationPin` door de organisatie tússen autorisatie en uitgifte te
-    verwijderen (het enige scenario waarin dat slot nog kan afgaan).
+    geen membership, geen PIN. Bewust géén "wel aanmaken, rol stilletjes weglaten". Om
+    dezelfde reden weigert de laag sinds ronde 3 óók **rollen zonder organisatie**
+    (`rollen_zonder_org`): zonder org schrijft `issueActivationPin` geen membership, dus die
+    rollen zouden nergens landen terwijl het antwoord ze wél noemde. `IssuePinResult.roles`
+    is daarmee gelijk aan wat er in de database staat, niet "meestal gelijk".
+20. **Een org_admin mag alleen een volstrekt onbekend adres of een lid van zijn eigen org
+    aanraken.** Elders lid, collega-beheerder, hijzelf, of een bestaand account zonder
+    membership: geweigerd. Gevolg: hij kan zijn eigen wachtwoord niet via een PIN resetten
+    (dat gaat via `/settings`) en zichzelf niet uit zijn org verwijderen.
+21. **Eén foutmelding voor élke bevoegdheidsweigering**, zodat de melding niet verraadt of
+    een adres of organisatie bestaat. Alleen een vormloos adres, rollen zonder organisatie en
+    een verdwenen organisatie (die een interne actor sowieso in zijn lijst ziet) krijgen een
+    eigen tekst; die drie gaan over de eigen invoer van iemand die al bevoegd is. Op het
+    organisatiescherm is een weigering **stil**: dat zijn `<form action={…}>`-actions zonder
+    retourkanaal, net als bij lege invoer. De weigering staat wél in de events-tabel.
+22. **De memberships-tabel op `/admin/users` en de organisatielijst op
+    `/settings/organization` zijn nog ongescoopt**: iedereen die de pagina opent ziet alle
+    organisaties en adressen. De knoppen zijn weg voor wie ze niet mag gebruiken, de
+    gegevens niet. Afschermen is org-scoping over routes = **3.2a**.
+23. **`memberships.email` heeft geen CHECK op normalisatie** (`activation_pins` wél). Beide
+    lookups in de autorisatielaag gebruiken daarom `lower()`; met een exacte match brak de
+    critic de org-grens met één handmatig ingevoerde rij met hoofdletters. Een CHECK op de
+    kolom zou het bij de bron oplossen — dat is een migratie en staat open.
+24. **Wees-rijen bij een half mislukte uitgifte.** `issueActivationPin` schrijft nu eerst het
+    membership en dan de user-rij. Andersom bleef er een account zónder membership achter, en
+    dat is precies de toestand die een org_admin per regel 2c nooit meer mag aanraken — één
+    storing zou een adres dus permanent onbruikbaar maken voor de enige persoon die hem mag
+    uitnodigen. Een transactie kan niet: de neon-http-driver ondersteunt ze niet.
+
+**Landmijnen en meldingen — niet gerepareerd, bewust**
+25. ⚠️ **`organizations.slug` heeft geen unique-index**, terwijl
+    `db/migrations/0017_org_type_activatie.sql:47` een scalaire subquery op
+    `slug = 'brink-licht'` doet. Twee organisaties met die slug (mogelijk via
+    `createOrgAction` met de naam "Brink Licht") laten die migratie omvallen op een verse
+    omgeving — "more than one row returned by a subquery". Gevonden door de critic in ronde
+    3; hoort bij het orgbeheer van 3.2a, samen met een unique-index op slug.
+26. **Nog steeds alleen `requireSession()`**: `createOrgAction` en `saveBrandingAction`
+    (`app/settings/organization/actions.ts`) en `addEmailAction` (`app/settings/actions.ts`).
+    Buiten G36/G39 en dus niet aangeraakt. De critic heeft nagemeten dat `createOrgAction`
+    géén G36-escalatie oplevert: een verse org krijgt type `extern`, de aanvaller kan
+    zichzelf er niet in schrijven en de bootstrap-regel gaat niet af. Gaat naar 3.2a.
+27. **`hasRole()` in `lib/repo/orgs.ts` vergelijkt `memberships.email` zonder `lower()`** —
+    dezelfde latente zwakte als punt 23. De functie wordt vandaag nergens aangeroepen
+    (geverifieerd met grep over `app`/`lib`/`components`/`scripts`).
+28. **`app/admin/users/page.tsx` importeert `PIN_MAX_ATTEMPTS` zonder het te gebruiken**
+    (eslint-warning) en `app/settings/organization/page.tsx` heeft een
+    `react/no-unescaped-entities`-error in de headertekst. Beide bestonden vóór dit item —
+    geverifieerd met `git show df156e5:…`.

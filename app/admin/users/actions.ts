@@ -27,10 +27,15 @@ export type IssuePinResult =
       activateUrl: string;
       name: string | null;
       /**
-       * De rollen die de autorisatielaag daadwerkelijk heeft toegekend — niet wat er
-       * aangevinkt stond. Kan één rol méér bevatten dan gevraagd: de eerste persoon in een
-       * organisatie wordt haar org_admin (G36, eerste zin). Het scherm toont ze, zodat een
-       * toegekende beheerdersrol nooit onzichtbaar blijft.
+       * De rollen zoals ze in de database staan. Kan één rol méér bevatten dan aangevinkt:
+       * de eerste persoon in een organisatie wordt haar org_admin (G36, eerste zin). Het
+       * scherm toont ze, zodat een toegekende beheerdersrol nooit onzichtbaar blijft.
+       *
+       * Dit is een gelijkheid, geen benadering: zonder organisatie wordt er géén membership
+       * geschreven, en dan weigert de autorisatielaag de uitgifte in plaats van de rollen
+       * stil te laten vallen (`rollen_zonder_org` in lib/repo/authz.ts). Bij een herhaalde
+       * uitgifte voor een bestaand lid staat hier `[]` — het bestaande membership blijft
+       * dan ongemoeid, dus er is niets toegekend.
        */
       roles: MembershipRole[];
     }

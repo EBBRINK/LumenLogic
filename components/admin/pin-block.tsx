@@ -360,9 +360,11 @@ export function PinBlock({
                     {justIssued.userCreated
                       ? "new account created"
                       : "existing account"}
-                    {/* De rollen die de server toekende, niet de aangevinkte: de eerste
-                        persoon in een organisatie krijgt er org_admin bij (G36, eerste
-                        zin). Een toegekende beheerdersrol mag nooit onzichtbaar blijven. */}
+                    {/* De rollen zoals ze in de database staan, niet de aangevinkte: de
+                        eerste persoon in een organisatie krijgt er org_admin bij (G36,
+                        eerste zin). Een toegekende beheerdersrol mag nooit onzichtbaar
+                        blijven. Leeg bij een herhaalde uitgifte — dan is er niets
+                        toegekend en staat er dus ook niets. */}
                     {justIssued.roles.length > 0 && (
                       <>
                         {" · "}
