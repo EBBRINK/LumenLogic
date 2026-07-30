@@ -290,3 +290,28 @@ describe("scheidTweelingen — een kleine restscherf mag geen valmagneet worden"
     for (const [, e] of per) expect(e.val / e.n).toBeLessThan(0.35);
   });
 });
+
+describe("scheidTweelingen — ook de iets kleinere scherf krijgt zijn deel", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  it("laat geen scherf achter met bijna niets", () => {
+    // Gezien bij W&D ná de dichtheidsreparatie: acht scherven van 221, waarvan de laatste 217
+    // cellen had. Bij hetzelfde aantal vallen is die dichtheid altijd een fractie hoger, dus
+    // werd hij nooit gekozen — scherf 8 hield 1 val over terwijl de rest er 12 had.
+    const maat = 221;
+    const rij: C[] = [];
+    for (let i = 0; i < 1669; i++) {
+      const e: C = { id: `e${i}`, soort: "echt" };
+      rij.push(e);
+      if (i % 20 === 19) rij.push({ id: `v${i}`, soort: "val", bron: e });
+    }
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const per = new Map<number, number>();
+    uit.rij.forEach((c, i) => {
+      if (c.soort === "val") per.set(Math.floor(i / maat), (per.get(Math.floor(i / maat)) ?? 0) + 1);
+    });
+    const aantallen = [...per.values()];
+    const scherven = Math.ceil(uit.rij.length / maat);
+    expect(per.size).toBe(scherven);
+    expect(Math.min(...aantallen)).toBeGreaterThanOrEqual(Math.max(...aantallen) / 3);
+  });
+});

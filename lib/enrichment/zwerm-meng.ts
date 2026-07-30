@@ -94,8 +94,16 @@ export function scheidTweelingen<T>(
     cellenPerScherf.set(scherf(i), (cellenPerScherf.get(scherf(i)) ?? 0) + 1);
     if (soortVan(c) === "val") vallenPerScherf.set(scherf(i), (vallenPerScherf.get(scherf(i)) ?? 0) + 1);
   });
-  /** Vallen per cel in een scherf — een kleine restscherf mag geen magneet worden. */
-  const dichtheid = (s: number) => (vallenPerScherf.get(s) ?? 0) / Math.max(1, cellenPerScherf.get(s) ?? 1);
+  // Hoeveel vallen een scherf TE WEINIG heeft ten opzichte van zijn eerlijke deel. Puur op
+  // aantal kiezen maakte van een kleine restscherf een magneet (W&D: 11 vallen op 14 cellen);
+  // puur op dichtheid benadeelt een scherf die een paar cellen kleiner is structureel, want die
+  // heeft bij hetzelfde aantal altijd een fractie meer dichtheid en wordt dus nooit gekozen
+  // (W&D na die reparatie: scherf 8 hield 1 val over terwijl de rest er 12 had).
+  // Het tekort ten opzichte van het eerlijke deel heeft geen van beide problemen.
+  const totaalVallen = [...vallenPerScherf.values()].reduce((a, b) => a + b, 0);
+  const eerlijkDeel = (s: number) =>
+    (totaalVallen * (cellenPerScherf.get(s) ?? 0)) / Math.max(1, rij.length);
+  const tekort = (s: number) => (vallenPerScherf.get(s) ?? 0) - eerlijkDeel(s);
 
   // Een broncel is nooit de ruilpartner. Anders lost de ene ruil de andere op: verhuis je een
   // echte cel naar de scherf van een al gerepareerde val en blijkt die cel diens bron, dan staat
@@ -132,10 +140,10 @@ export function scheidTweelingen<T>(
       rest++; // geen enkele andere scherf beschikbaar (te weinig scherven) — eerlijk melden
       continue;
     }
-    // Doelscherf: de laagste val-DICHTHEID (bij gelijkspel de laagste scherf).
+    // Doelscherf: die het verst onder zijn eerlijke deel zit (bij gelijkspel de laagste scherf).
     let doel = -1;
     for (const s of [...perScherf.keys()].sort((a, b) => a - b)) {
-      if (doel < 0 || dichtheid(s) < dichtheid(doel)) doel = s;
+      if (doel < 0 || tekort(s) < tekort(doel)) doel = s;
     }
     // Plek BINNEN die scherf: uit de hash, niet de laagste index — anders klonteren de verhuisde
     // vallen aan het begin van de scherf en is de recall weer een patroontoets.
@@ -152,34 +160,39 @@ export function scheidTweelingen<T>(
     vallenPerScherf.set(nieuweScherf, (vallenPerScherf.get(nieuweScherf) ?? 0) + 1);
     geruild++;
   }
-  // ── Elke scherf houdt minstens één val ────────────────────────────────────
-  // De tweeling-reparatie kan een scherf leeghalen: verhuizen alle vallen van scherf 1 naar
-  // scherf 2, dan zegt val-recall niets meer over scherf 1. Gezien bij Flos Architectural en
-  // It's About RoMi. Haal er dan een val terug uit de scherf met de meeste, mits diens bron er
-  // niet zit — de tweeling-eis gaat vóór.
+  // ── Nabalans: elke scherf zijn eerlijke deel ──────────────────────────────
+  // De hoofdlus verwerkt de vallen op positievolgorde en kiest steeds de scherf die het verst
+  // onder zijn deel zit. Dat werkt binnen de eerste scherven, maar de LAATSTE komt pas aan de
+  // beurt als alle vallen al verdeeld zijn: bij W&D vertrok scherf 8 met tien vallen en kwam er
+  // niets voor terug (1 op 217, terwijl de rest er 12 had). Deze lus verplaatst daarna nog
+  // vallen van de rijkste naar de armste scherf tot het verschil ten hoogste één is — steeds met
+  // dezelfde eis dat een val nooit in de scherf van zijn bron belandt.
   const aantalScherven = Math.ceil(rij.length / scherfMaat);
-  for (let leeg = 0; leeg < aantalScherven; leeg++) {
-    if ((vallenPerScherf.get(leeg) ?? 0) > 0) continue;
-    let rijkste = -1;
+  for (let ronde = 0; ronde < rij.length; ronde++) {
+    let arm = -1;
+    let rijk = -1;
     for (let s = 0; s < aantalScherven; s++) {
-      if (rijkste < 0 || dichtheid(s) > dichtheid(rijkste)) rijkste = s;
+      if (arm < 0 || tekort(s) < tekort(arm)) arm = s;
+      if (rijk < 0 || tekort(s) > tekort(rijk)) rijk = s;
     }
-    if ((vallenPerScherf.get(rijkste) ?? 0) < 2) break; // niets te verdelen
+    if (arm < 0 || rijk < 0 || tekort(rijk) - tekort(arm) <= 1) break;
+
     const kandidaatVal = rij.find((c, i) => {
-      if (soortVan(c) !== "val" || scherf(i) !== rijkste) return false;
+      if (soortVan(c) !== "val" || scherf(i) !== rijk) return false;
       const b = bronVan(c);
       const pb2 = b ? posVan.get(b) : null;
-      return pb2 == null || scherf(pb2) !== leeg;
+      return pb2 == null || scherf(pb2) !== arm;
     });
-    const doelCel = rij.find((c, i) => scherf(i) === leeg && soortVan(c) === "echt" && !bronnen.has(c));
-    if (!kandidaatVal || !doelCel) continue;
+    const doelCel = rij.find((c, i) => scherf(i) === arm && soortVan(c) === "echt" && !bronnen.has(c));
+    if (!kandidaatVal || !doelCel) break;
+
     const pa = posVan.get(kandidaatVal)!;
     const pd = posVan.get(doelCel)!;
     [rij[pa], rij[pd]] = [rij[pd], rij[pa]];
     posVan.set(kandidaatVal, pd);
     posVan.set(doelCel, pa);
-    vallenPerScherf.set(rijkste, (vallenPerScherf.get(rijkste) ?? 1) - 1);
-    vallenPerScherf.set(leeg, 1);
+    vallenPerScherf.set(rijk, (vallenPerScherf.get(rijk) ?? 1) - 1);
+    vallenPerScherf.set(arm, (vallenPerScherf.get(arm) ?? 0) + 1);
     geruild++;
   }
 
