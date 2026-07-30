@@ -2675,3 +2675,69 @@ die sprint herbouwt de balk toch. Er staat daarom géén assertie op `scrollWidt
 staat in `components/site-nav.test.tsx` in commentaar zodat week 3 niet opnieuw hoeft te meten.
 De enige wijziging in `nav-link.tsx` is de knop plus een wrapper-div die het aantal
 flex-kinderen op drie houdt (anders verdeelt `justify-between` de bestaande elementen anders).
+
+## 2026-07-30 — Verificatie projectlijst: het datumlabel klopt nu, de chips wissen niets meer
+
+Verificatieronde op commit `8d5e597` (projectlijst-UX). Twee dingen gerepareerd, één
+beslissing bewust NIET genomen maar hieronder vastgelegd.
+
+**1. "Last edited" is `Status or phase changed` geworden — het label, niet de data.**
+De kaart toont `project_dossiers.updated_at`. Die kolom heeft in `db/schema.ts` géén
+`$onUpdate`; hij beweegt alleen waar iemand hem expliciet zet, en dat zijn in productie
+exact drie schrijvers (nagelopen op álle `update(projectDossiers)`-aanroepen buiten
+tests): `setStatus` en `setXisPhase` in `lib/repo/project-status.ts`, en `setDossierOrg`
+in `lib/repo/orgs.ts` — die laatste wordt alléén vanuit `createDossierAction` aangeroepen,
+dus na het aanmaken verzetten in de praktijk alleen status en XIS-fase de datum. Een PDF
+importeren, spec-regels toevoegen/bewerken en de matcher draaien schrijven naar
+`spec_lines.updated_at` en laten de dossierrij ongemoeid. "Last edited" beloofde dus meer
+dan de kolom waarmaakt — dezelfde soort halve waarheid als de groene "valid"-badge op een
+prijslijst met 0 producten. Het label zegt nu wat er staat. De sortering blijft
+`desc(updatedAt)`, ongewijzigd.
+
+**OPEN BESLISSING VOOR TIMO — `project_dossiers.updated_at` optrekken bij regelwerk?**
+Alternatief voor de relabel: de dossierrij mee laten bewegen met wat er in het dossier
+gebeurt. Dan mag het label wél "Last edited" heten en wordt de bestaande `updated_at DESC`-
+sortering pas echt "recent gewerkt bovenaan". Kosten: het raakt élk schrijfpad dat vandaag
+alleen `spec_lines` aanraakt — `addSpecLines`, `updateSpecLine`, `setQuantity`,
+`linkQuantities`, `deleteSpecLine` (`lib/repo/dossiers.ts`), `runMatcher`/`chooseCandidate`/
+`setLineStatus`/`unlinkMatch` (`lib/repo/matching.ts`), `recordPdfImport`, de OCR- en
+leesroute-import, en `decideReview`. Dat zijn een stuk of tien functies in vier bestanden,
+plus de vraag of een matcher-run "bewerken" heet (hij verzet dan de datum van elk dossier
+dat je alleen maar opnieuw laat rekenen). Twee vormen die op tafel liggen: (a) één
+`touchDossier(db, dossierId)`-helper die elk van die paden aanroept, expliciet en te lezen;
+(b) een trigger of `$onUpdate`-achtige haak op DB-niveau, minder code maar onzichtbaar in
+de repo-laag. **Bewust niet gedaan in deze ronde**: het is een gedragswijziging op de
+sorteervolgorde van de lijst, geen bugfix, en dat hoort een besluit van Timo te zijn.
+
+**2. Een statuschip wiste de zoekterm — dicht.** `components/dossier/status-filter.tsx`
+bouwde zijn hrefs als `basePath + "?filter=…"` en kon er geen tweede parameter bij dragen;
+wie eerst `?q=` zocht en dáárna op een status klikte, was zijn zoekterm kwijt zonder
+melding. `StatusFilter` heeft nu een optionele `params`-prop (`{ q }` vanaf
+`app/projects/page.tsx`) en bouwt de href via `URLSearchParams`: `filter` eerst, de rest
+alfabetisch, lege waarden vallen weg. Zonder `params` is de href byte-identiek aan
+voorheen — `project-status.test.tsx` pint dat vast (`/projects?filter=niet_gegund`). Het
+uiterlijk is niet aangeraakt; de audit noemt deze rij het beste filter-idioom van de app.
+
+**3. De commit shipte twee rode tests, met een groene claim in het bericht.**
+`projectlijst-ux.test.tsx` las de hover-ring één keer uit vlák na de `expect.poll` op de
+achtergrondkleur. Vlak en ring hebben dezelfde 150ms-transitie, maar de achtergrond rondt
+eerder op zijn eindwaarde af; de ring stond dan nog één stap voor het einde en Chromium
+serialiseert dat als `oklab(…)` in plaats van `rgb(…)`. De assertie viel dus over de vórm
+van de string terwijl de kleur klopte. Nu een `expect.poll` op de box-shadow. De hover
+zelf is nagemeten en klopt: vlak 1,1215:1 (light) en 1,2480:1 (dark), en de ring 6,34:1
+(light) resp. **4,38:1 op de navy kaart in dark** — de ring is inderdaad de drager. De
+`focus-visible`-outline op de omhullende `<a>` werkt met een echte Tab-toets (solid, 2px,
+offset 2px, `--ring` in beide standen) en wordt niet mee-getransitioneerd: de `<a>` heeft
+geen `transition`-declaratie, alleen de `Card` eronder.
+
+**4. Lege staat vertelt nu wélke lege staat het is.** `/projects?filter=archief` zonder
+gearchiveerde projecten zei "No projects yet. Use "New project" to create one." terwijl er
+tien projecten zijn. Drie takken nu: geen zoekresultaat, geen projecten in dít filter, of
+echt nog geen projecten. De regel boven de lijst telt binnen het actieve statusfilter en
+zegt dat er nu bij ("Showing 2 of 7 projects under "Won" matching …").
+
+**Blijft staan, bewust:** een gearchiveerd project is via het zoekveld niet te vinden zolang
+"All" actief is (dat filter sluit archief uit, B6) — de lege staat zegt dan "No project
+matches …" terwijl het project bestaat. Dat is het bestaande archief-besluit, geen nieuwe
+regressie; als het hindert is de goedkoopste vorm een regel "…also search Archived" onder
+het lege resultaat.

@@ -213,10 +213,17 @@ for (const theme of ["light", "dark"] as const) {
     await link.hover();
     // De kleurtransitie is 150ms; poll tot hij uitgespeeld is.
     await expect.poll(() => getComputedStyle(kaart).backgroundColor).toBe(k.hover);
-    expect(
-      getComputedStyle(kaart).boxShadow,
-      `hover-ring in ${theme}`,
-    ).toContain(k.ring);
+    // ÓÓK pollen, en niet één keer lezen zoals hier eerst stond: vlak en ring hebben
+    // dezelfde 150ms, maar de achtergrond rondt eerder op zijn eindwaarde af dan de
+    // ring. Wie de ring meteen ná de bg-poll uitleest, betrapt de laatste
+    // transitiestap, en die serialiseert Chromium als `oklab(…)` in plaats van
+    // `rgb(…)` — de assertie faalde dan op de vorm van de string terwijl de kleur
+    // klopte. (De ring ís een box-shadow; daar meten we hem.)
+    await expect
+      .poll(() => getComputedStyle(kaart).boxShadow, {
+        message: `hover-ring in ${theme}`,
+      })
+      .toContain(k.ring);
     // En de hover is écht een verandering, niet toevallig dezelfde waarde.
     expect(rustBg, `vlak in rust ≠ vlak bij hover (${theme})`).not.toBe(k.hover);
 
@@ -252,30 +259,41 @@ test("legenda: dichtgeklapt de zes kleurnamen, uitgeklapt de betekenissen", asyn
   await expect.element(page.getByText(uitleg)).toBeInTheDocument();
 });
 
-// ── 3. "Last edited" per kaart ─────────────────────────────────────────────────────
-test("kaart: toont Last edited in het ene datumformaat van de app", async () => {
+// ── 3. De datum per kaart ──────────────────────────────────────────────────────────
+// Het label was "Last edited" en dat was onwaar: `project_dossiers.updated_at` heeft
+// geen `$onUpdate` en beweegt alleen bij setStatus / setXisPhase / setDossierOrg. Een
+// PDF importeren of regels bewerken schrijft naar `spec_lines.updated_at` — een middag
+// importwerk liet de datum dus staan onder een label dat "laatst bewerkt" beloofde.
+// Deze test pint het label vast op wat de kolom wél bijhoudt, in beide richtingen: de
+// nieuwe tekst moet er staan én de oude belofte mag niet terugsluipen.
+test("kaart: de datum draagt het label van wat de kolom bijhoudt", async () => {
   await renderServer(
     <Screen>
       <DossierList dossiers={dossiers} />
     </Screen>,
   );
   await expect
-    .element(page.getByText("Last edited 30 Jul 2026"))
+    .element(page.getByText("Status or phase changed 30 Jul 2026"))
     .toBeInTheDocument();
   await expect
-    .element(page.getByText("Last edited 02 Jul 2026"))
+    .element(page.getByText("Status or phase changed 02 Jul 2026"))
     .toBeInTheDocument();
+  // "Last edited" belooft dat élke bewerking de datum verzet; dat doet deze kolom niet.
+  expect(
+    document.body.textContent,
+    "het label belooft weer meer dan de kolom waarmaakt",
+  ).not.toContain("Last edited");
 });
 
 // Zonder datum geen lege regel en geen "—": de kaart zwijgt liever dan te gokken.
-test("kaart: geen Last edited-regel als updatedAt ontbreekt", async () => {
+test("kaart: geen datumregel als updatedAt ontbreekt", async () => {
   await renderServer(
     <Screen>
       <DossierList dossiers={[{ ...dossiers[0], updatedAt: undefined }]} />
     </Screen>,
   );
   await expect.element(page.getByText("Ziekenhuis Noord")).toBeInTheDocument();
-  expect(document.body.textContent).not.toContain("Last edited");
+  expect(document.body.textContent).not.toContain("changed");
 });
 
 // ── 4. Het aanmaakformulier in een dialoog ─────────────────────────────────────────
@@ -305,6 +323,72 @@ test("New project: knop opent de dialoog met het volledige formulier", async () 
   await expect
     .element(page.getByRole("button", { name: "Create project" }))
     .toBeInTheDocument();
+});
+
+// ── 5. De statuschips wissen de zoekterm niet meer ─────────────────────────────────
+// Het scherm bewaart twee dingen in de URL: `?filter=` en `?q=`. De chips bouwden hun
+// href als basePath + "?filter=…" en konden er geen tweede parameter bij dragen — wie
+// eerst zocht en dáárna op een status klikte, was zijn zoekterm kwijt zonder melding.
+// Deze tests pinnen beide richtingen: mét zoekterm draagt élke chip hem mee (ook "All"),
+// en zónder zoekterm blijft de href precies zoals hij was.
+function chipHref(naam: string): string {
+  const el = [...document.querySelectorAll<HTMLAnchorElement>("nav a")].find(
+    (a) => a.textContent?.trim() === naam,
+  );
+  expect(el, `filterchip "${naam}" niet gevonden`).not.toBeUndefined();
+  return el!.getAttribute("href")!;
+}
+
+test("statuschips: dragen de zoekterm mee naar elke status", async () => {
+  await renderServer(
+    <Screen>
+      <StatusFilter active="alle" params={{ q: "noord" }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: "All", exact: true }))
+    .toBeInTheDocument();
+  expect(chipHref("Lost"), "statuschip wist de zoekterm").toBe(
+    "/projects?filter=niet_gegund&q=noord",
+  );
+  expect(chipHref("All"), "de All-chip wist de zoekterm").toBe(
+    "/projects?q=noord",
+  );
+  // Geen enkele chip mag de term laten vallen.
+  for (const naam of ["Concept", "Estimate sent", "Quote", "Won", "Archived"]) {
+    expect(chipHref(naam), `chip "${naam}" wist de zoekterm`).toContain(
+      "q=noord",
+    );
+  }
+});
+
+test("statuschips: zonder zoekterm blijft de href kaal", async () => {
+  await renderServer(
+    <Screen>
+      <StatusFilter active="alle" params={{ q: "" }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: "All", exact: true }))
+    .toBeInTheDocument();
+  expect(chipHref("All")).toBe("/projects");
+  expect(chipHref("Lost")).toBe("/projects?filter=niet_gegund");
+});
+
+test("statuschips: een term met spatie en accent overleeft de href heel", async () => {
+  const term = "café & co";
+  await renderServer(
+    <Screen>
+      <StatusFilter active="concept" params={{ q: term }} />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByRole("link", { name: "All", exact: true }))
+    .toBeInTheDocument();
+  const href = chipHref("Won");
+  const sp = new URLSearchParams(href.split("?")[1]);
+  expect(sp.get("q"), `zoekterm verminkt in ${href}`).toBe(term);
+  expect(sp.get("filter")).toBe("gegund");
 });
 
 // De lege lijst verwees naar het formulier "on the right" — dat staat er niet meer.

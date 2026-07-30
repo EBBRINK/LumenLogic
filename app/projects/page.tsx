@@ -5,6 +5,7 @@ import {
   StatusFilter,
   type ProjectStatusFilter,
 } from "@/components/dossier/status-filter";
+import { PROJECT_STATUS_META } from "@/components/dossier/project-status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { StatusCounts } from "@/components/dossier/types";
@@ -41,10 +42,9 @@ function asQuery(v: string | string[] | undefined): string {
 // standaard op dit scherm: de stand is deelbaar, bookmarkbaar en overleeft een reload.
 // Een GET-formulier houdt dat waar zonder client-state; het zoekveld heeft geen JS.
 //
-// BEKENDE RANDJE: de filterchips bouwen hun href als `basePath` + `?filter=…` en kunnen
-// er dus geen tweede parameter bij dragen. Een andere status kiezen wist de zoekterm.
-// Andersom niet: dit formulier stuurt het actieve filter als hidden veld mee. Het chip-
-// component ligt bij een andere sessie, dus hier niet aangeraakt.
+// Beide richtingen blijven heel: dit formulier stuurt het actieve filter als hidden veld
+// mee, en de filterchips dragen `?q=` mee via `params` (StatusFilter). Dat was tot de
+// verificatieronde van 30 jul eenrichtingsverkeer — een statuschip wiste de zoekterm.
 function ProjectSearch({
   q,
   filter,
@@ -143,21 +143,39 @@ export default async function DossiersPage({
       </header>
       <div className="mb-6 flex flex-col gap-3">
         <ProjectSearch q={q} filter={filter} />
-        <StatusFilter active={filter} />
+        {/* `params` houdt de zoekterm heel als je een andere status kiest — zonder
+            dit bouwde de chip zijn href als basePath + "?filter=…" en wiste hij `?q=`
+            stilzwijgend (verificatie 30 jul). */}
+        <StatusFilter active={filter} params={{ q }} />
       </div>
       <StatusLegend className="mb-4" />
+      {/* De noemer is de lijst ná het statusfilter, niet de hele database — daarom staat
+          het filter erbij zodra het niet "All" is. "0 of 1 project match" liep bovendien
+          mis in het werkwoord; "Showing … matching" klopt bij elk aantal. */}
       {q !== "" && (
         <p className="mb-3 text-sm text-muted-foreground">
-          {withCounts.length} of {dossiers.length}{" "}
-          {dossiers.length === 1 ? "project" : "projects"} match “{q}”
+          Showing {withCounts.length} of {dossiers.length}{" "}
+          {dossiers.length === 1 ? "project" : "projects"}
+          {filter === "alle"
+            ? ""
+            : ` under “${PROJECT_STATUS_META[filter].label}”`}{" "}
+          matching “{q}”
         </p>
       )}
+      {/* De lege staat vertelt wélke van de drie situaties het is. "No projects yet" op
+          `?filter=archief` is onwaar zodra er één niet-gearchiveerd project bestaat —
+          zelfde soort halve waarheid als de rest van de audit; alleen de derde tak mag
+          "nog geen projecten" zeggen. */}
       <DossierList
         dossiers={withCounts}
         emptyMessage={
           q !== ""
-            ? `No project matches “${q}”.`
-            : "No projects yet. Use “New project” to create one."
+            ? `No project matches “${q}”${
+                filter === "alle" ? "" : ` under “${PROJECT_STATUS_META[filter].label}”`
+              }.`
+            : filter !== "alle"
+              ? `No projects under “${PROJECT_STATUS_META[filter].label}”.`
+              : "No projects yet. Use “New project” to create one."
         }
       />
     </main>

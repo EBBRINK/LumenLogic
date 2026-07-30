@@ -61,19 +61,44 @@ const FILTERS: { value: ProjectStatusFilter; label: string }[] = [
   })),
 ];
 
+// ── De rij draagt de rest van de query-string mee (verificatie 30 jul) ────────
+// De hrefs waren `basePath` + `?filter=…` en konden dus geen tweede parameter dragen:
+// wie eerst zocht (`?q=…`) en dáárna op een statuschip klikte, verloor zijn zoekterm
+// zonder melding. Andersom ging het al goed — het zoekformulier stuurt het actieve
+// filter als hidden veld mee. `params` dicht de andere richting: alles wat het scherm
+// verder in de URL bewaart, gaat mee door élke chip heen, inclusief "All".
+//
+// Lege en ontbrekende waarden vallen weg (geen `?q=` in de URL bij een leeg veld), en
+// `filter` uit `params` wordt genegeerd — die zet deze rij zelf, per chip. Volgorde:
+// `filter` eerst, dan de rest alfabetisch, zodat de href van een chip één vaste vorm
+// heeft (bookmarks en tests krijgen niet per toeval een andere sleutelvolgorde).
 export function StatusFilter({
   active = "alle",
   basePath = "/projects",
+  params,
 }: {
   active?: ProjectStatusFilter;
   basePath?: string;
+  /** Overige query-parameters die de chips moeten meedragen, bv. `{ q }`. */
+  params?: Record<string, string | number | null | undefined>;
 }) {
+  const extra = Object.entries(params ?? {})
+    .filter(
+      ([k, v]) => k !== "filter" && v != null && String(v).trim() !== "",
+    )
+    .sort(([a], [b]) => (a < b ? -1 : 1));
+  const hrefFor = (value: ProjectStatusFilter) => {
+    const qs = new URLSearchParams();
+    if (value !== "alle") qs.set("filter", value);
+    for (const [k, v] of extra) qs.set(k, String(v));
+    const s = qs.toString();
+    return s ? `${basePath}?${s}` : basePath;
+  };
   return (
     <nav className="flex flex-wrap gap-1" aria-label="Filter by status">
       {FILTERS.map((f) => {
         const isActive = f.value === active;
-        const href =
-          f.value === "alle" ? basePath : `${basePath}?filter=${f.value}`;
+        const href = hrefFor(f.value);
         return (
           <Button
             key={f.value}

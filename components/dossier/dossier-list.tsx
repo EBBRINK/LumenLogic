@@ -12,7 +12,7 @@ import type { DossierSummary } from "./types";
 // bewust hier en niet in DossierSummary: dat type wordt door een stuk of tien andere
 // schermen gedeeld en heeft er geen van nodig.
 export type DossierListItem = DossierSummary & {
-  /** project_dossiers.updated_at — zie de toelichting bij "Last edited" hieronder. */
+  /** project_dossiers.updated_at — zie de toelichting bij het label hieronder. */
   updatedAt?: string | number | Date | null;
 };
 
@@ -66,12 +66,30 @@ export function DossierList({
                   )}
                   {/* Kleuren-telling per dossier (E-03) — alleen als de counts zijn meegestuurd. */}
                   {d.counts && <StatusTally counts={d.counts} className="mt-1.5" />}
-                  {/* "Last edited" maakt de bestaande sortering (updated_at DESC in
+                  {/* Deze datum maakt de bestaande sortering (updated_at DESC in
                       listDossiersFiltered) voor het eerst leesbaar — de lijst stónd al
-                      op recentheid, je kon het alleen niet zien. */}
+                      op recentheid, je kon het alleen niet zien.
+
+                      HET LABEL ZEGT PRECIES WAT DE KOLOM BIJHOUDT, en dat is bewust
+                      niet "Last edited". `project_dossiers.updated_at` heeft geen
+                      `$onUpdate` in het schema; hij beweegt alleen als iemand hem
+                      expliciet zet, en dat doen in productie exact drie schrijvers:
+                      `setStatus` en `setXisPhase` (lib/repo/project-status.ts, status
+                      resp. XIS-fase + de afgeleide veiligheidsfase) en `setDossierOrg`
+                      (lib/repo/orgs.ts, alleen aangeroepen bij het aanmaken). Een PDF
+                      importeren, regels toevoegen of bewerken en de matcher draaien
+                      schrijven naar `spec_lines.updated_at` en laten de dossierrij
+                      ongemoeid — een project waar je een middag in hebt zitten
+                      importeren zou onder "Last edited" dus nog de oude datum tonen.
+                      Dat is dezelfde soort halve waarheid als de groene "valid"-badge
+                      op een prijslijst met 0 producten (UX-audit 30 jul).
+                      Naast de datum staan de twee badges die hij beschrijft: de
+                      status en de fase. Het optreken van de dossier-datum bij
+                      regelwijzigingen is een aparte beslissing (raakt meerdere
+                      repo-functies) en staat als open punt in HANDOVER.md. */}
                   {d.updatedAt != null && (
-                    <p className="mt-1.5 truncate text-xs text-muted-foreground">
-                      Last edited {formatDate(d.updatedAt)}
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      Status or phase changed {formatDate(d.updatedAt)}
                     </p>
                   )}
                 </div>
