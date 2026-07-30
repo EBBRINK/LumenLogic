@@ -62,11 +62,20 @@ export function meng<T extends MengCel>(
 // ECHTE cel, dus geen enkele val of tegenproef verandert van buur door andermans reparatie.
 // Bij gelijke geschiktheid wint de scherf met de MINSTE vallen, zodat val-recall een uitspraak
 // blijft over élke scherf en niet alleen over de scherven die er toevallig veel kregen.
+//
+// ⚠ De PLEK binnen de doelscherf is even belangrijk als de scherf zelf. De eerste versie koos de
+// laagste vrije index, en toen stonden bij XAL alle vijf de vallen van scherf 1 op positie 1–5 en
+// alle zes van scherf 2 op 0–5. De agent zag ze onmiddellijk: *"de vijf afkeuringen zitten
+// allemaal direct na c0001, aan het begin van de scherf"*. Dat is dezelfde fout als de vaste stap
+// die `meng()` juist opgelost had — de reparatie van het ene lek maakte het andere terug. De
+// ruilpartner wordt daarom uit de kandidaten van de doelscherf getrokken met de hash, niet met
+// `Math.min`.
 export function scheidTweelingen<T>(
   alles: T[],
   scherfMaat: number,
   soortVan: (c: T) => "echt" | "val" | "tegenproef",
   bronVan: (c: T) => T | null | undefined,
+  zaad?: Uint8Array,
 ): { rij: T[]; geruild: number; rest: number } {
   const rij = [...alles];
   const scherf = (i: number) => Math.floor(i / scherfMaat);
@@ -98,24 +107,31 @@ export function scheidTweelingen<T>(
     const pb = posVan.get(bron);
     if (pb == null || scherf(pv) !== scherf(pb)) continue;
 
-    // Kandidaten: echte cellen buiten de scherf van de bron. Deterministisch gekozen — de
-    // scherf met de minste vallen eerst, daarbinnen de laagste index.
-    let beste = -1;
-    let besteSleutel: [number, number] = [Infinity, Infinity];
+    // Kandidaten: echte cellen (geen broncel) buiten de scherf van de bron én van de val zelf,
+    // gegroepeerd per scherf.
+    const perScherf = new Map<number, number[]>();
     for (let i = 0; i < rij.length; i++) {
       if (soortVan(rij[i]) !== "echt" || bronnen.has(rij[i])) continue;
       const s = scherf(i);
       if (s === scherf(pb) || s === scherf(pv)) continue;
-      const sleutel: [number, number] = [vallenPerScherf.get(s) ?? 0, i];
-      if (sleutel[0] < besteSleutel[0] || (sleutel[0] === besteSleutel[0] && sleutel[1] < besteSleutel[1])) {
-        beste = i;
-        besteSleutel = sleutel;
-      }
+      const rij_ = perScherf.get(s);
+      if (rij_) rij_.push(i);
+      else perScherf.set(s, [i]);
     }
-    if (beste < 0) {
+    if (perScherf.size === 0) {
       rest++; // geen enkele andere scherf beschikbaar (te weinig scherven) — eerlijk melden
       continue;
     }
+    // Doelscherf: die met de minste vallen (bij gelijkspel de laagste scherf).
+    let doel = -1;
+    for (const s of [...perScherf.keys()].sort((a, b) => a - b)) {
+      if (doel < 0 || (vallenPerScherf.get(s) ?? 0) < (vallenPerScherf.get(doel) ?? 0)) doel = s;
+    }
+    // Plek BINNEN die scherf: uit de hash, niet de laagste index — anders klonteren de verhuisde
+    // vallen aan het begin van de scherf en is de recall weer een patroontoets.
+    const kandidaten = perScherf.get(doel)!;
+    const trek = zaad ? lees32(zaad, pv * 4) : pv * 2654435761;
+    const beste = kandidaten[Math.abs(trek) % kandidaten.length];
 
     const oudeScherf = scherf(pv);
     const nieuweScherf = scherf(beste);

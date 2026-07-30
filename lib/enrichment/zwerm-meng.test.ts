@@ -161,3 +161,24 @@ describe("scheidTweelingen — de ruil mag geen nieuwe tweeling maken", () => {
     expect(naast).toHaveLength(0);
   });
 });
+
+describe("scheidTweelingen — de verhuisde val mag niet vooraan klonteren", () => {
+  type C = { id: string; soort: "echt" | "val" | "tegenproef"; bron?: C };
+  it("spreidt de verhuisde vallen over de doelscherf", () => {
+    // Gezien bij XAL: alle vijf de vallen van scherf 1 kwamen op positie 1–5 terecht en alle zes
+    // van scherf 2 op 0–5, omdat de ruilpartner de laagste vrije index was. De agent zag ze
+    // meteen ("allemaal direct na c0001, aan het begin van de scherf").
+    const maat = 40;
+    const rij: C[] = [];
+    for (let i = 0; i < 240; i++) {
+      const e: C = { id: `e${i}`, soort: "echt" };
+      rij.push(e);
+      if (i % 20 === 19) rij.push({ id: `v${i}`, soort: "val", bron: e });
+    }
+    const uit = scheidTweelingen(rij, maat, (c) => c.soort, (c) => c.bron ?? null);
+    const binnenScherf = uit.rij.flatMap((c, i) => (c.soort === "val" ? [i % maat] : []));
+    // niet allemaal in de eerste tien plekken van hun scherf
+    expect(binnenScherf.filter((p) => p < 10).length).toBeLessThan(binnenScherf.length);
+    expect(Math.max(...binnenScherf)).toBeGreaterThan(10);
+  });
+});
