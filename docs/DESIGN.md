@@ -15,8 +15,9 @@
 > 2. Wijkt iets af van de brand kit, of ontbreekt het erin? **Eerst vragen aan Timo.** Niet
 >    zelf invullen, niet stilzwijgend een keuze maken. Openstaande vragen staan in §11.
 >
-> **Status:** papierwerk. Er is nog géén app-code op deze waarden aangepast — `globals.css`,
-> componenten en fonts staan nog op de oude situatie. Dat gebeurt in 2.0a, niet eerder.
+> **Status 2026-07-30:** niet langer alleen papierwerk. De tokenlaag (`app/globals.css`) en
+> `button.tsx`/`input.tsx` staan op de kit-waarden (2.0b stap 1 en 3). De logo-assets staan in
+> de repo en de favicon is aangesloten (O7 gesloten). Fonts staan nog op `Geist` (O2).
 
 ---
 
@@ -54,15 +55,31 @@ Twee L's, één vorm.
 
 ### Bestanden
 
-| Bestand | Gebruik |
+De web-assets staan sinds 2026-07-30 in de repo op **`public/brand/`**, byte-identiek aan de
+twee geleverde merkpakketten (O7 gesloten). De `.ai`/`.eps`/`.pdf` zijn bewust níet meegekomen —
+dat is drukwerk, geen web.
+
+| Bestand (`public/brand/`) | Gebruik |
 |---|---|
 | `lockup_horizontaal_kleur.svg` (5:1) | **standaardlogo** — websitekop, briefpapier, e-mail |
 | `lockup_gestapeld_kleur.svg` (1,67:1) | social avatar, vierkante ruimtes |
-| `lumenlogic_logo.svg` | beeldmerk los, zonder vaste maat (responsive) |
+| `lumenlogic_logo.svg` | beeldmerk los, zonder vaste maat (responsive) — **dit is wat de navbalk gebruikt** |
 | `logo_mono-zwart.svg` | één kleur, lagen blijven leesbaar door uitgesneden spleet |
 | `logo_silhouet-zwart.svg` | één dichte vorm — borduren, stempels, graveren, alles onder ~12 mm |
 | `favicon.ico` / `favicon.svg` | web; de `.ico` bevat 16/32/48/64/128/256 px |
-| `.ai` `.eps` `.pdf` `.png` | druk, sign, Office-situaties (print-vectoren op 512×512 pt artboard) |
+| `lumenlogic_logo_512/1024/2048px.png` | scherm met transparantie, Office-situaties |
+| `lumenlogic_logo_witte-achtergrond.svg` | waar transparantie niet werkt (PowerPoint) |
+| `LEESMIJ.txt` | de meegeleverde merkinstructie, ongewijzigd |
+
+**Favicon aangesloten** via de Next-App-Router-conventies: `app/favicon.ico` (was de
+Next.js-scaffoldstandaard) en `app/icon.svg` (= `favicon.svg`). Next zet daar zelf de twee
+`<link rel="icon">`-regels voor neer; er is géén `metadata.icons` nodig. Geverifieerd op de
+dev-server: beide worden geserveerd en de bytes zijn identiek aan `public/brand/`.
+
+**Het woordmerk is `#0A0A0A`** — in álle geleverde lockups. Op navy `#1A1F3A` is dat 1,2:1 en
+dus onzichtbaar. Er is géén mono-wit variant geleverd (zie O11). Het **beeldmerk** heeft dat
+probleem niet: `lumenlogic_logo.svg` bevat alleen violet/magenta/overlap, geen inkt, en werkt
+direct op donker. Daarom staat in de navbalk het beeldmerk plus de naam als platte witte tekst.
 
 Het woordmerk is omgezet naar vectorpaden — er zit géén lettertype in de bestanden, dus niets
 kan bij een drukker omvallen.
@@ -279,10 +296,11 @@ Niets hiervan zelf invullen. Alles hier gaat eerst langs Timo, en waar aangegeve
 | **O4** | Kit §2/§3 beschrijft het beeldmerk als translucente cirkels/ringen met opacity-lagen (100/65/35/15%). Het geleverde logo is twee L-vormen met vaste kleuren en expliciet géén transparantie. | Besluit: geleverde bestanden aanhouden, MD blijft ongewijzigd. Geen actie nodig, wel weten dat het er staat. |
 | **O5** | Kit §15 noemt mono-zwart "primary"; het merkpakket noemt de kleur-lockup het standaardlogo. | Besluit Timo: geleverde bestanden aanhouden — kleur-lockup is standaard, mono waar kleur niet kan. |
 | **O6** | Het canonieke `lumenlogic_brand_kit.md` stond buiten de repo. | **Gesloten:** byte-identieke read-only kopie op `docs/brand/lumenlogic_brand_kit.md`. Het origineel is niet aangeraakt. |
-| **O7** | De logobestanden staan nog niet in de repo (`public/`). | **Voorwaarde voor de 2.0b-bouwchip**, die pas ná 2.0a start. Nu niet doen. Assets ongewijzigd overnemen uit de twee merkpakket-zips. |
+| **O7** | De logobestanden staan nog niet in de repo (`public/`). | **Gesloten 2026-07-30:** de web-assets staan byte-identiek op `public/brand/` (geverifieerd met `cmp` tegen beide bronmappen), de favicon is aangesloten via `app/favicon.ico` + `app/icon.svg`. `.ai`/`.eps`/`.pdf` bewust niet meegenomen — drukwerk, geen web. Zie §2. |
 | **O8** | **De kit spreekt zichzelf tegen over secundaire tekst.** §3 schrijft `#8E9BA8` voor, §11 eist 4.5:1 contrast. Op wit haalt die kleur 2,8:1 — zelfs onder de 3:1-drempel voor grote tekst. Er is geen lezing waarin beide kloppen. | **Besluit Timo 2026-07-30: kit-letterlijk, `#8E9BA8` blijft.** De app gaat dus bewust live met secundaire tekst onder WCAG AA, op vrijwel elke pagina. Dit is een geaccepteerde afwijking, géén bug — niet "opruimen". Bij Eduard neerleggen samen met O1. |
 | **O9** | **44px minimumhoogte geldt niet overal.** Kit §7 eist min. 44px voor knoppen; de codebase heeft 56× `size="sm"` (28px), 2× `xs` en 4× `icon-*` in dense tabellen en admin-toolbars. | **Besluit Timo 2026-07-30:** 44px voor `default`, `lg` en formuliervelden; de compacte maten blijven zoals ze zijn. Bewuste afwijking van §7 — niet later stilzwijgend naar 44px trekken. |
 | **O10** | Kit §14 dekt dark mode niet volledig: er is geen primaire knop en geen focus-ring voor donker. | **Besluit Timo 2026-07-30:** primaire CTA op donker = wit vlak met navy tekst (§3: "Wit: CTA's op donker"). Focus-ring op donker = teal `#1BA89A` (5,4:1); blauw haalt daar maar 2,25:1. Beide kit-kleuren, niets verzonnen. |
+| **O11** | **De mono-wit lockup is belóófd maar niet geleverd.** `LEESMIJ.txt` schrijft bij `02_lockup`: "Elk in kleur, mono-zwart en mono-wit". In het pakket zitten alleen kleur, mono-zwart en silhouet-zwart — geen enkel wit bestand (geverifieerd op de inhoud van beide bronmappen, niet op de bestandsnamen). Kit §2 sanctioneert de variant wél ("Monochrome (White) — on dark backgrounds"). Daardoor is er geen lockup die op de navy balk kan staan: het woordmerk is `#0A0A0A` = 1,2:1. | **Besluit Timo 2026-07-30: optie 3 — alleen het beeldmerk op navy, zonder woordmerk.** `lumenlogic_logo.svg` heeft geen inkt-kleur en werkt direct op donker; de naam staat ernaast als platte witte tekst. Er is dus **niets herkleurd** (kit §15 en de LEESMIJ verbieden dat). Blijft openstaan: de mono-wit lockup alsnog bij Eduard opvragen, dan kan het volledige lockup in de balk. Tot die tijd niet zelf genereren. |
 
 ---
 

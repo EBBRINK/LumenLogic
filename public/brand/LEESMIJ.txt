@@ -1,0 +1,72 @@
+LUMENLOGIC — MERKPAKKET
+=======================
+
+Twee L-lagen die elkaar overlappen. Waar ze elkaar raken ontstaat een
+derde, diepere tint. Twee L's, één vorm.
+
+
+KLEUREN
+-------
+  Violet   #7C5CFF   rgb(124, 92, 255)    achterste L
+  Magenta  #EC5CD6   rgb(236, 92, 214)    voorste L
+  Overlap  #7321D6   rgb(115, 33, 214)    doorsnede
+  Inkt     #0A0A0A                        woordmerk
+
+De overlapkleur is de exacte multiply-uitkomst van violet x magenta,
+maar staat als VASTE kleur in het bestand. Geen transparantie, geen
+blend modes. Daardoor identiek op scherm, in druk en in elke app.
+
+
+MAPPEN
+------
+01_logo      Het beeldmerk in kleur. Los te gebruiken zodra het merk
+             bekend is, of naast een bestaande titel.
+
+02_lockup    Beeldmerk + woordmerk. Dit is je standaard-logo.
+             - horizontaal (5:1)  -> websitekop, briefpapier, e-mail
+             - gestapeld  (1,67:1) -> social avatar, vierkante ruimtes
+             Elk in kleur, mono-zwart en mono-wit.
+
+03_mono      Eén-kleur versies van het beeldmerk.
+             - mono      : de twee lagen blijven leesbaar door een
+                           uitgesneden spleet. Gebruik dit standaard.
+             - silhouet  : één dichte vorm. Voor borduren, stempels,
+                           graveren, en alles onder ~12 mm.
+
+04_favicon   Complete set voor web. Zie plaatsing-in-html.txt.
+             favicon.ico bevat 16/32/48/64/128/256 px in één bestand.
+
+
+BESTANDSTYPEN
+-------------
+  .svg   web, en de bron. Schaalt oneindig.
+  .ai    Adobe Illustrator (PDF-compatibel, opent en bewerkt normaal).
+  .eps   drukkers, sign, borduur. EPS Level 2, pure vector.
+  .pdf   universeel vector, voor drukwerk en InDesign.
+  .png   scherm, transparante achtergrond.
+
+Het woordmerk is omgezet naar vectorpaden. Er zit GEEN lettertype in
+de bestanden, dus niets kan bij een drukker of op een andere computer
+omvallen of vervangen worden.
+
+
+GEBRUIK
+-------
+  Vrije ruimte  : minimaal de dikte van een L-stam rondom het logo.
+  Minimale maat : beeldmerk 24 px scherm / 8 mm druk.
+                  horizontaal lockup 120 px / 40 mm.
+                  Kleiner? Gebruik het silhouet.
+  Donkere ondergrond : de kleurversie werkt direct, de kleuren zijn
+                  helder genoeg. Anders de mono-wit variant.
+
+  Niet doen: uitrekken, roteren, herkleuren, schaduw of gradient
+  toevoegen, de twee lagen uit elkaar trekken, of het woordmerk in een
+  ander lettertype overtypen.
+
+
+HERKOMST WOORDMERK
+------------------
+Gezet in Poppins (SIL Open Font License 1.1), omgezet naar outlines.
+De OFL staat dit gebruik toe, inclusief commercieel. Wil je later een
+eigen of gelicentieerd lettertype (bv. Aeonik Pro), dan is alleen het
+woordmerk opnieuw te zetten — het beeldmerk verandert niet.
