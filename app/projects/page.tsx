@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/db/client";
 import { DossierList } from "@/components/dossier/dossier-list";
 import { NewDossierForm } from "@/components/dossier/new-dossier-form";
@@ -57,20 +56,12 @@ export default async function DossiersPage({
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground">
-            Choose a project or create a new one. New = Concept; the safety phase
-            stays Tender by default (safe).
-          </p>
-        </div>
-        <Link
-          href="/analytics"
-          className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Analytics →
-        </Link>
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+        <p className="text-sm text-muted-foreground">
+          Choose a project or create a new one. New = Concept; the safety phase
+          stays Tender by default (safe).
+        </p>
       </header>
       <div className="mb-6">
         <StatusFilter active={filter} />

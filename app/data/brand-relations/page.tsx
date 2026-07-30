@@ -1,6 +1,7 @@
 // Merkrelaties — de relatie-/inwinningslaag over de ~430 bron-merken (plan-merkrelaties
 // K3): wie is benaderd, is er een geldige prijslijst, en hoe compleet is de data.
-// Toestemmings-as (disclosure) blijft op /admin/brands — bewust gescheiden.
+// Toestemmings-as (disclosure) leeft sinds sprint 2.0a (blok 3) op de merkdetailpagina
+// (Visibility-sectie), niet meer op /admin/brands.
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
@@ -62,12 +63,9 @@ export default async function MerkrelatiesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Brand relations</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Per brand: relationship status, price-list coverage and data
-            completeness. Manage permission (disclosure) on{" "}
-            <Link href="/admin/brands" className="underline">
-              Admin · Brands
-            </Link>
-            .
+            Per brand: relationship status, price-list coverage, visibility and
+            data completeness. Open a brand for its Visibility (disclosure)
+            settings.
           </p>
         </div>
         <TemplateDownloadLink />

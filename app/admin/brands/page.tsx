@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { db } from "@/db/client";
 import {
-  BrandsTierBlock,
-  type BrandTierRow,
-} from "@/components/admin/brands-tier-block";
+  BrandsListBlock,
+  type BrandListRow,
+} from "@/components/admin/brands-list-block";
 import { BrandFilterBar } from "@/components/admin/brand-filter-bar";
-import { listBrandFieldOverrides, listBrandsWithTier } from "@/lib/repo/admin";
+import { listBrandsWithTier } from "@/lib/repo/admin";
 import type { BrandLifecycle } from "@/db/schema";
 import { requireSession } from "@/lib/session";
-import { setFieldVisibilityAction, setTierAction } from "../actions";
 
 const PHASES: BrandLifecycle[] = ["actief", "slapend", "bestaat_niet_meer"];
 
@@ -40,32 +39,25 @@ export default async function AdminMerkenPage({
     q: q || undefined,
     lifecycle: phase || undefined,
   });
-  // Per-veld-overrides per merk erbij: de disclosure-repo is de bron.
-  // LET OP: dit is een N+1 over (ongefilterd) 437 merken. Bestond al vóór 1.5; de
-  // filterbalk maakt hem in de praktijk kleiner maar lost hem niet op. Zie HANDOVER.
-  const rows: BrandTierRow[] = await Promise.all(
-    brands.map(async (b) => ({
-      id: b.id,
-      name: b.name,
-      brandCode: b.brandCode,
-      lifecycle: b.lifecycle,
-      disclosureTier: b.disclosureTier,
-      productCount: b.productCount,
-      priceListValidUntil: b.priceListValidUntil,
-      overrides: await listBrandFieldOverrides(db, b.id),
-    })),
-  );
+  // Sprint 2.0a (blok 3): disclosure-tier en per-veld-overrides zijn verhuisd naar
+  // /data/brand-relations/[brandId] (Visibility-sectie). Dit scherm is nu puur
+  // merkbeheer — geen N+1 meer over listBrandFieldOverrides (bijvangst, niet het doel).
+  const rows: BrandListRow[] = brands.map((b) => ({
+    id: b.id,
+    name: b.name,
+    brandCode: b.brandCode,
+    lifecycle: b.lifecycle,
+    productCount: b.productCount,
+    priceListValidUntil: b.priceListValidUntil,
+  }));
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Brands &amp; visibility
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Brands</h1>
           <p className="text-sm text-muted-foreground">
-            Disclosure tier and per-field exceptions per brand. Click a brand to
-            edit it, change its lifecycle or delete it.
+            Add, edit and delete brands.
           </p>
         </div>
         <Link
@@ -76,11 +68,7 @@ export default async function AdminMerkenPage({
         </Link>
       </header>
       <BrandFilterBar q={q} phase={phase} shown={rows.length} />
-      <BrandsTierBlock
-        brands={rows}
-        setTierAction={setTierAction}
-        setFieldVisibilityAction={setFieldVisibilityAction}
-      />
+      <BrandsListBlock brands={rows} />
     </main>
   );
 }

@@ -273,14 +273,16 @@ test("'geen reactie'-filter: alléén benaderd + laatste contact ouder dan de dr
   expect(page.getByText("Merk Kaal").query()).toBeNull(); // recent contact
 });
 
-test("kaart op /data: 'Merkrelaties' met badge-aantal (data ontvangen)", async () => {
+test("kaart op /data: 'Event log' aanwezig; Loading en Brand relations niet meer", async () => {
   await renderServer(
     <Screen>
-      <DataCards badge={{ "/data/brand-relations": 3 }} />
+      <DataCards badge={{ "/data/enrichment": 3 }} />
     </Screen>,
   );
-  await expect.element(page.getByText("Brand relations")).toBeInTheDocument();
+  await expect.element(page.getByText("Event log")).toBeInTheDocument();
   await expect.element(page.getByText("3", { exact: true })).toBeInTheDocument();
+  expect(page.getByText("Loading").query()).toBeNull();
+  expect(page.getByText("Brand relations").query()).toBeNull();
 });
 
 test("mini-scorecard: n/a bij 0 producten en donkergroen bij 100% must", async () => {

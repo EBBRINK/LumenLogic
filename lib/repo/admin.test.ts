@@ -11,7 +11,6 @@ import {
   listAllMemberships,
   listBrandUploadsForReview,
   listBrandsWithTier,
-  recentAdminEvents,
   recordPdlImport,
   rejectUpload,
   setBrandFieldOverride,
@@ -172,10 +171,6 @@ test("gebruikersoverzicht toont memberships over orgs", async () => {
   expect(els?.roles).toEqual(["org_admin", "projectleider"]);
 });
 
-test("event-inzage geeft de recente activiteit terug", async () => {
-  const db = await createTestDb();
-  const { brandId } = await seedBrandProduct(db, { brand: "Zumtobel", name: "Panos" });
-  await setBrandTier(db, brandId, "tier2", "timo");
-  const events = await recentAdminEvents(db, 10);
-  expect(events.some((e) => e.action === "brand_tier_changed")).toBe(true);
-});
+// Event-inzage verhuisde naar het Event-log-scherm onder Data (sprint 2.0a);
+// recentAdminEvents bestaat niet meer — zie lib/repo/events.test.ts voor de dekking van
+// recentEvents/countEventsByAction rechtstreeks.

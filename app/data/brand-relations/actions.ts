@@ -10,8 +10,12 @@ import {
   upsertBrandRelation,
   type BrandRelationPatch,
 } from "@/lib/repo/brand-relations";
+import { setBrandFieldOverride, setBrandTier } from "@/lib/repo/admin";
+import type { DisclosureTier } from "@/lib/repo/disclosure";
 import { logEvent } from "@/lib/repo/events";
 import { getActor, requireSession } from "@/lib/session";
+
+const TIERS: DisclosureTier[] = ["tier1", "tier2", "tier3"];
 
 const STATUSSEN: BrandRelationStatus[] = [
   "niet_benaderd",
@@ -62,4 +66,32 @@ export async function logBrandMessagePreparedAction(brandId: string) {
     action: "brand_message_prepared",
     actor: await getActor(),
   });
+}
+
+// Verhuisd uit app/admin/actions.ts (sprint 2.0a, blok 3): zichtbaarheid (disclosure)
+// leeft nu bij de merkrelatie, niet meer in Admin. De onderliggende repo-functies
+// setBrandTier/setBrandFieldOverride (lib/repo/admin.ts) loggen zelf hun events
+// (brand_tier_changed / brand_field_visibility_changed, ijzeren regel 5) — dat blijft
+// ongewijzigd, hier verandert alleen waar de actie-wrapper vandaan komt.
+
+// MERK-TIER zetten (J-02). Ongeldige waarde → geen wijziging (fail-safe).
+export async function setTierAction(formData: FormData) {
+  await requireSession();
+  const brandId = String(formData.get("brandId") ?? "").trim();
+  const tier = String(formData.get("tier") ?? "").trim() as DisclosureTier;
+  if (!brandId || !TIERS.includes(tier)) return;
+  await setBrandTier(db, brandId, tier, await getActor());
+  revalidatePath("/data/brand-relations");
+  revalidatePath(`/data/brand-relations/${brandId}`);
+}
+
+// PER-VELD-ZICHTBAARHEID (J-04): expliciete override op de tier-basis.
+export async function setFieldVisibilityAction(formData: FormData) {
+  await requireSession();
+  const brandId = String(formData.get("brandId") ?? "").trim();
+  const field = String(formData.get("field") ?? "").trim();
+  if (!brandId || !field) return;
+  const visible = String(formData.get("visible") ?? "") === "true";
+  await setBrandFieldOverride(db, brandId, field, visible, await getActor());
+  revalidatePath(`/data/brand-relations/${brandId}`);
 }

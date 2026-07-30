@@ -1,6 +1,7 @@
 // Merkrelatie-detail (stap 5): volledige compleetheids-scorecard (één
 // getBrandCompleteness-call — geen per-bucket-queries) + relatievelden bewerken.
-// Kruislink naar /admin/brands: dáár woont de toestemmings-as (disclosure).
+// Sprint 2.0a (blok 3): de toestemmings-as (disclosure) is hierheen verhuisd — zie de
+// Visibility-sectie onderaan.
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -9,11 +10,13 @@ import { db } from "@/db/client";
 import { brandRelations, brands, priceLists } from "@/db/schema";
 import { BrandMessageBlock } from "@/components/data/brand-message-block";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
+import { BrandVisibilityBlock } from "@/components/data/brand-visibility-block";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
 import { TemplateUploadCard } from "@/components/data/template-upload-card";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
 import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
 import { buildBrandMessage } from "@/lib/brand-message";
+import { listBrandFieldOverrides } from "@/lib/repo/admin";
 import {
   getBrandCompleteness,
   priceListIndicator,
@@ -22,6 +25,8 @@ import { listBrandUploads } from "@/lib/repo/brand-portal";
 import { requireSession } from "@/lib/session";
 import {
   logBrandMessagePreparedAction,
+  setFieldVisibilityAction,
+  setTierAction,
   updateBrandRelationAction,
 } from "../actions";
 import { uploadTemplateAction } from "./upload-actions";
@@ -39,6 +44,7 @@ export default async function MerkrelatieDetailPage({
       id: brands.id,
       name: brands.name,
       brandCode: brands.brandCode,
+      disclosureTier: brands.disclosureTier,
       status: brandRelations.status,
       contactName: brandRelations.contactName,
       contactEmail: brandRelations.contactEmail,
@@ -52,6 +58,8 @@ export default async function MerkrelatieDetailPage({
   if (!row) notFound();
 
   const completeness = await getBrandCompleteness(db, brandId);
+  // Eén merk → geen N+1 (in tegenstelling tot de oude /admin/brands-lijst).
+  const fieldOverrides = await listBrandFieldOverrides(db, brandId);
 
   // Open template-voorstellen van dít merk (retour-pad, sprint 1.2). Alleen 'staging':
   // een afgehandeld voorstel heeft geen werk meer en zou de lijst laten dichtslibben.
@@ -96,11 +104,7 @@ export default async function MerkrelatieDetailPage({
             )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Relationship and data completeness. Manage permission (disclosure) on{" "}
-            <Link href="/admin/brands" className="underline">
-              Admin · Brands
-            </Link>
-            .
+            Relationship, visibility and data completeness.
           </p>
         </div>
       </header>
@@ -117,6 +121,16 @@ export default async function MerkrelatieDetailPage({
             notes: row.notes,
           }}
           updateAction={updateBrandRelationAction}
+        />
+      </section>
+
+      <section className="mb-8">
+        <BrandVisibilityBlock
+          brandId={row.id}
+          disclosureTier={row.disclosureTier}
+          overrides={fieldOverrides}
+          setTierAction={setTierAction}
+          setFieldVisibilityAction={setFieldVisibilityAction}
         />
       </section>
 

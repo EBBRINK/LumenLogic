@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
       // Oude "dossiers"-routes blijven permanent werken (B1, docs/plan-aanvraag-estimate.md).
       { source: "/dossiers", destination: "/projects", permanent: true },
       { source: "/dossiers/:path*", destination: "/projects/:path*", permanent: true },
+      // Sprint 2.0a: het event-log verhuisde van Admin naar Data.
+      { source: "/admin/events", destination: "/data/event-log", permanent: true },
     ];
   },
 };

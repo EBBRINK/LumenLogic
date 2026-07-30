@@ -6,34 +6,29 @@ import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
-import { BrandsTierBlock, type BrandTierRow } from "./brands-tier-block";
+import { BrandsListBlock, type BrandListRow } from "./brands-list-block";
 import {
   UploadReviewBlock,
   type PdlBrandOption,
   type UploadReviewRow,
 } from "./upload-review-block";
 import { MembershipsBlock, type MembershipRow } from "./memberships-block";
-import { EventsBlock, type EventRow } from "./events-block";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
   desktop: { width: 1280, height: 800 },
 } as const;
 
-const brands: BrandTierRow[] = [
+const brands: BrandListRow[] = [
   {
     id: "b1",
     name: "Delta Light",
-    disclosureTier: "tier1",
     productCount: 42,
-    overrides: { gross_price: false },
   },
   {
     id: "b2",
     name: "XAL",
-    disclosureTier: "tier2",
     productCount: 0,
-    overrides: {},
   },
 ];
 
@@ -69,23 +64,6 @@ const memberships: MembershipRow[] = [
   },
 ];
 
-const events: EventRow[] = [
-  {
-    id: "e1",
-    entity: "brand",
-    action: "brand_tier_changed",
-    actor: "timo",
-    createdAt: "2026-07-06T09:00:00Z",
-  },
-  {
-    id: "e2",
-    entity: "brand_upload",
-    action: "brand_upload_approved",
-    actor: "timo",
-    createdAt: "2026-07-06T09:05:00Z",
-  },
-];
-
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -98,11 +76,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 
 const adminScreen = (
   <Screen>
-    <BrandsTierBlock
-      brands={brands}
-      setTierAction={noopAction}
-      setFieldVisibilityAction={noopAction}
-    />
+    <BrandsListBlock brands={brands} />
     <UploadReviewBlock
       uploads={uploads}
       pdlBrands={pdlBrands}
@@ -111,7 +85,6 @@ const adminScreen = (
       pdlImportAction={noopAction}
     />
     <MembershipsBlock memberships={memberships} />
-    <EventsBlock events={events} />
   </Screen>
 );
 
@@ -127,7 +100,7 @@ for (const theme of ["light", "dark"] as const) {
       await renderServer(adminScreen);
       await expect.element(document.body).toBeInTheDocument();
       await expect
-        .element(page.getByText("Brands & visibility"))
+        .element(page.getByText("Brands", { exact: true }))
         .toBeInTheDocument();
       await expect
         .element(page.getByText("Pending uploads"))
@@ -140,11 +113,7 @@ for (const theme of ["light", "dark"] as const) {
 test("merken: een merk zonder producten toont nul (het gat blijft eerlijk)", async () => {
   await renderServer(
     <Screen>
-      <BrandsTierBlock
-        brands={brands}
-        setTierAction={noopAction}
-        setFieldVisibilityAction={noopAction}
-      />
+      <BrandsListBlock brands={brands} />
     </Screen>,
   );
   await expect.element(page.getByText("XAL")).toBeInTheDocument();
@@ -203,16 +172,5 @@ test("gebruikers: meerdere rollen per persoon staan als aparte badges", async ()
   await expect.element(page.getByText("Project lead")).toBeInTheDocument();
 });
 
-test("events: recente handelingen zijn zichtbaar met actor", async () => {
-  await renderServer(
-    <Screen>
-      <EventsBlock events={events} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByText("brand_tier_changed"))
-    .toBeInTheDocument();
-  await expect
-    .element(page.getByText("brand_upload_approved"))
-    .toBeInTheDocument();
-});
+// De EventsBlock-render-test verhuisde naar components/data/event-log-block.test.tsx —
+// het scherm zelf verhuisde van Admin naar Data (sprint 2.0a).

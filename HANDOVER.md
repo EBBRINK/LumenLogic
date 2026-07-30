@@ -1860,3 +1860,135 @@ Gegroepeerd naar dader-laag, want dat bepaalt wie het oplost.
 deterministische 15/20) · merkkolom 16/20 correct (9 van de 13 gevulde, 7 van de 7 lege — leeg
 lezen wáár het boek `n.t.b.` zegt is correct gedrag, geen misser) · bruikbare kandidaten vóór
 bevinding 1: 0/20.
+
+---
+
+## 2026-07-30 — Sprint 2.0a: informatiestructuur opnieuw indelen (doelboom bevestigd)
+
+**Fase 0/1 afgerond via ingesproken feedback van Timo** (de HTML-sorter is opzij gezet — Timo
+gaf de indeling mondeling). Onderstaande **doelboom is door Timo bevestigd (30 jul)** en is de
+basis waarop gebouwd wordt. Alles is de **Intern-view**; labels voor de User-rol veranderen pas
+later. **Harde grens blijft: alleen structuur. Géén auth, géén server-side route-gating, géén
+rollen/orgs in de db** — dat is week 3. Deze sprint levert de structuur + een rol→schermen-kaart
+op papier.
+
+**Bevestigde besluiten (30 jul):**
+1. **Merk-plek.** Admin wordt **puur "merken toevoegen/verwijderen"**. Al het andere rond een
+   merk — relatie, datacollectie **én zichtbaarheid/tier + per-veld-uitzonderingen** (nu
+   `/admin/brands` "Brands & visibility") — verhuist naar **Brand relations**. De dubbele
+   Data-kaart naar brand-relations vervalt.
+2. **Event-log = ruwe data → onder Data.** Het "Logged events / By type"-blok (nu op
+   `/analytics`) én de Activity-tabel (`/admin/events`) zijn twee vensters op dezelfde
+   events-tabel → samenvoegen tot **één Event-log-view onder Data**. Weg van Analytics én weg
+   uit Admin.
+3. **Analytics = puur waarde-inzicht, deze sprint alleen placeholders** (optie A: "hoeft niet af
+   te zijn"). Tegels: veel-opgezocht · "expert worden" · "armaturen → XIS" · projecten
+   aangemaakt · XIS-herkende projecten · **Loading-signaal** (vaak aangevraagde merken die we nog
+   niet hebben — verhuisd van `/data/loading`) · + 5× "to be determined". Echte berekeningen = later.
+4. **Rol-conditie deze sprint = nee.** Bouw één goede interne structuur voor iedereen. Enige
+   verschil Intern vs. super admin = of je **Admin** ziet. Geen rol-schakelaar in de UI.
+
+**Doelboom (top-nav, intern):**
+1. **Projects** — ongewijzigd. *Weg:* de "Analytics →"-link op de projectenpagina.
+2. **Catalog** — ongewijzigd (+ productdetail `/products/[id]`).
+3. **Brand relations** — thuisbasis voor álles rond een merk (relatie + datacollectie +
+   zichtbaarheid/tier + per-veld-uitzonderingen).
+4. **Data** (puur data) — kaarten: Enrichment · Price lists · Evaluation · Fields · **Event-log**.
+5. **Analytics** (puur waarde, alles placeholder) — zie besluit 3. *Weg:* ruwe "Logged
+   events/By type" (→ Data) + back-links.
+6. **Settings** — ongewijzigd.
+7. **Brand portal** — ongewijzigd (preview van de merk-omgeving).
+8. **Admin** (super admin) — alleen: merken toevoegen/verwijderen · Imports · Users. *Weg:*
+   Activity (→ Data), Brands & visibility (→ Brand relations).
+
+**Rol→schermen-kaart (op papier, voor week 3):** Intern = 1–7 · Super admin = 1–8 · User =
+Projects + Catalog · Brand = Brand portal.
+
+**Zelf op te pakken (geen Timo-beslissing nodig):**
+- **Brand relations is traag** — Timo's eigen constatering. Meten + melden met bewijs; **niet**
+  repareren binnen 2.0a (anders niet meer te zien wat 2.0a veranderde).
+- **Mobiel/375px** — desktop-first; balk netjes laten afbreken i.p.v. overlopen; geen apart
+  hamburgermenu tenzij Timo erom vraagt.
+- **Event-log-scherm onder Data** — tellingen (By type) + chronologische tabel samenvoegen tot
+  één scherm.
+
+**Nog te bewaken:** ijzeren regel 5 (elke navigatie/zoekactie logt een event) blijft heel; de
+Activity-viewer verplaatsen verandert de logging niet. `components/site-nav.test.tsx` groen
+houden of bewust aanpassen.
+
+### Fase 2 afgerond — convergerend bouwplan + 3 guardrails (30 jul)
+
+Twee onafhankelijke plan-agents (Fable) convergeerden. Timo gaf **groen licht voor Fase 3** met
+drie guardrails:
+
+1. **HARD — analytics-querylaag blijft staan.** `lib/repo/analytics.ts` (`getAnalytics`) én
+   `components/analytics-view.tsx` worden **niet** aangeraakt/verwijderd — dat is het fundament
+   van 2.1 en is niet achteraf toe te voegen. Alléén `app/analytics/page.tsx` → placeholder-tegels
+   (geen `getAnalytics`-call, geen back-link). De nieuwe Event-log-view krijgt daarom een **eigen**
+   telquery `countEventsByAction` (nieuw in `lib/repo/events.ts`) en een eigen label-map — de
+   `ACTION_LABEL` in `analytics-view.tsx` wordt niet verplaatst maar los opnieuw gezet (nieuw
+   `lib/event-labels.ts`), zodat `analytics-view.tsx` byte-stabiel blijft.
+2. **Scope bevestigd (geen afwijking):** top-nav blijft **8 items**. De **vier-rollen-nav** én de
+   **375px-overloop** schuiven naar later (week 3 / apart item). Het eerder genoemde
+   "balk-graceful-wrap"-zelfklusje **vervalt** — 375px is nu expliciet uitgesteld.
+3. **Rol→schermen-kaart opgeleverd:** `docs/rol-schermen-kaart-2.0a.md` (de G21-papierdeliverable
+   waarop week 3 verbergt zonder herbouw).
+
+**Convergerend bouwplan (wat gebouwd wordt):**
+- **Event-log → Data.** Nieuw `app/data/event-log/page.tsx` + view die tellingen (By type) +
+  chronologische tabel samenvoegt. `components/admin/events-block.tsx` → `components/data/`
+  (puur presentational, 1-op-1). Nieuwe lean query `countEventsByAction` in `lib/repo/events.ts`;
+  `recentEvents` (bestaat) hergebruiken — **direct** uit `events.ts` importeren, niet via
+  `recentAdminEvents` (dat in `admin.ts` bij schrijfpaden woont). `app/admin/events/page.tsx` weg
+  + redirect `/admin/events` → `/data/event-log` in `next.config.ts`. Admin-overzicht: Activity-kaart
+  + `recentAdminEvents`-call weg.
+- **Merk-zichtbaarheid → Brand relations.** Tier + per-veld-toggles als sectie "Visibility
+  (disclosure)" op de **detailpagina** `app/data/brand-relations/[brandId]/page.tsx` (niet in de
+  437-rijen-tabel). Nieuw `components/data/brand-visibility-block.tsx` (éénmerks-variant van
+  `brands-tier-block.tsx`). Actions `setTierAction`/`setFieldVisibilityAction` verhuizen van
+  `app/admin/actions.ts` → `app/data/brand-relations/actions.ts` (alleen `revalidatePath`-doelen
+  wijzigen); de repo-functies (`setBrandTier`/`setBrandFieldOverride`) — die de events loggen —
+  blijven staan → **ijzeren regel 5 heel**. `/admin/brands` wordt de slanke
+  add/edit/delete-lijst; de bekende N+1 verdwijnt als **bijvangst** (geen extra perf-werk).
+- **Data-hub:** Event-log-kaart erbij; Loading- en Brand-relations-kaart eruit; badges in
+  `app/data/page.tsx` opschonen.
+- **Analytics → placeholders** (guardrail 1). **Projects:** "Analytics →"-link eruit.
+- **Tests:** `site-nav.test.tsx` blijft groen (nav ongewijzigd); `admin`/`brand-admin`/
+  `brand-relations`/`data-screens`-tests + screenshots bewust bijwerken.
+
+**Bug gemeld, NIET gefixt (Timo's regel):** Brand relations traag → `getAllBrandCompleteness`
+(`lib/repo/brand-relations.ts:262-277`) scant de volledige products-tabel (~210k rijen) met
+~67 `count(...) filter`-expressies per rij + gecorreleerde prijs-`EXISTS`; `listBrandRelations`
+telt `productCount` via gecorreleerde subquery per merk (×437). Kandidaat voor latere sprint.
+
+**Uitvoering:** gebouwd door sonnet-agents (Timo's model-per-fase: bouwen = lichter model), die
+elkaars diff cross-reviewen; daarna volledige `bun vitest run` + screenshots (light/dark ×
+mobile/desktop) bekeken. **Niet pushen/deployen zonder Timo's expliciete akkoord** (elke push naar
+main deployt live).
+
+### Fase 3 afgerond — gebouwd, geverifieerd, NIET gepusht (30 jul)
+
+Drie sonnet-bouwagents (event-log · data-hub+analytics+projects · merk-zichtbaarheid), daarna
+twee cross-review-agents. Resultaat:
+- **Verificatie:** `bunx tsc --noEmit` schoon (exit 0). `bun vitest run` = **967 groen, 1 skip,
+  1 failure** — die ene = `components/data/custom-fields.test.tsx`, een bekend-flaky suite onder
+  volle belasting; **geïsoleerd 14/14 groen**, dus geen regressie. (Test-infra: eerst `bun install`
+  in de worktree nodig, anders falen alle DB-tests op de PGlite `Invalid FS bundle size`-infra-gap —
+  zie memory.) Screenshots event-log / brand-visibility / brand-list (light+dark, desktop+mobile)
+  zelf bekeken: correct; de 375px-tabeloverloop is het bekende, uitgestelde item.
+- **Beide cross-reviews = GO.** Guardrail G1 hard bevestigd: `lib/repo/analytics.ts` +
+  `components/analytics-view.tsx` staan **niet** in de diff (byte-stabiel). Ijzeren regel 5 heel
+  (`logEvent`-calls in `setBrandTier`/`setBrandFieldOverride` ongewijzigd; alleen action-wrappers
+  verhuisd). Geen dangling refs; redirect `/admin/events`→`/data/event-log` + revalidatePath-doelen
+  correct. `nav-items.ts` ongewijzigd (8 items).
+- **Diff (schoon):** M `app/admin/actions.ts`, `app/admin/brands/page.tsx`, `app/admin/page.tsx`,
+  `app/analytics/page.tsx`, `app/data/brand-relations/[brandId]/page.tsx` + `actions.ts` +
+  `page.tsx`, `app/data/page.tsx`, `app/projects/page.tsx`, `components/data/data-cards.tsx`,
+  `lib/repo/admin.ts` + `lib/repo/events.ts`, `next.config.ts` + tests; D `app/admin/events/page.tsx`,
+  `components/admin/brands-tier-block.tsx`, `components/admin/events-block.tsx`; nieuw
+  `app/data/event-log/`, `components/data/event-log-{view,block}.tsx`,
+  `components/data/brand-visibility-block.tsx`, `components/admin/brands-list-block.tsx`,
+  `lib/event-labels.ts` + tests, `docs/rol-schermen-kaart-2.0a.md`. Dev-restjes opgeruimd
+  (`ia-card-sorter.html` weg, `launch.json` terug op HEAD; de werkende sorter staat in de scratchpad).
+- **Nog te doen (wacht op Timo):** committen op de branch + akkoord om te pushen (= live deploy).
+  Nog niet gecommit/gepusht.

@@ -5,28 +5,27 @@ import {
   listAllMemberships,
   listBrandUploadsForReview,
   listBrandsWithTier,
-  recentAdminEvents,
 } from "@/lib/repo/admin";
 import { requireSession } from "@/lib/session";
 
-// ADMIN-CONSOLE OVERZICHT (§3.16, H3): de vier beheerhoeken met een telling en een pad
-// erheen. Eigen <main> (buiten de dossier-layout).
+// ADMIN-CONSOLE OVERZICHT (§3.16, H3): de beheerhoeken met een telling en een pad erheen.
+// Eigen <main> (buiten de dossier-layout). Sprint 2.0a: Activity verhuisde naar
+// /data/event-log — Admin toont alleen nog wat beheerhandelingen zijn.
 export default async function AdminOverviewPage() {
   await requireSession();
 
-  const [brands, uploads, memberships, events] = await Promise.all([
+  const [brands, uploads, memberships] = await Promise.all([
     listBrandsWithTier(db),
     listBrandUploadsForReview(db),
     listAllMemberships(db),
-    recentAdminEvents(db, 50),
   ]);
 
   const sections = [
     {
       href: "/admin/brands",
-      title: "Brands & visibility",
+      title: "Brands",
       count: `${brands.length} brands`,
-      desc: "Disclosure tier and per-field exceptions.",
+      desc: "Add, edit and delete brands.",
     },
     {
       href: "/admin/imports",
@@ -40,12 +39,6 @@ export default async function AdminOverviewPage() {
       count: `${memberships.length} members`,
       desc: "Roles across all organizations.",
     },
-    {
-      href: "/admin/events",
-      title: "Activity",
-      count: `${events.length} recent events`,
-      desc: "The event log, read-only.",
-    },
   ];
 
   return (
@@ -53,7 +46,7 @@ export default async function AdminOverviewPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
         <p className="text-sm text-muted-foreground">
-          Brink admin: brands, uploads, users and activity.
+          Brink admin: brands, uploads and users.
         </p>
       </header>
 

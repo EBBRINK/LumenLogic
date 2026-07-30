@@ -5,36 +5,25 @@ import { CoverageMeter } from "@/components/data/coverage-meter";
 import { DataCards } from "@/components/data/data-cards";
 import {
   getTier2Coverage,
-  listBrandLoadQueue,
   listEnrichmentRuns,
   listPriceListStatus,
 } from "@/lib/repo/enrichment";
-import { listBrandRelations } from "@/lib/repo/brand-relations";
 import { requireSession } from "@/lib/session";
 
 export default async function DataPage() {
   await requireSession();
-  const [coverage, runs, queue, priceLists, relations] = await Promise.all([
+  const [coverage, runs, priceLists] = await Promise.all([
     getTier2Coverage(db),
     listEnrichmentRuns(db),
-    listBrandLoadQueue(db),
     listPriceListStatus(db),
-    listBrandRelations(db),
   ]);
 
   const openRuns = runs.filter((r) => r.status === "steekproef").length;
-  const waiting = queue.filter((q) => q.status === "wachtend").length;
   const expired = priceLists.filter((p) => p.bucket === "verlopen").length;
-  // Badge = werk te verwerken: merken waarvan de data binnen is (K3).
-  const dataOntvangen = relations.filter(
-    (r) => r.status === "data_ontvangen",
-  ).length;
 
   const badge: Record<string, number> = {
     "/data/enrichment": openRuns,
-    "/data/loading": waiting,
     "/data/price-lists": expired,
-    "/data/brand-relations": dataOntvangen,
   };
 
   return (
