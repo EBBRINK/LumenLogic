@@ -6,6 +6,20 @@
 > op de Neon-branch achter `scripts/branch-guard.ts` en, sinds blokkade 1 viel, read-only op
 > Supabase `uvmeytxejlzvdgjgthmr`. Probleemdoc: `docs/probleem-speckolommen-28-merken.md`.
 
+## Timo's besluiten (30 jul) — alle drie genomen
+
+1. **Volgorde: ronde 3 nu, Prado bevriezen.** Draaien per merk × veld in risicovolgorde;
+   Prado's kelvin/cri/beamAngle/dimmable (23.392) en TossB's lumenOutput (9) blijven liggen tot
+   de kolomroute per merk beoordeeld is. Prado's `maxWattage` (29) en `ipValue` (11) mogen wél
+   mee — die worden door geen kolom geclaimd.
+2. **De poort: alle vier de ingrepen blijven.** `NON DIM`-fix, de bundeling, de drempel op nul
+   fouten, en `revertRun`. De drempel is het expliciete tegenwicht tegen het bezwaar dat een
+   terugdraaiknop de zorgvuldigheid vooraf verlaagt.
+3. **Ronde 1 wordt herbouwd met een `rijfilter`**, niet met vier losse uitzonderingen op
+   `stap1Klaar`. Muuto verhuist daarmee naar ronde 2 — die kolom is aantoonbaar niet "in één
+   keer" over te zetten, en met rijfilter plus normalisator levert hij 435 waarden in plaats
+   van 41.
+
 ## Waar de agents het onverwacht eens werden
 
 Ze begonnen tegenovergesteld en kwamen samen uit op één punt, elk via zijn eigen meting:
