@@ -294,6 +294,13 @@ Overgenomen uit het XAL-spoor en hier onverkort van kracht:
 
 - **Alles op een Neon-branch**, productie onaangeraakt tot Timo per run apart go geeft. Hergebruik
   `scripts/branch-guard.ts`; bouw geen tweede guard.
+- **De branch wordt NIET teruggemergd** (sprintmaster, 30 jul). Neon kan het technisch, maar
+  productie loopt door en neemt live-writes aan (sessies, imports, events) die de branch niet heeft;
+  een merge zou die overschrijven. De branch is de generale repetitie; klopt hij en is Timo akkoord,
+  dan draait **dezelfde bewerking opnieuw, rechtstreeks op productie**, met een aparte go per run.
+  Klopt hij niet: branch weggooien (of Reset from parent) en productie heeft niets gemerkt. Wat dat
+  voor de bouw betekent staat in `docs/plan-merk-speckolommen-serien.md` ("Twee keer dezelfde
+  bewerking").
 - **Agents krijgen geen databaseverbinding.** Ze lezen een bestand en schrijven JSON terug — een
   agent die in `sampleVerdict` kan schrijven, maakt de menselijke poort automatisch tevreden.
 - **Zwerm-data via een bestand**, nooit inline in de prompt; elke agent meldt terug hoeveel regels

@@ -223,6 +223,91 @@ run weg, terug naar analyse. Bij een deterministische kolomroute is de verwachte
 fout betekent dat het foutmodel niet klopt, en dan is doorpubliceren met een uitzondering het
 verkeerde antwoord. Dat maakt groepsverwerping een vangnet en geen dragende balk.
 
+## Twee keer dezelfde bewerking — en wat dat aan het plan verandert
+
+> Toevoeging van de sprintmaster, 30 jul, ná het sparren. **De branch wordt niet teruggemergd.**
+> Neon kan dat technisch wel, maar productie loopt door en neemt live-writes aan (sessies, imports,
+> events) die de branch niet heeft; een merge zou die overschrijven. De branch is de generale
+> repetitie; klopt hij en is Timo akkoord, dan draait **dezelfde bewerking opnieuw, rechtstreeks op
+> productie**, met een aparte expliciete go per run. Klopt hij niet: branch weggooien.
+
+Dit is geen detail in de uitvoering, het verandert drie dingen in het plan. Eén ervan beslecht de
+open as hierboven; twee zijn nieuw en stonden bij geen van beide agents.
+
+### 1. Het beslecht A's zwakste premisse
+
+Agent A's dragende argument was "de branch is het vangnet, dus een dunne poort is een acceptabele
+tijdelijke toestand". Dat argument is nu **in tijd begrensd door zijn eigen succes**: precies de
+bewerking die op de branch door de poort kwam, draait daarna nog één keer op een database waar géén
+vangnet is. Er is geen moment waarop de dunne poort "later" gehardend wordt — het latere moment ís
+de productie-run.
+
+Dat tilt de twee bugs van "branch-veilig" naar **voorwaarde vóór de productie-run**:
+- **Bug 1** (`toColumnValue` geeft `"OHNE LM"` ongewijzigd door aan een `numeric`-kolom) breekt de
+  publish-lus halverwege af. Op de branch gooi je hem weg. Op productie sta je met een deel
+  toegepast, status nog `steekproef`, `counts` ongeschreven en `applied` dat bij een tweede poging
+  dubbel telt — en `publishRun` is onomkeerbaar.
+- **Bug 2** (een plaatshouder op een tekstkolom is permanent) is op productie letterlijk
+  onherstelbaar zonder handwerk.
+
+Agent A zag dit zelf al aankomen en noemde het zijn tweede zwakke punt: "het moment dat Timo naar
+productie wil, is exact het moment dat het bewijs voor die run in een scriptrapport zit dat misschien
+niet meer bestaat — dat is de kop-in-het-zand-vorm van later hardenen, en ik zie hem." Die zin is nu
+niet meer hypothetisch. **Daarmee is de poort-as beslecht in het voordeel van B's G1/G3/G5**, en
+blijft alleen B's eigen beslisregel over voor G2/G4 (pas ná de eerste echte kolommeting; onder ~10
+celvormen per kolom zijn ze luxe).
+
+### 2. De bron moet vastgepind worden — nieuw
+
+Twee runs op twee momenten lezen dezelfde rauwe tabel, en die tabel is **live**. Leest de
+productie-run andere bytes dan de branch-run, dan bewijst de repetitie niets over wat er op
+productie landt, en niemand zou het zien.
+
+Dus: de bron wordt één keer geëxporteerd naar een bestand, dat bestand krijgt een hash, en **beide**
+runs lezen datzelfde bestand. Niet twee keer een live query. Dat is bovendien precies wat de
+vangrail over agents al eist (bron via een bestand) en het maakt de export een archiveerbaar
+bewijsstuk in plaats van een momentopname die verdampt.
+
+### 3. De steekproef wordt twee keer beoordeeld — en blijft alleen identiek als niets verschoof
+
+`pickSampleIndices` is bewust volledig deterministisch: gesorteerde strata, gesorteerde indices
+([enrichment.ts:86–87](lib/repo/enrichment.ts:86)). En de voorstel-volgorde komt uit
+`orderBy(asc(products.name))` ([:194](lib/repo/enrichment.ts:194)). Gevolg: **gelijke
+productverzameling + gelijke bron-snapshot ⇒ gelijke voorstellen ⇒ letterlijk dezelfde 100
+steekproefrijen.** Dat is goed nieuws — Timo's goedkeuring op de branch dekt dan exact de rijen die
+op productie langskomen.
+
+Maar productie neemt live-writes aan. Komt er tussen de fork en de productie-run één Serien-import
+binnen, dan verschuift de productverzameling, dus de voorstel-volgorde, dus **welke rijen in de
+steekproef vallen**. Timo beoordeelt op productie dan andere rijen dan hij op de branch goedkeurde,
+en niets in de code merkt dat op.
+
+**Daarom een run-vingerafdruk**, en dit is de concrete toevoeging aan het plan: een hash over de
+gesorteerde `(productId, field, value)`-drietallen plus de hash van de bron-export. De branch-run
+schrijft hem in het runrapport; de productie-run berekent hem opnieuw en **weigert te publiceren als
+hij niet gelijk is**. Wijkt hij af, dan is er iets verschoven en dekt het branch-bewijs deze run
+niet — stop, en kijk wat er veranderd is. Dat is een paar regels code en het maakt "twee keer
+dezelfde bewerking" een **controle** in plaats van een aanname.
+
+Let op waar de vingerafdruk *hoort* af te wijken: de kolom-vulling zelf verandert `products`, dus na
+de branch-publish is de branch geen geldige vergelijkingsbasis meer voor een tweede branch-run. De
+vingerafdruk vergelijkt de branch-run vóór publiceren met de productie-run vóór publiceren.
+
+### 4. Wat de repetitie moet vastleggen om er één te zijn
+
+Er is op productie geen nul-/nameting-paar mogelijk zoals op de branch (de nulmeting zou de
+pre-toestand van productie vragen, en die is er maar één keer). **De branch-meting is dus hét
+bewijs voor de productie-run.** Dat maakt de repetitie-voorwaarden expliciet: zelfde code-SHA,
+zelfde merk, zelfde veld-selectie, zelfde bron-snapshot, zelfde vingerafdruk. Wijkt één daarvan af,
+dan is het geen repetitie maar een nieuwe run en hoort er een nieuwe meting bij.
+
+### Praktisch: de branch
+
+Timo maakt hem aan in de Neon Console (project `neon-erin-feather` / `sweet-tree-67964500`), ik krijg
+alleen de connection string in `.env.branch`; geen API-key. **Gevraagde naam: `enrichment-serien`**
+(sluit aan op `enrichment-xal`), **auto-delete op 7 dagen**, niet 1 — anders verdwijnt hij midden in
+het werk.
+
 ## De premisse-toets: wat de naam-route catalogusbreed al kan
 
 Beide agents toetsten de opdracht zelf. Agent B deed daarvoor eigen metingen; ik heb ze
@@ -303,11 +388,14 @@ daarna, met de poort op sterkte.
 
 Drie kleinere beslissingen die hieronder hangen:
 
-1. **De poort-as** (A of B, hierboven). Mijn advies: **B's G1, G3 en G5** (evidence op het item +
-   `createRun`-invariant, rauwe cel op het scherm, `toColumnValue` dichtzetten) — die gaan over
-   toetsbaarheid en over de twee onomkeerbare bugs, en het venster is gratis omdat we op de
-   credential wachten. **G2 en G4 pas ná de eerste echte kolommeting**, precies zoals B's eigen
-   beslisregel voorschrijft: zijn er minder dan ~10 celvormen per kolom, dan zijn ze luxe.
+1. ~~**De poort-as** (A of B).~~ **Beslecht door de werkwijze, niet meer aan jou** — zie "Twee keer
+   dezelfde bewerking": omdat dezelfde bewerking daarna op productie draait, waar geen vangrail
+   staat, zijn **B's G1, G3 en G5** (evidence op het item + `createRun`-invariant, rauwe cel op het
+   scherm, `toColumnValue` dichtzetten) voorwaarde en niet luxe. Het venster is bovendien gratis,
+   want we wachten op de credential. **G2 en G4 pas ná de eerste echte kolommeting**, precies zoals
+   B's eigen beslisregel voorschrijft: zijn er minder dan ~10 celvormen per kolom, dan zijn ze luxe.
+   Nieuw en niet uit het sparren: de **run-vingerafdruk** die de productie-run laat weigeren als er
+   iets verschoven is.
 2. **Tunable white:** 44 producten onvindbaar op kelvin laten (advies van beide agents), of de
    matcher openbreken voor een kelvin-band (raakt alle 211.310 producten).
 3. **Waar Timo de steekproef beoordeelt:** terminal achter de guard (nu de enige veilige route), of
