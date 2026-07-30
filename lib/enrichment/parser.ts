@@ -134,6 +134,28 @@ function isValseWatt(name: string, index: number, treffer: string): boolean {
   return false;
 }
 
+// De wattage-kandidaten van een naam, ná aftrek van typecodes en typematen. ÉÉN bron van
+// waarheid: `parseWatt` neemt hier de eerste uit, en `verdenking.ts` telt hier hoeveel er zijn.
+//
+// Waarom dat één functie moet zijn (30 jul, tweede correctie): eerst sloeg de parser de valse
+// span over terwijl `verdenkingen()` hem nog als kandidaat telde. Gevolg: "… 1.1 B ROUND incl.
+// driver 4W" landde en "… 1.1 W ROUND incl. driver 4W" werd geweerd op `meerdere-waarden` —
+// zelfde armatuur, andere kleurcode, andere uitkomst. Dat is exact het Muuto-bezwaar waarmee
+// deze opdracht begon, alleen een laag opgeschoven: niet meer in de parser maar in de poort.
+// Twee lagen die onafhankelijk over hetzelfde teken oordelen, geven vroeg of laat tegengestelde
+// antwoorden op twee namen die hetzelfde product zijn.
+export function wattKandidaten(name: string): string[] {
+  if (!name || WATT_PER_BRON.test(name)) return [];
+  const globaal = new RegExp(WATT_RE.source, "gi");
+  const uit: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = globaal.exec(name)) !== null) {
+    if (isValseWatt(name, m.index, m[0])) continue;
+    uit.push(m[1]);
+  }
+  return uit;
+}
+
 function parseWatt(name: string): number | undefined {
   if (WATT_PER_BRON.test(name)) return undefined;
 
@@ -146,11 +168,8 @@ function parseWatt(name: string): number | undefined {
   // familie kregen een verschillende uitkomst omdat de kleurcode toevallig W was
   // ("… 1.1 B ROUND incl. driver 4W" gaf 4, "… 1.1 W ROUND incl. driver 4W" gaf niets).
   // Nu slaan we de valse span over en kijken naar de volgende kandidaat.
-  const globaal = new RegExp(WATT_RE.source, "gi");
-  let m: RegExpExecArray | null;
-  while ((m = globaal.exec(name)) !== null) {
-    if (isValseWatt(name, m.index, m[0])) continue;
-    const w = toNumber(m[1]);
+  for (const raw of wattKandidaten(name)) {
+    const w = toNumber(raw);
     if (w > 0) return w;
   }
   return undefined;

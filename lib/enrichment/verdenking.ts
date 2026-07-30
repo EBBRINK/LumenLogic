@@ -12,7 +12,7 @@
 // Puur: geen database, geen I/O — zodat elke regel een test kan hebben en het filter op elke
 // schaal draait.
 
-import { FIELDS, NIET_DIMBAAR, type ParsedSpecs } from "./parser";
+import { FIELDS, NIET_DIMBAAR, wattKandidaten, type ParsedSpecs } from "./parser";
 
 export type Veld = (typeof FIELDS)[number];
 
@@ -214,7 +214,16 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
   ];
   for (const [veld, re] of paren) {
     if (specs[veld] === undefined) continue;
-    const meer = meerdereWaarden(naam, re);
+    // Wattage telt zijn kandidaten via de parser zelf: wat die als typecode of typemaat
+    // verwerpt, mag hier geen tweede kandidaat meer zijn. Anders oordelen twee lagen
+    // onafhankelijk over hetzelfde teken — zie de kanttekening bij wattKandidaten().
+    const meer =
+      veld === "maxWattage"
+        ? (() => {
+            const uniek = [...new Set(wattKandidaten(naam).map((v) => v.replace(",", ".")))];
+            return uniek.length > 1 ? uniek : null;
+          })()
+        : meerdereWaarden(naam, re);
     if (meer) {
       vlag(veld, "meerdere-waarden", `${meer.length} verschillende waarden in de naam: ${meer.join(", ")} — de parser nam de eerste`);
     }

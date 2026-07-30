@@ -223,3 +223,23 @@ test("een driver met typecode wordt gevlagd, een armatuur dat zijn driver noemt 
     "maxWattage:product-is-onderdeel",
   );
 });
+
+// ── Eén bron van waarheid voor de wattage-kandidaten (30 jul, tweede correctie) ─
+// De parser sloeg de valse span over terwijl dit filter hem nog als tweede kandidaat telde.
+// Gevolg: "… 1.1 B ROUND incl. driver 4W" landde en "… 1.1 W ROUND incl. driver 4W" werd
+// geweerd op `meerdere-waarden` — zelfde armatuur, andere kleurcode, andere uitkomst. Dat is
+// het Muuto-bezwaar waarmee deze opdracht begon, een laag opgeschoven.
+test("dezelfde familie krijgt dezelfde vlaggen, ongeacht de kleurcode", () => {
+  const b = vlaggen("SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W");
+  const w = vlaggen("SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W");
+  expect(w).toEqual(b);
+  expect(w).not.toContain("maxWattage:meerdere-waarden");
+});
+
+test("een typemaat is geen tweede wattage-kandidaat, een echt tweede wattage wel", () => {
+  expect(vlaggen("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10")).not.toContain(
+    "maxWattage:meerdere-waarden",
+  );
+  // Tegenproef: twee échte wattages moeten nog steeds vlaggen.
+  expect(vlaggen("SPOT CRI80 15W 3000K 20W")).toContain("maxWattage:meerdere-waarden");
+});
