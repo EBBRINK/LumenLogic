@@ -4427,3 +4427,31 @@ voorstellen, bewust niet aangeraakt tot Timo daar zelf iets over zegt.
 
 `902ba6e9` (&Tradition, 9 juli) draagt geen `counts.kolomAlGevuld` en staat in het overzicht als
 `poortversie: OUD ⚠`. Bewust niet afgewezen: hij komt niet uit deze sessie.
+
+---
+
+## 2026-07-30 — De promptHash dekte de deur, niet de deur ernaast
+
+Bij de tweede Wever & Ducré-ronde zette ik in de AGENT-opdracht een zin bij die niet in
+`prompt.md` stond:
+
+> *"Let extra op producten die ZELF een onderdeel zijn: een naam die begint met LAMP, LED MODULE,
+> DRIVER of SYSTEM DRIVER is geen armatuur, ook als het getal er letterlijk in staat."*
+
+Die zin is een **conclusie uit eerdere rondes**. Ik gaf de zwerm dus het antwoord op precies de
+vraag die ik aan het meten was — en de promptHash bleef ongewijzigd, want die dekte alleen het
+bestand. Twee agents hadden hem al toegepast en verwezen er letterlijk naar ("LAMP/LED MODULE als
+eigen product") vóór ik het zag; de zes andere zijn gestopt.
+
+Dit is dezelfde fout als op 30 jul om 15:41, toen ik scherf 6 opnieuw draaide met een
+aangescherpte prompt en de afwijking als agent-onenigheid meldde. Daarvoor is de promptHash
+gebouwd. Hij werkte — via de deur ernaast.
+
+**Reparatie.** De exporteur schrijft nu per scherf de VOLLEDIGE opdracht (`scherf-NN.opdracht.md`)
+inclusief leesinstructie en antwoordformaat, en de promptHash dekt die hele tekst. Wie een zwerm
+inzet geeft de agent nog één zin: *volg dit bestand*. Staat er iets in de agent-opdracht dat niet
+in het bestand staat, dan is de meting besmet zonder dat de hash het merkt — dus staat het er niet.
+
+⚠ **Wat dit betekent voor de gepubliceerde bevinding `LED MODULE vooraan`:** die kwam uit de
+EERSTE W&D-ronde, waar niemand dat gezegd had (drie agents trokken de grens zelf) en uit de
+Lombardo- en Kreon-rondes. Die staat dus. Maar de tweede ronde telt niet mee als bevestiging.

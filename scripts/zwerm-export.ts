@@ -298,15 +298,52 @@ async function main() {
   const map = `zwerm/${runId}`;
   await mkdir(map, { recursive: true });
 
-  // De prompt hoort bij het manifest: verandert hij, dan zijn oude antwoorden niet meer
-  // vergelijkbaar met nieuwe en mogen ze niet worden samengevoegd.
-  let promptHash = "geen-prompt-vastgelegd";
+  // ── De hash dekt ALLES wat de agent te horen krijgt ───────────────────────
+  // De promptHash dekte alleen `prompt.md`. Bij de tweede Wever & Ducré-ronde zette ik er in de
+  // agent-opdracht zelf een zin bij ("een naam die begint met LAMP, LED MODULE, DRIVER … is geen
+  // armatuur"). Die zin is een CONCLUSIE uit eerdere rondes, dus ik gaf de agents het antwoord op
+  // precies de vraag die ik aan het meten was — en de hash bleef gelijk, want die kende dat
+  // kanaal niet. Exact de fout waarvoor het slot bestond, via de deur ernaast.
+  //
+  // Daarom schrijft de exporteur nu de VOLLEDIGE opdracht per scherf, inclusief het te schrijven
+  // antwoordformaat, en hasht die. Wie een zwerm inzet geeft de agent één zin: volg dit bestand.
+  // Staat er iets in de agent-opdracht dat hier niet staat, dan is de meting besmet en de
+  // promptHash zegt dat niet — dus staat het er niet.
+  let beoordeling = "";
   if (promptPad) {
     const { readFile } = await import("node:fs/promises");
-    const tekst = await readFile(promptPad, "utf8");
-    promptHash = createHash("sha256").update(tekst).digest("hex").slice(0, 16);
-    await writeFile(`${map}/prompt.md`, tekst);
+    beoordeling = await readFile(promptPad, "utf8");
+    await writeFile(`${map}/prompt.md`, beoordeling);
   }
+  const opdracht = (scherfNaam: string) =>
+    [
+      `Je beoordeelt scherf \`${scherfNaam}\` van een zwerm-controle.`,
+      "",
+      `1. Lees \`zwerm/${runId}/${scherfNaam}.json\` VOLLEDIG. Gebruik geen database.`,
+      "   Bewerk geen enkel bestand behalve je eigen antwoord.",
+      "2. Beoordeel ELKE cel uit `cellen`. Precies één oordeel per celId, alle celIds, geen dubbele.",
+      `3. Schrijf \`zwerm/${runId}/${scherfNaam}.antwoord.json\`:`,
+      "",
+      '   {"manifestHash":"<letterlijk uit meta>","promptHash":"<letterlijk uit meta>",',
+      '    "gelezenCellen":<aantal dat je werkelijk gelezen hebt>,',
+      '    "oordelen":[{"celId":"c0001","oordeel":"goed","bewijsNaam":"<letterlijke productnaam uit DEZE cel>","reden":"<kort>"}]}',
+      "",
+      "`oordeel` is exact één van: goed / nee-niet-in-naam / nee-hoort-bij-onderdeel / onzeker.",
+      "Bij `goed` is `bewijsNaam` verplicht en moet de string LETTERLIJK in `productnamen` van díé",
+      "cel staan — kopieer hem, typ hem niet over (de brondata bevat harde spaties U+00A0).",
+      "",
+      "Meld in je eindantwoord: hoeveel cellen je werkelijk gelezen hebt, de telling per oordeel,",
+      "en elk patroon dat je opviel — ook over de opzet van de scherf zelf.",
+      "",
+      "── DE BEOORDELINGSVRAAG ─────────────────────────────────────────────────",
+      beoordeling,
+    ].join("\n");
+  // De hash dekt het sjabloon én de beoordelingsvraag; het scherfnummer valt er bewust buiten,
+  // zodat scherven van dezelfde run dezelfde promptHash dragen.
+  const promptHash = createHash("sha256")
+    .update(opdracht("scherf-NN"))
+    .digest("hex")
+    .slice(0, 16);
   const scherven: string[] = [];
   const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
 
@@ -320,7 +357,8 @@ async function main() {
       .update(cellen.map((c) => `${c.celId}:${c.veld}:${c.waarde}`).join("|"))
       .digest("hex")
       .slice(0, 16);
-    const pad = `${map}/scherf-${String(s + 1).padStart(2, "0")}.json`;
+    const naam = `scherf-${String(s + 1).padStart(2, "0")}`;
+    const pad = `${map}/${naam}.json`;
     await writeFile(
       pad,
       JSON.stringify(
@@ -345,6 +383,7 @@ async function main() {
       ),
     );
     scherven.push(pad);
+    await writeFile(`${map}/${naam}.opdracht.md`, opdracht(naam));
     deel.forEach((c, j) => {
       const soort = soortVan.get(`${s * maat + j}`);
       antwoordsleutel[c.celId] = {
