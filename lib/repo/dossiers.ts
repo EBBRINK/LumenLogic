@@ -239,6 +239,12 @@ export async function linkQuantities(
 }
 
 // CSV-blok plakken: kolommen code, aantal, merk, type (BUILD-PLAN §4.3.2).
+// B6 (reviewzwerm 2.5a): bovengrens op een geplakt CSV-blok. Afgedwongen in
+// addSpecCsvAction — daar staat de volledige redenering — maar de constante hoort hier,
+// naast de parser, en kán ook niet in de action staan: een "use server"-module mag
+// uitsluitend async functies exporteren.
+export const SPEC_CSV_MAX_LINES = 500;
+
 export function parseSpecCsv(block: string): SpecLineInput[] {
   const out: SpecLineInput[] = [];
   for (const raw of block.split(/\r?\n/)) {

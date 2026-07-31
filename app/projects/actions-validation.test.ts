@@ -8,7 +8,7 @@
 // opzet als app/settings/settings-actions.test.ts.
 import { expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { projectDossiers, specLines } from "@/db/schema";
+import { events, projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
 
 const harnas = vi.hoisted(() => ({
@@ -40,8 +40,8 @@ vi.mock("next/cache", () => ({
   revalidateTag: () => {},
 }));
 
-const { flagReviewAction, setDayPriceAction } = await import("./actions");
-const { setDayPrice } = await import("@/lib/repo/dossiers");
+const { addSpecCsvAction, flagReviewAction, setDayPriceAction } = await import("./actions");
+const { setDayPrice, SPEC_CSV_MAX_LINES } = await import("@/lib/repo/dossiers");
 
 async function seed() {
   const db = (await createTestDb()) as TestDb;
@@ -191,4 +191,59 @@ test("C4: setDayPrice weigert een negatief bedrag ook rechtstreeks", async () =>
   expect((await regel(db, line.id)).manualPrice).toBe("0.00");
   await setDayPrice(db, { specLineId: line.id, price: 42.5, actor: harnas.email });
   expect((await regel(db, line.id)).manualPrice).toBe("42.50");
+});
+
+// ── B6: addSpecCsvAction had geen bovengrens ─────────────────────────────────
+//
+// Geen cap in parseSpecCsv, niet in addSpecLines en niet in de action — en daarna één
+// matcher PER REGEL. Zelf-DoS. Alles-of-niets, want half inlezen levert precies het half
+// gematchte dossier op dat we willen voorkomen.
+
+function csvBlok(aantal: number): string {
+  const regels = [];
+  for (let i = 0; i < aantal; i++) regels.push(`Lp${1000 + i}, 1, XAL, SASSO 100`);
+  return regels.join("\n");
+}
+
+async function regelsIn(db: TestDb, dossierId: string) {
+  return db.select().from(specLines).where(eq(specLines.dossierId, dossierId));
+}
+
+test("B6: een CSV-blok boven de bovengrens wordt in zijn geheel geweigerd", async () => {
+  const { db, dossier } = await seed();
+  const voor = (await regelsIn(db, dossier.id)).length;
+
+  const fd = new FormData();
+  fd.set("dossierId", dossier.id);
+  fd.set("csv", csvBlok(SPEC_CSV_MAX_LINES + 1));
+  await expect(addSpecCsvAction(fd)).resolves.toBeUndefined();
+
+  // Niets ingelezen — geen half gematcht dossier.
+  expect((await regelsIn(db, dossier.id)).length).toBe(voor);
+
+  // En het is niet spoorloos (regel 5): er staat een event.
+  const gelogd = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "spec_csv_rejected_too_large"));
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].payload).toMatchObject({
+    lines: SPEC_CSV_MAX_LINES + 1,
+    max: SPEC_CSV_MAX_LINES,
+  });
+});
+
+test("B6: precies op de grens gaat er nog gewoon doorheen", async () => {
+  const { db, dossier } = await seed();
+  const voor = (await regelsIn(db, dossier.id)).length;
+
+  const fd = new FormData();
+  fd.set("dossierId", dossier.id);
+  fd.set("csv", csvBlok(SPEC_CSV_MAX_LINES));
+  await addSpecCsvAction(fd);
+
+  expect((await regelsIn(db, dossier.id)).length).toBe(voor + SPEC_CSV_MAX_LINES);
+  expect(
+    await db.select().from(events).where(eq(events.action, "spec_csv_rejected_too_large")),
+  ).toHaveLength(0);
 });

@@ -38,9 +38,14 @@ export function AddSpecLineForm({
       <form action={addCsvAction} className="flex flex-col gap-3">
         <input type="hidden" name="dossierId" value={dossierId} />
         <p className="text-sm font-medium">Paste CSV block</p>
+        {/* B6: het veld had geen enkele grens en de action draaide een matcher per regel.
+            De grens die telt staat serverkant (SPEC_CSV_MAX_LINES); dit maxLength is de
+            beleefde variant ervan — het houdt een per ongeluk geplakt bestand tegen vóór
+            het het netwerk op gaat. 500 regels × ~60 tekens, ruim gerekend. */}
         <textarea
           name="csv"
           rows={6}
+          maxLength={60_000}
           placeholder={"code, quantity, brand, type\nLp301, 12, XAL, SASSO 100\nLw201, 8, Wever & Ducré, SCAVA 1.0"}
           className="rounded-lg border border-input bg-background p-2.5 font-mono text-xs"
         />

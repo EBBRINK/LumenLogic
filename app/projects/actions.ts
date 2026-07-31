@@ -24,6 +24,7 @@ import {
   linkQuantities,
   parseBestek,
   parseSpecCsv,
+  SPEC_CSV_MAX_LINES,
   setDayPrice,
   setQuantity,
   updateQuoteHeader,
@@ -128,12 +129,50 @@ export async function addSpecLineAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}`);
 }
 
+// B6 (reviewzwerm 2.5a): er stond geen enkele bovengrens op het geplakte CSV-blok, niet in
+// parseSpecCsv, niet in addSpecLines en niet hier — en daarna draaide er één matcher PER
+// REGEL. Zelf-DoS door de enige gebruiker.
+//
+// De weerlegger heeft de omvang gemeten op PGlite: addSpecLines doet één INSERT met 22
+// kolommen per rij, dus Postgres' bind-parameterlimiet (65535) kapt af boven 2978 regels —
+// en dan draait er géén enkele matcher. "Honderdduizenden regels" kan dus niet; het
+// realistische worstcase is ≤2978 matcher-runs waarbij de functietimeout de invocatie
+// halverwege afkapt → een half gematcht dossier.
+//
+// Het ontwerp wíl >10 regels via een controlescherm (CSV_PROPOSAL_THRESHOLD = 10), maar
+// createCsvProposalAction is nergens aangesloten — dode code. De "kleine plak"-aanname
+// wordt dus door niets afgedwongen. Tot dat scherm er is, is dit de afdwinging.
+//
+// 500 is ruim boven elk echt armaturenboek (het Deerns-boek heeft er 20) en ruim onder
+// zowel de parameterlimiet als de timeout. Precedent voor de vorm:
+// app/data/brand-relations/actions.ts (BULK_MAX = 100), met exact deze redenering.
+//
+// Alles-of-niets, bewust: half inlezen levert precies het half gematchte dossier op dat we
+// willen voorkomen, en dat is stiller en duurder om terug te draaien dan een weigering.
+//
+// De constante staat in lib/repo/dossiers.ts naast parseSpecCsv en NIET hier: een
+// "use server"-module mag uitsluitend async functies exporteren. Een geëxporteerde const
+// laat registerServerReference klappen met "Object.defineProperties called on non-object" —
+// gemeten, niet beredeneerd.
 export async function addSpecCsvAction(formData: FormData) {
   await requireSession();
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const csv = String(formData.get("csv") ?? "");
   const lines = parseSpecCsv(csv).map((l) => ({ ...l, source: "csv" as const }));
+  if (lines.length > SPEC_CSV_MAX_LINES) {
+    // Regel 5: het gebeurde, dus het staat in events. Er is (nog) geen terugmeldkanaal op
+    // dit formulier; zonder dit event zou een geweigerde plak spoorloos zijn.
+    await logEvent(db, {
+      entity: "project_dossier",
+      entityId: dossierId,
+      action: "spec_csv_rejected_too_large",
+      actor,
+      payload: { lines: lines.length, max: SPEC_CSV_MAX_LINES },
+    });
+    revalidatePath(`/projects/${dossierId}`);
+    return;
+  }
   if (dossierId && lines.length) {
     const rows = await addSpecLines(db, dossierId, lines);
     for (const r of rows) await runMatcher(db, r.id, actor);
