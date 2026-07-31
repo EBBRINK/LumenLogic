@@ -55,6 +55,14 @@ const BEWUSTE_UITZONDERINGEN: Record<string, { breedte: string; waarom: string }
       "Zelfde reden als app/error.tsx, en hier dwingend: dit scherm rendert zijn " +
       "eigen <html>/<body> zónder navbalk, er ís geen rand om mee uit te lijnen.",
   },
+  "app/segment-error.tsx": {
+    breedte: "max-w-3xl",
+    waarom:
+      "Het gedeelde scherm achter de segment-foutgrenzen (B16: app/projects, app/data, " +
+      "app/admin). Zelfde vorm en zelfde reden als app/error.tsx — gecentreerde " +
+      "doodlopende staat, geen inhoudspagina met een linkerrand — en het hoort met dat " +
+      "scherm als één familie te lezen.",
+  },
 };
 
 // Nog te doen, bewust niet stilzwijgend: deze twee stonden tijdens de sweep onder
