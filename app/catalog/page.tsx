@@ -1,11 +1,10 @@
-import { asc } from "drizzle-orm";
 import { db } from "@/db/client";
-import { visibleProducts } from "@/db/schema";
 import {
   CatalogSearch,
   type CatalogResult,
   type CatalogValues,
 } from "@/components/catalog-search";
+import { listCatalogBrands } from "@/lib/repo/catalog";
 import { searchProducts, type ProductCandidate } from "@/lib/repo/products";
 import { getActor, requireSession } from "@/lib/session";
 
@@ -96,15 +95,13 @@ export default async function CatalogusPage({
     ip: str(sp.ip),
   };
 
-  // Merk-anker: alleen merken die daadwerkelijk zichtbare producten hebben (de view is de
-  // enige poort — regel 3). Alfabetisch, puur als keuzelijst (geen ranking).
-  const brandRows = await db
-    .selectDistinct({ brandName: visibleProducts.brandName })
-    .from(visibleProducts)
-    .orderBy(asc(visibleProducts.brandName));
-  const brands = brandRows
-    .map((r) => r.brandName)
-    .filter((b): b is string => Boolean(b));
+  // Merk-anker: alleen merken die daadwerkelijk zichtbare producten hebben (regel 3).
+  // Alfabetisch, puur als keuzelijst (geen ranking). Deze lijst wordt bij ELK bezoek
+  // opgehaald, ook zonder zoekopdracht — het formulier staat er altijd. Daarom hoort hier
+  // géén brede join over de prijs-view maar de semi-join uit lib/repo/catalog.ts (B4);
+  // de verzameling is identiek, inclusief het verbergen van merken met een verlopen
+  // prijslijst. Lees de toelichting daar voor je dit terugdraait.
+  const brands = await listCatalogBrands(db);
 
   const crit: Criteria = {
     kelvin: toInt(values.kelvin),
