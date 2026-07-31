@@ -5,15 +5,55 @@
 import { expect, test } from "vitest";
 import { projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
+import { STATUS, STATUS_ORDER, type MatchStatus } from "@/components/dossier/status";
 import { DEFAULT_VALIDITY_DAYS, generateQuote, updateQuoteHeader } from "./dossiers";
 import { setStatus } from "./project-status";
 import {
   computeEstimate,
   countedLineTotal,
+  countsInTotal,
   getEstimateData,
   notableDeviations,
   NUMBER_PENDING,
 } from "./estimate";
+
+// ── De wet: welke statussen tellen mee (E-02) ────────────────────────────────
+//
+// Reviewzwerm B14. De fixtures hieronder bewijzen dit toevallig NIET: hun blauwe en
+// rode regels hebben geen prijs, dus `countsInTotal` mocht daar stiekem `true` gaan
+// zeggen zonder dat één test rood werd. Deze test pint de functie daarom rechtstreeks
+// en uitputtend — hij is de enige bron voor "telt mee in het totaal" (components/
+// dossier/status.ts beschrijft alléén het uiterlijk en de betekenis van een status).
+const TELT_MEE: Record<MatchStatus, boolean> = {
+  groen: true, // wij hebben het product, binnen de groene marge → in het totaal
+  geel: true, // zelfde merk, afwijking binnen de gele marge → in het totaal
+  blauw: false, // merk nog niet in de catalogus (datagat) → p.m.
+  rood: false, // merk ja, dit product nee → p.m.
+  paars: false, // buiten assortiment; wél gemeld, nooit opgeteld
+  open: false, // nog niet gematcht → p.m.
+};
+
+test("countsInTotal: precies groen + geel tellen mee, alle zes statussen vastgelegd", () => {
+  // Een nieuwe status dwingt een expliciete keuze af: verschijnt hij in STATUS zonder
+  // hier te staan, dan valt deze test om in plaats van stilzwijgend mee te tellen.
+  const bekend = Object.keys(STATUS).sort();
+  expect(Object.keys(TELT_MEE).sort()).toEqual(bekend);
+  expect([...STATUS_ORDER].sort()).toEqual(bekend);
+
+  for (const status of STATUS_ORDER) {
+    expect(countsInTotal(status), `status ${status}`).toBe(TELT_MEE[status]);
+  }
+
+  // Dezelfde wet nog eens van de andere kant: exact twee statussen tellen mee.
+  expect(STATUS_ORDER.filter((s) => countsInTotal(s))).toEqual(["groen", "geel"]);
+
+  // En de val die B14 opleverde: STATUS mag deze vraag niet óók beantwoorden. Stond er
+  // een `countsInTotal`-veld op de meta (het stond er, mét voor paars de tegengestelde
+  // waarde), dan leest de volgende sessie dát en telt paars mee op een klantstuk.
+  for (const status of STATUS_ORDER) {
+    expect(Object.keys(STATUS[status]), `meta ${status}`).not.toContain("countsInTotal");
+  }
+});
 
 // Zelfde stand als de scherm-fixture: twee zones, alle p.m.-statussen, één geel met
 // afwijkingsnotitie, één paars mét prijs (mag nooit meetellen), één groen zonder aantal.
