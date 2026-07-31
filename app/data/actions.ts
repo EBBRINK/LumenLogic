@@ -32,7 +32,7 @@ export async function setVerdictAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "").trim();
   const verdict = formData.get("verdict") === "fout" ? "fout" : "goed";
   if (!itemId) return;
-  await setSampleVerdict(db, itemId, verdict);
+  await setSampleVerdict(db, itemId, verdict, await getActor());
   if (runId) revalidatePath(`/data/enrichment/${runId}`);
 }
 

@@ -381,15 +381,38 @@ export async function getRunItems(
 
 // Menselijk oordeel op één steekproef-item: 'goed' laat het straks toepassen, 'fout'
 // sluit precies dít item uit bij publicatie.
+// Regel 5 + FUNCTIONEEL-ONTWERP §6: dit is een MENSOORDEEL dat straks bepaalt of een
+// veld gepubliceerd wordt (en het telt mee in de steekproef-foutratio) — dus met actor
+// en met een spoor van wát er beoordeeld werd.
 export async function setSampleVerdict(
   db: AppDb,
   itemId: string,
   verdict: "goed" | "fout",
+  actor?: string,
 ): Promise<void> {
+  const [item] = await db
+    .select()
+    .from(enrichmentItems)
+    .where(eq(enrichmentItems.id, itemId))
+    .limit(1);
+  if (!item) return;
   await db
     .update(enrichmentItems)
     .set({ sampleVerdict: verdict })
     .where(eq(enrichmentItems.id, itemId));
+  await logEvent(db, {
+    entity: "enrichment_item",
+    entityId: itemId,
+    action: "enrichment_sample_verdict",
+    actor,
+    payload: {
+      runId: item.runId,
+      productName: item.productName,
+      field: item.field,
+      value: item.value,
+      verdict,
+    },
+  });
 }
 
 // ── Publiceren: voorstellen toepassen op products + blauw/open hermatchen ─────

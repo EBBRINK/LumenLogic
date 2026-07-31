@@ -91,19 +91,29 @@ export async function addMembership(
   });
 }
 
+// Spiegel van addMembership: destructief, dus loggen VÓÓR deleten en mét de rollen
+// die het lid had — anders is na het verwijderen niet meer te zien wát er weg is.
 export async function removeMembership(
   db: AppDb,
   orgId: string,
   email: string,
+  actor?: string,
 ) {
-  await db
-    .delete(memberships)
-    .where(
-      and(
-        eq(memberships.orgId, orgId),
-        eq(memberships.email, email.toLowerCase().trim()),
-      ),
-    );
+  const normalized = email.toLowerCase().trim();
+  const where = and(
+    eq(memberships.orgId, orgId),
+    eq(memberships.email, normalized),
+  );
+  const [row] = await db.select().from(memberships).where(where).limit(1);
+  if (!row) return;
+  await logEvent(db, {
+    entity: "organization",
+    entityId: orgId,
+    action: "membership_removed",
+    actor,
+    payload: { email: normalized, roles: row.roles },
+  });
+  await db.delete(memberships).where(where);
 }
 
 // A-05 / org-scoping: dossier aan een org koppelen.

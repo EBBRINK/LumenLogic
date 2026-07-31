@@ -225,6 +225,44 @@ test("een 'fout' beoordeeld steekproef-item wordt NIET toegepast", async () => {
   expect((prod as Record<string, unknown>)[target.field]).toBeNull();
 });
 
+// B7 (reviewzwerm 2.5a): setSampleVerdict accepteerde geen actor en logde niets,
+// terwijl dit een MENSOORDEEL is dat bepaalt of een veld gepubliceerd wordt én dat
+// meetelt in de steekproef-foutratio. FUNCTIONEEL-ONTWERP §6: élke schrijfactie
+// draagt de actor.
+test("setSampleVerdict logt het mensoordeel mét actor en wat er beoordeeld werd", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandWithBareProducts(db);
+  const run = await startEnrichmentRun(db, brandId);
+  const [item] = await getSampleItems(db, run.id);
+
+  await setSampleVerdict(db, item.id, "fout", "eduard@brinklicht.nl");
+
+  const gelogd = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "enrichment_sample_verdict"));
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].entity).toBe("enrichment_item");
+  expect(gelogd[0].entityId).toBe(item.id);
+  expect(gelogd[0].actor).toBe("eduard@brinklicht.nl");
+  expect(gelogd[0].payload).toEqual({
+    runId: run.id,
+    productName: item.productName,
+    field: item.field,
+    value: item.value,
+    verdict: "fout",
+  });
+
+  // Een onbekend item verandert niets en logt niets.
+  await setSampleVerdict(db, crypto.randomUUID(), "goed", "eduard@brinklicht.nl");
+  expect(
+    await db
+      .select()
+      .from(events)
+      .where(eq(events.action, "enrichment_sample_verdict")),
+  ).toHaveLength(1);
+});
+
 test("publiceren hermatcht blauwe spec-regels van het merk", async () => {
   const db = await createTestDb();
 

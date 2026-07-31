@@ -86,6 +86,8 @@ const PAYLOAD_LABEL: Record<string, string> = {
   rematched: "Rematched",
   resultCount: "Results",
   rowsRead: "Rows read",
+  // B2: hoeveel lopende sessies het verwijderen van een allowlist-adres introk.
+  sessionsRevoked: "Sessions revoked",
   skippedStaleFields: "Fields skipped (stale)",
   suggested: "Suggested",
   unchanged: "Unchanged",
@@ -105,6 +107,8 @@ const PAYLOAD_LABEL: Record<string, string> = {
   tier: "Tier",
   to: "To",
   validUntil: "Valid until",
+  // B7: mensoordeel op een verrijkings-steekproef (goed/fout).
+  verdict: "Verdict",
   version: "Version",
   visible: "Visible",
   xisPhase: "XIS phase",

@@ -533,11 +533,21 @@ export async function flagForReview(
   db: AppDb,
   specLineId: string,
   kind: "geel" | "variant" | "onvolledig" | "ocr",
+  actor?: string,
 ) {
   await db
     .update(specLines)
     .set({ reviewKind: kind, reviewedAt: null, updatedAt: new Date() })
     .where(eq(specLines.id, specLineId));
+  // Regel 5 + FUNCTIONEEL-ONTWERP §6: een regel in de wachtrij zetten is een
+  // schrijfactie, dus met actor. Tegenhanger van review_decided (decideReview).
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "review_flagged",
+    actor,
+    payload: { kind },
+  });
 }
 
 export async function hasOpenReviews(db: AppDb, dossierId: string): Promise<boolean> {

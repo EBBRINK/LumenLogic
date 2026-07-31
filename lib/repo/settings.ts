@@ -5,6 +5,7 @@
 import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { allowedEmails, appSettings, llmUsage } from "@/db/schema";
 import type { AppDb } from "./db";
+import { logEvent } from "./events";
 
 // ── Allowlist (L-02): 2–5 interne adressen, geen rollen ──────────────────────
 // Adressen worden altijd genormaliseerd (trim + lowercase) zodat "Timo@X" en "timo@x"
@@ -33,10 +34,38 @@ export async function addAllowedEmail(
   return row ?? null;
 }
 
-export async function removeAllowedEmail(db: AppDb, email: string) {
-  await db
-    .delete(allowedEmails)
-    .where(eq(allowedEmails.email, normalizeEmail(email)));
+export async function removeAllowedEmail(
+  db: AppDb,
+  email: string,
+  actor?: string,
+) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return;
+
+  // Staat het adres niet (meer) op de lijst, dan valt er niets te verwijderen — en dus
+  // ook niets te melden. Zonder deze controle logde een geprepareerde formulierpost
+  // (app/settings/actions.ts bewaakt alleen zelfverwijdering en het laatste adres) een
+  // `allowed_email_removed` over een verwijdering die nooit plaatsvond: een onwaar
+  // logboek, precies wat ijzeren regel 5 moet uitsluiten. Zelfde vroege terugkeer als
+  // deleteSpecLine en removeMembership — dit was de enige destructieve schrijfactie in
+  // deze veegbeurt die hem miste.
+  const [bestaand] = await db
+    .select({ email: allowedEmails.email })
+    .from(allowedEmails)
+    .where(eq(allowedEmails.email, normalized))
+    .limit(1);
+  if (!bestaand) return;
+
+  // Loggen vóór de delete (regel 5): daarna is er niets meer om over te rapporteren.
+  await logEvent(db, {
+    entity: "settings",
+    entityId: null,
+    action: "allowed_email_removed",
+    actor,
+    payload: { email: normalized },
+  });
+
+  await db.delete(allowedEmails).where(eq(allowedEmails.email, normalized));
 }
 
 // De poort onder de magic link (lib/auth.ts): staat dit adres niet in de lijst, dan

@@ -679,7 +679,7 @@ export async function flagReviewAction(formData: FormData) {
   const parsed = parseForm(flagReviewSchema, formData);
   if (!parsed.ok) return;
   const { dossierId, specLineId, kind } = parsed.data;
-  await flagForReview(db, specLineId, kind);
+  await flagForReview(db, specLineId, kind, await getActor());
   revalidatePath(`/projects/${dossierId}`);
 }
 
@@ -789,11 +789,22 @@ export async function dismissAiSuggestionAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}`);
 }
 
+// B7 (reviewzwerm 2.5a) gaf deze action een actor en een event; volgens de conventie van
+// docs/INVOERVALIDATIE.md ("een action die je aanraakt, zet je om") gaat hij daarmee ook
+// naar een schema-parse. Dat is hier meer dan boekhouding: dit is de enige destructieve
+// action op een spec-regel, en de oude `if (specLineId)`-guard liet elke niet-lege string
+// door. `dossierId` werd zelfs ongecontroleerd in revalidatePath gezet.
+const deleteLineSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+});
+
 export async function deleteLineAction(formData: FormData) {
   await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  if (specLineId) await deleteSpecLine(db, specLineId);
+  const parsed = parseForm(deleteLineSchema, formData);
+  if (!parsed.ok) return;
+  const { dossierId, specLineId } = parsed.data;
+  await deleteSpecLine(db, specLineId, await getActor());
   revalidatePath(`/projects/${dossierId}`);
 }
 

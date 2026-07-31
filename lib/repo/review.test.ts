@@ -802,3 +802,23 @@ test("wachtrij: lange brontekst wordt niet meer op 240 tekens gekapt", async () 
   expect(lang.length).toBeGreaterThan(600);
   expect(pending[0].sourceText).toBe(lang);
 });
+
+// ── B7 (reviewzwerm 2.5a): flagForReview logde niets en droeg geen actor ─────
+// Een regel in de wachtrij zetten is een schrijfactie (FUNCTIONEEL-ONTWERP §6:
+// "élke schrijfactie draagt de actor") en de tegenhanger van review_decided, dat
+// wél gelogd werd. Zonder dit event begint het reviewspoor pas bij de beslissing.
+test("flagForReview logt review_flagged mét actor en soort", async () => {
+  const s = await seedTwoCleanYellow();
+
+  await flagForReview(s.db, s.lineId, "variant", ACTOR);
+
+  const gelogd = await s.db
+    .select()
+    .from(events)
+    .where(eq(events.action, "review_flagged"));
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].entity).toBe("spec_line");
+  expect(gelogd[0].entityId).toBe(s.lineId);
+  expect(gelogd[0].actor).toBe(ACTOR);
+  expect(gelogd[0].payload).toEqual({ kind: "variant" });
+});

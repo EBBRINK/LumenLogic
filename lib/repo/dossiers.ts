@@ -271,7 +271,45 @@ export function parseSpecCsv(block: string): SpecLineInput[] {
   return out;
 }
 
-export async function deleteSpecLine(db: AppDb, specLineId: string) {
+// Regel verwijderen — de énige destructieve handeling op een spec-regel: de rij is
+// wég, niet gemarkeerd. Daarom draagt het event de VOLLEDIGE regelinhoud van vóór de
+// verwijdering (payload.line), zodat de handeling reconstrueerbaar blijft, plus de
+// actor (FUNCTIONEEL-ONTWERP §6: "élke schrijfactie draagt de actor").
+// LOGGEN VÓÓR DELETEN, met opzet — zelfde afweging als dismissBrandLoad in
+// lib/repo/enrichment.ts: `db.transaction()` bestaat hier niet (neon-http gooit
+// daarop), dus de volgorde is het enige wat je kunt kiezen. Andersom kan de rij weg
+// zijn zonder één spoor als het loggen faalt; nu is de slechtste uitkomst een event
+// voor een rij die er nog staat — zichtbaar, en te herhalen.
+export async function deleteSpecLine(
+  db: AppDb,
+  specLineId: string,
+  actor?: string,
+) {
+  const [line] = await db
+    .select()
+    .from(specLines)
+    .where(eq(specLines.id, specLineId))
+    .limit(1);
+  // Bestond de regel niet, dan viel er ook vóór deze reparatie niets te verwijderen —
+  // geen event over een handeling die niet gebeurde.
+  if (!line) return;
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "spec_line_deleted",
+    actor,
+    payload: {
+      // Losse sleutels voor het event-logscherm (dat toont alleen bekende labels)…
+      dossierId: line.dossierId,
+      fixtureCode: line.fixtureCode,
+      quantity: line.quantity,
+      brandText: line.brandText,
+      productText: line.productText,
+      status: line.status,
+      // …en de volledige rij als reconstructiespoor.
+      line,
+    },
+  });
   await db.delete(specLines).where(eq(specLines.id, specLineId));
 }
 

@@ -63,7 +63,7 @@ export async function removeMemberAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   if (!orgId || !email) return;
-  await removeMembership(db, orgId, email);
+  await removeMembership(db, orgId, email, await getActor());
   revalidatePath(PAGE);
 }
 

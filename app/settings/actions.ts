@@ -39,7 +39,7 @@ export async function removeEmailAction(formData: FormData) {
   if (self && email === self) return;
   const current = await listAllowedEmails(db);
   if (current.length <= 1) return;
-  await removeAllowedEmail(db, email);
+  await removeAllowedEmail(db, email, await getActor());
   revalidatePath("/settings");
 }
 
