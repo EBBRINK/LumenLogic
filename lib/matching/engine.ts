@@ -701,6 +701,13 @@ export async function evaluateSpecLine(
   // naar lijst 2 ("mogelijk — data onvolledig") en de regel valt via de bestaande
   // incomplete-tak naar 'open' — nooit rood (er is niets tegengesproken) en nooit geel
   // (er is geen gele deviation bijgekomen); de mens kiest met reden.
+  // ⚠️ Preciezer sinds A2 (reviewzwerm 2.5a): die laatste belofte geldt alleen zolang de
+  // afwijking zélf groen is, zoals in de gemeten tno-regels. Was de afwijking al geel
+  // (beam 40 gevraagd, 57 geleverd = 17° → geel), dan ziet anyYellow hieronder die gele
+  // deviation nog steeds — hij leest `scored`, niet `provable` — en wordt de regel GEEL
+  // in plaats van 'open'. Dat is veilig (geel = review-wachtrij, de mens beslist) en
+  // bewust zo gelaten; wat NIET veilig was, is dat pickUnambiguousYellow zo'n kandidaat
+  // ook nog automatisch accepteerde. Die poort zit nu in het predicaat zelf (lijst 1).
   // Bewust NIET aangeraakt: de deviations zelf. De waarde matcht echt, en dat mag zichtbaar
   // blijven; alleen de belofte "aantoonbaar" vervalt. En de RANKING blijft ongemoeid —
   // dit zit ná fetchCandidates en verandert geen enkele sorteersleutel.
