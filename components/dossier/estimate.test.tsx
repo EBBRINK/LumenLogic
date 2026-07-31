@@ -1,7 +1,8 @@
 // White-box RSC-tests van de estimate-tab (§3.8). Fixture-gedreven, klein en
 // deterministisch. Kernchecks (ijzeren regels): groen/geel/samen kloppen, blauw/rood/
-// paars staan als p.m. en tellen NOOIT mee in het totaal, een regel zonder aantal wordt
-// p/st, en de aanvraag-/zonevolgorde blijft intact. Plus licht/donker × mobiel/desktop.
+// paars/open staan als p.m. en tellen NOOIT mee in het totaal, een regel zonder aantal
+// wordt p/st, en de aanvraag-/zonevolgorde blijft intact. Plus licht/donker ×
+// mobiel/desktop.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -26,7 +27,8 @@ const header: EstimateHeader = {
   validUntil: "2026-08-07",
 };
 
-// Gegroepeerd per zone, alle vijf de statussen, plus één groene regel zónder aantal.
+// Gegroepeerd per zone, álle zes de statussen (inclusief open — de normale stand van
+// een verse import), plus één groene regel zónder aantal.
 const zonedLines: EstimateLine[] = [
   // Zone A-08
   {
@@ -62,6 +64,14 @@ const zonedLines: EstimateLine[] = [
     id: "l6", fixtureCode: "Lp302", zone: "B-02", status: "groen", quantity: null,
     productName: "SASSO 60 2700K", sku: "L360-SASSO60", unitPrice: "100.00",
     brandText: "XAL", productText: "SASSO 60",
+  },
+  {
+    // open = nog niet gematcht, de normale stand na een import. Krijgt "p.m." in de
+    // regeltotaalkolom en moet dus óók in de verantwoording en in de open-punten
+    // staan — dat deed hij niet (A4).
+    id: "l7", fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4,
+    productName: null, sku: null, unitPrice: null,
+    brandText: "Modular", productText: "Smart Tubed 82",
   },
 ];
 
@@ -175,7 +185,22 @@ for (const [name, ui] of Object.entries(screens)) {
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
         await expect.element(document.body).toBeInTheDocument();
+        // Wachten tot de STAART van het document er is: `document.body` bestaat al
+        // zodra er íets geflusht is, en de RSC-stream levert dit stuk in delen. De
+        // voettekst is het laatste element, dus die is het startsein voor de schoten.
+        await expect
+          .element(page.getByText(/Request order is preserved/).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
+        // Chromium schiet alleen wat in beeld staat: alles onder de vouw komt blanco
+        // uit de capture. De p.m.-verantwoording en "Open items & actions" staan
+        // juist onderaan, dus daar hoort een tweede schot bij — anders bewijst deze
+        // test niets over precies het blok dat het klantstuk verantwoordt.
+        if (document.body.scrollHeight > viewport.height) {
+          window.scrollTo(0, document.body.scrollHeight);
+          await new Promise((r) => setTimeout(r, 60));
+          await page.screenshot({ path: `./${name}.${theme}.${device}.onderkant.test.png` });
+        }
       });
     }
   }
@@ -195,7 +220,7 @@ test("totalen: groen + geel apart, samen = groen + geel", async () => {
   await expect.element(page.getByText("Combined (green + yellow)")).toBeInTheDocument();
 });
 
-test("blauw/rood/paars: p.m., NOOIT in het totaal opgeteld", async () => {
+test("blauw/rood/paars/open: p.m., NOOIT in het totaal opgeteld", async () => {
   await renderServer(
     <Screen>
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
@@ -206,10 +231,23 @@ test("blauw/rood/paars: p.m., NOOIT in het totaal opgeteld", async () => {
   expect(page.getByText(/1\.000,00/).query()).toBeNull();
   // …en het samen-totaal blijft 5.528,00, niet 6.528,00 (5528 + paars 1000).
   expect(page.getByText(/6\.528,00/).query()).toBeNull();
-  // de niet-opgeteld-regel benoemt de aantallen expliciet.
+  // de niet-opgeteld-regel benoemt de aantallen expliciet — élke niet-tellende status,
+  // dus ook open. Stond open er niet bij, dan kreeg de klant "p.m." naast een regel die
+  // in geen enkel getal terugkwam (A4).
   await expect.element(page.getByText(/blue 1/)).toBeInTheDocument();
   await expect.element(page.getByText(/red 1/)).toBeInTheDocument();
   await expect.element(page.getByText(/purple 1/)).toBeInTheDocument();
+  await expect.element(page.getByText(/open 1/)).toBeInTheDocument();
+  // Eén regel, alle vier de statussen — precies zoals hij op de PDF staat.
+  await expect
+    .element(page.getByText(/Shown, not totaled \(blue 1 · red 1 · purple 1 · open 1\)/))
+    .toBeInTheDocument();
+
+  // De voettekst legt p.m. uit voor élke niet-tellende status (zelfde string als de PDF).
+  const voettekst = (document.body.textContent ?? "").replace(/\s+/g, " ");
+  expect(voettekst).toContain(
+    "blue, red, purple and open are shown as p.m. — displayed, not totaled",
+  );
 });
 
 test("regel zonder aantal → p/st i.p.v. regeltotaal", async () => {
@@ -231,7 +269,9 @@ test("zones: gegroepeerd met zone-koppen, aanvraagvolgorde behouden", async () =
   await expect.element(page.getByText("Zone B-02")).toBeInTheDocument();
 });
 
-test("open punten & acties: blauw = inladen (ons), rood = terug naar klant", async () => {
+// Élke p.m.-status krijgt een punt in deze lijst — anders staat er "p.m." naast een
+// regel waar de klant nergens een uitleg bij vindt. Paars en open ontbraken hier (A4).
+test("open punten & acties: blauw = inladen (ons), rood = terug naar klant, paars gemeld, open nog niet gematcht", async () => {
   await renderServer(
     <Screen>
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
@@ -239,8 +279,16 @@ test("open punten & acties: blauw = inladen (ons), rood = terug naar klant", asy
   );
   await expect.element(page.getByText(/load brand/).first()).toBeInTheDocument();
   await expect.element(page.getByText(/back to\s+customer/)).toBeInTheDocument();
+  await expect.element(page.getByText(/outside assortment/)).toBeInTheDocument();
+  await expect.element(page.getByText(/not matched yet/)).toBeInTheDocument();
   // merken-inladen-lijst met frequentie (blauw-merk Kreon 1×).
   await expect.element(page.getByText(/Kreon — 1×/)).toBeInTheDocument();
+
+  // Elke p.m.-regel uit de fixture staat er met zijn code: blauw, rood, paars, open.
+  // `section > ul` = de p.m.-lijst zelf (de merken-inladen-lijst zit een div dieper).
+  const lijst = document.querySelectorAll("section > ul > li");
+  const codes = [...lijst].map((li) => li.textContent?.trim().split(" ")[0]);
+  expect(codes).toEqual(["Lb110", "Lr050", "Lx900", "Lo400"]);
 });
 
 // A-09 blijft: er wordt geen nummer gereserveerd. UX-audit bug #6 zat in de WEERGAVE —

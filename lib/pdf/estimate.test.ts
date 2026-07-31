@@ -11,7 +11,9 @@ import { getEstimateData } from "@/lib/repo/estimate";
 import { renderEstimatePdf } from "./estimate";
 
 // Zelfde stand als lib/repo/estimate.test.ts (en de scherm-fixture): groen 12×310,
-// geel 8×226 mét afwijkingsnotitie, blauw/rood/paars als p.m., twee zones.
+// geel 8×226 mét afwijkingsnotitie, blauw/rood/paars/open als p.m., twee zones. De
+// open regel hoort erbij omdat dát de normale stand van een verse import is: hij kreeg
+// "p.m." in de regeltotaalkolom en stond nergens verantwoord (A4).
 async function seedEstimateDossier(db: TestDb) {
   const [dossier] = await db
     .insert(projectDossiers)
@@ -42,6 +44,7 @@ async function seedEstimateDossier(db: TestDb) {
     { fixtureCode: "Lb110", zone: "A-08", status: "blauw", quantity: 5, matchedProductId: null, sortOrder: 2, brandText: "Kreon", productText: "Prologe 80", manualPrice: null, deviations: null },
     { fixtureCode: "Lr050", zone: "B-02", status: "rood", quantity: 3, matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "MINIMAL 60 (bestaat niet)", manualPrice: null, deviations: null },
     { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", deviations: null },
+    { fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4, matchedProductId: null, sortOrder: 5, brandText: "Modular", productText: "Smart Tubed 82", manualPrice: null, deviations: null },
   ] as const;
 
   for (const r of rows) {
@@ -113,11 +116,23 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
   expect(text).not.toContain("1.000,00");
   expect(text).not.toContain("6.528,00");
 
-  // p.m.-sectie: blauw = merk inladen (ons), rood = terug naar klant, paars gemeld
+  // p.m.-sectie: blauw = merk inladen (ons), rood = terug naar klant, paars gemeld,
+  // open = nog niet gematcht. Élke niet-tellende status krijgt hier een eigen punt —
+  // anders staat er "p.m." naast een regel die nergens verantwoord wordt (A4).
   expect(text).toContain("p.m.");
   expect(text).toContain("load brand Kreon (us)");
   expect(text).toContain("back to customer");
   expect(text).toContain("outside assortment");
+  expect(text).toContain("Lo400 — not matched yet — Modular Smart Tubed 82 (no product chosen)");
+
+  // Verantwoordingsregel onder het eindtotaal: open telt mee in het p.m.-aantal.
+  expect(text).toContain("Shown, not totaled (blue 1 · red 1 · purple 1 · open 1) — p.m.");
+
+  // Voettekst: de uitleg noemt élke niet-tellende status, dus ook open. (De regel
+  // wordt afgebroken over meerdere tekstregels — daarom genormaliseerde witruimte.)
+  const flat = text.replace(/\s+/g, " ");
+  expect(flat).toContain("Only green and yellow count;");
+  expect(flat).toContain("blue, red, purple and open are shown as p.m.");
 
   // afwijkingsnotitie (C-07) als subregel, mét het auto-door-label (B3) erachter
   expect(text).toContain("3000K i.p.v. 2700K");

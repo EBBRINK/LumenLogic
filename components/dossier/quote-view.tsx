@@ -14,10 +14,14 @@ import {
   countedLineTotal,
   countsInTotal,
   notableDeviations,
+  pmSummary,
   requestedText,
+  ESTIMATE_DISCLAIMER,
+  PM_STATUSES,
   type EstimateHeader,
   type EstimateLine,
   type EstimateZoneGroup,
+  type PmStatus,
 } from "@/lib/repo/estimate";
 import { PhaseBadge } from "./phase-badge";
 import { StatusBadge } from "./status-badge";
@@ -38,6 +42,51 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
 }
 
 const COLS = 8;
+
+// Eén regel per p.m.-status in "Open items & actions" — dezelfde woorden als de PDF
+// (lib/pdf/estimate.ts), want scherm en papier vertellen hetzelfde verhaal. Exhaustief
+// getypeerd: een nieuwe status krijgt hier een zin, of het bouwt niet. Vóór A4 stonden
+// hier alleen blauw en rood — paars én open hadden op het scherm géén bolletje, terwijl
+// hun regeltotaal wel "p.m." zei.
+const PM_ITEM: Record<PmStatus, (line: EstimateLine) => ReactNode> = {
+  blauw: (l) => (
+    <>
+      load brand{" "}
+      <span className="font-medium">{(l.brandText ?? "").trim() || "unknown"}</span>{" "}
+      <span className="text-muted-foreground">(our action)</span>
+    </>
+  ),
+  rood: () => (
+    <>
+      back to customer{" "}
+      <span className="text-muted-foreground">(brand known, this product not)</span>
+    </>
+  ),
+  paars: (l) => (
+    <>
+      outside assortment
+      {requestedText(l) && (
+        <>
+          {" — "}
+          <span className="font-medium">{requestedText(l)}</span>
+        </>
+      )}{" "}
+      <span className="text-muted-foreground">(reported explicitly, p.m.)</span>
+    </>
+  ),
+  open: (l) => (
+    <>
+      not matched yet
+      {requestedText(l) && (
+        <>
+          {" — "}
+          <span className="font-medium">{requestedText(l)}</span>
+        </>
+      )}{" "}
+      <span className="text-muted-foreground">(no product chosen)</span>
+    </>
+  ),
+};
 
 export function QuoteView({
   dossierName,
@@ -63,8 +112,7 @@ export function QuoteView({
   headerEditable?: boolean;
 }) {
   const computed = computeEstimate(header, lines, { frozen });
-  const { totals, pm, blauwLines, roodLines, brandFreq, hasZones, groups } =
-    computed;
+  const { totals, pm, pmLines, pmByStatus, brandFreq, hasZones, groups } = computed;
 
   return (
     // Geen `mx-auto` meer — zelfde reden als in armaturenboek-view.tsx: binnen de
@@ -171,41 +219,35 @@ export function QuoteView({
               <span>Combined (green + yellow)</span>
               <span className="tabular-nums">{formatEur(totals.samen)}</span>
             </div>
+            {/* Zelfde bron, zelfde zin als de PDF (pmSummary): élke niet-tellende
+                status die er is, inclusief open. */}
             {pm.total > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Shown, not totaled (blue {pm.blauw} · red {pm.rood} · purple{" "}
-                {pm.paars}) — <span className="font-medium">p.m.</span>
+                Shown, not totaled ({pmSummary(pm)}) —{" "}
+                <span className="font-medium">p.m.</span>
               </p>
             )}
           </div>
         </div>
       )}
 
-      {(blauwLines.length > 0 || roodLines.length > 0) && (
+      {/* De poort staat op ÁLLE p.m.-regels: wat als p.m. in de kolom staat, staat hier
+          verantwoord. Volgorde per status (PM_STATUSES), net als op de PDF. */}
+      {pmLines.length > 0 && (
         <section className="mt-8 border-t pt-4">
           <h3 className="mb-2 text-sm font-medium">Open items &amp; actions</h3>
           <ul className="space-y-1.5 text-sm">
-            {blauwLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-2">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.blauw.dot)} aria-hidden />
-                <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — load brand{" "}
-                  <span className="font-medium">
-                    {(l.brandText ?? "").trim() || "unknown"}
-                  </span>{" "}
-                  <span className="text-muted-foreground">(our action)</span>
-                </span>
-              </li>
-            ))}
-            {roodLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-2">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.rood.dot)} aria-hidden />
-                <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — back to
-                  customer <span className="text-muted-foreground">(brand known, this product not)</span>
-                </span>
-              </li>
-            ))}
+            {PM_STATUSES.flatMap((s) =>
+              pmByStatus[s].map((l) => (
+                <li key={l.id} className="flex items-start gap-2">
+                  <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS[s].dot)} aria-hidden />
+                  <span>
+                    <span className="font-medium">{l.fixtureCode}</span> —{" "}
+                    {PM_ITEM[s](l)}
+                  </span>
+                </li>
+              )),
+            )}
           </ul>
 
           {brandFreq.length > 0 && (
@@ -225,11 +267,9 @@ export function QuoteView({
         </section>
       )}
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        Gross prices excl. VAT from valid price lists. Only green and yellow count;
-        blue, red and purple are shown as p.m. — displayed, not totaled. Request
-        order is preserved.
-      </p>
+      {/* Letterlijk dezelfde string als in de PDF-voettekst (lib/repo/estimate.ts),
+          opgebouwd uit de afgeleide statuslijsten — dus de uitleg noemt open óók. */}
+      <p className="mt-6 text-xs text-muted-foreground">{ESTIMATE_DISCLAIMER}</p>
     </div>
   );
 }

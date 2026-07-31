@@ -3,8 +3,14 @@
 // via computeEstimate — dezelfde totalen, dezelfde p.m.-regels, dezelfde volgorde.
 // Nooit twee waarheden. Prijzen zijn bewust bruto adviesprijs (B5): kortingen horen
 // bij de offerte, buiten de tool.
+//
+// Welke statussen p.m. zijn wordt hier AFGELEID van countsInTotal (PM_STATUSES), en de
+// twee zinnen die daarover op het klantstuk komen (pmSummary, ESTIMATE_DISCLAIMER)
+// staan hier ook — scherm en PDF drukken ze af, ze schrijven ze niet zelf. Handmatige
+// statuslijsten aan de leeskant zijn verboden: die lieten `open` uit de verantwoording
+// vallen terwijl er wél "p.m." naast de regel stond (reviewzwerm A4).
 import type { Deviation } from "@/components/dossier/types";
-import type { MatchStatus } from "@/components/dossier/status";
+import { STATUS, STATUS_ORDER, type MatchStatus } from "@/components/dossier/status";
 import type { AppDb } from "./db";
 import { getDossier, getQuote, getSpecLines } from "./dossiers";
 
@@ -53,11 +59,61 @@ export type EstimateHeader = {
   validUntil: string | null;
 };
 
-// Alleen groen + geel tellen mee in het projecttotaal (E-02). Blauw/rood/paars gaan
-// mee als p.m. — getoond, niet opgeteld.
+// Alleen groen + geel tellen mee in het projecttotaal (E-02). Eén tuple, en alles wat
+// met "telt mee" te maken heeft is ervan afgeleid: countsInTotal() hieronder, het type
+// PmStatus, en PM_STATUSES verderop. Zo kan geen status buiten zowel het totaal als de
+// verantwoording vallen — precies wat `open` overkwam (reviewzwerm A4): niet opgeteld,
+// nergens verantwoord, en tóch "p.m." in de regeltotaalkolom van een klantstuk.
+const COUNTING_STATUSES = ["groen", "geel"] as const;
+export type CountingStatus = (typeof COUNTING_STATUSES)[number];
+
+// Élke andere status gaat mee als p.m. — getoond, niet opgeteld. Óók `open`, en dat is
+// de NORMALE stand van een vers geïmporteerd dossier (matching zet hem), geen randgeval.
+export type PmStatus = Exclude<MatchStatus, CountingStatus>;
+
 export function countsInTotal(status: MatchStatus): boolean {
-  return status === "groen" || status === "geel";
+  return (COUNTING_STATUSES as readonly MatchStatus[]).includes(status);
 }
+
+// De twee statuslijsten waaruit scherm én PDF hun zinnen bouwen — afgeleid van
+// countsInTotal, in de vaste STATUS_ORDER-volgorde. Nooit met de hand opsommen: drie
+// losse `l.status === "blauw" | "rood" | "paars"`-filters lieten `open` uit élke
+// verantwoording vallen terwijl de regel wél als p.m. werd afgedrukt.
+export const COUNTING_ORDER: MatchStatus[] = STATUS_ORDER.filter((s) =>
+  countsInTotal(s),
+);
+export const PM_STATUSES = STATUS_ORDER.filter(
+  (s) => !countsInTotal(s),
+) as PmStatus[];
+
+// Aantallen per p.m.-status + het totaal. Afgeleid: één sleutel per PM_STATUS.
+export type PmCounts = Record<PmStatus, number> & { total: number };
+
+// De verantwoordingsregel onder het eindtotaal: "blue 1 · red 1 · purple 2 · open 4".
+// Alleen de statussen die er écht zijn (een "purple 0" is ruis), in STATUS_ORDER-
+// volgorde, met de labels uit STATUS — die labels ZIJN de kleurnamen (DESIGN.md O13),
+// dus er worden hier geen nieuwe woorden verzonnen. Scherm en PDF drukken exact deze
+// string af: nooit twee waarheden.
+export function pmSummary(pm: PmCounts): string {
+  return PM_STATUSES.filter((s) => pm[s] > 0)
+    .map((s) => `${STATUS[s].label.toLowerCase()} ${pm[s]}`)
+    .join(" · ");
+}
+
+// "green and yellow" / "blue, red, purple and open" — uit de statuslabels.
+function statusWords(list: MatchStatus[]): string {
+  const words = list.map((s) => STATUS[s].label.toLowerCase());
+  if (words.length < 2) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+// De voettekst onder de estimate. Eén string voor scherm én PDF, opgebouwd uit de
+// afgeleide lijsten: komt er een status bij, dan noemt de uitleg hem vanzelf. De oude
+// versie somde "blue, red and purple" met de hand op en loog daarmee over `open`.
+export const ESTIMATE_DISCLAIMER =
+  "Gross prices excl. VAT from valid price lists. " +
+  `Only ${statusWords(COUNTING_ORDER)} count; ${statusWords(PM_STATUSES)} are shown ` +
+  "as p.m. — displayed, not totaled. Request order is preserved.";
 
 // Regeltotaal als de regel meetelt: aantal × stukprijs. Null bij een niet-tellende
 // status (p.m.), ontbrekend aantal (p/st) of ontbrekende prijs.
@@ -119,10 +175,19 @@ export type EstimateComputed = {
   // valid_until = NULL, want geen enkel codepad heeft dat veld ooit gevuld.
   outputsAllowed: boolean;
   totals: { groen: number; geel: number; samen: number };
-  pm: { blauw: number; rood: number; paars: number; total: number };
+  // Aantallen per p.m.-status; `total` telt ÁLLE niet-tellende regels (afgeleid), niet
+  // een som van een paar met de hand genoemde statussen.
+  pm: PmCounts;
+  // Álle p.m.-regels in aanvraagvolgorde. Wie de verantwoording afdrukt itereert hier
+  // (of over pmByStatus) en kan geen status vergeten.
+  pmLines: EstimateLine[];
+  // Dezelfde regels, gegroepeerd per status — voor de "open punten"-lijst, die per
+  // status een eigen zin en een eigen bolletje heeft.
+  pmByStatus: Record<PmStatus, EstimateLine[]>;
   blauwLines: EstimateLine[]; // p.m.: merk inladen (onze actie)
   roodLines: EstimateLine[]; // p.m.: terug naar de klant
   paarsLines: EstimateLine[]; // p.m.: buiten assortiment, expliciet gemeld
+  openLines: EstimateLine[]; // p.m.: nog niet gematcht, geen product gekozen
   brandFreq: [string, number][]; // blauw: merk → aantal regels, in eerste-verschijning-volgorde
   hasZones: boolean;
   groups: EstimateZoneGroup[];
@@ -192,20 +257,23 @@ export function computeEstimate(
     else geel += t;
   }
 
-  // p.m.-regels: getoond, niet opgeteld.
-  const blauwLines = lines.filter((l) => l.status === "blauw");
-  const roodLines = lines.filter((l) => l.status === "rood");
-  const paarsLines = lines.filter((l) => l.status === "paars");
-  const pm = {
-    blauw: blauwLines.length,
-    rood: roodLines.length,
-    paars: paarsLines.length,
-    total: blauwLines.length + roodLines.length + paarsLines.length,
+  // p.m.-regels: getoond, niet opgeteld. Afgeleid van countsInTotal — dezelfde wet die
+  // countedLineTotal gebruikt, dus wat niet in het totaal zit staat gegarandeerd wél in
+  // de verantwoording. De named arrays hieronder zijn alleen nog uitsnedes.
+  const pmLines = lines.filter((l) => !countsInTotal(l.status));
+  const pmByStatus = Object.fromEntries(
+    PM_STATUSES.map((s) => [s, pmLines.filter((l) => l.status === s)]),
+  ) as Record<PmStatus, EstimateLine[]>;
+  const pm: PmCounts = {
+    ...(Object.fromEntries(
+      PM_STATUSES.map((s) => [s, pmByStatus[s].length]),
+    ) as Record<PmStatus, number>),
+    total: pmLines.length,
   };
 
   // Open punten & acties: welke merken moeten wij inladen (blauw)?
   const freq = new Map<string, number>();
-  for (const l of blauwLines) {
+  for (const l of pmByStatus.blauw) {
     const b = (l.brandText ?? "").trim() || "onbekend merk";
     freq.set(b, (freq.get(b) ?? 0) + 1);
   }
@@ -226,9 +294,12 @@ export function computeEstimate(
     outputsAllowed,
     totals: { groen, geel, samen: groen + geel },
     pm,
-    blauwLines,
-    roodLines,
-    paarsLines,
+    pmLines,
+    pmByStatus,
+    blauwLines: pmByStatus.blauw,
+    roodLines: pmByStatus.rood,
+    paarsLines: pmByStatus.paars,
+    openLines: pmByStatus.open,
     brandFreq: [...freq.entries()],
     hasZones,
     groups: groupByZone(numbered),
