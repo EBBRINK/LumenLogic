@@ -11,8 +11,9 @@
 // vallen terwijl er wél "p.m." naast de regel stond (reviewzwerm A4).
 import type { Deviation } from "@/components/dossier/types";
 import { STATUS, STATUS_ORDER, type MatchStatus } from "@/components/dossier/status";
+import { formatDate } from "@/lib/format";
 import type { AppDb } from "./db";
-import { unitPriceOf } from "./day-price";
+import { todayIso, unitPriceOf } from "./day-price";
 import { getDossier, getQuote, getSpecLines } from "./dossiers";
 
 // Eén estimate-regel. Bewust ontkoppeld van de repo-rijvorm zodat scherm en PDF met
@@ -36,6 +37,12 @@ export type EstimateLine = {
   // Stap 7 (herontwerp 2026-07-14): match gekozen door een mens (review-keuze,
   // kandidaat of handmatige link) → merkteken "handmatig gekozen" (scherm + PDF).
   manuallyChosen?: boolean;
+  // A7: de dagprijs van deze regel is VERLOPEN op deze datum ('YYYY-MM-DD'). Precies
+  // hetzelfde soort merkteken per regel als de twee hierboven, en om dezelfde reden:
+  // scherm en PDF moeten het kunnen afdrukken. `unitPrice` draagt dan de catalogusprijs
+  // (of null als die er niet is) — de combinatie van die twee bepaalt welke zin erbij
+  // komt; zie dayPriceExpiredNote hieronder.
+  dayPriceExpiredOn?: string | null;
 };
 
 // Wat er in het veld "Quote number" staat zolang er nog geen nummer is. Eén constante,
@@ -122,6 +129,23 @@ export function countedLineTotal(line: EstimateLine): number | null {
   if (!countsInTotal(line.status)) return null;
   if (line.quantity == null || line.unitPrice == null) return null;
   return Number(line.unitPrice) * line.quantity;
+}
+
+// A7: de zin die bij een VERLOPEN dagprijs op het klantstuk komt. Eén functie, twee
+// aanroepers (components/dossier/quote-view.tsx en lib/pdf/estimate.ts) — scherm en
+// papier vertellen letterlijk hetzelfde, net als bij pmSummary en ESTIMATE_DISCLAIMER.
+// Geen merkteken → `null`, en dan komt er ook geen subregel.
+//
+// Twee gevallen, want de eerlijke zin verschilt: is er een catalogusprijs om op terug
+// te vallen (dan draagt de regel dát bedrag), of is er níets (dan is het regeltotaal
+// "—" en moet de klant lezen waarom er geen prijs staat). De datum in dezelfde vorm als
+// de rest van de app (lib/format.ts): `30 Jun 2026`.
+export function dayPriceExpiredNote(line: EstimateLine): string | null {
+  if (!line.dayPriceExpiredOn) return null;
+  const on = formatDate(line.dayPriceExpiredOn);
+  return line.unitPrice != null
+    ? `day price expired ${on} — catalogue price used instead`
+    : `day price expired ${on} — no catalogue price to fall back on`;
 }
 
 // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
@@ -319,21 +343,35 @@ export async function getEstimateData(db: AppDb, dossierId: string) {
     getQuote(db, dossierId),
   ]);
 
-  const lines: EstimateLine[] = specRows.map((r) => ({
-    id: r.id,
-    fixtureCode: r.fixtureCode,
-    zone: r.zone,
-    status: r.status as MatchStatus,
-    quantity: r.quantity,
-    productName: r.matchedName ?? null,
-    sku: r.matchedArticleCode ?? null,
-    unitPrice: unitPriceOf(r).unitPrice, // I-04: dagprijs wint (lib/repo/day-price.ts)
-    deviations: (r.deviations as Deviation[] | null) ?? null,
-    brandText: r.brandText,
-    productText: r.productText,
-    autoAccepted: r.chosenBy === "system:auto",
-    manuallyChosen: r.chosenBy != null && r.chosenBy !== "system:auto",
-  }));
+  // ÉÉN KLOK VOOR DE HELE ESTIMATE (zelfde regel als in generateQuote). De vervalvraag
+  // wordt hieronder per regel gesteld; leest elke regel zijn eigen `todayIso()`, dan kan
+  // een estimate die over de UTC-middernachtgrens heen wordt opgebouwd intern inconsistent
+  // worden — regel 1 met een dagprijs die "vandaag" nog geldig is, regel 40 met dezelfde
+  // datum als "verlopen", en een projecttotaal dat bij geen van beide dagen hoort. Eén
+  // lezing, alle regels dezelfde dag.
+  const vandaag = todayIso();
+  const lines: EstimateLine[] = specRows.map((r) => {
+    // I-04 + A7: dagprijs wint van catalogusprijs, tenzij hij verlopen is — dán valt hij
+    // terug op de catalogus en draagt de regel een merkteken (lib/repo/day-price.ts).
+    // Eén aanroep voor allebei: het bedrag en de reden mogen nooit uit elkaar lopen.
+    const chosen = unitPriceOf(r, vandaag);
+    return {
+      id: r.id,
+      fixtureCode: r.fixtureCode,
+      zone: r.zone,
+      status: r.status as MatchStatus,
+      quantity: r.quantity,
+      productName: r.matchedName ?? null,
+      sku: r.matchedArticleCode ?? null,
+      unitPrice: chosen.unitPrice,
+      dayPriceExpiredOn: chosen.dayPriceExpiredOn,
+      deviations: (r.deviations as Deviation[] | null) ?? null,
+      brandText: r.brandText,
+      productText: r.productText,
+      autoAccepted: r.chosenBy === "system:auto",
+      manuallyChosen: r.chosenBy != null && r.chosenBy !== "system:auto",
+    };
+  });
 
   const quote = quoteData?.quote ?? null;
   const header: EstimateHeader = {

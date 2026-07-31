@@ -13,6 +13,7 @@ import {
   computeEstimate,
   countedLineTotal,
   countsInTotal,
+  dayPriceExpiredNote,
   notableDeviations,
   pmSummary,
   requestedText,
@@ -321,6 +322,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
 
   // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
   const notable = notableDeviations(line);
+  // A7: verlopen dagprijs → dezelfde subregel, vooraan. Letterlijk dezelfde zin als op
+  // de PDF (lib/repo/estimate.ts), want dit gaat over het bedrag in de kolom ernaast:
+  // die toont dan de catalogusprijs, of "—" als er niets is om op terug te vallen.
+  const expiredNote = dayPriceExpiredNote(line);
+  const hasOtherMarks =
+    notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
 
   return (
     <>
@@ -348,7 +355,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           <StatusBadge status={line.status} />
         </TableCell>
       </TableRow>
-      {(notable.length > 0 || line.autoAccepted || line.manuallyChosen) && (
+      {(hasOtherMarks || expiredNote) && (
         <TableRow className="border-0 hover:bg-transparent">
           <TableCell />
           <TableCell />
@@ -356,6 +363,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
             colSpan={COLS - 2}
             className="pt-0 text-xs text-muted-foreground"
           >
+            {expiredNote && (
+              <span className="text-status-amber-ink">
+                {expiredNote}
+                {hasOtherMarks && " — "}
+              </span>
+            )}
             {notable.length > 0 && (
               <>
                 deviation:{" "}

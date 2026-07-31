@@ -18,6 +18,7 @@ import { formatEur } from "@/lib/format";
 import {
   countedLineTotal,
   countsInTotal,
+  dayPriceExpiredNote,
   notableDeviations,
   pmSummary,
   requestedText,
@@ -239,10 +240,16 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
       for (const { line } of group.lines) {
         const notable = notableDeviations(line);
+        // A7: en het merkteken "verlopen dagprijs" deelt diezelfde subregel — het staat
+        // vooraan, want het gaat over het BEDRAG dat ernaast staat.
+        const expiredNote = dayPriceExpiredNote(line);
         // B3: het auto-door-label deelt de subregel met de afwijkingsnotitie.
         // Stap 7: idem voor het merkteken "handmatig gekozen".
         const hasSubLine =
-          notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
+          notable.length > 0 ||
+          !!line.autoAccepted ||
+          !!line.manuallyChosen ||
+          expiredNote != null;
         const rowH = 13 + (hasSubLine ? 10 : 0);
         need(rowH);
 
@@ -283,6 +290,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         // groen. B3: het label "automatisch geaccepteerde bijna-match" erachteraan.
         if (hasSubLine) {
           const parts: string[] = [];
+          if (expiredNote) parts.push(expiredNote); // A7 — vooraan: het gaat over het bedrag
           if (notable.length > 0)
             parts.push(`deviation: ${notable.map((d) => d.note).join(" · ")}`);
           if (line.autoAccepted) parts.push("automatically accepted near-match");

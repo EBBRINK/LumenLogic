@@ -12,7 +12,7 @@ import {
   visibleProducts,
 } from "@/db/schema";
 import type { AppDb } from "./db";
-import { unitPriceOf } from "./day-price";
+import { todayIso, unitPriceOf } from "./day-price";
 import { logEvent } from "./events";
 import { derivePhase, type Phase, type XisPhase } from "./project-status";
 
@@ -99,6 +99,10 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       reviewKind: specLines.reviewKind,
       noMatchReason: specLines.noMatchReason,
       manualPrice: specLines.manualPrice,
+      // A7: de vervaldatum van de dagprijs MOET mee de projectie in — zonder deze kolom
+      // kan unitPriceOf niet zien dat een dagprijs verlopen is en staat een achterhaald
+      // bedrag op het klantstuk. De kolom werd tot A7 door niets gelezen.
+      manualPriceValidUntil: specLines.manualPriceValidUntil,
       sortOrder: specLines.sortOrder,
       matchedProductId: specLines.matchedProductId,
       matchedName: visibleProducts.name,
@@ -383,14 +387,42 @@ function addDays(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// DE VANGRAIL ONDER DE € 0,00-REGEL. Een regel die bij de offerteregel-bouwer komt, is
+// door de opnamefilter gekomen — en die liet hem alleen door omdát unitPriceOf een prijs
+// teruggaf. Staat hier tóch `null`, dan hebben "heeft deze regel een prijs?" en "welke
+// prijs?" een ander antwoord gegeven: een programmeerfout, geen regel van nul euro.
+// Zonder deze controle is `Number(null)` gewoon 0 en schrijft `(0).toFixed(2)` doodleuk
+// "0.00" als stukprijs én regeltotaal het klantdocument in. Liever luidruchtig stuk dan
+// stilzwijgend een offerte van nul euro.
+//
+// Geëxporteerd puur om hem rechtstreeks te kunnen testen: langs generateQuote is dit pad
+// sinds de één-klok-reparatie hieronder onbereikbaar, en dat is precies de bedoeling.
+export function requireUnitPrice(
+  unitPrice: string | null,
+  fixtureCode: string,
+): number {
+  if (unitPrice == null)
+    throw new Error(
+      `generateQuote: regel ${fixtureCode} kwam door de opnamefilter maar heeft geen ` +
+        `stukprijs. Dat kan alleen als "heeft een prijs" en "welke prijs" met een andere ` +
+        `klok zijn beantwoord — er komt geen € 0,00-regel op een klantdocument.`,
+    );
+  return Number(unitPrice);
+}
+
 // Genereert (of hergenereert) de offerte uit alle gematchte spec-regels die een
 // geldige, niet-verlopen prijs hebben. Regel × stukprijs → totalen. Het kopblok
 // (nummer, klant, contact, …) blijft behouden bij hergenereren; een uitgestuurde
 // (bevroren) offerte wordt niet overschreven (I-06).
+//
+// `today` ('YYYY-MM-DD') is DE KLOK VAN DEZE OPERATIE — één lezing, hieronder aan beide
+// unitPriceOf-aanroepen doorgegeven. Injecteerbaar zodat de vervalgrens deterministisch
+// te testen is, precies zoals bij unitPriceOf zelf; de default is de echte dag (UTC).
 export async function generateQuote(
   db: AppDb,
   dossierId: string,
   actor?: string,
+  today: string = todayIso(),
 ) {
   const dossier = await getDossier(db, dossierId);
   const lines = await getSpecLines(db, dossierId);
@@ -398,10 +430,28 @@ export async function generateQuote(
   // dagprijs op de regel (I-04). Wélke van de twee dat is beslist unitPriceOf — dezelfde
   // functie die hieronder de stukprijs én de herkomst kiest, zodat "heeft een prijs" en
   // "welke prijs" nooit uit elkaar kunnen lopen (lib/repo/day-price.ts).
+  //
+  // A7: "geldige prijs" betekent sinds de vervalregel óók NIET-VERLOPEN. Een regel
+  // waarvan de énige prijs een verlopen dagprijs was, valt hier dus uit — precies zoals
+  // een regel zonder énige prijs er altijd al uitviel. Dat is bewust: quote_lines is het
+  // klantdocument, en een regel zonder actueel bedrag heeft daar niets te zoeken (een
+  // "€ 0,00"-regel zou erger zijn dan geen regel). Weggemoffeld wordt er niets — de
+  // estimate op scherm en PDF toont die regel wél, met "—" en het merkteken dat zegt dat
+  // de dagprijs verliep. De estimate is het volledige stuk, de offerte de geprijsde snede.
+  //
+  // ÉÉN KLOK (herstel na A7). Die vervalvraag wordt hier én verderop bij het bouwen van
+  // de offerteregel gesteld — twee keer per regel. Lazen die twee elk hun eigen
+  // `todayIso()`, dan konden ze over de UTC-middernachtgrens uit elkaar lopen: een regel
+  // waarvan de dagprijs vandaag afloopt komt door de filter, en een tel later — inmiddels
+  // "morgen" — geeft de tweede aanroep `unitPrice: null`. `Number(null)` is 0, en dan
+  // schrijft `toFixed(2)` er "0.00" van: exact de € 0,00-regel die hierboven verboden
+  // wordt. Daarom staat de dag in `today`, wordt hij één keer gelezen en overal
+  // doorgegeven. De vangrail `requireUnitPrice` hierboven vangt af dat dit ooit weer
+  // stilzwijgend uit elkaar loopt.
   const matched = lines.filter(
     (l) =>
       (l.status === "groen" || l.status === "geel") &&
-      unitPriceOf(l).unitPrice != null,
+      unitPriceOf(l, today).unitPrice != null,
   );
 
   // bestaand kopblok bewaren; bevroren offerte niet aanraken (I-06)
@@ -479,8 +529,10 @@ export async function generateQuote(
       matched.map((l) => {
         // I-04: dagprijs wint van catalogusprijs — mét herkomst, zodat de regel
         // hieronder niet nóg een keer dezelfde keuze maakt (lib/repo/day-price.ts).
-        const { unitPrice, source } = unitPriceOf(l);
-        const unit = Number(unitPrice);
+        // `today` is dezelfde kloklezing als de opnamefilter hierboven gebruikte: die
+        // twee moeten per definitie hetzelfde antwoord geven.
+        const { unitPrice, source } = unitPriceOf(l, today);
+        const unit = requireUnitPrice(unitPrice, l.fixtureCode);
         const qty = l.quantity ?? 0; // aantal ontbreekt → stukprijs-modus (A-07)
         const src = l.matchedProductId
           ? provenance.get(l.matchedProductId)

@@ -1,7 +1,8 @@
 // Eén bron voor de estimate (stap 9): deze tests bewijzen dat getEstimateData exact
-// dezelfde cijfers oplevert als wat quote-view toonde: groen 12×310 = 3.720, geel
-// 8×199 = 1.592, samen 5.312 — en dat élke niet-tellende status (blauw/rood/paars/
-// open) als p.m. meegaat zonder ooit opgeteld te worden.
+// dezelfde cijfers oplevert als wat quote-view toonde: groen 12×310 + 2×120 = 3.960,
+// geel 8×199 = 1.592, samen 5.552 — en dat élke niet-tellende status (blauw/rood/paars/
+// open) als p.m. meegaat zonder ooit opgeteld te worden. (De 2×120 kwam er bij A7 bij:
+// zie de fixture-toelichting hieronder.)
 //
 // De gele regel draagt sinds A8 zowel een catalogusprijs (226) als een dagprijs (199);
 // daarvóór stond de dagprijs in élke fixture op een regel ZONDER match, dus hoefde
@@ -18,6 +19,7 @@ import {
   computeEstimate,
   countedLineTotal,
   countsInTotal,
+  dayPriceExpiredNote,
   getEstimateData,
   notableDeviations,
   pmSummary,
@@ -130,6 +132,11 @@ test("p.m.-statussen zijn afgeleid van countsInTotal — geen handgeschreven lij
 // A8: de GELE regel is gematcht (catalogus 226) én draagt een dagprijs (199). Dat is
 // het geval waar I-04 écht een keuze maakt — de calculator zet een dagprijs juist
 // omdat de catalogusprijs achterhaald is.
+//
+// A7: daar staat sinds de vervalregel een GROENE regel naast (Lv700) waarvan de dagprijs
+// (199) is VERLOPEN — gematcht op een product met catalogusprijs 120. Die regel moet de
+// catalogusprijs dragen, het merkteken krijgen, en met 2×120 = 240 in het groentotaal
+// belanden. Vandaar dat groen 3.960 is en niet 3.720, en samen 5.552 en niet 5.312.
 async function seedEstimateDossier(db: TestDb) {
   const [dossier] = await db
     .insert(projectDossiers)
@@ -154,25 +161,37 @@ async function seedEstimateDossier(db: TestDb) {
     price: "100.00",
     articleCode: "L360-SASSO60",
   });
+  // A7: het product waarop de VERLOPEN dagprijs terugvalt. Eigen bedrag (120), zodat
+  // het in de totalen niet te verwarren is met een van de andere regels.
+  const p4 = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SPLITBOX 3 TRIMLESS 2700K",
+    price: "120.00",
+    articleCode: "L210-SPLITBOX",
+  });
 
   const rows = [
-    // aanvraagvolgorde 0..6 — insert-volgorde wijkt bewust af
-    { fixtureCode: "Lp302", zone: "B-02", status: "groen", quantity: null, matchedProductId: p3.productId, sortOrder: 5, brandText: "XAL", productText: "SASSO 60", manualPrice: null, deviations: null },
-    { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, deviations: null },
-    { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", deviations: null },
+    // aanvraagvolgorde 0..7 — insert-volgorde wijkt bewust af
+    { fixtureCode: "Lp302", zone: "B-02", status: "groen", quantity: null, matchedProductId: p3.productId, sortOrder: 5, brandText: "XAL", productText: "SASSO 60", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", manualPriceValidUntil: null, deviations: null },
     {
-      // A8: gematcht (catalogus 226) MÉT dagprijs 199 — I-04 moet hier kiezen.
-      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00",
+      // A8: gematcht (catalogus 226) MÉT dagprijs 199 — I-04 moet hier kiezen. Geen
+      // vervaldatum, dus de dagprijs blijft winnen: dit is de tegenproef van Lv700.
+      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00", manualPriceValidUntil: null,
       deviations: [
         { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "3000K i.p.v. 2700K" },
       ],
     },
-    { fixtureCode: "Lr050", zone: "B-02", status: "rood", quantity: 3, matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "MINIMAL 60 (bestaat niet)", manualPrice: null, deviations: null },
-    { fixtureCode: "Lb110", zone: "A-08", status: "blauw", quantity: 5, matchedProductId: null, sortOrder: 2, brandText: "Kreon", productText: "Prologe 80", manualPrice: null, deviations: null },
+    { fixtureCode: "Lr050", zone: "B-02", status: "rood", quantity: 3, matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "MINIMAL 60 (bestaat niet)", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    { fixtureCode: "Lb110", zone: "A-08", status: "blauw", quantity: 5, matchedProductId: null, sortOrder: 2, brandText: "Kreon", productText: "Prologe 80", manualPrice: null, manualPriceValidUntil: null, deviations: null },
     // OPEN mét aantal én dagprijs: 4×175 = 700 zou het totaal vervuilen als open
     // ooit zou meetellen — en zonder de afleiding viel deze regel buiten élke
     // verantwoording terwijl de PDF er wél "p.m." naast zette (A4).
-    { fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4, matchedProductId: null, sortOrder: 6, brandText: "Modular", productText: "Smart Tubed 82", manualPrice: "175.00", deviations: null },
+    { fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4, matchedProductId: null, sortOrder: 6, brandText: "Modular", productText: "Smart Tubed 82", manualPrice: "175.00", manualPriceValidUntil: null, deviations: null },
+    // A7: gematcht (catalogus 120) mét een dagprijs (199) die in 2020 verliep. Zonder de
+    // vervalregel draagt deze regel voor altijd 199 — het scenario uit de bevinding.
+    { fixtureCode: "Lv700", zone: "A-08", status: "groen", quantity: 2, matchedProductId: p4.productId, sortOrder: 7, brandText: "Delta Light", productText: "SPLITBOX 3", manualPrice: "199.00", manualPriceValidUntil: "2020-06-30", deviations: null },
   ] as const;
 
   for (const r of rows) {
@@ -186,6 +205,7 @@ async function seedEstimateDossier(db: TestDb) {
       brandText: r.brandText,
       productText: r.productText,
       manualPrice: r.manualPrice,
+      manualPriceValidUntil: r.manualPriceValidUntil,
       deviations: r.deviations ? [...r.deviations] : null,
       sortOrder: r.sortOrder,
     });
@@ -201,14 +221,16 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
   expect(data).not.toBeNull();
   const { lines, computed } = data!;
 
-  // aanvraagvolgorde 0..6 — nooit hersorteren op status of prijs
+  // aanvraagvolgorde 0..7 — nooit hersorteren op status of prijs
   expect(lines.map((l) => l.fixtureCode)).toEqual([
-    "Lp301", "Lw201", "Lb110", "Lr050", "Lx900", "Lp302", "Lo400",
+    "Lp301", "Lw201", "Lb110", "Lr050", "Lx900", "Lp302", "Lo400", "Lv700",
   ]);
 
-  // groen 12×310 = 3.720 ; geel 8×199 = 1.592 (dagprijs, niet de catalogus 226) ;
-  // samen 5.312
-  expect(computed.totals).toEqual({ groen: 3720, geel: 1592, samen: 5312 });
+  // groen 12×310 + 2×120 (Lv700 op zijn CATALOGUSprijs, A7) = 3.720 + 240 = 3.960 ;
+  // geel 8×199 = 1.592 (dagprijs, niet de catalogus 226) ; samen 5.552.
+  // Vóór A7 stond hier groen 3.720 en samen 5.312 — met de verlopen dagprijs van 199
+  // zou Lv700 er 2×199 = 398 in leggen en las de klant groen 4.118 / samen 5.710.
+  expect(computed.totals).toEqual({ groen: 3960, geel: 1592, samen: 5552 });
 
   // blauw/rood/paars/open: p.m. — getoond, nooit opgeteld (paars 2×500 en open 4×175
   // zitten NIET in samen). Exacte vorm: een nieuwe sleutel valt hier meteen op.
@@ -234,6 +256,7 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
   // …en het is precies het complement van "telt mee in het totaal".
   expect(computed.pmLines.every((l) => !countsInTotal(l.status))).toBe(true);
   expect(lines.filter((l) => !countsInTotal(l.status))).toHaveLength(4);
+  expect(lines).toHaveLength(8); // 7 + de A7-regel Lv700
 
   // De zin die letterlijk op het klantstuk komt (scherm én PDF).
   expect(pmSummary(computed.pm)).toBe("blue 1 · red 1 · purple 1 · open 1");
@@ -255,10 +278,44 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
   expect(geel.unitPrice).not.toBe("226.00");
   expect(countedLineTotal(geel)).toBe(1592); // 8 × 199, niet 8 × 226 = 1.808
   expect(computed.totals.geel).toBe(1592);
-  expect(computed.totals.samen).toBe(5312); // 3.720 + 1.592, niet 5.528
+  // …en de gele regel draagt géén vervalmerkteken: zijn dagprijs heeft geen einddatum.
+  expect(geel.dayPriceExpiredOn).toBeNull();
 
   // open punten: blauw merk inladen
   expect(computed.brandFreq).toEqual([["Kreon", 1]]);
+});
+
+// A7, de bevinding zelf: een dagprijs van 199 die op 30 juni 2020 verliep. Vóór deze fix
+// las de klant in élk jaar daarna nog steeds € 199,00 — op het scherm, op de PDF en in
+// de XIS-export — omdat manual_price_valid_until door geen enkele regel werd gelezen.
+test("A7: een verlopen dagprijs valt terug op de catalogusprijs, met merkteken, óók in het totaal", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedEstimateDossier(db);
+
+  const { lines, computed } = (await getEstimateData(db, dossierId))!;
+  const verlopen = lines.find((l) => l.fixtureCode === "Lv700")!;
+
+  // De stukprijs is de CATALOGUSprijs — de verouderde 199 komt er niet meer uit.
+  expect(verlopen.unitPrice).toBe("120.00");
+  expect(verlopen.unitPrice).not.toBe("199.00");
+  // Het merkteken staat er, mét de datum waarop de dagprijs verliep: nooit stilzwijgend.
+  expect(verlopen.dayPriceExpiredOn).toBe("2020-06-30");
+  // De zin die letterlijk op scherm én PDF komt.
+  expect(dayPriceExpiredNote(verlopen)).toBe(
+    "day price expired 30 Jun 2020 — catalogue price used instead",
+  );
+
+  // Het regeltotaal en het projecttotaal rekenen met de catalogusprijs. Dít is het
+  // cijfer dat de klant leest: 2 × 120 = 240, niet 2 × 199 = 398.
+  expect(countedLineTotal(verlopen)).toBe(240);
+  expect(computed.totals.groen).toBe(3960); // 12×310 + 240
+  expect(computed.totals.samen).toBe(5552); // 3.960 + 1.592
+  expect(computed.totals.samen).not.toBe(5710); // wat het was mét de verlopen 199
+
+  // Een regel zonder verlopen dagprijs krijgt geen merkteken en dus geen subregel.
+  const groen = lines.find((l) => l.fixtureCode === "Lp301")!;
+  expect(groen.dayPriceExpiredOn).toBeNull();
+  expect(dayPriceExpiredNote(groen)).toBeNull();
 });
 
 test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", async () => {
@@ -269,16 +326,18 @@ test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", asyn
   expect(computed.hasZones).toBe(true);
   expect(computed.groups.map((g) => g.zone)).toEqual(["A-08", "B-02"]);
 
-  // A-08: groen 3.720 + geel 1.592 (dagprijs) = 5.312; B-02: alleen p.m./p-st →
-  // subtotaal 0 (ook mét de open regel van 4×175 erin — die telt nergens mee)
-  expect(computed.groups[0].subtotal).toBe(5312);
+  // A-08: groen 3.720 + geel 1.592 (dagprijs) + Lv700 2×120 (A7: catalogus, want de
+  // dagprijs verliep) = 5.552; B-02: alleen p.m./p-st → subtotaal 0 (ook mét de open
+  // regel van 4×175 erin — die telt nergens mee)
+  expect(computed.groups[0].subtotal).toBe(5552);
   expect(computed.groups[1].subtotal).toBe(0);
 
-  // nummering volgt de globale aanvraagvolgorde, niet de zone-groepering
+  // nummering volgt de globale aanvraagvolgorde, niet de zone-groepering — Lv700 staat
+  // als laatste in de aanvraag (nr 8) maar als vierde in zone A-08.
   expect(
     computed.groups.flatMap((g) => g.lines.map((nl) => [nl.nr, nl.line.fixtureCode])),
   ).toEqual([
-    [1, "Lp301"], [2, "Lw201"], [3, "Lb110"],
+    [1, "Lp301"], [2, "Lw201"], [3, "Lb110"], [8, "Lv700"],
     [4, "Lr050"], [5, "Lx900"], [6, "Lp302"], [7, "Lo400"],
   ]);
 });

@@ -7,7 +7,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { projectDossiers, specLineCandidates, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote } from "@/lib/repo/dossiers";
-import { getEstimateData } from "@/lib/repo/estimate";
+import { countedLineTotal, getEstimateData } from "@/lib/repo/estimate";
 import { renderEstimatePdf } from "./estimate";
 
 // Zelfde stand als lib/repo/estimate.test.ts: groen 12×310, geel 8×199 mét
@@ -36,20 +36,39 @@ async function seedEstimateDossier(db: TestDb) {
     price: "226.00",
     articleCode: "L092-SCAVA",
   });
+  // A7: het product waarop de VERLOPEN dagprijs terugvalt (catalogus 120).
+  const p4 = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SPLITBOX 3 TRIMLESS 2700K",
+    price: "120.00",
+    articleCode: "L210-SPLITBOX",
+  });
 
   const rows = [
-    { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, deviations: null },
+    { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, manualPriceValidUntil: null, deviations: null },
     {
       // A8: gematcht (catalogus 226) MÉT dagprijs 199 — I-04 moet hier kiezen.
-      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00",
+      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00", manualPriceValidUntil: null,
       deviations: [
         { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "3000K i.p.v. 2700K" },
       ],
     },
-    { fixtureCode: "Lb110", zone: "A-08", status: "blauw", quantity: 5, matchedProductId: null, sortOrder: 2, brandText: "Kreon", productText: "Prologe 80", manualPrice: null, deviations: null },
-    { fixtureCode: "Lr050", zone: "B-02", status: "rood", quantity: 3, matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "MINIMAL 60 (bestaat niet)", manualPrice: null, deviations: null },
-    { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", deviations: null },
-    { fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4, matchedProductId: null, sortOrder: 5, brandText: "Modular", productText: "Smart Tubed 82", manualPrice: null, deviations: null },
+    { fixtureCode: "Lb110", zone: "A-08", status: "blauw", quantity: 5, matchedProductId: null, sortOrder: 2, brandText: "Kreon", productText: "Prologe 80", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    // A7: gematcht (catalogus 120) mét een dagprijs (399) die op 30 juni 2020 verliep.
+    // Bewust ZONDER afwijkingsnotitie: de subregel draagt dan alleen het vervalmerkteken
+    // en de ellipsis-afbreking kan hem niet halverwege afkappen.
+    { fixtureCode: "Lv700", zone: "A-08", status: "groen", quantity: 3, matchedProductId: p4.productId, sortOrder: 6, brandText: "Delta Light", productText: "SPLITBOX 3", manualPrice: "399.00", manualPriceValidUntil: "2020-06-30", deviations: null },
+    { fixtureCode: "Lr050", zone: "B-02", status: "rood", quantity: 3, matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "MINIMAL 60 (bestaat niet)", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", manualPriceValidUntil: null, deviations: null },
+    { fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4, matchedProductId: null, sortOrder: 5, brandText: "Modular", productText: "Smart Tubed 82", manualPrice: null, manualPriceValidUntil: null, deviations: null },
+    // A7, HET EERLIJKE GAT (reparatie R2): een dagprijs (455) die op 30 juni 2020
+    // verliep, op een regel ZONDER match — er is dus geen catalogusprijs om op terug te
+    // vallen. Dit is precies de regel die uít quote_lines valt (generateQuote neemt alleen
+    // regels met een actueel bedrag mee), waardoor de estimate-PDF zijn énige
+    // zichtbaarheid is. Die zin werd tot nu toe alleen op een handgebouwde EstimateLine
+    // in components/dossier/estimate.test.tsx getoetst; hier loopt hij door het echte pad
+    // getSpecLines → unitPriceOf → getEstimateData → renderEstimatePdf.
+    { fixtureCode: "Ld800", zone: "B-02", status: "groen", quantity: 4, matchedProductId: null, sortOrder: 7, brandText: "Delta Light", productText: "SPLITBOX 1", manualPrice: "455.00", manualPriceValidUntil: "2020-06-30", deviations: null },
   ] as const;
 
   for (const r of rows) {
@@ -65,6 +84,7 @@ async function seedEstimateDossier(db: TestDb) {
         brandText: r.brandText,
         productText: r.productText,
         manualPrice: r.manualPrice,
+        manualPriceValidUntil: r.manualPriceValidUntil,
         deviations: r.deviations ? [...r.deviations] : null,
         sortOrder: r.sortOrder,
       })
@@ -112,10 +132,55 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
   expect(text).toContain("SASSO 100 SQ SP CEIL 2700K");
 
   // totalen per kleur + eindtotaal (bruto adviesprijs, nl-NL formaat)
-  expect(text).toContain("3.720,00"); // groen 12×310
+  expect(text).toContain("4.080,00"); // groen 12×310 + 3×120 (Lv700 op catalogus, A7)
   expect(text).toContain("1.592,00"); // geel 8×199 (dagprijs, I-04)
-  expect(text).toContain("5.312,00"); // samen
+  expect(text).toContain("5.672,00"); // samen
   expect(text).toContain("Combined (green + yellow)");
+
+  // ── A7 op papier: de VERLOPEN dagprijs ──────────────────────────────────────
+  // Lv700 had een dagprijs van 399 die op 30 juni 2020 verliep. Op het klantstuk staat
+  // de catalogusprijs (120), mét een zin die zegt dat de dagprijs verlopen is en wat er
+  // in plaats daarvan gebruikt wordt.
+  expect(text).toContain("120,00"); // stukprijs = catalogus
+  expect(text).toContain("360,00"); // regeltotaal 3 × 120
+  expect(text).toContain(
+    "day price expired 30 Jun 2020 — catalogue price used instead",
+  );
+  // DE NEGATIEVE ASSERTIE — dit is degene die een regressie betrapt. Het verouderde
+  // bedrag mag NERGENS op het papier staan: niet als stukprijs (399,00), niet als
+  // regeltotaal (3 × 399 = 1.197,00), en niet verstopt in het groentotaal (4.917,00) of
+  // het eindtotaal (6.509,00).
+  expect(text).not.toContain("399,00");
+  expect(text).not.toContain("1.197,00");
+  expect(text).not.toContain("4.917,00");
+  expect(text).not.toContain("6.509,00");
+
+  // ── A7, het eerlijke gat (R2): verlopen dagprijs ZONDER catalogusprijs ───────
+  // Ld800 had een dagprijs van 455 die op 30 juni 2020 verliep en géén match om op terug
+  // te vallen. Deze regel valt uit quote_lines — het klantdocument dat generateQuote
+  // wegschrijft — dus dit papier is zijn enige zichtbaarheid. Er staat geen bedrag, en
+  // de tweede klantzin legt uit waarom.
+  expect(text).toContain("Ld800");
+  expect(text).toContain(
+    "day price expired 30 Jun 2020 — no catalogue price to fall back on",
+  );
+
+  // Geen bedrag op die regel, rechtstreeks uit dezelfde data die de PDF tekent: de
+  // stukprijs is leeg (PDF drukt "—") en er is geen regeltotaal (idem "—").
+  const ld800 = data.computed.groups
+    .flatMap((g) => g.lines)
+    .find((nl) => nl.line.fixtureCode === "Ld800")!.line;
+  expect(ld800.dayPriceExpiredOn).toBe("2020-06-30");
+  expect(ld800.unitPrice).toBeNull();
+  expect(countedLineTotal(ld800)).toBeNull();
+
+  // En het verlopen bedrag staat NERGENS op het papier: niet als stukprijs (455,00),
+  // niet als regeltotaal (4 × 455 = 1.820,00), en het is ook niet in de totalen gesijpeld
+  // (groen zou 5.900,00 worden, samen 7.492,00).
+  expect(text).not.toContain("455,00");
+  expect(text).not.toContain("1.820,00");
+  expect(text).not.toContain("5.900,00");
+  expect(text).not.toContain("7.492,00");
 
   // I-04 op papier (A8): de gele regel is gematcht (catalogus 226) én heeft een
   // dagprijs (199). De dagprijs staat op het klantstuk; de catalogusprijs staat er
@@ -126,9 +191,9 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
   expect(text).not.toContain("1.808,00");
   expect(text).not.toContain("5.528,00");
 
-  // paars (2×500) mag NERGENS als 1.000,00 opduiken en samen blijft 5.312,00
+  // paars (2×500) mag NERGENS als 1.000,00 opduiken en samen blijft 5.672,00
   expect(text).not.toContain("1.000,00");
-  expect(text).not.toContain("6.312,00");
+  expect(text).not.toContain("6.672,00");
 
   // p.m.-sectie: blauw = merk inladen (ons), rood = terug naar klant, paars gemeld,
   // open = nog niet gematcht. Élke niet-tellende status krijgt hier een eigen punt —

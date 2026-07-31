@@ -42,15 +42,26 @@ async function seedDossier(db: Awaited<ReturnType<typeof createTestDb>>) {
     price: "88.00",
     // articleCode default null
   });
+  // A7: het product waarop de VERLOPEN dagprijs terugvalt (catalogus 120).
+  const p4 = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SPLITBOX 3 TRIMLESS 2700K",
+    price: "120.00",
+    articleCode: "L210-SPLITBOX",
+  });
 
-  // Regels in gescrambelde insert-volgorde; sort_order bepaalt de aanvraagvolgorde 0..5.
+  // Regels in gescrambelde insert-volgorde; sort_order bepaalt de aanvraagvolgorde 0..6.
   const rows = [
-    { fixtureCode: "Ln601", status: "groen", matchedProductId: p3.productId, sortOrder: 5, brandText: "Modular", productText: "custom", manualPrice: null },
-    { fixtureCode: "Lx501", status: "paars", matchedProductId: null, sortOrder: 4, brandText: null, productText: "bureaustoel", manualPrice: null },
-    { fixtureCode: "Lp301", status: "groen", matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null },
-    { fixtureCode: "Lr401", status: "rood", matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "onvindbaar type", manualPrice: null },
-    { fixtureCode: "Lw201", status: "geel", matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00" },
-    { fixtureCode: "Lb101", status: "blauw", matchedProductId: null, sortOrder: 2, brandText: "Onbekendmerk", productText: "iets", manualPrice: null },
+    { fixtureCode: "Ln601", status: "groen", matchedProductId: p3.productId, sortOrder: 5, brandText: "Modular", productText: "custom", manualPrice: null, manualPriceValidUntil: null },
+    { fixtureCode: "Lx501", status: "paars", matchedProductId: null, sortOrder: 4, brandText: null, productText: "bureaustoel", manualPrice: null, manualPriceValidUntil: null },
+    { fixtureCode: "Lp301", status: "groen", matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, manualPriceValidUntil: null },
+    { fixtureCode: "Lr401", status: "rood", matchedProductId: null, sortOrder: 3, brandText: "XAL", productText: "onvindbaar type", manualPrice: null, manualPriceValidUntil: null },
+    { fixtureCode: "Lw201", status: "geel", matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00", manualPriceValidUntil: null },
+    { fixtureCode: "Lb101", status: "blauw", matchedProductId: null, sortOrder: 2, brandText: "Onbekendmerk", productText: "iets", manualPrice: null, manualPriceValidUntil: null },
+    // A7: gematcht (catalogus 120) mét een dagprijs (399) die op 30 juni 2020 verliep.
+    // XIS is een uitgaand systeem: wat hier in unit_price_excl_vat staat wordt elders
+    // als hét bedrag behandeld, dus een verlopen dagprijs mag er niet in belanden.
+    { fixtureCode: "Lv700", status: "groen", matchedProductId: p4.productId, sortOrder: 6, brandText: "Delta Light", productText: "SPLITBOX 3", manualPrice: "399.00", manualPriceValidUntil: "2020-06-30" },
   ] as const;
 
   for (const r of rows) {
@@ -63,6 +74,7 @@ async function seedDossier(db: Awaited<ReturnType<typeof createTestDb>>) {
       productText: r.productText,
       quantity: 4,
       manualPrice: r.manualPrice,
+      manualPriceValidUntil: r.manualPriceValidUntil,
       sortOrder: r.sortOrder,
     });
   }
@@ -75,10 +87,10 @@ test("payload: alle regels in aanvraagvolgorde, niets weggelaten", async () => {
 
   const payload = await buildXisPayload(db, dossierId);
 
-  // (a) alle 6 regels komen mee (niets stilzwijgend weggelaten)
-  expect(payload.lines).toHaveLength(6);
-  // (d) precies op sort_order 0..5 — nooit hersorteren op status of prijs
-  expect(payload.lines.map((l) => l.sort_order)).toEqual([0, 1, 2, 3, 4, 5]);
+  // (a) alle 7 regels komen mee (niets stilzwijgend weggelaten)
+  expect(payload.lines).toHaveLength(7);
+  // (d) precies op sort_order 0..6 — nooit hersorteren op status of prijs
+  expect(payload.lines.map((l) => l.sort_order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   expect(payload.lines.map((l) => l.fixture_code)).toEqual([
     "Lp301", // 0 groen
     "Lw201", // 1 geel
@@ -86,6 +98,7 @@ test("payload: alle regels in aanvraagvolgorde, niets weggelaten", async () => {
     "Lr401", // 3 rood
     "Lx501", // 4 paars
     "Ln601", // 5 groen (nieuw_product)
+    "Lv700", // 6 groen (A7: verlopen dagprijs)
   ]);
 
   // kopblok: dossier-id is de idempotentiesleutel
@@ -127,16 +140,38 @@ test("classificatie: product / tekstregel / nieuw_product", async () => {
   expect(byCode["Ln601"].unit_price_excl_vat).toBe(88);
 });
 
+// A7. De XIS-export is een uitgaand bestand: het bedrag dat hier in unit_price_excl_vat
+// staat wordt in Lynx als hét bedrag behandeld — er is geen mens meer die het naleest.
+// Een dagprijs die in 2020 verliep mag daar dus niet in belanden.
+test("A7: een verlopen dagprijs bereikt unit_price_excl_vat niet — de catalogusprijs wel", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedDossier(db);
+
+  const { lines } = await buildXisPayload(db, dossierId);
+  const byCode = Object.fromEntries(lines.map((l) => [l.fixture_code, l]));
+
+  expect(byCode["Lv700"].kind).toBe("product");
+  expect(byCode["Lv700"].unit_price_excl_vat).toBe(120); // catalogus
+  expect(byCode["Lv700"].unit_price_excl_vat).not.toBe(399); // de verlopen dagprijs
+
+  // Tegenproef op dezelfde payload: een dagprijs ZONDER vervaldatum wint nog steeds
+  // (I-04). De vervalregel mag niet stiekem élke dagprijs uitschakelen.
+  expect(byCode["Lw201"].unit_price_excl_vat).toBe(199);
+
+  // En 399 komt in de hele payload nergens voor.
+  expect(lines.map((l) => l.unit_price_excl_vat)).not.toContain(399);
+});
+
 test("pre-flight-telling klopt", async () => {
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
   const summary = await preflightSummary(db, dossierId);
   expect(summary).toEqual({
-    productLines: 2,
+    productLines: 3, // Lp301, Lw201 + Lv700 (A7)
     textLines: 3,
     newProducts: 1,
-    total: 6,
+    total: 7,
   });
 });
 
@@ -157,9 +192,9 @@ test("idempotent op dossier-id: 2× createXisExport → 1 rij, created:false de 
   const all = await getXisExports(db, dossierId);
   expect(all).toHaveLength(1);
 
-  // de weggeschreven snapshot bevat alle 6 regels (niets weggelaten bij export)
+  // de weggeschreven snapshot bevat alle 7 regels (niets weggelaten bij export)
   const snapshot = all[0].payload as { lines: unknown[] };
-  expect(snapshot.lines).toHaveLength(6);
+  expect(snapshot.lines).toHaveLength(7);
 });
 
 test("environment override wordt gerespecteerd", async () => {

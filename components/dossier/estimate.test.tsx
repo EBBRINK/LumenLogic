@@ -28,7 +28,8 @@ const header: EstimateHeader = {
 };
 
 // Gegroepeerd per zone, álle zes de statussen (inclusief open — de normale stand van
-// een verse import), plus één groene regel zónder aantal.
+// een verse import), één groene regel zónder aantal, en twee regels met een VERLOPEN
+// dagprijs (A7): één die op de catalogusprijs terugvalt en één die dat niet kan.
 const zonedLines: EstimateLine[] = [
   // Zone A-08
   {
@@ -72,6 +73,24 @@ const zonedLines: EstimateLine[] = [
     id: "l7", fixtureCode: "Lo400", zone: "B-02", status: "open", quantity: 4,
     productName: null, sku: null, unitPrice: null,
     brandText: "Modular", productText: "Smart Tubed 82",
+  },
+  {
+    // A7: de dagprijs op deze regel is verlopen, dus de stukprijs is de CATALOGUSprijs
+    // (120) en er hoort een merkteken bij dat dat zegt. 3×120 = 360 telt gewoon mee.
+    id: "l8", fixtureCode: "Lv700", zone: "B-02", status: "groen", quantity: 3,
+    productName: "SPLITBOX 3 TRIMLESS 2700K", sku: "L210-SPLITBOX",
+    unitPrice: "120.00", brandText: "Delta Light", productText: "SPLITBOX 3",
+    dayPriceExpiredOn: "2020-06-30",
+  },
+  {
+    // A7, het eerlijke gat: dagprijs verlopen én geen catalogusprijs om op terug te
+    // vallen (het product zat in een prijslijst die óók verliep — ijzeren regel 3, dus
+    // het valt uit visible_products). Regeltotaal "—", en het merkteken legt uit waarom
+    // daar geen bedrag staat. Nooit stilzwijgend leeg.
+    id: "l9", fixtureCode: "Ld800", zone: "B-02", status: "groen", quantity: 4,
+    productName: null, sku: null, unitPrice: null,
+    brandText: "Delta Light", productText: "SPLITBOX 1",
+    dayPriceExpiredOn: "2020-06-30",
   },
 ];
 
@@ -213,10 +232,12 @@ test("totalen: groen + geel apart, samen = groen + geel", async () => {
       <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
     </Screen>,
   );
-  // groen 12×310 = 3.720,00 ; geel 8×226 = 1.808,00 ; samen = 5.528,00
-  await expect.element(page.getByText(/3\.720,00/).first()).toBeInTheDocument();
+  // groen 12×310 + 3×120 (Lv700, A7: catalogus want de dagprijs verliep) = 4.080,00 ;
+  // geel 8×226 = 1.808,00 ; samen = 5.888,00. Vóór A7 stond hier groen 3.720,00 en
+  // samen 5.528,00 — de A7-regels zijn erbij gekomen, niet veranderd.
+  await expect.element(page.getByText(/4\.080,00/).first()).toBeInTheDocument();
   await expect.element(page.getByText(/1\.808,00/).first()).toBeInTheDocument();
-  await expect.element(page.getByText(/5\.528,00/).first()).toBeInTheDocument();
+  await expect.element(page.getByText(/5\.888,00/).first()).toBeInTheDocument();
   await expect.element(page.getByText("Combined (green + yellow)")).toBeInTheDocument();
 });
 
@@ -229,8 +250,8 @@ test("blauw/rood/paars/open: p.m., NOOIT in het totaal opgeteld", async () => {
   await expect.element(page.getByText("p.m.").first()).toBeInTheDocument();
   // paars (2×500) mag NERGENS als regeltotaal (1.000,00) verschijnen…
   expect(page.getByText(/1\.000,00/).query()).toBeNull();
-  // …en het samen-totaal blijft 5.528,00, niet 6.528,00 (5528 + paars 1000).
-  expect(page.getByText(/6\.528,00/).query()).toBeNull();
+  // …en het samen-totaal blijft 5.888,00, niet 6.888,00 (5888 + paars 1000).
+  expect(page.getByText(/6\.888,00/).query()).toBeNull();
   // de niet-opgeteld-regel benoemt de aantallen expliciet — élke niet-tellende status,
   // dus ook open. Stond open er niet bij, dan kreeg de klant "p.m." naast een regel die
   // in geen enkel getal terugkwam (A4).
@@ -468,6 +489,37 @@ test("auto-door: label op de estimate-regel, alleen bij autoAccepted", async () 
   expect(labels.elements().length).toBe(1); // alléén de auto-regel draagt het label
   // de afwijkingsnotitie blijft er gewoon naast staan
   await expect.element(page.getByText(/requested 12, delivered 14/)).toBeInTheDocument();
+});
+
+// A7: verlopen dagprijs → merkteken op de estimate-regel. Dit is het scherm waar de
+// calculator naar kijkt vóór hij op "Download PDF" drukt; stond hier niets, dan zag hij
+// de € 199,00 van vier maanden geleden en had hij geen enkele reden om te twijfelen.
+test("A7: verlopen dagprijs → merkteken op de regel, met de datum en wat er in plaats komt", async () => {
+  await renderServer(
+    <Screen>
+      <QuoteView dossierName="Ziekenhuis Noord" phase="tender" header={header} lines={zonedLines} />
+    </Screen>,
+  );
+  // Lv700: er ís een catalogusprijs om op terug te vallen.
+  await expect
+    .element(page.getByText("day price expired 30 Jun 2020 — catalogue price used instead"))
+    .toBeInTheDocument();
+  // Ld800: die is er niet — dan geen prijs, en de zin zegt precies dát.
+  await expect
+    .element(page.getByText("day price expired 30 Jun 2020 — no catalogue price to fall back on"))
+    .toBeInTheDocument();
+
+  // De stukprijs die de klant leest is de catalogusprijs (120,00) en het regeltotaal
+  // 3×120 = 360,00. Een regel zónder merkteken krijgt er ook geen.
+  await expect.element(page.getByText(/120,00/).first()).toBeInTheDocument();
+  await expect.element(page.getByText(/360,00/).first()).toBeInTheDocument();
+  expect(page.getByText(/day price expired/).elements().length).toBe(2);
+
+  // Een gewone regel (Lp301, geen dagprijs) draagt geen merkteken — anders staat er
+  // straks op élke regel een waarschuwing en betekent hij niets meer.
+  const tekst = document.body.textContent ?? "";
+  expect(tekst).toContain("Lp301");
+  expect(tekst.match(/day price expired/g)).toHaveLength(2);
 });
 
 // Stap 7 (herontwerp 2026-07-14): een menskeuze uit de review (accepteer/N-keuze/

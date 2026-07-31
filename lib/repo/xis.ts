@@ -15,7 +15,7 @@
 import { asc, eq } from "drizzle-orm";
 import { quotes, xisExports } from "@/db/schema";
 import type { AppDb } from "./db";
-import { unitPriceOf } from "./day-price";
+import { todayIso, unitPriceOf } from "./day-price";
 import { getDossier, getSpecLines } from "./dossiers";
 import { logEvent } from "./events";
 
@@ -84,11 +84,18 @@ export async function buildXisPayload(
     .orderBy(asc(quotes.createdAt))
     .limit(1);
 
+  // ÉÉN KLOK VOOR DE HELE EXPORT (zelfde regel als in generateQuote en getEstimateData).
+  // Deze payload wordt als één bestand weggeschreven en in Lynx als één waarheid gelezen;
+  // hij mag niet half op de ene en half op de volgende dag geprijsd zijn omdat de export
+  // toevallig over middernacht UTC heen liep.
+  const vandaag = todayIso();
+
   const lines: XisLine[] = specLines.map((l) => {
     const kind = classify(l);
     const isProduct = kind !== "tekstregel";
-    // I-04: dagprijs wint van catalogusprijs — één bron (lib/repo/day-price.ts).
-    const { unitPrice: price } = unitPriceOf(l);
+    // I-04 + A7: dagprijs wint van catalogusprijs tenzij hij verlopen is — één bron
+    // (lib/repo/day-price.ts), en één kloklezing voor alle regels.
+    const { unitPrice: price } = unitPriceOf(l, vandaag);
     const reqSummary = [l.brandText, l.productText].filter(Boolean).join(" ");
     return {
       sort_order: l.sortOrder,
