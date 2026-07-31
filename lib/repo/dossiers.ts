@@ -12,6 +12,7 @@ import {
   visibleProducts,
 } from "@/db/schema";
 import type { AppDb } from "./db";
+import { unitPriceOf } from "./day-price";
 import { logEvent } from "./events";
 import { derivePhase, type Phase, type XisPhase } from "./project-status";
 
@@ -393,12 +394,14 @@ export async function generateQuote(
 ) {
   const dossier = await getDossier(db, dossierId);
   const lines = await getSpecLines(db, dossierId);
-  // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus
-  // (matchedPrice) of een dagprijs op de regel (manualPrice, I-04).
+  // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus of een
+  // dagprijs op de regel (I-04). Wélke van de twee dat is beslist unitPriceOf — dezelfde
+  // functie die hieronder de stukprijs én de herkomst kiest, zodat "heeft een prijs" en
+  // "welke prijs" nooit uit elkaar kunnen lopen (lib/repo/day-price.ts).
   const matched = lines.filter(
     (l) =>
       (l.status === "groen" || l.status === "geel") &&
-      (l.matchedPrice != null || l.manualPrice != null),
+      unitPriceOf(l).unitPrice != null,
   );
 
   // bestaand kopblok bewaren; bevroren offerte niet aanraken (I-06)
@@ -474,7 +477,10 @@ export async function generateQuote(
     }
     await db.insert(quoteLines).values(
       matched.map((l) => {
-        const unit = Number(l.manualPrice ?? l.matchedPrice);
+        // I-04: dagprijs wint van catalogusprijs — mét herkomst, zodat de regel
+        // hieronder niet nóg een keer dezelfde keuze maakt (lib/repo/day-price.ts).
+        const { unitPrice, source } = unitPriceOf(l);
+        const unit = Number(unitPrice);
         const qty = l.quantity ?? 0; // aantal ontbreekt → stukprijs-modus (A-07)
         const src = l.matchedProductId
           ? provenance.get(l.matchedProductId)
@@ -488,10 +494,12 @@ export async function generateQuote(
           quantity: qty,
           unitPrice: unit.toFixed(2),
           lineTotal: (unit * qty).toFixed(2),
-          // alleen bij een catalogusprijs (niet bij pure dagprijs, I-04)
-          priceListId: l.manualPrice != null ? null : (src?.priceListId ?? null),
+          // alleen bij een catalogusprijs (niet bij een dagprijs, I-04). Gelezen uit de
+          // herkomst van de gekozen prijs — geen tweede kopie van dezelfde regel.
+          priceListId:
+            source === "catalogus" ? (src?.priceListId ?? null) : null,
           sourceListDate:
-            l.manualPrice != null ? null : (src?.sourceListDate ?? null),
+            source === "catalogus" ? (src?.sourceListDate ?? null) : null,
         };
       }),
     );

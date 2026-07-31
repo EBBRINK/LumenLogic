@@ -1,8 +1,13 @@
 // Eén bron voor de estimate (stap 9): deze tests bewijzen dat getEstimateData exact
-// dezelfde cijfers oplevert als wat quote-view toonde (zelfde fixture-waarden als
-// components/dossier/estimate.test.tsx): groen 12×310 = 3.720, geel 8×226 = 1.808,
-// samen 5.528 — en dat élke niet-tellende status (blauw/rood/paars/open) als p.m.
-// meegaat zonder ooit opgeteld te worden.
+// dezelfde cijfers oplevert als wat quote-view toonde: groen 12×310 = 3.720, geel
+// 8×199 = 1.592, samen 5.312 — en dat élke niet-tellende status (blauw/rood/paars/
+// open) als p.m. meegaat zonder ooit opgeteld te worden.
+//
+// De gele regel draagt sinds A8 zowel een catalogusprijs (226) als een dagprijs (199);
+// daarvóór stond de dagprijs in élke fixture op een regel ZONDER match, dus hoefde
+// I-04 nooit tussen twee gevulde prijzen te kiezen en bleef de suite groen als je de
+// voorkeur omdraaide. Daarom is het gele regeltotaal 1.592 en niet 1.808, en het
+// samen-totaal 5.312 en niet 5.528: de dagprijs wint, ook in het projecttotaal.
 import { expect, test } from "vitest";
 import { projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
@@ -116,11 +121,15 @@ test("p.m.-statussen zijn afgeleid van countsInTotal — geen handgeschreven lij
   }
 });
 
-// Zelfde stand als de scherm-fixture: twee zones, álle p.m.-statussen (blauw, rood,
-// paars én open), één geel met afwijkingsnotitie, één paars mét prijs (mag nooit
-// meetellen), één groen zonder aantal, en één OPEN regel mét aantal én dagprijs — de
-// normale stand van een verse import (A4). De insert-volgorde is bewust gescrambeld:
-// sortOrder bepaalt de aanvraagvolgorde.
+// Twee zones, álle p.m.-statussen (blauw, rood, paars én open), één geel met
+// afwijkingsnotitie, één paars mét prijs (mag nooit meetellen), één groen zonder
+// aantal, en één OPEN regel mét aantal én dagprijs — de normale stand van een verse
+// import (A4). De insert-volgorde is bewust gescrambeld: sortOrder bepaalt de
+// aanvraagvolgorde.
+//
+// A8: de GELE regel is gematcht (catalogus 226) én draagt een dagprijs (199). Dat is
+// het geval waar I-04 écht een keuze maakt — de calculator zet een dagprijs juist
+// omdat de catalogusprijs achterhaald is.
 async function seedEstimateDossier(db: TestDb) {
   const [dossier] = await db
     .insert(projectDossiers)
@@ -152,7 +161,8 @@ async function seedEstimateDossier(db: TestDb) {
     { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, deviations: null },
     { fixtureCode: "Lx900", zone: "B-02", status: "paars", quantity: 2, matchedProductId: null, sortOrder: 4, brandText: null, productText: "Wandcontactdoos wit", manualPrice: "500.00", deviations: null },
     {
-      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: null,
+      // A8: gematcht (catalogus 226) MÉT dagprijs 199 — I-04 moet hier kiezen.
+      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00",
       deviations: [
         { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "3000K i.p.v. 2700K" },
       ],
@@ -196,8 +206,9 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
     "Lp301", "Lw201", "Lb110", "Lr050", "Lx900", "Lp302", "Lo400",
   ]);
 
-  // groen 12×310 = 3.720 ; geel 8×226 = 1.808 ; samen 5.528 (zelfde als quote-view)
-  expect(computed.totals).toEqual({ groen: 3720, geel: 1808, samen: 5528 });
+  // groen 12×310 = 3.720 ; geel 8×199 = 1.592 (dagprijs, niet de catalogus 226) ;
+  // samen 5.312
+  expect(computed.totals).toEqual({ groen: 3720, geel: 1592, samen: 5312 });
 
   // blauw/rood/paars/open: p.m. — getoond, nooit opgeteld (paars 2×500 en open 4×175
   // zitten NIET in samen). Exacte vorm: een nieuwe sleutel valt hier meteen op.
@@ -237,6 +248,15 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
     "3000K i.p.v. 2700K",
   ]);
 
+  // I-04 op een GEMATCHTE regel (A8): dagprijs 199 wint van catalogusprijs 226 — op de
+  // stukprijs, op het regeltotaal én in het projecttotaal, want dát is het cijfer dat
+  // de klant leest. Draai de voorkeur om in unitPriceOf en alle drie gaan rood.
+  expect(geel.unitPrice).toBe("199.00");
+  expect(geel.unitPrice).not.toBe("226.00");
+  expect(countedLineTotal(geel)).toBe(1592); // 8 × 199, niet 8 × 226 = 1.808
+  expect(computed.totals.geel).toBe(1592);
+  expect(computed.totals.samen).toBe(5312); // 3.720 + 1.592, niet 5.528
+
   // open punten: blauw merk inladen
   expect(computed.brandFreq).toEqual([["Kreon", 1]]);
 });
@@ -249,9 +269,9 @@ test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", asyn
   expect(computed.hasZones).toBe(true);
   expect(computed.groups.map((g) => g.zone)).toEqual(["A-08", "B-02"]);
 
-  // A-08: groen 3.720 + geel 1.808 = 5.528; B-02: alleen p.m./p-st → subtotaal 0
-  // (ook mét de open regel van 4×175 erin — die telt nergens mee)
-  expect(computed.groups[0].subtotal).toBe(5528);
+  // A-08: groen 3.720 + geel 1.592 (dagprijs) = 5.312; B-02: alleen p.m./p-st →
+  // subtotaal 0 (ook mét de open regel van 4×175 erin — die telt nergens mee)
+  expect(computed.groups[0].subtotal).toBe(5312);
   expect(computed.groups[1].subtotal).toBe(0);
 
   // nummering volgt de globale aanvraagvolgorde, niet de zone-groepering

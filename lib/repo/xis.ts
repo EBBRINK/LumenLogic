@@ -15,6 +15,7 @@
 import { asc, eq } from "drizzle-orm";
 import { quotes, xisExports } from "@/db/schema";
 import type { AppDb } from "./db";
+import { unitPriceOf } from "./day-price";
 import { getDossier, getSpecLines } from "./dossiers";
 import { logEvent } from "./events";
 
@@ -36,7 +37,7 @@ export type XisLine = {
   zone: string | null;
   product_ref: string | null; // XIS-artikelcode (A1); null als het product nog niet in XIS staat
   product_name: string | null;
-  unit_price_excl_vat: number | null; // manualPrice ?? bruto catalogusprijs
+  unit_price_excl_vat: number | null; // de prijs die I-04 kiest (lib/repo/day-price.ts)
 };
 
 export type XisPayload = {
@@ -86,7 +87,8 @@ export async function buildXisPayload(
   const lines: XisLine[] = specLines.map((l) => {
     const kind = classify(l);
     const isProduct = kind !== "tekstregel";
-    const price = l.manualPrice ?? l.matchedPrice; // I-04: dagprijs wint van catalogusprijs
+    // I-04: dagprijs wint van catalogusprijs — één bron (lib/repo/day-price.ts).
+    const { unitPrice: price } = unitPriceOf(l);
     const reqSummary = [l.brandText, l.productText].filter(Boolean).join(" ");
     return {
       sort_order: l.sortOrder,

@@ -10,10 +10,14 @@ import { generateQuote } from "@/lib/repo/dossiers";
 import { getEstimateData } from "@/lib/repo/estimate";
 import { renderEstimatePdf } from "./estimate";
 
-// Zelfde stand als lib/repo/estimate.test.ts (en de scherm-fixture): groen 12×310,
-// geel 8×226 mét afwijkingsnotitie, blauw/rood/paars/open als p.m., twee zones. De
-// open regel hoort erbij omdat dát de normale stand van een verse import is: hij kreeg
-// "p.m." in de regeltotaalkolom en stond nergens verantwoord (A4).
+// Zelfde stand als lib/repo/estimate.test.ts: groen 12×310, geel 8×199 mét
+// afwijkingsnotitie, blauw/rood/paars/open als p.m., twee zones. De open regel hoort
+// erbij omdat dát de normale stand van een verse import is: hij kreeg "p.m." in de
+// regeltotaalkolom en stond nergens verantwoord (A4).
+//
+// A8: de gele regel is gematcht (catalogus 226) én draagt een dagprijs (199). Dít is
+// het papier waar het om gaat — de prijs die de klant leest moet de dagprijs zijn en
+// de catalogusprijs mag er nergens op staan.
 async function seedEstimateDossier(db: TestDb) {
   const [dossier] = await db
     .insert(projectDossiers)
@@ -36,7 +40,8 @@ async function seedEstimateDossier(db: TestDb) {
   const rows = [
     { fixtureCode: "Lp301", zone: "A-08", status: "groen", quantity: 12, matchedProductId: p1.productId, sortOrder: 0, brandText: "XAL", productText: "SASSO 100", manualPrice: null, deviations: null },
     {
-      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: null,
+      // A8: gematcht (catalogus 226) MÉT dagprijs 199 — I-04 moet hier kiezen.
+      fixtureCode: "Lw201", zone: "A-08", status: "geel", quantity: 8, matchedProductId: p2.productId, sortOrder: 1, brandText: "Wever & Ducré", productText: "SCAVA 1.0", manualPrice: "199.00",
       deviations: [
         { field: "kelvin", requested: 2700, delivered: 3000, verdict: "geel", note: "3000K i.p.v. 2700K" },
       ],
@@ -108,13 +113,22 @@ test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkings
 
   // totalen per kleur + eindtotaal (bruto adviesprijs, nl-NL formaat)
   expect(text).toContain("3.720,00"); // groen 12×310
-  expect(text).toContain("1.808,00"); // geel 8×226
-  expect(text).toContain("5.528,00"); // samen
+  expect(text).toContain("1.592,00"); // geel 8×199 (dagprijs, I-04)
+  expect(text).toContain("5.312,00"); // samen
   expect(text).toContain("Combined (green + yellow)");
 
-  // paars (2×500) mag NERGENS als 1.000,00 opduiken en samen blijft 5.528,00
+  // I-04 op papier (A8): de gele regel is gematcht (catalogus 226) én heeft een
+  // dagprijs (199). De dagprijs staat op het klantstuk; de catalogusprijs staat er
+  // NERGENS — niet als stukprijs (226,00), niet als regeltotaal (1.808,00) en niet in
+  // het eindtotaal (5.528,00). Precies dát is wat een omgedraaide voorkeur zou stukmaken.
+  expect(text).toContain("199,00"); // stukprijs = dagprijs
+  expect(text).not.toContain("226,00");
+  expect(text).not.toContain("1.808,00");
+  expect(text).not.toContain("5.528,00");
+
+  // paars (2×500) mag NERGENS als 1.000,00 opduiken en samen blijft 5.312,00
   expect(text).not.toContain("1.000,00");
-  expect(text).not.toContain("6.528,00");
+  expect(text).not.toContain("6.312,00");
 
   // p.m.-sectie: blauw = merk inladen (ons), rood = terug naar klant, paars gemeld,
   // open = nog niet gematcht. Élke niet-tellende status krijgt hier een eigen punt —

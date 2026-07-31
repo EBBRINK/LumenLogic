@@ -12,6 +12,7 @@
 import type { Deviation } from "@/components/dossier/types";
 import { STATUS, STATUS_ORDER, type MatchStatus } from "@/components/dossier/status";
 import type { AppDb } from "./db";
+import { unitPriceOf } from "./day-price";
 import { getDossier, getQuote, getSpecLines } from "./dossiers";
 
 // Eén estimate-regel. Bewust ontkoppeld van de repo-rijvorm zodat scherm en PDF met
@@ -326,7 +327,7 @@ export async function getEstimateData(db: AppDb, dossierId: string) {
     quantity: r.quantity,
     productName: r.matchedName ?? null,
     sku: r.matchedArticleCode ?? null,
-    unitPrice: r.manualPrice ?? r.matchedPrice ?? null, // I-04: dagprijs wint
+    unitPrice: unitPriceOf(r).unitPrice, // I-04: dagprijs wint (lib/repo/day-price.ts)
     deviations: (r.deviations as Deviation[] | null) ?? null,
     brandText: r.brandText,
     productText: r.productText,
