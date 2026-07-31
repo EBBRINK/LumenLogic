@@ -9,6 +9,27 @@
 //
 // Regel 3 blijft heilig: een prijs die getoond mag worden komt nog steeds uit
 // visible_products (verlopen prijslijst = geen prijs).
+//
+// ⚠️ GEEN ENKELE TIER TOONT EEN PRIJS ZONDER KIJKERCONTEXT (ijzeren regel 1).
+//
+// Reviewzwerm 2.5a/A5: de tier1-tak negeerde `ctx` volledig en gaf onvoorwaardelijk
+// `showPrice: true, priceGated: false`. Gecombineerd met de schema-default
+// (`brands.disclosure_tier` stond op tier1, dus élk merk was tier1 tenzij handmatig
+// omgezet) en de `?? "tier1"`-fallback voor merkloze producten was dat fail-open op
+// een toestemmingsvlag: de briefing zegt "Tier 1: volledige data + adviesprijs (merk
+// expliciet akkoord)", en een default die voor elk merk toestemming aanneemt die nooit
+// gegeven is, is precies wat J-05 (de anti-webshop-invariant, "geen publieke prijzen")
+// verbiedt.
+//
+// Het ontwerp had de tak al getekend en de code implementeerde hem niet:
+// FUNCTIONEEL-ONTWERP §4.11 splitst ónder tier1 op context — intern/installateur →
+// alles inclusief adviesprijs; specifier zónder project → specs, adviesprijs alleen
+// projectgebonden. Beide takken sluiten een anonieme kijker uit. Die splitsing staat
+// nu in de code.
+//
+// Dit is de tweede helft van de fix; de eerste is de sessiepoort op
+// app/products/[id]/page.tsx. Ze dekken elkaar niet: de poort houdt anonieme kijkers
+// tegen, deze functie zorgt dat óók een ingelogde kijker zónder recht geen prijs krijgt.
 import { eq } from "drizzle-orm";
 import {
   brandFieldVisibility,
@@ -61,12 +82,17 @@ export function resolveDisclosure(
       tier,
     };
   }
-  // tier1
+  // tier1 — §4.11: intern/installateur ziet alles inclusief adviesprijs; een
+  // specifier zonder project ziet de specs, maar de adviesprijs is projectgebonden.
+  // Dezelfde contextvoorwaarde als tier2; het verschil tussen de tiers zit in de
+  // specs (tier3 verbergt die) en in de per-veld-uitzonderingen, niet in de vraag of
+  // een kijker zónder recht een prijs mag zien. Die vraag heeft één antwoord: nee.
+  const canSeePrice = ctx.internal || ctx.hasApprovedProject;
   return {
     showName: true,
     showSpecs: true,
-    showPrice: true,
-    priceGated: false,
+    showPrice: canSeePrice,
+    priceGated: !canSeePrice, // → "Prijs via Brink aanvragen" (J-03)
     awaitingData: false,
     tier,
   };
@@ -121,7 +147,12 @@ export async function getProductForDisclosure(
     .where(eq(visibleSpecs.id, productId))
     .limit(1);
   if (!spec) return null;
-  const tier = (spec.disclosureTier ?? "tier1") as DisclosureTier;
+  // visible_specs.disclosure_tier is nullable (een product zonder merk heeft geen
+  // tier). Die onbekende waarde viel op tier1 terug — de ruimste stand. Onbekend is
+  // geen toestemming, dus de fallback is de striktste stand die de specs nog toont
+  // (A5). Voor een ingelogde interne kijker verandert er niets: tier2 geeft die
+  // gewoon specs én prijs.
+  const tier = (spec.disclosureTier ?? "tier2") as DisclosureTier;
   const disclosure = resolveDisclosure(tier, ctx);
   let price: { grossPrice: string | null; currency: string | null } | null = null;
   if (disclosure.showPrice) {

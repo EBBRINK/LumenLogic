@@ -4,6 +4,13 @@
 //   • tier1            → adviesprijs zichtbaar, geen aanvraagknop.
 //   • tier2 (gated)    → "Request price via Brink", specs zichtbaar, GEEN prijs.
 //   • tier3 (awaiting) → "Data awaiting brand", geen specs, geen prijs.
+//
+// LET OP bij de tier1-gevallen (gewijzigd bij reviewzwerm 2.5a, A5): die vroegen hun
+// disclosure eerder op mét een EXTERNE context zonder project, en dat gaf een prijs —
+// precies het fail-open-gedrag dat A5 beschrijft. De tier1-tak respecteert de context nu
+// wél (§4.11), dus deze render-tests draaien op de kijker die de prijs ook echt hoort te
+// zien. Wat hier getest wordt is de KAART (rendert hij een prijs die hij mag tonen), niet
+// wie hem mag zien; die vraag hoort in lib/repo/disclosure.test.ts en staat daar.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -56,7 +63,7 @@ afterEach(() => {
 // ── De drie vereiste, precieze asserts ───────────────────────────────────────
 
 test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
-  const disclosure = resolveDisclosure("tier1", externZonderProject);
+  const disclosure = resolveDisclosure("tier1", intern);
   await renderServer(
     <Screen>
       <ProductCard
@@ -79,7 +86,7 @@ test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
 // rangschikking niet raakt; dan hoort het ook niet het luidste element te zijn. De prijs
 // blijft volledig zichtbaar, alleen niet meer groter dan de naam van het product.
 test("tier1: de prijs is zichtbaar maar nooit groter dan de productnaam", async () => {
-  const disclosure = resolveDisclosure("tier1", externZonderProject);
+  const disclosure = resolveDisclosure("tier1", intern);
   await renderServer(
     <Screen>
       <ProductCard
@@ -170,7 +177,7 @@ const screens = {
   "tier1-prijs": (
     <ProductCard
       spec={baseSpec}
-      disclosure={resolveDisclosure("tier1", externZonderProject)}
+      disclosure={resolveDisclosure("tier1", intern)}
       price={{ grossPrice: "310.00", currency: "EUR" }}
       overrides={{}}
       requestAction={noopAction}
