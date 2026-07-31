@@ -786,12 +786,78 @@ export function regelToSpecLine(
   };
 }
 
+// ── Beeldretentie (C9) ───────────────────────────────────────────────────────
+// `ocr_page_images.bytes` is de enige bytea-kolom in het schema. Tot deze fix bestonden
+// er precies twee deletes op die tabel en zaten ze allebei in een FAALpad (no_key en een
+// mislukte vision-call, hierboven): het succespad ruimde nooit iets op en er was geen
+// retentiebeleid — nul crons, geen vercel.json. Vandaag kost dat 2,62 MB; het is een
+// structureel gat dat pas telt bij opschaling, en dan makkelijker te dichten dan terug
+// te draaien. (De "~4,6 GB/jaar" uit ronde 1 rustte op twee ongefundeerde aannames en
+// staat hier bewust niet als reden.)
+//
+// ⚠️ DE POORT IS DE HELE FIX, niet de delete. Het paginabeeld is de énige échte bron van
+// een lezing — het transcript is expliciet "wat het model las, niet het document". Zolang
+// een mens er nog naar moet kijken blijft het staan. "Nog kijken" is hier exact wat de
+// review-pagina wachtend noemt (lib/repo/review.ts, getReviewCounts.pending), maar dan
+// beperkt tot de regels van DEZE run:
+//   • een regel met een reviewKind die nog niet gereviewd is (de OCR-controle zelf), én
+//   • een rode regel zonder match die nog gelinkt moet worden — óók werkvoorraad, óók
+//     een reden om de bron erbij te kunnen pakken.
+// review.ts blijft de bron van waarheid voor de wachtrij; verandert die definitie, dan
+// verandert deze poort mee. Bij twijfel: niet verwijderen.
+//
+// Bewust géén leeftijdsdrempel/cron als alternatief: een tijdslot verwijdert ook beelden
+// van een run waar nog werk aan ligt, en dit project heeft geen cron-infrastructuur.
+export async function pruneOcrPageImages(
+  db: AppDb,
+  runId: string,
+  actor?: string,
+): Promise<number> {
+  const [open] = (await db
+    .select({ n: sql<number>`count(*)` })
+    .from(specLines)
+    .where(
+      and(
+        eq(specLines.importRunId, runId),
+        sql`(
+          (${specLines.reviewKind} is not null and ${specLines.reviewedAt} is null)
+          or (${specLines.status} = 'rood' and ${specLines.matchedProductId} is null
+              and (${specLines.reviewKind} is null
+                   or (${specLines.reviewedAt} is not null
+                       and ${specLines.reviewDecision} is distinct from 'afgewezen')))
+        )`,
+      ),
+    )) as { n: number }[];
+  if (Number(open?.n ?? 0) > 0) return 0;
+
+  // Alleen de id's terug — B2 blijft staan: buiten getOcrPageImage raakt geen enkele
+  // query de bytes-kolom, ook deze niet.
+  const verwijderd = await db
+    .delete(ocrPageImages)
+    .where(eq(ocrPageImages.importRunId, runId))
+    .returning({ id: ocrPageImages.id });
+  if (verwijderd.length === 0) return 0;
+
+  // Regel 5: een verwijdering die de bron van een lezing weghaalt hoort in het spoor.
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: runId,
+    action: "ocr_images_pruned",
+    actor,
+    payload: { images: verwijderd.length },
+  });
+  return verwijderd.length;
+}
+
 // ── Afronden (B6) ────────────────────────────────────────────────────────────
 // raw_markdown = "OCR transcript (model output)": wat het MODEL las, per pagina.
-// De kopregel zegt dat expliciet — de échte bron zijn de paginabeelden, die even
-// lang leven als de run en via /projects/[id]/ocr-image bereikbaar zijn (mét
-// dossier-eigendomscheck, zoals de markdown-route). Idempotent: een al
-// afgeronde run wordt niet opnieuw afgerond (geen dubbel event).
+// De kopregel zegt dat expliciet — de échte bron zijn de paginabeelden, die via
+// /projects/[id]/ocr-image bereikbaar zijn (mét dossier-eigendomscheck, zoals de
+// markdown-route). Ze leven zo lang als er review-werk aan de run ligt: is de
+// wachtrij van deze run leeg, dan ruimt pruneOcrPageImages ze hier op (C9).
+// Idempotent: een al afgeronde run wordt niet opnieuw afgerond (geen dubbel event) —
+// maar het opruimen draait dan wél, want de wachtrij loopt ná het afronden leeg en
+// dít is de enige plek waar de vraag gesteld wordt.
 // Het vangnet wordt hier bewust NIET getriggerd (B8, zie kop-commentaar).
 export async function finishOcrRun(
   db: AppDb,
@@ -799,7 +865,10 @@ export async function finishOcrRun(
 ) {
   const run = await getImportRun(db, input.runId);
   if (!run) throw new Error(`import run ${input.runId} not found`);
-  if (run.ocrStatus === "klaar") return run;
+  if (run.ocrStatus === "klaar") {
+    await pruneOcrPageImages(db, run.id, input.actor);
+    return run;
+  }
 
   // Transcript blijft per PAGINA (de mens leest pagina's, geen tegels): distinct
   // pagina's uit de gedane tegels; getDoneTiles sorteert al op pagina.
@@ -855,6 +924,11 @@ export async function finishOcrRun(
       costEur: Number(cost?.total ?? 0),
     },
   });
+
+  // C9: ná het ocr_done-event, zodat het spoor van de run compleet is vóór er iets
+  // verdwijnt. In de praktijk staan de zojuist gelezen regels hier nog wachtend in de
+  // review-wachtrij en gebeurt er dus niets — dat is de bedoeling.
+  await pruneOcrPageImages(db, run.id, input.actor);
   return (await getImportRun(db, run.id))!;
 }
 
