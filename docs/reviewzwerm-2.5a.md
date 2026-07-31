@@ -54,9 +54,23 @@ dat er expliciet bij — dat is vaak nuttiger dan de bevinding zelf.
 | **B14** | `countsInTotal` in twee bronnen, tegengesteld | klein | val voor de volgende sessie |
 | **C1–C8** | Lege staten · budgetdefault · enum-crash · negatieve prijs · uuid-guard · FK-indexen · accentkleur · templatemelding | klein | hygiëne en houdbaarheid |
 
-**Als je er vandaag drie zou doen:** A1, A2 en A4 — alle drie klein, alle drie raken ze wat de klant
-in handen krijgt. **Als je er één structureel zou doen:** B11, want zolang 141 tests niets bewijzen,
-weet je van elke volgende reparatie niet of hij werkt.
+**Uit het addendum** (tweede ronde, tegen het raster `docs/research-ai-codefouten.md`):
+
+| # | Bevinding | Moeite | Kern |
+|---|---|---|---|
+| **A14** | Merkvergrendeling in tender is `substring` — regel 4 gebroken | klein | geen aanvaller nodig; gebeurt bij normale import |
+| **A13** | `next` op kwetsbare patch; 9 advisories | één regel | goedkoopste fix van het document |
+| **B15** | Geen tweede slot: 41 tabellen, 0 RLS, app-rol met `rolbypassrls` | klein | RLS aanzetten is nú een no-op |
+| **B16** | Eén foutgrens voor de hele app, nul `Suspense`/`loading.tsx` | klein | kapotte rij sloopt de hele pagina |
+| **B17** | Klanttekst ongemarkeerd in de vangnet-prompt | klein | reëel maar begrensd |
+| **B18** | `requestPriceAction` is een ongeauthenticeerd schrijfpad | klein | zwaarder dan C5 het zette |
+| **A10** | Nul inputvalidatie — geen validatiebibliotheek in de repo | midden | systeemuitspraak, geen los geval |
+| **C9/C10** | OCR-beelden nooit opgeruimd · `page` zonder bovengrens | klein | hygiëne |
+
+**Als je er vandaag drie zou doen:** A1, A2 en **A14** — alle drie klein, alle drie raken ze wat de
+klant in handen krijgt of wat de matcher voorstelt. **Als je er één structureel zou doen:** B11, want
+zolang 141 tests niets bewijzen, weet je van elke volgende reparatie niet of hij werkt. **Als je er
+één in vijf minuten wilt doen:** A13 — `next` en `eslint-config-next` naar `16.2.12`.
 
 ---
 
@@ -1116,6 +1130,385 @@ tests; slechts 4 van de 144 testbestanden gebruiken `vi.mock`.
 
 ---
 
+# Addendum — het raster dat ik had moeten gebruiken
+
+**Dit deel is toegevoegd ná de eerste oplevering, en het begint met een fout van mij.**
+
+Mijn opdracht zei: *"Als `docs/research-ai-codefouten.md` inmiddels op main staat, gebruik die
+checklist als raster en vink hem af. Staat hij er niet, bouw dan je eigen assen."* Ik heb aan het
+begin gecontroleerd of dat bestand op `origin/main` stond, vastgesteld dat het er niet was, en eigen
+assen gebouwd. Naar de letter juist — maar het document bestond wél, op de lokale branch
+`research/ai-codefouten` (commits `32c446a` en `d89a011`, 30 juli), in dezelfde werkdirectory. Ik heb
+alleen naar `origin/main` gekeken en niet naar de branches ernaast, terwijl het projectgeheugen juist
+zegt dat parallelle sessies hier werk laten liggen.
+
+Het gevolg is niet dat mijn 31 bevindingen fout zijn — ze staan alle 31 overeind. Het gevolg is dat
+er **assen ontbraken**. Hieronder vink ik het raster alsnog af en meet ik wat ik miste, met dezelfde
+werkwijze: eerst meten, dan een onafhankelijke agent die het probeert te weerleggen.
+
+## ⚠️ Drie conclusies uit ronde 1 die ik intrek
+
+Deze horen bovenaan, want ze staan verderop in dit document nog in hun oude vorm en de nieuwe meting
+overrulet ze.
+
+**1. "Regel 4 is aan de AI-kant server-side dicht."** Ingetrokken. De vergrendeling gebruikt
+`includes`/`like '%…%'` in plaats van gelijkheid, op alle drie de lagen. Een dossier in tender met
+`brandText: "Delta"` levert aantoonbaar producten van `Delta Light` op, inclusief `product_detail` en
+inclusief de opgeslagen suggestie. Zie **A14** — uitgevoerd, niet beredeneerd.
+
+**2. "De €1-runcap van OCR is niet te omzeilen met parallelle aanroepen, want de reservering wordt
+vóór de API-call geschreven."** Ingetrokken zoals geformuleerd. Die zin geldt alleen voor een request
+dat start *nadat* de reservering gecommit is. `checkOcrBudget` doet een `SUM`-select en de reservering
+volgt pas een paar round-trips later; wie zijn `SUM` daartussen uitvoert, telt niets mee. De code zegt
+het zelf op `lib/ai/ocr.ts:28-33`: *"check+insert is hier NIET atomisch"*, en het plafond leunt
+vervolgens op de beeldrij-lock plus **"de client-loop stuurt strikt sequentieel"**. Die lock is op
+`(run, page, tile)` en serialiseert dus niet over verschillende tegels of pagina's, en clientgedrag is
+geen serverinvariant. **Het plafond is sequentieel, niet hard.**
+De weerlegger heeft de *ernst* wel fors naar beneden bijgesteld, en dat hoort er even hard bij: kosten
+en bytes zijn gekoppeld — je kunt geen geld verbranden zonder bandbreedte te verbranden. Het venster
+tussen check en reservering is 15–75 ms in-region; een realistische overschrijding is centen tot een
+paar euro, niet de tientallen euro's die de meting eerst suggereerde. Om €30 te halen zou je ~57 Gbit/s
+vanaf één client nodig hebben. Het is dus een aanname-/documentatiefout, geen exploiteerbaar
+kostenlek — maar het woord "hard" moet uit de code-comment.
+
+**3. C5's nuance dat een aanvaller de action-id eerst uit de clientbundle moet halen.** Zwakker dan
+opgeschreven: `GHSA-955p-x3mx-jcvp` ("Unauthenticated disclosure of internal Server Function
+endpoints") staat open op de gepinde Next-versie. Zie **A13** en **B18**.
+
+## Het raster afgevinkt
+
+Het raster kent 29 codes (TRG-01…09 traag · SEC-01…14 onveilig · KST-01…09 duur/onbetrouwbaar).
+
+| Code | Gedekt in ronde 1? | Waar / waarom niet |
+|---|---|---|
+| TRG-01 N+1 | ✅ | B4, en drie N+1-claims juist weerlegd |
+| TRG-02 seriële awaits | ✅ | weerlegd/deels |
+| TRG-03 ontbrekende index | ✅ | C6 |
+| TRG-04 `SELECT *` | ⚠️ deels | gemeten door de agents, niet als bevinding opgevoerd |
+| TRG-05 tabel zonder paginering | ✅ | weerlegd (`/admin/brands`) |
+| TRG-06 caching/revalidate | ✅ | B4 (nul `cache()` in de repo) |
+| TRG-07 `"use client"` te hoog | ✅ | expliciet gemeten, schoon |
+| TRG-09 aggregatie per weergave | ✅ | B4 + de bevestiging |
+| SEC-01 IDOR | ✅ | B1 |
+| SEC-02 action zonder auth | ✅ | C5 |
+| SEC-03 geen inputvalidatie | ⚠️ deels | C3/C4 als losse gevallen, **niet** als systeemuitspraak — zie A10 |
+| SEC-04 rolcheck als UI | ✅ | B1 |
+| SEC-05 te brede props | ❌ | **gat** — gemeten in dit addendum |
+| SEC-06 secrets in bundel | ✅ | schoon (nul `NEXT_PUBLIC_`) |
+| SEC-07 schema-drift | ✅ | C6 + bekend `orgId`-punt |
+| SEC-09 rate limiting auth | ✅ | B2, C5 |
+| SEC-10 onveilige redirect | ✅ | schoon |
+| SEC-11 CSRF | ✅ **opgelost** | stond bij mij onder "niet beoordeeld"; het raster geeft de afvinkregel: alleen relevant bij een reverse proxy op een ander domein. Geen `vercel.json`, geen `allowedOrigins`, geen proxy → **n.v.t.** |
+| SEC-12 prompt-injectie | ❌ | **gat** — zie A11/A12 |
+| SEC-13 geen tweede slot | ❌ | **gat** — zie B15 |
+| SEC-14 CVE's in dependencies | ❌ | **gat** — zie A13 |
+| KST-01 LLM zonder plafond | ✅ | C2 |
+| KST-02 geen foutgrens | ⚠️ **tegenspraak** | zie B16 |
+| KST-03 geen transactie | ✅ | A9 |
+| KST-04 idempotentie | ✅ | A9 |
+| KST-05 stil weggeslikte fout | ✅ | schoon op één plek na |
+| KST-06 groeitabel | ✅ | weerlegd als ruis (`events`, 1.481 rijen) |
+| KST-07 kosten van misbruik | ⚠️ deels | B6, C5 — niet systematisch als aanvallerskosten |
+| KST-08 opslag-kerkhof | ❌ | **gat** — in onderzoek |
+| KST-09 latente DB-verbindingen | ✅ | schoon (`neon-http` is stateless) |
+
+**Score: 22 van de 29 gedekt, 4 deels, 5 echte gaten.** Die vijf staan hieronder.
+
+---
+
+## A10. Er is nul inputvalidatie — en dat is een systeemuitspraak, geen verzameling gevallen
+
+**Zelf nagemeten:** er staat **geen enkele validatiebibliotheek** in `package.json` (geen zod,
+valibot, yup, joi, superstruct), en `safeParse`/`z.object`/`.parse(` komt in de niet-testcode
+nergens voor als schemavalidatie. Alle 68 exported server actions vertrouwen rauwe `FormData`.
+
+Mijn ronde 1 had hier C3 (`flagReviewAction` enum-crash) en C4 (negatieve prijzen) — twee losse
+gevallen in rang C. Dat is een framingsfout: het patroon is niet "twee actions missen een check",
+het is "er is geen validatielaag, en de gevallen die we vonden zijn de twee waar het toevallig
+opvalt". Elk nieuw formulierveld erft dit.
+
+**Moeite:** midden, en vooral een besluit — één bibliotheek kiezen en een conventie vastleggen
+(bijvoorbeeld: elke action begint met een schema-parse, en de repo-laag vertrouwt zijn invoer).
+Losse `includes`-checks per action zijn de duurdere weg naar hetzelfde punt.
+
+---
+
+## B15. Er is geen tweede slot onder de applicatiepoort — en de voor de hand liggende fix werkt niet
+
+**Direct gemeten tegen de database** (read-only, alleen `SELECT`, geen enkele datawaarde in dit
+rapport):
+
+```
+tabellen in public : 41      met RLS : 0      force RLS : 0
+policies           : 0
+tabelrechten       : 301, allemaal op één rol; aan PUBLIC niets
+current_user       : neondb_owner
+  rolsuper false · rolcreaterole TRUE · rolcreatedb TRUE · rolbypassrls TRUE · rolreplication TRUE
+```
+
+Statisch bevestigd: nul treffers op `grant|revoke|policy|row level|create role` over alle 17
+migraties, en nul op `rls|pgPolicy|enableRLS` in `db/schema.ts`.
+
+**Het scherpste punt is niet "0 van 41", het is `rolbypassrls = TRUE`.** Zet iemand morgen RLS aan op
+alle 41 tabellen zonder eerst een aparte rol te maken, dan verandert er **niets** — deze verbinding
+rijdt er dwars doorheen. Dat is een slot bouwen en de sleutel erin laten. De volgorde is dus:
+**eerst een minder bevoorrechte rol, dan pas RLS.**
+
+**En nu de eerlijke weging, want hier is overdrijving makkelijk.** De meting is actief gefalsifieerd:
+`pg_extension` geeft alleen `pg_trgm` en `plpgsql` — geen PostgREST, geen `pg_graphql`. De rollijst
+bevat naast `neondb_owner` alleen vier Neon-interne rollen; er is **geen `anon`, geen
+`authenticated`, geen `authenticator`**, de rollen die Neons Data API zou aanmaken. Er is dus geen
+internet-adresseerbaar endpoint dat zonder het `DATABASE_URL`-secret bij deze tabellen komt.
+
+Conclusie: **een ontbrekende diepteverdediging, geen open deur.** Wat overblijft is dat er tussen
+"de app werkt" en "de aanvaller heeft alles" geen enkele tussenstand zit: een SQL-injectie of een
+gelekt secret geeft niet leestoegang maar volledige DDL, plus het recht rollen aan te maken en
+replicatie op te zetten.
+
+**Moeite:** klein voor de rol (één migratie: `CREATE ROLE` zonder `BYPASSRLS`/`CREATEROLE`/DDL, plus
+grants en `ALTER DEFAULT PRIVILEGES`), en een tweede env-variabele die vóór `DATABASE_URL` gaat in
+`db/client.ts`. Migraties en importscripts blijven op de eigenaarsrol — app schrijft rijen, tooling
+wijzigt het schema. Let op drie haken: `scripts/branch-guard.ts` inspecteert `DATABASE_URL`
+letterlijk, de PGlite-tests merken er niets van, en op Vercel meldt een vergeten `GRANT` zich pas bij
+de eerste deploy — en die deelt volgens `docs/lumenlogic.md:57` de database met lokaal.
+
+**Bijvangst:** er staat een ongebruikt `neon_auth`-schema (9 tabellen) geprovisioneerd naast de eigen
+Better-Auth-tabellen. `USAGE` voor `PUBLIC` staat op `false` en de app gebruikt het nergens — geen
+gat, wel iets om op te ruimen of bewust te noteren.
+
+---
+
+## B16. Eén foutgrens voor de hele app, nul segmentgrenzen, nul `Suspense`, nul `loading.tsx`
+
+**Hier spreken mijn ronde 1 en het raster elkaar half tegen, en de waarheid ligt ertussenin.** Het
+raster zegt "0 foutgrenzen in 38 pagina's". Mijn weerlegger gebruikte juist `app/error.tsx` om een
+500-claim te ontkrachten — en had daar gelijk in.
+
+**Zelf gemeten:** de hele `app/`-boom bevat exact drie fallback-bestanden — `app/error.tsx`,
+`app/global-error.tsx`, `app/not-found.tsx`. Er is **geen enkele** segment-`error.tsx`, **geen enkele**
+`loading.tsx`, en `Suspense` komt in de hele app- en componentboom alleen voor in een testbestand.
+
+Beide uitspraken kloppen dus, maar meten iets anders: er ís een vangnet (dus geen kale crash, en
+mijn weerlegging van de 500-claim houdt), maar het is er één, op de wortel. Gevolg: **één kapotte rij
+in één sectie haalt de hele pagina naar het foutscherm** in plaats van alleen dat blok te degraderen,
+en omdat er geen `loading.tsx` of `Suspense` is, wacht elke pagina op zijn traagste query voordat er
+íets verschijnt. Dat laatste koppelt direct aan B4 (`/catalog` staat 262 ms stil op een dropdown) en
+aan A6 (de leesroute).
+
+**Moeite:** klein per segment. **Verhelpen:** een `error.tsx` op de zware segmenten (`projects`,
+`data`, `admin`) en `Suspense` rond de dure blokken, zodat een trage of kapotte sectie de rest van de
+pagina niet meesleept.
+
+---
+
+## A14. De merkvergrendeling in tender is een `substring`-match — ijzeren regel 4 is gebroken
+
+**Dit is de zwaarste vondst van het hele addendum, en hij kwam uit een weerlegger die iets ánders
+moest toetsen.** Ik had hem gevraagd de geruststelling te bréken dat regel 4 niet via injectie te
+omzeilen is. Dat lukte — maar langs een route waar helemaal geen aanvaller voor nodig is.
+
+**Bewijs:** de vergrendeling vergelijkt op *bevat*, niet op *is gelijk aan*, en dat op alle drie de
+lagen die elkaar zouden moeten opvangen:
+
+- `lib/ai/vangnet.ts:249` — `like '%' || nb || '%'` op de genormaliseerde merknaam
+- `lib/ai/vangnet.ts:385` — `actual.includes(requested)`
+- `components/dossier/ai-suggestion-block.tsx:42` — `normBrand(s.brandName).includes(requested)`
+
+De "tweede verdedigingslinie" in de render dekt dus exact hetzelfde gat als de eerste.
+
+**Uitgevoerd, niet beredeneerd.** De weerlegger bouwde een catalogus met de merken `Delta` en
+`Delta Light`, een dossier in **tender**, en een regel met `brandText: "Delta"`:
+
+```
+zoek_producten (merk-lock op 'Delta') → {"resultaten":[
+  {"naam":"ALFA 100","merk":"Delta"},
+  {"naam":"CONCURRENT XYZ","merk":"Delta Light"}   ← ander merk, in tender
+]}
+product_detail op het andere merk → volledige details, GEEN weigering
+suggested: 1, discarded: 0 → suggestie voor 'Delta Light' opgeslagen
+```
+
+Het renderfilter laat hem er ook doorheen (`"deltalight".includes("delta")` → `true`), dus de
+suggestie komt gewoon op het scherm in tender-stand.
+
+**Waarom dit zwaarder weegt dan alle injectiebevindingen:**
+1. **Er is geen aanvaller voor nodig.** De producten van het andere merk staan gewoon in het
+   zoekresultaat; een braaf model stelt ze net zo goed voor. Dit gebeurt bij een normale import.
+2. **Het is bereikbaar via een gewone klant-PDF.** `splitBrandType` levert altijd een canonieke
+   catalogusmerknaam; een bestek dat het moedermerk noemt (`Thorn`, `Delta`, `Zumtobel`) lekt de
+   submerken (`Thorn Lighting`, `Delta Light`, `Zumtobel Group`) — precies het soort paren dat in een
+   ERP-merkentabel zit.
+3. Het patroon is overgenomen van `lib/repo/products.ts:113`, waar fuzzy zoeken juist de bedoeling
+   is. Voor een *vergrendeling* is `includes` de verkeerde operator.
+
+**⚠️ Dit corrigeert mijn eigen ronde 1.** In de bevestigingen bij de as "ijzeren regels" schreef ik:
+*"Regel 4 is aan de AI-kant server-side dicht — `toolZoekProducten` overschrijft in tender het merk
+hard met het gevraagde merk en faalt closed."* Dat klopt qua opzet en niet qua uitvoering: het merk
+wórdt overschreven, maar de vergelijking daarna is te ruim. Die geruststelling moet worden
+ingetrokken.
+
+**Moeite:** klein (<1u). **Verhelpen:** `normBrand(actual) === normBrand(requested)` op alle drie de
+plekken, of vergelijken op `brandId` in plaats van op naam.
+
+**Zekerheid:** hoog — uitgevoerd in een testopstelling buiten de repo. Enige open vraag: hoeveel
+moeder/submerk-paren de echte catalogus bevat; de brondata staat niet in git.
+
+---
+
+## A13. `next` staat op een kwetsbare patchversie; één regel sluit negen advisories
+
+**Zelf gemeten** (`bun audit`): 20 advisories — 1 critical, 10 high, 9 moderate. Daarvan **9 op
+`next`**, dat in `package.json:29` **exact** op `16.2.10` staat terwijl de advisory-range
+`>=16.0.0 <16.2.11` is.
+
+**De weerlegger heeft de weging aangevallen en kwam met een genuanceerder beeld dan beide
+voorgangers.** Van de negen zijn er vijf afgeschreven op een feature-check; die afschrijvingen
+kloppen alle vijf in uitkomst, maar **drie berusten op ongeldige redenering** — en dat is een
+methodeprobleem dat de volgende keer wél een misser oplevert:
+
+- **SSRF via `rewrites`:** de advisory dekt óók `redirects()` — precies wat hier stáát — en de
+  destinations zijn níet statisch (`{ source: "/dossiers/:path*", destination: "/projects/:path*" }`
+  neemt request-input over). De conclusie overleeft alleen omdat de destination een *relatief pad met
+  vaste prefix* is, dus er is geen externe host. Juiste uitkomst, verkeerde bewijsvoering.
+- **DoS via Image Optimization:** `dangerouslyAllowSVG` komt in de advisorytekst helemaal niet voor
+  (het is CWE-407, CPU-uitputting, geen XSS), en "`next/image` wordt niet geïmporteerd" bewijst niets
+  — `/_next/image` bestaat in elke deploy. De conclusie klopt om twee andere redenen: er is geen
+  `images.remotePatterns`, en de advisory zondert Vercel expliciet uit.
+- **Middleware-bypass:** er is gezocht op `middleware.ts`, maar Next 16 heeft dat hernoemd naar
+  `proxy.ts`; en Turbopack is in Next 16 juist de *default*, geen exotische opt-in. Beide bestaan hier
+  niet, dus de uitkomst klopt — via de derde preconditie (geen `i18n`-config).
+
+**Wat overblijft en wél raakt:** DoS via Server Actions, twee vormen van cache confusion, en
+**GHSA-955p-x3mx-jcvp — "Unauthenticated disclosure of internal Server Function endpoints"**. Die
+laatste raakt direct C5 in dit document: de nuance "een aanvaller moet de action-id eerst uit de
+clientbundle halen" is met deze advisory geen drempel meer.
+
+**Praktische details die de fix bepalen:**
+- `bun update` verzet `next` **niet** — geverifieerd met `--dry-run`: de exacte pin blijft staan.
+  Handmatig bewerken of `bun update --latest`.
+- `eslint-config-next` staat óók exact op `16.2.10` en moet mee.
+- **16.2.11 en 16.2.12 bestaan; alle negen advisories zijn in 16.2.11 gepatcht.** Patch-sprong.
+- De bump lost `sharp` **niet** op: 16.2.10, .11 én .12 houden alle drie `sharp: ^0.34.5`, terwijl de
+  libvips-advisory `>= 0.35.0` eist. Dat vraagt een expliciete override — lage prioriteit, want
+  `sharp` wordt nergens geïmporteerd en Vercel doet beeldoptimalisatie buiten de function om.
+- De enige `critical` is `@vitest/browser` (testrunner, dev-only, `^`-range dus `bun update` lost hem
+  op).
+- `shadcn` staat in `dependencies` in plaats van `devDependencies` en sleept daardoor twee advisories
+  mee die als "productie" gerapporteerd worden terwijl de code nergens geïmporteerd wordt.
+
+**Moeite:** één regel. **Dit is de goedkoopste bevinding in het hele document.**
+
+---
+
+## B17. Klantdocumenten gaan ongemarkeerd de AI-context in — reëel, maar begrensd
+
+**Bewijs:** nul treffers op enige injectieverdediging in `lib/ai/**` (gegrept op `prompt.?inject`,
+`untrusted`, `delimiter`, `sanitiz`, "geen instructies"). `linePrompt`
+(`lib/ai/vangnet.ts:439-459`) zet `line.brandText` en `line.productText` — tekst uit de klant-PDF —
+kaal in de user-message van een agent die tools aanroept. `productText` is onbegrensd: bij een
+onbekend merk geeft `splitBrandType` (`lib/pdf/armaturenboek.ts:98`) de volledige rest tussen twee
+armatuurcodes terug, en `:135` zet die als `productText`.
+
+**Mijn eigen aanname bij het uitzetten van de weerlegging was fout, en dat hoort hier te staan.** Ik
+dacht dat de meter zichzelf tegensprak over of er een mens tussen zit. Dat was niet zo: het gaat om
+verschillende paden. `reviewKind: 'ocr'` wordt alléén gezet op het OCR- en leesroutepad; het
+deterministische tekstlaag-pad zet `'geel'` of `null` en wordt door het vangnet gewoon opgepakt.
+Bewijs uit een bestaande acceptatietest, geen constructie: `tests/acceptatie-aanvraag-estimate.test.ts`
+toont voor het echte Deerns-boek `route: "deterministisch"`, en `runVangnet` pakt daarna 8 van de 20
+regels op. Er staat dus inderdaad geen voorstelscherm tussen bestand en modelcall.
+
+**Maar "tekst in de prompt krijgen" is niet hetzelfde als "iets bereiken", en de weerlegger heeft de
+bovengrens gemeten.** Alle drie de tools zijn read-only selects op `visible_products`. Uitgevoerde
+aanvalstest: een verzonnen UUID én het id van een product met verlopen prijslijst werden **allebei
+verworpen** — `suggested: 0, discarded: 2`, nul rijen opgeslagen, en `product_detail` gaf
+`{"fout":"onbekend of niet (meer) zichtbaar product"}`. De ID-whitelist (`vangnet.ts:834`) en ijzeren
+regel 3 houden allebei. Het maximaal haalbare is: één bestaand, zichtbaar catalogusproduct als
+*suggestie* voorleggen aan een mens die er expliciet op moet klikken — in awarded-stand iets wat het
+model sowieso al mocht.
+
+Er is bovendien een zelf-beperkend mechanisme: de onbegrensde `productText` ontstaat juist wanneer
+het merk onbekend is, en `beslisRoute` (`lib/ai/leesroute.ts:160-168`) stuurt bij <60% bekende merken
+naar de leesroute — die het vangnet niet triggert.
+
+**Restpunt met kosten:** de budgetstop staat tussen *regels* (`vangnet.ts:686-698`), niet tussen de
+zes turns binnen één regel. Eén regel met een grote `productText` gaat zes keer opnieuw de leiding in.
+
+**Moeite:** klein. **Verhelpen:** een cap op `productText`/`brandText` vóór ze de prompt in gaan, de
+documenttekst tussen expliciete delimiters, en één systeemprompt-regel dat alles in dat blok gegevens
+zijn en nooit een instructie. Plus een budgetcheck binnen de turn-lus.
+
+**Ernst: laag** — precies zoals de weerlegger concludeerde. De verdediging die telt (ID-whitelist,
+fasevergrendeling op tool-niveau, mens in de lus) staat er al; wat ontbreekt is de goedkope
+markering.
+
+---
+
+## B18. `requestPriceAction` is een ongeauthenticeerd schrijfpad — zwaarder dan ik het in C5 zette
+
+**In ronde 1 stond dit in rang C met de nuance "het ontbreken van `requireSession()` is ontwerp
+(J-03)". Dat blijft waar, maar ik heb de gevolgen te licht gewogen.** De weerlegger kreeg de
+opdracht dit onderuit te halen en concludeerde het tegendeel: dit is de zwaarste van de vier
+bevindingen op zijn as.
+
+**Bewijs:** `app/products/[id]/actions.ts` is 22 regels. Er staat `getSession()` om het e-mailadres te
+lézen, maar het resultaat wordt nooit getoetst — dus een **niet-ingelogde bezoeker kan rijen
+inserten**. Geen `requireUuid` op `productId` terwijl de bijbehorende pagina die guard wél heeft.
+Geen dedup en geen unieke index (`leads` heeft buiten de PK geen enkele index). Twee rijen per
+aanroep (`leads` + `events`), niet in een transactie. En `productId` gaat ongevalideerd de
+`redirect()` in.
+
+**Wat de ernst omhoog duwt:** `listLeads` (`lib/repo/disclosure.ts:177`) heeft repo-breed **nul
+aanroepers** — er is geen route en geen component die leads toont, en er is geen enkele test. Een
+tabel die niemand leest groeit onopgemerkt. Belangrijker: leads zijn de commerciële opbrengst van de
+tier-2-gate. Loopt die tabel vol met ruis, dan is er geen manier om de echte aanvragen eruit te
+vissen — geen filter, geen index, geen scherm. Gemeten: 0 leads vandaag.
+
+**Moeite:** klein. **Verhelpen:** `requireUuid` op beide id's, en een expliciet besluit over anonieme
+leads — óf `requireSession()`, óf een dedup-constraint plus een markering dat de lead anoniem is.
+Dit is het ene ding dat ik zou laten bouwen als er maar één ding gebouwd wordt.
+
+---
+
+## C9. OCR-paginabeelden worden na succes nooit opgeruimd
+
+**Bewijs:** `ocr_page_images.bytes` is de enige `bytea`-kolom in het schema. Er bestaan exact twee
+deletes op die tabel (`lib/repo/ocr.ts:638` en `:658`) en **beide zitten in een faalpad** — `no_key`
+en een mislukte vision-call. Het succespad verwijdert niets.
+
+**Gemeten:** 31 rijen, 2,62 MB, gemiddeld 88,7 kB per beeld, alle 31 met `tile = 0`.
+
+**De weerlegger heeft de projectie onderuit gehaald, en terecht.** De schatting "~4,6 GB/jaar" rustte
+op twee onzekere factoren tegelijk: (a) 125 kB per tegel, afgeleid uit bytes-per-pixel terwijl er
+**geen enkele rij met `tile > 0`** in productie staat — en bij identieke pixelafmetingen spreidt de
+bestandsgrootte al 4,4× (26 kB tot 117 kB) puur op inhoudsdichtheid; (b) "2 boeken per week", een
+aanname zonder enig datapunt, terwijl er één OCR-run ooit is gedraaid. Dat getal hoort dus niet in
+een bevindingenlijst. Realistische band: 0,5–1,5 MB per A3-pagina, en het jaarcijfer is een scenario,
+geen extrapolatie.
+
+**Wat overeind blijft:** er is geen enkel verwijderpad na succes en geen retentiebeleid (nul crons,
+geen `vercel.json`). Vandaag kost dat 2,62 MB. Het is een structureel gat dat pas telt bij
+opschaling — en dan is het gemakkelijker te dichten dan terug te draaien.
+
+**Moeite:** klein. **Verhelpen:** een delete bij `finishOcrRun` zodra de reviewwachtrij van die run
+leeg is, of een leeftijdsdrempel in een script.
+
+---
+
+## C10. `page` en `tile` hebben geen bovengrens
+
+**Bewijs:** `app/projects/actions.ts:362-367` valideert `page >= 1`, `tile >= 0` en `tileCount >= 1`,
+maar toetst `page` nergens tegen `run.counts.pageCount`. `OCR_MAX_PAGES = 500` geldt alleen bij het
+*starten* van een run. `OCR_IMAGE_CAP` is 2 MB terwijl het gemeten maximum 117 kB is — factor 17,9.
+
+**Het geschetste gevolg is weerlegd.** De keten "1.024 requests = 1 GB permanente opslag" bestaat
+niet: bij een budgetstop zet `processOcrPage` de run op `gestopt`, en `ocrPageAction:386-388` weigert
+daarna élk volgend request vóórdat het bij de opslag komt. Er blijft **één** weesrij per run staan,
+niet duizend. De twee andere €0-paden ruimen zichzelf op.
+
+**Wat blijft:** een ontbrekende bovengrens is hygiëne die in drie regels te dichten is. Ernst laag.
+
+---
+
 # Verantwoording
 
 **Werkwijze.** Zeven finder-agents langs gescheiden assen (IDOR · overige veiligheid · correctheid ·
@@ -1137,6 +1530,24 @@ weerlegden zichzelf empirisch.
    De repo zelf is geen enkele keer gewijzigd: `git status` is schoon.
 
 **Geen secrets in dit document** — waar env-variabelen ter sprake komen, staan alleen hun namen.
+
+**Het addendum (tweede ronde).** Drie meet-agents langs de ontbrekende assen, daarna drie
+weerleggers. Uitkomst: één bevinding volledig weerlegd (te brede props naar client components — niet
+te breken, ook niet toen een agent er gericht op werd gezet), zeven in ernst of cijfers bijgesteld
+(4,6 GB/jaar → 2,62 MB vandaag met een onhoudbare extrapolatie; "1 GB opslag" → één weesrij per run;
+€30–138 → centen; 20 lege staten → 7), en drie conclusies uit ronde 1 ingetrokken (zie boven).
+
+Twee methodische lessen die het noteren waard zijn. **Een weerlegger die iets ánders moest toetsen
+vond de zwaarste bevinding van het hele document** (A14) — het loont om ze ook op de
+*geruststellingen* te zetten, niet alleen op de beschuldigingen. En **de CVE-weging faalde bij 3 van
+de 5 afschrijvingen op de redenering terwijl de uitkomst klopte**: advisory-titels lezen in plaats van
+de advisorytekst, en greppen op een bestandsnaam die in Next 16 hernoemd is (`middleware.ts` →
+`proxy.ts`). Die methode levert vroeg of laat een gemiste kwetsbaarheid op.
+
+**Ook in de tweede ronde is tegen de productiedatabase gemeten**, opnieuw uitsluitend read-only
+(`BEGIN READ ONLY`, alleen `SELECT`), en de aanvalstests draaiden op kopieën in scratchpads buiten de
+repo. Er is geen aanval tegen productie uitgevoerd en geen AI-call gedaan die geld kost. De repo is
+onaangeroerd gebleven: `git status` is schoon op dit document na.
 
 **Niet als bevinding opgevoerd**, conform de opdracht: de besluiten O8–O13 en G21 uit
 `docs/DESIGN.md`, de acht al gemelde punten in `HANDOVER.md`, de zeven openstaande TNO-bevindingen,
