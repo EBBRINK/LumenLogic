@@ -51,10 +51,15 @@ export const zOptionalNumber = numFromForm;
 // Geld. Nooit negatief (C4) en nooit NaN/Infinity. Bedragen gaan als numeric(12,2) de
 // database in, dus een absurd groot getal is óók invoerfout en geen afrondingsprobleem.
 export const MAX_PRICE = 9_999_999.99;
-export const zPrice = numFromForm.refine(
-  (n) => n != null && n >= 0 && n <= MAX_PRICE,
-  `bedrag moet tussen 0 en ${MAX_PRICE} liggen`,
-);
+export const zPrice = numFromForm
+  .refine(
+    (n) => n != null && n >= 0 && n <= MAX_PRICE,
+    `bedrag moet tussen 0 en ${MAX_PRICE} liggen`,
+  )
+  // `refine` versmalt het type niet, dus zonder deze stap komt er `number | null` uit en
+  // moet elke aanroeper alsnog een null-check doen — precies de losse check per gebruik die
+  // deze laag wegneemt. De refine hierboven garandeert dat het geen null is.
+  .transform((n) => n as number);
 
 // Een geheel getal met grenzen — de standaardvorm voor pagina's, tegels en aantallen.
 export function zBoundedInt(min: number, max: number) {

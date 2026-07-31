@@ -266,6 +266,16 @@ export async function deleteSpecLine(db: AppDb, specLineId: string) {
 
 // Dagprijs op DE REGEL (I-04): de catalogus blijft leeg (het gat blijft eerlijk),
 // maar deze regel krijgt een handmatige, gemarkeerde prijs met geldigheidsdatum.
+// C4 (reviewzwerm 2.5a): een dagprijs mag niet negatief zijn. Dat is een DOMEINREGEL, geen
+// vormcontrole, en hij hoort daarom hier — niet alleen in de action en zeker niet alleen in
+// de UI (`type=number min=0` is uitleg voor de gebruiker, geen regel van het systeem). De
+// keten setDayPrice → numeric(12,2) → countedLineTotal deed nergens een tekencontrole, dus
+// € -5.000,00 kon op een klantregel belanden. Zie docs/INVOERVALIDATIE.md, de uitzondering
+// bij regel 2: invarianten die geld raken staan óók in de repo.
+//
+// Dit gooit wél (anders dan de action, die stil negeert): op dit punt is de invoer al door
+// een schema geweest, dus een negatief bedrag hier betekent dat een áándere aanroeper de
+// regel omzeilt. Dat hoort luidruchtig te falen.
 export async function setDayPrice(
   db: AppDb,
   input: {
@@ -275,6 +285,9 @@ export async function setDayPrice(
     actor?: string;
   },
 ) {
+  if (!Number.isFinite(input.price) || input.price < 0) {
+    throw new Error(`dagprijs mag niet negatief zijn (kreeg: ${input.price})`);
+  }
   await db
     .update(specLines)
     .set({

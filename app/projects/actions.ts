@@ -1,12 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { brands, reviewKind } from "@/db/schema";
 // Invoervalidatie: elke action die hier wordt aangeraakt gaat om naar een schema-parse.
 // De conventie staat in docs/INVOERVALIDATIE.md.
-import { parseForm, z, zEnumFrom, zUuid } from "@/lib/validation";
+import {
+  parseForm,
+  z,
+  zEnumFrom,
+  zOptionalText,
+  zPrice,
+  zUuid,
+} from "@/lib/validation";
+import { isUuid } from "@/lib/uuid";
 import {
   addSpecLines,
   createDossier,
@@ -493,19 +501,38 @@ export async function unlinkMatchAction(formData: FormData) {
 }
 
 // Dagprijs op de regel (I-04).
+// C4 (reviewzwerm 2.5a): `numOrNull` controleerde alleen op NaN, dus een negatieve
+// dagprijs liep zo door naar numeric(12,2) en naar countedLineTotal. De enige grens stond
+// in de UI (type=number min=0) — dat is uitleg voor de gebruiker, geen regel van het
+// systeem. Dit raakt geld, dus de check staat op twee plekken: hier op de vorm, en als
+// domeininvariant in setDayPrice zelf (zie docs/INVOERVALIDATIE.md, uitzondering bij
+// regel 2). Een bedrag van 0 blijft geldig — "gratis meegeleverd" is een echte uitkomst.
+const setDayPriceSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+  price: zPrice,
+  validUntil: zOptionalText.optional().default(null),
+});
+
 export async function setDayPriceAction(formData: FormData) {
   await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  const price = numOrNull(formData.get("price"));
-  if (specLineId && price != null) {
-    await setDayPrice(db, {
-      specLineId,
-      price,
-      validUntil: strOrNull(formData.get("validUntil")),
-      actor: await getActor(),
-    });
+  const parsed = parseForm(setDayPriceSchema, formData);
+  // Ongeldige invoer verandert niets; de gebruiker keert terug naar dezelfde regel en ziet
+  // de oude prijs nog staan. Een uuid dat niet klopt heeft geen regel om naar terug te
+  // keren, dus dan is 404 het eerlijke antwoord.
+  if (!parsed.ok) {
+    const dossierId = String(formData.get("dossierId") ?? "");
+    const specLineId = String(formData.get("specLineId") ?? "");
+    if (!isUuid(dossierId) || !isUuid(specLineId)) notFound();
+    redirect(`/projects/${dossierId}/line/${specLineId}`);
   }
+  const { dossierId, specLineId, price, validUntil } = parsed.data;
+  await setDayPrice(db, {
+    specLineId,
+    price,
+    validUntil,
+    actor: await getActor(),
+  });
   redirect(`/projects/${dossierId}/line/${specLineId}`);
 }
 
