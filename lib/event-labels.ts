@@ -104,6 +104,13 @@ export const ACTION_LABEL: Record<string, string> = {
   leesroute_batch_timeout: "Reading route batch timed out",
   leesroute_batch_truncated: "Reading route batch truncated",
   leesroute_segmenten_verrijkt: "Reading route segments enriched",
+  // A6 (reviewzwerm 2.5a): een afgekapte leesroute-run die door een volgende poging
+  // wordt opgepakt. Zelfde vorm als `ocr_resumed` — zonder regel hier maakt de
+  // automatische vorm er "Leesroute resumed" van: Nederlands op het scherm (bug #9).
+  leesroute_resumed: "Reading route resumed",
+  // Zat er niet in terwijl de code hem logt (lib/repo/leesroute.ts, budgetstop):
+  // "Leesroute skipped budget" — zelfde Nederlandse val als hierboven.
+  leesroute_skipped_budget: "Reading route skipped — budget",
   leesroute_skipped_no_key: "Reading route skipped — no key",
   leesroute_specs_backfilled: "Reading route specs backfilled",
   // Matcher en spec-regels.
@@ -131,6 +138,9 @@ export const ACTION_LABEL: Record<string, string> = {
   // Organisaties, leden, openbaarmaking, XIS.
   disclosure_changed: "Disclosure changed",
   membership_added: "Member added",
+  // Stond er niet in en viel terug op de automatische vorm ("Membership removed")
+  // naast een expliciet "Member added" — één paar, één vocabulaire.
+  membership_removed: "Member removed",
   org_created: "Organization created",
   org_removed: "Organization removed",
   user_removed: "User removed",

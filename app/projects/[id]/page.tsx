@@ -22,6 +22,22 @@ import {
   startOcrImportAction,
 } from "../actions";
 
+// A6-vangnet (reviewzwerm 2.5a): een EXPLICIET functieplafond, zodat het een keuze is
+// en geen platformdefault. Route Segment Config werkt op page/layout/route — niet in
+// een los "use server"-actions-bestand — en Next' documentatie zegt het uitdrukkelijk:
+// `maxDuration` op paginaniveau verandert de timeout van álle server actions die vanaf
+// die pagina gebruikt worden. Dit is het segment waar de zwaarste actie hangt:
+// `importArmaturenboekPagesAction` (hieronder doorgegeven aan PdfUploadCard) draait de
+// AI-leesroute serieel over batches van 8 pagina's.
+// 300 s is bewust GEEN verhoging maar een vastlegging: sprint 0.1 stelde via de
+// Vercel-API vast dat dit project op Hobby draait met Fluid compute aan en
+// `functionDefaultTimeout: 300` (docs/sprint0-1-ai-vangnet-live.md, F11/F12) — 300 is
+// daar tegelijk het maximum. Verhogen kan pas op een ander plan.
+// Dit maakt het afkappen NIET onmogelijk (een boek van 40 pagina's kan er nog steeds
+// overheen): daarvoor draagt de import-run sinds dezelfde reparatie een afgebroken-
+// stand, zodat een tweede poging verder leest — zie lib/repo/leesroute.ts.
+export const maxDuration = 300;
+
 // Tab REGELS — de header en tabs komen uit layout.tsx. Deze pagina toont de PDF-upload
 // als hoofdingang (stap 5), daarna de spec-regeltabel (aanvraagvolgorde, statuskleur,
 // afwijkingen) + het toevoeg-paneel voor de overige invoerwegen.

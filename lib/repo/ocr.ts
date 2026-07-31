@@ -455,7 +455,19 @@ export async function verwerkGelezenRegels(
       checked: false,
     };
 
-    if (!existingCodes.has(regel.armatuurcode)) {
+    // A6-HERSTEL (reviewzwerm 2.5a): de DATABASE is de waarheid over wat er al
+    // bestaat, niet de snapshot. `run.rows` wordt pas ná een hele batch/pagina in
+    // één update weggeschreven; kapt het platform de functie daartussen af, dan
+    // staan de spec-regels er al terwijl rows nog leeg is. Bij een hervatting liep
+    // elke code dan recht het created-pad in en kwam er een tweede spec_line met
+    // dezelfde armatuurcode bij (bewezen in lib/repo/leesroute.test.ts, "kill
+    // MIDDEN in de batch"). Daarom altijd de eigen regel opzoeken — gescoopt op
+    // run+code, dus een andere run of een handmatige regel blijft buiten schot.
+    // Voor het niet-afgebroken geval verandert er niets: stond de code al in
+    // existingCodes, dan werd deze lookup toch al gedaan.
+    const existing = await getOwnOcrLine(db, run.id, regel.armatuurcode);
+
+    if (!existing && !existingCodes.has(regel.armatuurcode)) {
       // Nog nooit gezien in deze run → huidig pad (created), ongewijzigd.
       existingCodes.add(regel.armatuurcode);
       const [createdLine] = await addSpecLines(db, run.dossierId, [line]);
@@ -476,16 +488,17 @@ export async function verwerkGelezenRegels(
       continue;
     }
 
-    // Code al bekend in deze run — kijk of er echt al een eigen spec_line voor
-    // bestaat (gescoopt op run+code). Binnen dezelfde pagina kan dezelfde code
-    // twee keer voorkomen vóórdat de eerste al is weggeschreven — dat blijft,
-    // net als voorheen, gewoon een duplicaat (geen spec_line om tegen te upgraden).
-    const existing = await getOwnOcrLine(db, run.id, regel.armatuurcode);
+    // Code al bekend in deze run maar géén eigen spec_line (bv. de regel is
+    // handmatig verwijderd, of hij stond alleen als duplicaat in rows): dat blijft,
+    // net als voorheen, gewoon een duplicaat — er is niets om tegen te upgraden.
     if (!existing) {
       duplicates++;
       newRows.push(baseRow);
       continue;
     }
+    // Bestaat de regel wél maar kende de snapshot hem niet (de afgebroken-run-
+    // vorm hierboven), dan hoort hij vanaf nu bij de bekende codes van deze run.
+    existingCodes.add(regel.armatuurcode);
 
     const newRichness = specRichness(line);
     const oldRichness = specRichness(existing);
