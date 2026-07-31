@@ -2885,3 +2885,89 @@ op één regel. Dat is eerlijker dan het cijfer van een ander product, maar het 
 **Vraag: mag een menskeuze op ongetoetste data dezelfde groene stand dragen als een bewezen
 match, of hoort daar een eigen merkteken/stand bij?** Bewust niet zelf beslist — dit raakt de
 bevroren statuskleuren (besluit O13).
+---
+
+## Reviewzwerm 2.5a — blok 1 (veiligheid & invoer)
+
+_2026-07-31. Tien bevindingen uit `docs/reviewzwerm-2.5a.md` gerepareerd: A13, A14, A5,
+B18+C5, A10, C3, C4, B6, C10, B17. Eén commit per bevinding, in die volgorde. Blok 2
+(matcher & review: A1, A2, A3, A9) liep parallel in een andere sessie — `lib/matching/`,
+`lib/repo/review.ts`, `lib/repo/matching.ts` en `lib/repo/imports.ts` zijn hier niet
+aangeraakt._
+
+### Nieuwe conventie die volgende sessies moeten volgen
+
+**Elke server action begint met een schema-parse** (zod, `lib/validation.ts`). De volledige
+conventie staat in `docs/INVOERVALIDATIE.md`, met een pointer in `CLAUDE.md`. Volgorde:
+`requireSession()` → `parseForm()` → repo. De 68 bestaande actions zijn **niet** en masse
+omgezet — dat is een grote diff zonder dekking. De regel die ervoor in de plaats komt: een
+action die je aanraakt, zet je om; nieuwe actions beginnen met een schema.
+
+⚠️ Een `"use server"`-module mag **uitsluitend async functies exporteren**. Een geëxporteerde
+const laat `registerServerReference` klappen met "Object.defineProperties called on
+non-object" (gemeten, niet beredeneerd). Daarom staat `SPEC_CSV_MAX_LINES` in
+`lib/repo/dossiers.ts` en niet in de action ernaast.
+
+### Aannames die Timo mag terugdraaien
+
+- **De J-03-prijsaanvraag is in de praktijk onbereikbaar geworden.** `/products/[id]` staat
+  nu achter `requireSession()` (A5) en `requestPriceAction` ook (B18). Omdat élke sessie
+  vandaag intern is (`internal: Boolean(session)`, allowlist van 2–5 adressen), krijgt geen
+  enkele kijker de gate "Request price via Brink" nog te zien. De code werkt en is getest;
+  hij wacht op een kijker die ingelogd maar níet intern is (rollenmodel L-03/04). Dat is een
+  bewuste ruil: ijzeren regel 1 boven een feature die vandaag geen gebruiker heeft. Wil je de
+  externe productpagina terug vóór het rollenmodel er is, dan moet er iets anders voor in de
+  plaats komen dan "de tier-gating doet het werk" — dat was precies de redenering die faalde.
+- **De merkvergrendeling in tender is nu gelijkheid** (A14). Een bestek dat `Delta` vraagt
+  krijgt geen enkel product van `Delta Light`. Blijkt uit de echte catalogus dat moeder- en
+  submerken dáár als één merk bedoeld zijn, dan is de juiste oplossing een expliciete
+  merk-alias-tabel — níet de operator weer verruimen. Vergrendelen is gelijkheid, zoeken is
+  bevatten; `lib/repo/products.ts#searchProducts` blijft daarom bewust fuzzy.
+- **`SPEC_CSV_MAX_LINES = 500`** (B6) is een keuze, geen meting. Het gemeten kappunt ligt op
+  2978 regels (Postgres' bind-parameterlimiet) en een echt armaturenboek heeft er tientallen.
+  Alles-of-niets bij overschrijding, want half inlezen geeft het half gematchte dossier dat
+  we juist voorkomen.
+- **`OCR_MAX_TILES = 16`, `OCR_MAX_DIMENSION = 20.000`, `MAX_DOC_FIELD_CHARS = 200`** zijn
+  ruime, statische grenzen — gekozen op "ruim boven elk echt geval", niet gemeten.
+
+### Open eindes
+
+- **`brands.disclosure_tier` staat nog steeds standaard op `tier1`.** De briefing is
+  expliciet — "Tier 1: volledige data + adviesprijs (**merk expliciet akkoord**)" — en een
+  default die voor elk merk toestemming aanneemt die nooit gegeven is, blijft onwenselijk.
+  Niet gewijzigd omdat het een migratie vraagt; de scherpe kant is eraf doordat tier1 nu de
+  kijkercontext respecteert, dus tier1 betekent niet langer "publieke prijs". De nullable
+  variant (`visible_specs.disclosure_tier` → `?? "tier1"`) is wél omgezet naar `tier2`.
+- **Er is nergens rate limiting** (nul treffers op `rateLimit|throttle` in de hele repo).
+  Voor `requestPriceAction` is de sessiepoort nu de rem, maar dat is geen rate limiting.
+  Hoort een aparte, bewuste bouwstap te zijn — niet een half laagje in één action.
+- **`leads` kan onopgemerkt volgroeien.** `listLeads` heeft repo-breed nul aanroepers: geen
+  route, geen scherm, geen test. De tabel heeft buiten de PK geen index en geen dedup, en
+  de twee rijen per aanvraag (`leads` + `events`) gaan niet in één transactie. Leads zijn de
+  commerciële opbrengst van de tier-2-gate; loopt die tabel vol met ruis, dan is er geen
+  manier om de echte aanvragen eruit te vissen.
+- **De AI-budgetstop staat tussen regels, niet tussen turns** (`lib/ai/vangnet.ts`, de
+  budgetcheck in de regel-lus). Eén regel gaat tot zes keer opnieuw de leiding in. De cap op
+  `productText` (B17) verkleint de kosten daarvan sterk maar heft het niet op.
+- **`sharp` blijft op een kwetsbare versie** na de next-bump (A13): 16.2.10, .11 én .12
+  pinnen alle drie `sharp: ^0.34.5` terwijl de libvips-advisory `>= 0.35.0` eist. Vraagt een
+  expliciete override. Lage prioriteit — `sharp` wordt nergens geïmporteerd en Vercel doet
+  beeldoptimalisatie buiten de function om. `bun audit` staat na de bump op 11 advisories
+  (was 20); wat overblijft is transitief (postcss, brace-expansion) of dev-only
+  (`@vitest/browser`). `shadcn` staat nog in `dependencies` terwijl het nergens geïmporteerd
+  wordt en daardoor twee advisories als "productie" laat rapporteren.
+- **`createCsvProposalAction` is nog steeds dode code.** Het ontwerp wil >10 CSV-regels via
+  een controlescherm (`CSV_PROPOSAL_THRESHOLD = 10`), maar niets roept die action aan. De cap
+  uit B6 is de afdwinging tót dat scherm er is, geen vervanging ervan.
+
+### Bewust niet gedaan
+
+- **C2 (AI-maandplafond) blijft uit** — vastgelegd besluit.
+- **B1 (eigendomsmodel) en B15 (RLS)** vielen buiten de opdracht.
+- **`setQuantityAction`** (de tweede helft van de C4-claim) is niet omgezet: het is dode
+  code — geen component importeert hem. Hem nu valideren zou een pad hardmaken dat er niet is.
+- **`lib/repo/products.ts:113`** blijft een `like`-match. Dat is de catalogus-zoekopdracht
+  van een ingelogde gebruiker, geen fase-vergrendeling; fuzzy is daar de bedoeling.
+- **Het label "Tier 1 · everything + price"** in `components/data/brand-visibility-block.tsx`
+  is niet aangepast. Voor de enige kijker die vandaag bestaat (intern) klopt het nog; zodra
+  er niet-interne sessies zijn, dekt het de lading niet meer.
