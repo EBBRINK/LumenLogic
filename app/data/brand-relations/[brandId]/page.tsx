@@ -32,11 +32,14 @@ import {
   updateBrandRelationAction,
 } from "../actions";
 import { uploadTemplateAction } from "./upload-actions";
+import { readApplySummary, TemplateApplySummary } from "./apply-summary";
 
 export default async function MerkrelatieDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ brandId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireSession();
   const { brandId } = await params;
@@ -61,6 +64,11 @@ export default async function MerkrelatieDetailPage({
     .where(eq(brands.id, brandId))
     .limit(1);
   if (!row) notFound();
+
+  // C8: de uitkomst van een zojuist goedgekeurd template. Alleen aanwezig direct ná de
+  // redirect uit approveTemplateProposalAction; verder null. Puur weergave — er wordt
+  // niets uit de querystring gelezen dat de pagina stuurt of iets schrijft.
+  const applySummary = readApplySummary(await searchParams);
 
   const completeness = await getBrandCompleteness(db, brandId);
   // Eén merk → geen N+1 (in tegenstelling tot de oude /admin/brands-lijst).
@@ -113,6 +121,10 @@ export default async function MerkrelatieDetailPage({
           </p>
         </div>
       </header>
+
+      {/* Bovenaan, vóór de rest: dit is het antwoord op de handeling die de gebruiker
+          zojuist deed. Daaronder staat het scherm zoals het altijd al stond. */}
+      {applySummary && <TemplateApplySummary summary={applySummary} />}
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
         <h2 className="mb-3 font-medium">Relationship</h2>

@@ -26,6 +26,7 @@ import {
 } from "@/lib/repo/template-return";
 import type { ApplySelection, TemplateReturnPayload } from "@/lib/template-diff";
 import { getActor, requireSession } from "@/lib/session";
+import { applySummaryQuery } from "./apply-summary";
 
 const voorstelPad = (brandId: string, uploadId: string) =>
   `/data/brand-relations/${brandId}/upload/${uploadId}`;
@@ -197,7 +198,7 @@ export async function approveTemplateProposalAction(formData: FormData) {
   const newList: PriceListInput | null =
     name && validFrom && validUntil ? { name, validFrom, validUntil } : null;
 
-  await applyTemplateProposal(
+  const uitkomst = await applyTemplateProposal(
     db,
     uploadId,
     selectieUit(formData),
@@ -206,7 +207,17 @@ export async function approveTemplateProposalAction(formData: FormData) {
   );
 
   herlaadMerkschermen(brandId);
-  redirect(`/data/brand-relations/${brandId}`);
+  // C8: de zes tellingen reizen mee met de redirect die er toch al was, zodat het
+  // doelscherm ze kan tonen op het moment dat de gebruiker kijkt. Ze VERVANGEN het
+  // eventspoor niet — template_apply_finished blijft de bron van waarheid (zie
+  // apply-summary.tsx). Faalt de codering om welke reden dan ook, dan redirecten we
+  // zoals voorheen: de samenvatting is een extraatje, nooit een blokkade.
+  const query = applySummaryQuery(
+    uitkomst.alreadyProcessed
+      ? { kind: "already" }
+      : { kind: "done", ...uitkomst },
+  );
+  redirect(`/data/brand-relations/${brandId}${query ? `?${query}` : ""}`);
 }
 
 // ── 3. Afwijzen ─────────────────────────────────────────────────────────────
