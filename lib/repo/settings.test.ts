@@ -2,8 +2,10 @@
 // app-instellingen (round-trip van scalar + object) en de LLM-verbruiksteller (alleen de
 // huidige maand telt). Draait op de PGlite-testdatabase met exact dezelfde migraties als Neon.
 import { expect, test } from "vitest";
-import { createTestDb } from "@/db/test-db";
-import { llmUsage } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { createTestDb, type TestDb } from "@/db/test-db";
+import { session, user } from "@/db/auth-schema";
+import { events, llmUsage } from "@/db/schema";
 import {
   addAllowedEmail,
   getLlmSpend,
@@ -61,6 +63,120 @@ test("allowlist: normalisatie (trim + lowercase) en dedup", async () => {
   // Leeg adres wordt genegeerd.
   expect(await addAllowedEmail(db, "   ")).toBeNull();
   expect(await isAllowed(db, "")).toBe(false);
+});
+
+// ── B2 (reviewzwerm 2.5a): verwijderen = toegang intrekken ───────────────────
+// `isAllowed` wordt alleen bij het AANVRAGEN van een magic link getoetst; daarna
+// kijkt `requireSession()` de lijst nooit meer na. Better Auth's sessie loopt 7
+// dagen en vernieuwt rollend, dus wie verwijderd werd hield tot een week toegang —
+// en wie wekelijks inlogt onbeperkt. `removeAllowedEmail` ruimt daarom nu ook de
+// sessierijen van dat adres op.
+async function seedUserMetSessie(db: TestDb, email: string, id: string) {
+  await db.insert(user).values({ id, name: id, email });
+  await db.insert(session).values({
+    id: `sess-${id}`,
+    userId: id,
+    token: `tok-${id}`,
+    expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+  });
+}
+
+test("B2: adres verwijderen wist de lopende sessie van dát adres — en laat andere sessies staan", async () => {
+  const db = await createTestDb();
+  await addAllowedEmail(db, "extern@partner.nl");
+  await addAllowedEmail(db, "blijft@brink.nl");
+  await seedUserMetSessie(db, "extern@partner.nl", "u-extern");
+  await seedUserMetSessie(db, "blijft@brink.nl", "u-blijft");
+  expect(await db.select().from(session)).toHaveLength(2);
+
+  const { sessionsRevoked } = await removeAllowedEmail(
+    db,
+    "extern@partner.nl",
+    "timo@brink.nl",
+  );
+
+  // De sessie van het verwijderde adres is weg…
+  expect(sessionsRevoked).toBe(1);
+  const over = await db.select().from(session);
+  expect(over).toHaveLength(1);
+  // …en die van een ánder adres staat er nog (niemand anders wordt uitgelogd).
+  expect(over[0].userId).toBe("u-blijft");
+  expect(await isAllowed(db, "extern@partner.nl")).toBe(false);
+  expect(await isAllowed(db, "blijft@brink.nl")).toBe(true);
+});
+
+test("B2: hoofdletters/spaties in het adres blokkeren het intrekken niet", async () => {
+  const db = await createTestDb();
+  await addAllowedEmail(db, "extern@partner.nl");
+  // Better Auth schrijft `user.email` zelf; ons schema belooft geen lowercase,
+  // dus de vergelijking gaat via lower() aan beide kanten.
+  await seedUserMetSessie(db, "Extern@Partner.NL", "u-extern");
+
+  const { sessionsRevoked } = await removeAllowedEmail(db, "  EXTERN@partner.nl ");
+  expect(sessionsRevoked).toBe(1);
+  expect(await db.select().from(session)).toHaveLength(0);
+});
+
+// ── B7: de schrijfactie draagt de actor en laat een spoor na ─────────────────
+test("B7: adres verwijderen logt een event mét actor en het aantal ingetrokken sessies", async () => {
+  const db = await createTestDb();
+  await addAllowedEmail(db, "extern@partner.nl");
+  await seedUserMetSessie(db, "extern@partner.nl", "u-extern");
+
+  await removeAllowedEmail(db, "Extern@Partner.nl ", "timo@brink.nl");
+
+  const gelogd = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "allowed_email_removed"));
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].actor).toBe("timo@brink.nl");
+  expect(gelogd[0].payload).toEqual({
+    email: "extern@partner.nl", // genormaliseerd, zoals de rij zelf
+    sessionsRevoked: 1,
+  });
+});
+
+// B7-herstel (reviewzwerm 2.5a): een event beschrijft een handeling die gebeurde.
+// `removeAllowedEmail` controleerde alleen op een lege string, nooit of de rij
+// bestond — een POST met een willekeurig adres schreef daardoor een
+// `allowed_email_removed` over een verwijdering die niet plaatsvond. De twee andere
+// destructieve schrijfacties (deleteSpecLine, removeMembership) keerden hier al
+// vroeg terug; deze niet.
+test("B7: een adres dat niet op de lijst staat verwijderen logt NIETS en trekt niets in", async () => {
+  const db = await createTestDb();
+  // Een oud-gebruiker met een lopende sessie wiens adres al van de lijst af is:
+  // de tweede verwijderpoging mag geen tweede spoor achterlaten.
+  await seedUserMetSessie(db, "bestaat-niet@nergens.nl", "u-weg");
+
+  const uitkomst = await removeAllowedEmail(
+    db,
+    "bestaat-niet@nergens.nl",
+    "timo@brink.nl",
+  );
+
+  // Retourcontract blijft { sessionsRevoked } — aanroepers rekenen daarop.
+  expect(uitkomst).toEqual({ sessionsRevoked: 0 });
+  expect(
+    await db.select().from(events).where(eq(events.action, "allowed_email_removed")),
+  ).toHaveLength(0);
+  // De seed-adressen staan er nog, en er is niemand uitgelogd op verdenking.
+  expect(await listAllowedEmails(db)).toHaveLength(2);
+  expect(await db.select().from(session)).toHaveLength(1);
+});
+
+test("B7: normalisatie blijft gelden — 'Timo@X ' vindt de rij 'timo@x' wél en logt wél", async () => {
+  const db = await createTestDb();
+  await addAllowedEmail(db, "extern@partner.nl");
+
+  // Hoofdletters/spaties mogen de bestaanscontrole niet laten falen: dan zou de
+  // fix van hierboven een échte verwijdering stilzwijgend overslaan.
+  const uitkomst = await removeAllowedEmail(db, "  EXTERN@Partner.NL ", "timo");
+  expect(uitkomst).toEqual({ sessionsRevoked: 0 });
+  expect(await isAllowed(db, "extern@partner.nl")).toBe(false);
+  expect(
+    await db.select().from(events).where(eq(events.action, "allowed_email_removed")),
+  ).toHaveLength(1);
 });
 
 test("app-instellingen: round-trip van scalar en object, met upsert", async () => {
