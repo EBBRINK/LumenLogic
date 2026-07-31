@@ -22,6 +22,9 @@ import { getXisExports } from "@/lib/repo/xis";
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
   email: "hello@noplasticfloralfoam.com",
+  // Schakelaar voor de sessiepoort-test onderaan: `true` = geen sessie, en de mock
+  // hieronder gedraagt zich dan als de ECHTE requireSession (redirect naar /login).
+  uitgelogd: false,
 }));
 
 // db/client.ts gooit al bij import zonder DATABASE_URL en praat met Neon; hier komt de
@@ -40,11 +43,23 @@ vi.mock("@/db/client", () => ({
   ),
 }));
 
-vi.mock("@/lib/session", () => ({
-  getSession: async () => ({ user: { email: harnas.email } }),
-  requireSession: async () => ({ user: { email: harnas.email } }),
-  getActor: async () => harnas.email,
-}));
+// Schakelbare sessie. Bij `uitgelogd` roept requireSession het ECHTE redirect() uit
+// next/navigation aan — precies zoals lib/session.ts:12 — zodat de poort-test op Next'
+// eigen NEXT_REDIRECT-signaal meet en niet op een zelfverzonnen throw uit deze mock.
+vi.mock("@/lib/session", async () => {
+  const { redirect } = await import("next/navigation");
+  const sessie = () =>
+    harnas.uitgelogd ? null : { user: { email: harnas.email } };
+  return {
+    getSession: async () => sessie(),
+    requireSession: async () => {
+      const s = sessie();
+      if (!s) redirect("/login");
+      return s;
+    },
+    getActor: async () => sessie()?.user.email ?? "anoniem",
+  };
+});
 
 // revalidatePath heeft buiten een request-scope geen store; de acties roepen hem wel aan.
 vi.mock("next/cache", () => ({
@@ -174,6 +189,36 @@ test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async 
 });
 
 // ── De XIS-action (een verborgen knop is geen poort) ─────────────────────────
+
+// ── De sessiepoort (B12) ─────────────────────────────────────────────────────
+// De mock bovenin gaf tot deze pas ALTIJD een sessie terug; daardoor bewees geen
+// enkele test dat `await requireSession()` in actions.ts iets doet. Deze test draait
+// exact de stand die hieronder wél doorkomt (bevroren offerte), maar uitgelogd: de
+// enige juiste uitkomst is /login én een LEGE xis_exports-tabel. Dat tweede is de
+// kern — het scheidt "de poort weigerde" van "hij exporteerde en navigeerde daarna".
+test("uitgelogd: xisExportAction stuurt niets door — /login, geen export", async () => {
+  const { db, dossierId } = await nieuweStand();
+  await generateQuote(db, dossierId, harnas.email);
+  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+
+  const fd = new FormData();
+  fd.set("dossierId", dossierId);
+
+  harnas.uitgelogd = true;
+  let digest = "";
+  try {
+    await xisExportAction(fd);
+  } catch (e) {
+    digest = (e as { digest?: string }).digest ?? "";
+  } finally {
+    harnas.uitgelogd = false;
+  }
+  expect(digest).toContain("NEXT_REDIRECT");
+  expect(digest).toContain("/login");
+
+  // Dezelfde POST slaagt ingelogd (test hieronder) — hier mag er niets staan.
+  expect(await getXisExports(db, dossierId)).toEqual([]);
+});
 
 test("xisExportAction: weigert bij een lege kop, laat een bevroren offerte door", async () => {
   const { db, dossierId } = await nieuweStand();

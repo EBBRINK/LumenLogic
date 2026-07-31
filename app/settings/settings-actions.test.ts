@@ -15,6 +15,9 @@ import { addAllowedEmail, listAllowedEmails } from "@/lib/repo/settings";
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
   email: "timo@brink.nl",
+  // Schakelaar voor de sessiepoort-tests onderaan: `true` = geen sessie, en de mock
+  // hieronder gedraagt zich dan als de ECHTE requireSession (redirect naar /login).
+  uitgelogd: false,
 }));
 
 // db/client.ts praat met Neon en gooit al bij import zonder DATABASE_URL; hier komt de
@@ -33,18 +36,59 @@ vi.mock("@/db/client", () => ({
   ),
 }));
 
-vi.mock("@/lib/session", () => ({
-  getSession: async () => ({ user: { email: harnas.email } }),
-  requireSession: async () => ({ user: { email: harnas.email } }),
-  getActor: async () => harnas.email,
-}));
+// Schakelbare sessie. Belangrijk: bij `uitgelogd` roept requireSession het ECHTE
+// redirect() uit next/navigation aan — precies zoals lib/session.ts:12 — zodat de
+// poort-test op Next' eigen NEXT_REDIRECT-signaal meet en niet op een zelfverzonnen
+// throw uit deze mock.
+vi.mock("@/lib/session", async () => {
+  const { redirect } = await import("next/navigation");
+  const sessie = () =>
+    harnas.uitgelogd ? null : { user: { email: harnas.email } };
+  return {
+    getSession: async () => sessie(),
+    requireSession: async () => {
+      const s = sessie();
+      if (!s) redirect("/login");
+      return s;
+    },
+    getActor: async () => sessie()?.user.email ?? "anoniem",
+  };
+});
 
 vi.mock("next/cache", () => ({
   revalidatePath: () => {},
   revalidateTag: () => {},
 }));
 
-const { removeEmailAction } = await import("./actions");
+const { addEmailAction, removeEmailAction } = await import("./actions");
+
+// De sessiepoort meet je aan Next' eigen navigatiesignaal: redirect() gooit een fout
+// met `digest` "NEXT_REDIRECT;…;/login;…". Loopt de action gewoon door, dan staat de
+// poort open — dan faalt deze helper met een leesbare reden in plaats van pas bij de
+// database-assertie eronder.
+async function vangRedirect(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (e) {
+    const digest = (e as { digest?: string }).digest ?? "";
+    if (digest.startsWith("NEXT_REDIRECT")) return digest;
+    throw e;
+  }
+  throw new Error(
+    "de action liep door zonder redirect — de sessiepoort staat open",
+  );
+}
+
+// De sessie uitzetten en gegarandeerd terugzetten; anders sleept een falende assertie
+// de uitgelogde stand mee naar de volgende test in dit bestand.
+async function uitgelogd<T>(run: () => Promise<T>): Promise<T> {
+  harnas.uitgelogd = true;
+  try {
+    return await run();
+  } finally {
+    harnas.uitgelogd = false;
+  }
+}
 
 async function stand(emails: string[]) {
   const db = (await createTestDb()) as TestDb;
@@ -88,6 +132,38 @@ test("adres van een ander: verwijderen werkt gewoon — de vangrail mag niet all
   const db = await stand(["timo@brink.nl", "collega@brink.nl"]);
 
   await removeEmailAction(post("collega@brink.nl"));
+
+  expect(await adressen(db)).toEqual(["timo@brink.nl"]);
+});
+
+// ── De sessiepoort zelf (B12) ────────────────────────────────────────────────
+// Tot deze pas gaf de mock hierboven ALTIJD een sessie terug. Daardoor bewees geen
+// enkele test dat `await requireSession()` iets doet: schrap die regel uit
+// app/settings/actions.ts en de hele suite bleef groen. De twee tests hieronder
+// draaien exact dezelfde POST als de geslaagde tests erboven, maar uitgelogd — de
+// enige juiste uitkomst is een redirect naar /login met een ONAANGERAAKTE database.
+// Dat tweede is de kern: het onderscheidt "de poort weigerde" van "de action deed
+// zijn werk en navigeerde daarna".
+
+test("uitgelogd: verwijderen van andermans adres wordt geweigerd — /login, lijst intact", async () => {
+  const db = await stand(["timo@brink.nl", "collega@brink.nl"]);
+
+  // Dezelfde POST als "adres van een ander" hierboven, die ingelogd wél slaagt.
+  const digest = await uitgelogd(() =>
+    vangRedirect(() => removeEmailAction(post("collega@brink.nl"))),
+  );
+  expect(digest).toContain("/login");
+
+  expect(await adressen(db)).toEqual(["collega@brink.nl", "timo@brink.nl"]);
+});
+
+test("uitgelogd: adres toevoegen wordt geweigerd — /login, niets geschreven", async () => {
+  const db = await stand(["timo@brink.nl"]);
+
+  const digest = await uitgelogd(() =>
+    vangRedirect(() => addEmailAction(post("indringer@elders.nl"))),
+  );
+  expect(digest).toContain("/login");
 
   expect(await adressen(db)).toEqual(["timo@brink.nl"]);
 });
