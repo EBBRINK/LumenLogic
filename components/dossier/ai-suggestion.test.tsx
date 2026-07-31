@@ -168,6 +168,80 @@ test("render-guard: in tender-fase geen suggestie van een ander merk; bij awarde
   expect(page.getByText(/alternatief van een ander merk/).query()).toBeNull();
 });
 
+// A14 (reviewzwerm 2.5a): de render-guard deed `.includes()`, dus een submerk waarvan
+// het moedermerk een deelstring is glipte erdoorheen — "deltalight".includes("delta").
+// Dat is precies het paar dat in een ERP-merkentabel staat, dus dit is de zaak waar de
+// oude situatie gepakt zou zijn.
+test("render-guard A14: 'Delta' toont geen 'Delta Light' in tender", async () => {
+  const submerk: ReviewItem = {
+    ...pending[0],
+    brandText: "Delta",
+    aiSuggestions: [
+      {
+        id: "ai4",
+        productId: "p4",
+        name: "CONCURRENT XYZ",
+        brandName: "Delta Light", // submerk — bevat 'Delta', maar ís het niet
+        articleCode: "DL-XYZ",
+        rationale: "submerk moet in tender geweerd worden",
+      },
+    ],
+  };
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[submerk]}
+        done={[]}
+        phase="tender"
+        decideAction={noopAction}
+        aiUseAction={noopAction}
+        aiDismissAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/Same brand, deviation within the yellow margin/))
+    .toBeInTheDocument();
+  expect(page.getByText(/AI suggestion/).query()).toBeNull();
+  expect(page.getByText(/submerk moet in tender geweerd worden/).query()).toBeNull();
+});
+
+// De tegenproef bij A14: gelijkheid mag geen legitieme match slopen. De normalisatie
+// blijft doen wat ze deed — hoofdletters, spaties en streepjes tellen niet mee.
+test("render-guard A14: schrijfwijze-variant van hetzelfde merk blijft wél zichtbaar", async () => {
+  const zelfdeMerk: ReviewItem = {
+    ...pending[0],
+    brandText: "LEDS-C4",
+    aiSuggestions: [
+      {
+        id: "ai5",
+        productId: "p5",
+        name: "AFRODITA RECESSED",
+        brandName: "LedsC4", // andere schrijfwijze, hetzelfde merk
+        articleCode: "LC4-AFR",
+        rationale: "zelfde merk, andere schrijfwijze",
+      },
+    ],
+  };
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[zelfdeMerk]}
+        done={[]}
+        phase="tender"
+        decideAction={noopAction}
+        aiUseAction={noopAction}
+        aiDismissAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/zelfde merk, andere schrijfwijze/))
+    .toBeInTheDocument();
+});
+
 test("render-guard: bij phase 'awarded' verschijnt het andere merk wel", async () => {
   const anderMerk: ReviewItem = {
     ...pending[0],

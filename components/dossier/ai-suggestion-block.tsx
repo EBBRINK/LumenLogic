@@ -8,15 +8,16 @@
 // de database staat. De serverkant vergrendelt al in lib/ai/vangnet.ts; dit filter is de
 // tweede verdedigingslinie op renderniveau. Geen gevraagd merk → in tender niets tonen
 // (fail-closed, default = veilig).
+//
+// De vergelijking komt uit lib/brand-lock.ts en NIET uit een eigen kopie: die kopie deed
+// `.includes()` en dekte daardoor exact hetzelfde gat als de serverlaag, waardoor de
+// "tweede linie" geen tweede linie was (reviewzwerm 2.5a, A14).
 import { IconCheck } from "./icons";
 import { Button } from "@/components/ui/button";
+import { brandLockMatches } from "@/lib/brand-lock";
 import type { AiSuggestionRow, Phase } from "./types";
 
 type Action = (formData: FormData) => void | Promise<void>;
-
-function normBrand(s: string | null | undefined): string {
-  return (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
 
 export function AiSuggestionBlock({
   dossierId,
@@ -35,12 +36,9 @@ export function AiSuggestionBlock({
   useAction: Action;
   dismissAction: Action;
 }) {
-  const requested = normBrand(brandText);
   const shown =
     phase === "tender"
-      ? suggestions.filter(
-          (s) => requested.length > 0 && normBrand(s.brandName).includes(requested),
-        )
+      ? suggestions.filter((s) => brandLockMatches(s.brandName, brandText))
       : suggestions;
   if (shown.length === 0) return null;
 

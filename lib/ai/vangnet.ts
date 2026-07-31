@@ -41,6 +41,7 @@ import type { AppDb } from "@/lib/repo/db";
 import { logEvent } from "@/lib/repo/events";
 import { getLlmSpend, getSetting } from "@/lib/repo/settings";
 import { isUuid } from "@/lib/uuid";
+import { brandLockMatches, normBrand } from "@/lib/brand-lock";
 import {
   CALL_TIMEOUT_MS,
   envApiKey,
@@ -188,10 +189,11 @@ const TOOLS: VangnetToolDef[] = [
 type Phase = "tender" | "awarded";
 type Line = typeof specLines.$inferSelect;
 
-// Genormaliseerde merkvergelijking — zelfde normalisatie als searchProducts
-// ("LedsC4" ≡ "LEDS-C4").
-function normBrand(s: string | null | undefined): string {
-  return (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+// De SQL-tegenhanger van brandLockMatches (lib/brand-lock.ts): gelijkheid op de
+// genormaliseerde merknaam, niet `like '%…%'`. Gebruik hem overal waar een fase-grens
+// wordt afgedwongen — het verschil tussen vergrendelen en zoeken staat daar uitgelegd.
+function brandLockSql(nb: string) {
+  return sql`regexp_replace(lower(${visibleProducts.brandName}), '[^a-z0-9]', '', 'g') = ${nb}`;
 }
 
 // Compact productbeeld voor de AI: technische velden, GEEN prijs (regel 2 — de AI
@@ -245,8 +247,13 @@ async function toolZoekProducten(
   if (brand.length > 0) {
     const nb = normBrand(brand);
     if (nb.length > 0) {
+      // In tender is `brand` het hard overschreven merk van de regel: dát is een
+      // vergrendeling en die vergelijkt op gelijkheid (A14). Buiten tender is het de
+      // vrije merk-parameter van het model en blijft fuzzy zoeken de bedoeling.
       conditions.push(
-        sql`regexp_replace(lower(${visibleProducts.brandName}), '[^a-z0-9]', '', 'g') like ${"%" + nb + "%"}`,
+        phase === "tender"
+          ? brandLockSql(nb)
+          : sql`regexp_replace(lower(${visibleProducts.brandName}), '[^a-z0-9]', '', 'g') like ${"%" + nb + "%"}`,
       );
     }
   }
@@ -380,9 +387,8 @@ async function toolProductDetail(
     .limit(1);
   if (!row) return { fout: "onbekend of niet (meer) zichtbaar product" };
   if (phase === "tender") {
-    const requested = normBrand(line.brandText);
-    const actual = normBrand(row.brandName as string | null);
-    if (!requested || !actual.includes(requested)) {
+    // Gelijkheid, geen `includes` — zie brandLockMatches (A14).
+    if (!brandLockMatches(row.brandName as string | null, line.brandText)) {
       return {
         fout:
           "dit product is van een ander merk dan gevraagd — in tender-fase toont " +

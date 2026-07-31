@@ -264,6 +264,95 @@ test("tender: zoek-tool genegeerd merk-param → alleen het gevraagde merk in de
   expect(after.reviewKind).toBeNull();
 });
 
+// ── A14: vergrendelen is gelijkheid, niet 'bevat' ────────────────────────────
+// Reviewzwerm 2.5a. De drie lagen die regel 4 afdwingen vergeleken alle drie op
+// deelstring, dus een moedermerk lekte zijn submerken. Uitgevoerd bewijs destijds:
+// een dossier in tender met brandText "Delta" kreeg CONCURRENT XYZ van "Delta Light"
+// in het zoekresultaat, product_detail gaf er volledige details op, en de suggestie
+// werd opgeslagen (suggested: 1, discarded: 0). Deze test dekt beide serverlagen.
+test("A14 tender: zoek-tool en product_detail weren een submerk van het gevraagde merk", async () => {
+  const db = await createTestDb();
+  const delta = await seedBrandProduct(db, { brand: "Delta", name: "ALFA 100" });
+  const deltaLight = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "CONCURRENT XYZ",
+  });
+  const dossier = await seedDossier(db, "tender");
+  const line = await addLine(db, dossier.id, {
+    fixtureCode: "La14", status: "rood", brandText: "Delta", productText: "100",
+  });
+
+  const { client, calls } = mockClient([
+    toolCall("zoek_producten", { merk: "Delta", tekst: "" }),
+    toolCall("product_detail", { id: deltaLight.productId }),
+    finalJson([
+      { productId: deltaLight.productId, rationale: "submerk (moet gediscard)" },
+      { productId: delta.productId, rationale: "gevraagd merk, past" },
+    ]),
+  ]);
+  const result = await runVangnet(db, dossier.id, { client, actor: ACTOR });
+
+  // Laag 1 — de zoektool: alleen 'Delta', geen 'Delta Light'.
+  const zoekBlocks = calls[1].messages[2].content as Array<{ content: string }>;
+  const parsed = JSON.parse(zoekBlocks[0].content) as {
+    resultaten: { id: string; merk: string | null }[];
+  };
+  expect(parsed.resultaten.length).toBeGreaterThan(0);
+  expect(parsed.resultaten.every((r) => r.merk === "Delta")).toBe(true);
+  expect(parsed.resultaten.some((r) => r.id === deltaLight.productId)).toBe(false);
+
+  // Laag 2 — product_detail weigert het submerk in plaats van details te geven.
+  const detailBlocks = calls[2].messages[4].content as Array<{ content: string }>;
+  expect(detailBlocks[0].content).toContain("ander merk");
+  expect(detailBlocks[0].content).not.toContain("CONCURRENT XYZ");
+
+  // En het submerk komt de database niet in als suggestie.
+  expect(result.suggested).toBe(1);
+  expect(result.discarded).toBe(1);
+  const rows = await db
+    .select()
+    .from(aiSuggestions)
+    .where(eq(aiSuggestions.specLineId, line.id));
+  expect(rows.length).toBe(1);
+  expect(rows[0].productId).toBe(delta.productId);
+});
+
+// De tegenproef: gelijkheid mag geen legitieme match slopen. Een merk dat in het bestek
+// anders geschreven staat dan in de catalogus ("LEDS-C4" vs "LedsC4") moet gewoon door
+// beide lagen komen — de normalisatie doet nog steeds haar werk.
+test("A14 tender: schrijfwijze-variant van hetzelfde merk komt door beide lagen", async () => {
+  const db = await createTestDb();
+  const leds = await seedBrandProduct(db, { brand: "LedsC4", name: "AFRODITA RECESSED" });
+  const dossier = await seedDossier(db, "tender");
+  const line = await addLine(db, dossier.id, {
+    fixtureCode: "La14b", status: "rood", brandText: "LEDS-C4", productText: "AFRODITA",
+  });
+
+  const { client, calls } = mockClient([
+    toolCall("zoek_producten", { merk: "LEDS-C4", tekst: "AFRODITA" }),
+    toolCall("product_detail", { id: leds.productId }),
+    finalJson([{ productId: leds.productId, rationale: "zelfde merk, andere schrijfwijze" }]),
+  ]);
+  const result = await runVangnet(db, dossier.id, { client, actor: ACTOR });
+
+  const zoekBlocks = calls[1].messages[2].content as Array<{ content: string }>;
+  const parsed = JSON.parse(zoekBlocks[0].content) as { resultaten: { id: string }[] };
+  expect(parsed.resultaten.some((r) => r.id === leds.productId)).toBe(true);
+
+  const detailBlocks = calls[2].messages[4].content as Array<{ content: string }>;
+  expect(detailBlocks[0].content).not.toContain("ander merk");
+  expect(detailBlocks[0].content).toContain("AFRODITA RECESSED");
+
+  expect(result.suggested).toBe(1);
+  expect(result.discarded).toBe(0);
+  const rows = await db
+    .select()
+    .from(aiSuggestions)
+    .where(eq(aiSuggestions.specLineId, line.id));
+  expect(rows.length).toBe(1);
+  expect(rows[0].productId).toBe(leds.productId);
+});
+
 test("tender: product_detail weigert een ander merk; awarded staat het toe", async () => {
   const db = await createTestDb();
   await seedBrandProduct(db, { brand: "XAL", name: "SASSO 100 SQ" });
