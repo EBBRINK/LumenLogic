@@ -133,6 +133,131 @@ test("N-keuze: accepteer mét productId kiest die kandidaat → groen + merkteke
   expect(chosen[0].chosenBy).toBe(ACTOR);
 });
 
+// ── A1 (reviewzwerm 2.5a): de afwijkingen horen bij het GEKOZEN product ───────
+// De bestaande tests hierboven dekken alleen het geval waarin beide kandidaten
+// dezelfde afwijking hebben (allebei 14 W) — dan klopt de rank-1-kolom toevallig.
+// Hieronder de twee gereproduceerde gevallen uit het rapport.
+
+// Twee schoon-gele kandidaten met een VERSCHILLENDE watt (gevraagd 12 → 14 = 16,7%
+// en 16 = 33,3%, allebei binnen de gele band ≤40%): de regel toonde "VELA ROUND 900"
+// met de afwijking van de 600.
+async function seedTwoYellowDifferentWatt() {
+  const db = await createTestDb();
+  const { brandId, priceListId, productId: p600 } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 14,
+  });
+  const { productId: p900 } = await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 16,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "A1" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lk410",
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      reqWatt: "12",
+      reqKelvin: 3000,
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+  const wattVan = (id: string) => (id === p600 ? 14 : 16);
+  return { db, dossierId: dossier.id, lineId: line.id, p600, p900, wattVan };
+}
+
+test("A1: accepteer mét ander productId → de afwijkingen van DAT product, niet van rank 1", async () => {
+  const s = await seedTwoYellowDifferentWatt();
+  const before = await getLine(s.db, s.lineId);
+  expect(before.status).toBe("geel");
+  const [rank1] = await s.db
+    .select()
+    .from(specLineCandidates)
+    .where(eq(specLineCandidates.specLineId, s.lineId))
+    .orderBy(asc(specLineCandidates.rank))
+    .limit(1);
+  // vóór de keuze staat de afwijking van rank 1 op de regel (runMatcher)
+  expect(before.deviations?.find((d) => d.field === "watt")?.delivered).toBe(
+    s.wattVan(rank1.productId),
+  );
+
+  // de mens kiest expliciet de ánder
+  const ander = rank1.productId === s.p600 ? s.p900 : s.p600;
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "accepteer",
+    productId: ander,
+    actor: ACTOR,
+  });
+
+  const after = await getLine(s.db, s.lineId);
+  expect(after.matchedProductId).toBe(ander);
+  expect(after.status).toBe("groen"); // menskeuze → groen (besluit 14 jul / 31 jul)
+  // vóór de fix stond hier nog de watt van rank 1 — het cijfer van een ánder product
+  expect(after.deviations?.find((d) => d.field === "watt")?.delivered).toBe(
+    s.wattVan(ander),
+  );
+  expect(after.deviations?.find((d) => d.field === "watt")?.verdict).toBe("geel");
+});
+
+test("A1: handmatig gelinkt product erft nooit de rode afwijking van een afgekeurde kandidaat", async () => {
+  const db = await createTestDb();
+  // enige kandidaat van het merk is 4000K terwijl 3000K gevraagd is → rood, en die
+  // rode verdicts belanden via topDeviations op de regel (engine: geen kandidaat-record)
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 4000,
+  });
+  // het product dat de mens zélf zoekt en linkt — ander merk, dus nooit kandidaat
+  // van deze regel en dus nooit door de tolerantietabel gegaan
+  const { productId: juist } = await seedBrandProduct(db, {
+    brand: "Flos",
+    name: "COMPLEET ANDER ARMATUUR",
+    kelvin: 3000,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "A1 rood" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lr702",
+      brandText: "XAL",
+      productText: "VELA ROUND 600",
+      reqKelvin: 3000,
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+
+  const before = await getLine(db, line.id);
+  expect(before.status).toBe("rood");
+  expect(before.deviations?.some((d) => d.field === "kelvin" && d.verdict === "rood")).toBe(
+    true,
+  );
+
+  await linkManualProduct(db, { specLineId: line.id, productId: juist, actor: ACTOR });
+
+  const after = await getLine(db, line.id);
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(juist);
+  // vóór de fix: [{kelvin requested 3000, delivered 4000, rood}] — de afwijking van
+  // een afgewezen kandidaat, groen afgedrukt op scherm én PDF
+  expect(after.deviations ?? []).toEqual([]);
+});
+
 test("variant mét productId → groen + matched; onbekende zuster krijgt kandidaat-record", async () => {
   const s = await seedTwoCleanYellow();
   // een zichtbare zustervariant die NIET in spec_line_candidates zit

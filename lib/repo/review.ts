@@ -8,6 +8,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   type ImportRow,
   importRuns,
+  type MatchDeviation,
   ocrPageImages,
   specLineCandidates,
   specLines,
@@ -315,6 +316,41 @@ async function markChosenCandidate(
   }
 }
 
+// A1 (reviewzwerm 2.5a): de afwijkingen op de regel horen bij het product dat er NÚ op
+// staat. runMatcher vult specLines.deviations met de verdicts van rank 1; kiest de mens
+// een ánder product, dan blijft die kolom staan en beschrijft ze een product dat niemand
+// gekozen heeft. Gereproduceerd: een regel met "VELA ROUND 900" die de wattafwijking van
+// de 600 draagt, en — erger — een handmatig gelinkt correct product dat de RODE
+// kelvin-afwijking van een afgekeurde kandidaat meedraagt, groen afgedrukt op scherm
+// (quote-view) én PDF. Daarom nemen decideReview en linkManualProduct nu dezelfde bron
+// als chooseCandidate (lib/repo/matching.ts): de verdicts van de gekozen kandidaat.
+//
+// Nooit getoetst product → LEGE lijst. markChosenCandidate hierboven zet voor zo'n
+// product juist een kandidaat-record met verdicts [] neer ("de mens is hier de toetser"),
+// dus die leegte is geen ongeluk maar de waarheid: er is niets vergeleken, en de oude
+// afwijking van een ánder product zou liegen (C-07).
+//
+// NB de STATUS blijft groen — élke bevestigende menskeuze maakt de regel groen mét
+// merkteken (HANDOVER 14 jul, herbevestigd door Timo 31 jul). Alleen de afwijkingen
+// verhuizen mee naar het gekozen product.
+async function verdictsOfChosen(
+  db: AppDb,
+  specLineId: string,
+  productId: string,
+): Promise<MatchDeviation[]> {
+  const [cand] = await db
+    .select({ verdicts: specLineCandidates.verdicts })
+    .from(specLineCandidates)
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, specLineId),
+        eq(specLineCandidates.productId, productId),
+      ),
+    )
+    .limit(1);
+  return (cand?.verdicts ?? []) as MatchDeviation[];
+}
+
 // De voorstel-kandidaat van een regel = rank 1 (de kandidaat wiens afwijkingen op de
 // regel staan; runMatcher persisteert aantoonbaar vóór onvolledig, in matchvolgorde).
 async function proposalCandidate(db: AppDb, specLineId: string) {
@@ -406,7 +442,6 @@ export async function decideReview(
     if (chosenProductId) {
       set.status = "groen";
       set.matchedProductId = chosenProductId;
-      // deviations blijven bewust staan: de afwijking is geaccepteerd, niet verdwenen.
       await markChosenCandidate(db, {
         specLineId: input.specLineId,
         productId: chosenProductId,
@@ -415,6 +450,13 @@ export async function decideReview(
           input.reason ??
           (input.decision === "variant" ? "kleurvariant gekozen in review" : null),
       });
+      // De afwijking is geaccepteerd, niet verdwenen (C-07) — maar het is de afwijking
+      // van het GEKOZEN product, niet die van rank 1. Zie verdictsOfChosen (A1).
+      set.deviations = await verdictsOfChosen(
+        db,
+        input.specLineId,
+        chosenProductId,
+      );
     }
   }
 
@@ -460,11 +502,17 @@ export async function linkManualProduct(
     actor: input.actor,
     reason: "vergelijkbaar product handmatig gelinkt",
   });
+  // A1: de afwijkingen van het GEKOZEN product overnemen — een handmatig gelinkt
+  // product is doorgaans nooit door de tolerantietabel gegaan, en dan wordt dit een
+  // lege lijst. Zonder dit bleef de (vaak rode) afwijking van de afgewezen kandidaat
+  // op de regel staan en werd hij groen afgedrukt met het cijfer van een ánder product.
+  const deviations = await verdictsOfChosen(db, input.specLineId, input.productId);
   await db
     .update(specLines)
     .set({
       matchedProductId: input.productId,
       status: "groen",
+      deviations,
       noMatchReason: null,
       updatedAt: new Date(),
     })
