@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { brands } from "@/db/schema";
+import { brands, reviewKind } from "@/db/schema";
+// Invoervalidatie: elke action die hier wordt aangeraakt gaat om naar een schema-parse.
+// De conventie staat in docs/INVOERVALIDATIE.md.
+import { parseForm, z, zEnumFrom, zUuid } from "@/lib/validation";
 import {
   addSpecLines,
   createDossier,
@@ -554,16 +557,26 @@ export async function linkManualProductAction(formData: FormData) {
 }
 
 // Een regel handmatig in de review-wachtrij zetten (bv. variantkeuze).
+//
+// C3 (reviewzwerm 2.5a): `kind` werd met `as` gecast en ging zo rechtstreeks een pgEnum
+// in. Een onbekende waarde gaf `invalid input value for enum review_kind` (22P02) → een
+// 500. De UPDATE faalde netjes atomair en app/error.tsx ving hem af, dus er ging niets
+// stuk — maar een 500 is nooit het goede antwoord op slechte invoer. Nu een schema-parse
+// volgens docs/INVOERVALIDATIE.md; onbekende invoer verandert simpelweg niets.
+// De toegestane waarden komen uit de pgEnum zelf (db/schema.ts), niet uit een
+// handgeschreven lijst: één bron, dus een nieuwe review-soort kan hier niet vergeten worden.
+const flagReviewSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+  kind: zEnumFrom(reviewKind.enumValues),
+});
+
 export async function flagReviewAction(formData: FormData) {
   await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  const kind = String(formData.get("kind")) as
-    | "geel"
-    | "variant"
-    | "onvolledig"
-    | "ocr";
-  if (specLineId) await flagForReview(db, specLineId, kind);
+  const parsed = parseForm(flagReviewSchema, formData);
+  if (!parsed.ok) return;
+  const { dossierId, specLineId, kind } = parsed.data;
+  await flagForReview(db, specLineId, kind);
   revalidatePath(`/projects/${dossierId}`);
 }
 
