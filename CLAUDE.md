@@ -30,6 +30,12 @@ heet. Kleine commits op main — ⚠️ **elke push naar main deployt automatisc
 (geverifieerd 17 jul: deployment 3 s na push; er is géén aparte preview-stap). Aannames en open
 eindes altijd in `HANDOVER.md`. Brondata in `data/` is read-only en staat niet in git.
 
+⚠️ **Elke server action begint met een schema-parse** (zod, via `lib/validation.ts`) —
+nooit een kale `String(formData.get(…))` of een `as`-cast een db-kolom in. Volgorde:
+`requireSession()` → `parseForm()` → repo. De repo-laag vertrouwt daarna zijn invoer;
+alleen domeinregels die geld of een klantdocument raken staan óók in de repo. De conventie
+en het waarom staan in `docs/INVOERVALIDATIE.md`. Een action die je aanraakt, zet je om.
+
 ⚠️ **Pushen naar main gaat UITSLUITEND via `bash scripts/safe-push.sh`.** Een kale
 `git push origin main` stuurt élke commit op de lokale main mee — ook die van een parallelle
 sessie in dezelfde werkdirectory — en die deployt dan ongevraagd naar productie. Een pre-push-hook
