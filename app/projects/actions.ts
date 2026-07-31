@@ -337,6 +337,11 @@ export async function importArmaturenboekPagesAction(input: {
 // binnen Next's action-bodylimiet (JPEG van 1568px lange zijde ≈ 200–500 kB).
 const OCR_IMAGE_CAP = 2 * 1024 * 1024; // hard plafond per paginabeeld
 const OCR_MAX_PAGES = 500;
+// C10: bovengrenzen op de overige client-invoer van ocrPageAction. 16 tegels = 4×4, ruim
+// boven wat de A3-tiling nodig heeft; 20.000 px is ruim boven elke reële paginarender
+// (A3 op 300 dpi ≈ 3500×4960).
+const OCR_MAX_TILES = 16;
+const OCR_MAX_DIMENSION = 20_000;
 
 // Run starten (of hervatten, B5: zelfde dossier + bestand + ocrStatus 'bezig').
 // Geen key → eerlijke melding vóór er ook maar iets gerenderd of geüpload wordt.
@@ -409,10 +414,35 @@ export async function ocrPageAction(formData: FormData): Promise<
   const tileCountRaw = formData.get("tileCount");
   const tileCount = tileCountRaw == null ? 1 : intOrNull(tileCountRaw);
   const image = formData.get("image");
+  // C10 (reviewzwerm 2.5a): er stonden alleen ONDERgrenzen (page >= 1, tile >= 0,
+  // tileCount >= 1). OCR_MAX_PAGES gold uitsluitend bij het STARTEN van een run, dus een
+  // los request mocht elk paginanummer noemen — pagina 999.999 van een boek van 12.
+  // Het geschetste gevolg ("1.024 requests = 1 GB permanente opslag") is weerlegd: bij een
+  // budgetstop zet processOcrPage de run op 'gestopt' en weigert dit endpoint daarna élk
+  // volgend request vóór de opslag, dus er blijft één weesrij per run staan, niet duizend.
+  // Wat blijft is de ontbrekende bovengrens zelf — hygiëne, in een paar regels te dichten.
+  //
+  // Deze bovengrenzen zijn statisch; de grens die er écht toe doet (page tegen het
+  // werkelijke aantal pagina's van díe run) staat verderop, ná de run-lookup.
   if (!dossierId || !runId || !page || page < 1 || !width || !height) {
     return { error: "Invalid OCR page request." };
   }
-  if (tile == null || tile < 0 || tileCount == null || tileCount < 1) {
+  if (page > OCR_MAX_PAGES) {
+    return { error: "Invalid OCR page request." };
+  }
+  if (
+    tile == null ||
+    tile < 0 ||
+    tileCount == null ||
+    tileCount < 1 ||
+    tileCount > OCR_MAX_TILES ||
+    // Tegel 3 van 2 bestaat niet; zonder deze check is `tile` los van `tileCount` vrij.
+    tile >= tileCount
+  ) {
+    return { error: "Invalid OCR page request." };
+  }
+  // Ook de beeldafmetingen zijn client-input en gingen ongegrensd de database in.
+  if (width < 1 || width > OCR_MAX_DIMENSION || height < 1 || height > OCR_MAX_DIMENSION) {
     return { error: "Invalid OCR page request." };
   }
   // Server-hardening: de client-loop stuurt altijd JPEG (canvas → toBlob
@@ -435,6 +465,13 @@ export async function ocrPageAction(formData: FormData): Promise<
   }
   if (run.ocrStatus !== "bezig") {
     return { error: "This OCR run is no longer active." };
+  }
+  // C10, de grens die er echt toe doet: `page` werd nergens getoetst tegen het aantal
+  // pagina's dat déze run daadwerkelijk heeft. Pagina 400 van een boek van 12 leverde een
+  // opgeslagen paginabeeld en een vision-call op voor een pagina die niet bestaat.
+  const pageCount = run.counts?.pageCount;
+  if (typeof pageCount === "number" && pageCount > 0 && page > pageCount) {
+    return { error: "Invalid OCR page request." };
   }
 
   const result = await processOcrPage(db, {

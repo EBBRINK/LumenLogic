@@ -8,7 +8,7 @@
 // opzet als app/settings/settings-actions.test.ts.
 import { expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { events, projectDossiers, specLines } from "@/db/schema";
+import { events, ocrPageImages, projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
 
 const harnas = vi.hoisted(() => ({
@@ -40,8 +40,10 @@ vi.mock("next/cache", () => ({
   revalidateTag: () => {},
 }));
 
-const { addSpecCsvAction, flagReviewAction, setDayPriceAction } = await import("./actions");
+const { addSpecCsvAction, flagReviewAction, ocrPageAction, setDayPriceAction } =
+  await import("./actions");
 const { setDayPrice, SPEC_CSV_MAX_LINES } = await import("@/lib/repo/dossiers");
+const { startOcrRun } = await import("@/lib/repo/ocr");
 
 async function seed() {
   const db = (await createTestDb()) as TestDb;
@@ -246,4 +248,76 @@ test("B6: precies op de grens gaat er nog gewoon doorheen", async () => {
   expect(
     await db.select().from(events).where(eq(events.action, "spec_csv_rejected_too_large")),
   ).toHaveLength(0);
+});
+
+// ── C10: page en tile hadden geen bovengrens ─────────────────────────────────
+//
+// Er stonden alleen ONDERgrenzen (page >= 1, tile >= 0, tileCount >= 1). OCR_MAX_PAGES
+// gold uitsluitend bij het STARTEN van een run, dus een los request mocht elk
+// paginanummer noemen — pagina 999.999 van een boek van 12.
+
+// De magic bytes waar isJpegImage op controleert; verder hoeft dit beeld niets te zijn,
+// want elk van deze requests hoort te stranden vóórdat er iets mee gebeurt.
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6]);
+
+function ocrForm(over: Record<string, string>): FormData {
+  const fd = new FormData();
+  fd.set("page", "1");
+  fd.set("width", "1568");
+  fd.set("height", "1000");
+  for (const [k, v] of Object.entries(over)) fd.set(k, v);
+  fd.set("image", new File([JPEG], "p.jpg", { type: "image/jpeg" }));
+  return fd;
+}
+
+test("C10: page, tile, tileCount en afmetingen hebben een bovengrens", async () => {
+  const { db, dossier } = await seed();
+  const { run } = await startOcrRun(db, {
+    dossierId: dossier.id,
+    filename: "boek.pdf",
+    pageCount: 12,
+    actor: harnas.email,
+  });
+  const basis = { dossierId: dossier.id, runId: run.id };
+
+  // Statische bovengrenzen — deze stranden nog vóór de run-lookup.
+  const teGroot: Record<string, string>[] = [
+    { page: "999999" }, // pagina die in geen enkel boek bestaat
+    { page: "501" }, // net boven OCR_MAX_PAGES
+    { tileCount: "9999" }, // onbegrensd tegeltotaal
+    { tile: "5", tileCount: "2" }, // tegel 5 van 2 bestaat niet
+    { width: "999999" },
+    { height: "999999" },
+    { width: "0" },
+  ];
+  for (const over of teGroot) {
+    const r = await ocrPageAction(ocrForm({ ...basis, ...over }));
+    expect(r).toEqual({ error: "Invalid OCR page request." });
+  }
+
+  // En de grens die er echt toe doet: page tegen het werkelijke aantal pagina's van
+  // DEZE run. 13 is een geldig paginanummer, alleen niet in een boek van 12.
+  const buitenBoek = await ocrPageAction(ocrForm({ ...basis, page: "13" }));
+  expect(buitenBoek).toEqual({ error: "Invalid OCR page request." });
+
+  // Er is niets opgeslagen: geen paginabeeld, geen vision-call.
+  expect(await db.select().from(ocrPageImages)).toHaveLength(0);
+});
+
+// De tegenproef: de grenzen mogen de gewone loop niet raken. Een geldig request komt
+// voorbij de validatie — het strandt daarna op de ontbrekende API-sleutel, en dát is het
+// bewijs dat het de validatie wél gepasseerd is.
+test("C10: een geldig paginarequest komt gewoon door de grenzen heen", async () => {
+  const { db, dossier } = await seed();
+  const { run } = await startOcrRun(db, {
+    dossierId: dossier.id,
+    filename: "boek.pdf",
+    pageCount: 12,
+    actor: harnas.email,
+  });
+
+  for (const page of ["1", "12"]) {
+    const r = await ocrPageAction(ocrForm({ dossierId: dossier.id, runId: run.id, page }));
+    expect(r).not.toEqual({ error: "Invalid OCR page request." });
+  }
 });
