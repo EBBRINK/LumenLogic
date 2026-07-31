@@ -1,12 +1,14 @@
-// De sessiepoort op /products/[id] (reviewzwerm 2.5a, A5).
+// De sessiepoort op /products/[id] en op requestPriceAction (reviewzwerm 2.5a, A5 + B18).
 //
 // Wat hier gepind wordt en waarom het ontbrak: /products/[id] was de enige inhoudspagina
 // zonder `requireSession()` — de redenering was dat de tier-gating het werk deed. Die hield
 // niet (zie lib/repo/disclosure.test.ts), dus een uitgelogde bezoeker met een gedeelde
-// deeplink zag de brutoprijs.
+// deeplink zag de brutoprijs. En `requestPriceAction` was het enige ongeauthenticeerde
+// schrijfpad in de app: het las de sessie om een e-mailadres op te halen maar toetste hem
+// nooit, dus een anonieme beller kon `leads` en `events` volschrijven.
 //
 // De reviewzwerm merkte apart op (B12) dat GEEN ENKELE test bewees dat de sessiepoort een
-// niet-ingelogde beller weigert. Dit bestand is dat bewijs voor deze ingang.
+// niet-ingelogde beller weigert. Dit bestand is dat bewijs voor deze twee ingangen.
 //
 // Harnas: zelfde patroon als app/login/login-gate.test.ts — de sessielaag wordt gemockt
 // (de echte trekt better-auth plus de database mee en kent in een test geen cookie), maar
@@ -18,6 +20,7 @@
 // react-server-build klapt met "client reference export is called on server". Deze tests
 // gaan over de poort, niet over de opmaak, dus een kale <a> volstaat.
 import { expect, test, vi } from "vitest";
+import { leads } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 
 const harnas = vi.hoisted(() => ({
@@ -63,6 +66,7 @@ vi.mock("@/lib/session", async () => {
 });
 
 const { default: ProductPage } = await import("./page");
+const { requestPriceAction } = await import("./actions");
 
 const INGELOGD = { user: { email: "hello@noplasticfloralfoam.com" } };
 
@@ -129,4 +133,71 @@ test("A5: een niet-uuid geeft 404, ook vóór de sessiecheck iets prijsgeeft", a
     }),
   );
   expect(digest).toContain("NEXT_HTTP_ERROR_FALLBACK;404");
+});
+
+// ── De poort op het schrijfpad ───────────────────────────────────────────────
+
+test("B18: uitgelogd → requestPriceAction schrijft geen lead en stuurt door naar /login", async () => {
+  const db = await createTestDb();
+  harnas.db = db;
+  harnas.sessie = null;
+  const { productId, brandId } = await seedProduct(db);
+
+  const fd = new FormData();
+  fd.set("productId", productId);
+  fd.set("brandId", brandId);
+
+  const digest = await digestVan(() => requestPriceAction(fd));
+  expect(digest).toContain("NEXT_REDIRECT");
+  expect(digest).toContain("/login");
+
+  // Dít is de kern: geen rij. De oude versie inserte er hier gewoon één.
+  expect(await db.select().from(leads)).toHaveLength(0);
+});
+
+// C5/B18: de uuid-guard. Een vervalst request met rommel in de velden hoort 404 te geven,
+// geen `invalid input syntax for type uuid` op een foutpagina.
+test("B18: ingelogd maar geen uuid → 404, en nog steeds geen lead", async () => {
+  const db = await createTestDb();
+  harnas.db = db;
+  harnas.sessie = INGELOGD;
+
+  const rommel = new FormData();
+  rommel.set("productId", "'; drop table leads; --");
+  expect(await digestVan(() => requestPriceAction(rommel))).toContain("NEXT_HTTP_ERROR_FALLBACK;404");
+
+  const leeg = new FormData();
+  expect(await digestVan(() => requestPriceAction(leeg))).toContain("NEXT_HTTP_ERROR_FALLBACK;404");
+
+  // Een geldig product met een kapot brandId is óók een kapot formulier.
+  const { productId } = await seedProduct(db);
+  const kapotMerk = new FormData();
+  kapotMerk.set("productId", productId);
+  kapotMerk.set("brandId", "niet-een-uuid");
+  expect(await digestVan(() => requestPriceAction(kapotMerk))).toContain("NEXT_HTTP_ERROR_FALLBACK;404");
+
+  expect(await db.select().from(leads)).toHaveLength(0);
+});
+
+// En de tegenproef op het schrijfpad: J-03 is niet ingetrokken. Een ingelogde beller met
+// geldige id's maakt gewoon een lead aan, op naam.
+test("B18: ingelogd met geldige id's → lead aangemaakt, op naam, en terug naar de kaart", async () => {
+  const db = await createTestDb();
+  harnas.db = db;
+  harnas.sessie = INGELOGD;
+  const { productId, brandId } = await seedProduct(db);
+
+  const fd = new FormData();
+  fd.set("productId", productId);
+  fd.set("brandId", brandId);
+
+  const digest = await digestVan(() => requestPriceAction(fd));
+  expect(digest).toContain("NEXT_REDIRECT");
+  expect(digest).toContain(`/products/${productId}?pricerequest=sent`);
+
+  const rows = await db.select().from(leads);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].productId).toBe(productId);
+  expect(rows[0].brandId).toBe(brandId);
+  expect(rows[0].userEmail).toBe(INGELOGD.user.email);
 });
