@@ -2835,3 +2835,53 @@ een variantnaam levert stilzwijgend géén regel op.
 
 **Pre-existing lint, niet van deze wijziging:** `components/dossier/review-queue.tsx:331`
 `react/no-unescaped-entities` op "line's". Stond er al vóór deze sessie.
+
+## 2026-07-31 — Reviewzwerm 2.5a blok 2 (matcher & review): A1, A2, A9 + één vraag voor Timo
+
+Drie bevindingen uit `docs/reviewzwerm-2.5a.md` gerepareerd, elk met een test die de oude
+situatie zou hebben gevangen (alle drie geverifieerd: rood op de oude code, groen op de nieuwe).
+
+- **A1** (`lib/repo/review.ts`) — `decideReview` en `linkManualProduct` lieten
+  `spec_lines.deviations` staan zoals `runMatcher` hem vulde: met de verdicts van de
+  **rank-1**-kandidaat. Koos de mens een ánder product, dan droeg de regel de cijfers van een
+  product dat niemand koos — tot en met een handmatig gelinkt, correct product met de **rode**
+  afwijking van een afgekeurde kandidaat, groen afgedrukt op scherm én PDF. Beide functies nemen
+  nu de verdicts van de daadwerkelijk gekozen kandidaat (helper `verdictsOfChosen`); een nooit
+  getoetst product levert een **lege** lijst. De status blijft groen — dat is het besluit.
+- **A2** (`lib/matching/engine.ts`) — `pickUnambiguousYellow` las álle kandidaten en kende de
+  Gat-B-vlag `unconfirmed` niet: "geen onbekend veld" ving de ontbrekende waarde af, niet de
+  **onbevestigde**. Een kandidaat die op onze eigen optiekcode-tabel leunt (WF ≈ 57°) werd
+  daardoor automatisch geaccepteerd terwijl Gat B "de mens kiest met reden" belooft. Het
+  predicaat eist nu dat de enige schoon-gele kandidaat op **lijst 1** staat; de
+  ondubbelzinnigheidstelling loopt bewust nog steeds over álle kandidaten.
+- **A9** (`lib/repo/imports.ts`) — de run gaat op `bevestigd` direct ná `addSpecLines`, vóór de
+  matcher-lus. Crashte de matcher halverwege, dan bleef de run op `voorstel` terwijl de regels er
+  al stonden: een tweede klik op Bevestigen verdubbelde het dossier. Een matcher-fout laat de
+  actie nog steeds klappen; de regels staan er dan één keer, met status `open`, en zijn opnieuw
+  te matchen vanaf het regel-detail.
+
+**Open vraag voor Timo — twee plekken doen het tegenovergestelde met dezelfde toestand.**
+A3 (kiezen uit lijst 2 → groen) is grotendeels afgedaan met het besluit *"een menskeuze mag
+altijd groen opleveren"*. Nagemeten en bevestigd: óók de specloze Gat-A-variant (`deviations: []`,
+nul getoetste velden, groen mét bedrag in het totaal) is **alleen via een menskeuze** bereikbaar —
+`statusFromDeviations` heeft precies één aanroeper, `chooseCandidate`, en die heeft precies één
+aanroeper in de app: `chooseCandidateAction` (formulier-submit vanaf het regel-detail). De
+seed-scripts (`scripts/seed-demo.ts`, `scripts/seed-scenario.ts`) simuleren dezelfde
+menshandeling. Het systeem maakt zichzelf nergens groen zonder iets te toetsen: `anyGreen` leest
+alleen `provable`, en `provable` is bij een specloze regel per definitie leeg. **Geen defect,
+niets gerepareerd.**
+
+Wat wél blijft staan is de tegenstrijdigheid die het rapport signaleert. Bij dezelfde toestand
+— een mens kiest een product dat niet (volledig) getoetst is — doen twee functies het omgekeerde:
+- `lib/repo/matching.ts:246` (`chooseCandidate`) → `statusFromDeviations([])` = **groen**;
+- `lib/repo/review.ts` (`markChosenCandidate`) → kandidaat in lijst `onvolledig` met **lege**
+  verdicts, expliciet beargumenteerd: *"het is niet door de tolerantietabel getoetst, dus
+  'aantoonbaar' zou liegen (C-08)"*.
+
+De A1-fix hierboven maakt die spanning zichtbaarder, want een handmatig gelinkt product houdt nu
+een lege afwijkingenlijst op een groene regel: "groen" en "niets vergeleken" staan naast elkaar
+op één regel. Dat is eerlijker dan het cijfer van een ander product, maar het is niet hetzelfde
+"groen" als `components/dossier/status.ts:49` belooft (*"all specs within the green margin"*).
+**Vraag: mag een menskeuze op ongetoetste data dezelfde groene stand dragen als een bewezen
+match, of hoort daar een eigen merkteken/stand bij?** Bewust niet zelf beslist — dit raakt de
+bevroren statuskleuren (besluit O13).
