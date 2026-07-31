@@ -771,6 +771,13 @@ export type PriceListStatus = {
   productCount: number;
   daysLeft: number;
   bucket: "verlopen" | "7" | "14" | "30" | "ok";
+  // Additief (bevinding B3): een VERVANGEN lijst heeft geen prijsregels meer (die staan in
+  // prices_archive) en blijft hier bewust in de rijenset staan — /data/price-lists toont
+  // hem als dekkingsgat en andere schermen rekenen op dezelfde set. Maar verlengen kan hij
+  // niet: extendPriceListValidity weigert hem altijd met 'archived'. Zonder dit veld kon
+  // het scherm dat niet weten en bood het een formulier aan dat 100% van de tijd faalde.
+  // null = actieve lijst.
+  replacedAt: Date | null;
   // De levensfase van het merk rijdt mee in dezelfde select (nul extra queries), net als op
   // /admin/brands: een lijst van een merk dat niet meer bestaat mag op /data/price-lists
   // geen schone groene rij zijn (UX-audit 30 jul). null = geen merk aan de lijst gekoppeld.
@@ -802,6 +809,7 @@ export async function listPriceListStatus(
       name: priceLists.name,
       brandName: brands.name,
       validUntil: priceLists.validUntil,
+      replacedAt: priceLists.replacedAt,
       productCount: sql<number>`count(${prices.id})`,
       lifecycle: brands.lifecycle,
     })
@@ -812,6 +820,7 @@ export async function listPriceListStatus(
       priceLists.id,
       priceLists.name,
       priceLists.validUntil,
+      priceLists.replacedAt,
       brands.name,
       brands.lifecycle,
     )
@@ -834,6 +843,7 @@ export async function listPriceListStatus(
       name: r.name,
       brandName: r.brandName,
       validUntil: r.validUntil,
+      replacedAt: r.replacedAt,
       productCount: Number(r.productCount),
       daysLeft,
       bucket,

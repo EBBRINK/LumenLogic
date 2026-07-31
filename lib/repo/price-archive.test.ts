@@ -17,9 +17,11 @@ import {
 } from "@/db/schema";
 import {
   archivePriceList,
+  extendPriceListValidity,
   replacePriceList,
   upsertPriceLines,
 } from "@/lib/repo/price-archive";
+import { listPriceListStatus } from "@/lib/repo/enrichment";
 
 test("archivePriceList: prijsregels verhuizen naar het archief, lijst wordt vervangen-gemarkeerd", async () => {
   const db = await createTestDb();
@@ -219,6 +221,255 @@ test("DE HAZARD-TEST: upsert van 1 van 3 producten laat de andere 2 zichtbaar �
   expect(await db.select().from(pricesArchive)).toHaveLength(1);
   const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
   expect(lijst.replacedAt).toBeNull();
+});
+
+// ── extendPriceListValidity: het retourpad van ijzeren regel 3 (bevinding B3) ─
+// Regel 3 werkte tot nu toe maar één kant op: een verlopen lijst haalde de producten uit
+// visible_products, en er was geen enkele code die de einddatum vooruit kon zetten — terwijl
+// het scherm letterlijk om een "extension" vraagt. Deze tests leggen de terugweg vast.
+
+/** Datum n dagen vanaf nu als 'YYYY-MM-DD' (UTC) — de tests draaien tegen de échte
+ *  CURRENT_DATE van PGlite, dus vaste toekomstdatums zouden ooit verlopen. */
+function overDagen(n: number): string {
+  return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+test("DE BEWIJSTEST: verlopen lijst verlengen maakt de producten weer zichtbaar (regel 3, terug)", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId, productId } = await seedBrandProduct(db, {
+    brand: "Occhio",
+    name: "Mito Sospeso",
+    price: "845.00",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31", // verlopen: valid_until < CURRENT_DATE
+  });
+
+  // Uitgangspunt = ijzeren regel 3: het product is nergens meer te vinden.
+  const voor = await db
+    .select()
+    .from(visibleProducts)
+    .where(eq(visibleProducts.brandId, brandId));
+  expect(voor, "verlopen prijslijst hoort het product onzichtbaar te maken").toHaveLength(0);
+
+  const nieuweDatum = overDagen(365);
+  const bijgewerkt = await extendPriceListValidity(
+    db,
+    { priceListId, validUntil: nieuweDatum, actor: "test@brink" },
+  );
+  expect(bijgewerkt.validUntil).toBe(nieuweDatum);
+  expect(bijgewerkt.id).toBe(priceListId); // dezelfde lijst, geen opvolger
+
+  // En dít is wat er niet bestond: het product is terug, mét zijn prijs.
+  const na = await db
+    .select()
+    .from(visibleProducts)
+    .where(eq(visibleProducts.brandId, brandId));
+  expect(na).toHaveLength(1);
+  expect(na[0].id).toBe(productId);
+  expect(na[0].grossPrice).toBe("845.00");
+
+  // Geen archief-bijwerking: de prijsregels bewegen niet bij een verlenging.
+  expect(await db.select().from(pricesArchive)).toHaveLength(0);
+  const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
+  expect(lijst.replacedAt).toBeNull();
+});
+
+test("extendPriceListValidity: logt price_list_extended met de oude én de nieuwe datum", async () => {
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Kreon",
+    name: "Holon 40",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+
+  const nieuweDatum = overDagen(90);
+  await extendPriceListValidity(db, {
+    priceListId,
+    validUntil: nieuweDatum,
+    actor: "test@brink",
+  });
+
+  const gelogd = (await db.select().from(events)).filter(
+    (e) => e.action === "price_list_extended",
+  );
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].entity).toBe("price_list");
+  expect(gelogd[0].entityId).toBe(priceListId);
+  expect(gelogd[0].actor).toBe("test@brink");
+  // previousValidUntil is dragend: zonder de oude datum is achteraf niet te zien of dit
+  // een verlenging van een week of van vijf jaar was.
+  expect(gelogd[0].payload).toMatchObject({
+    brandId,
+    name: "Prijslijst Kreon",
+    previousValidUntil: "2020-12-31",
+    validUntil: nieuweDatum,
+  });
+});
+
+test("extendPriceListValidity: datum in het verleden → geweigerd (de lijst blijft verlopen)", async () => {
+  const db = await createTestDb();
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: overDagen(-1) }),
+  ).rejects.toMatchObject({ reason: "date_in_past" });
+
+  const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
+  expect(lijst.validUntil).toBe("2020-12-31");
+  expect(await db.select().from(events)).toHaveLength(0);
+});
+
+test("extendPriceListValidity: niet later dan de huidige einddatum → geweigerd (verkorten is een andere handeling)", async () => {
+  const db = await createTestDb();
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SPY 39",
+    validFrom: "2026-01-01",
+    validUntil: "2999-12-31",
+  });
+
+  // Een datum in de toekomst, maar vóór de huidige einddatum: verkorten haalt producten
+  // uit de matcher (regel 3) en mag nooit uit een knop rollen die "extend" heet.
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: "2100-01-01" }),
+  ).rejects.toMatchObject({ reason: "not_later" });
+  // Ook exact dezelfde datum is geen verlenging.
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: "2999-12-31" }),
+  ).rejects.toMatchObject({ reason: "not_later" });
+
+  const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
+  expect(lijst.validUntil).toBe("2999-12-31");
+});
+
+test("extendPriceListValidity: vervangen lijst → geweigerd (zijn prijsregels staan in het archief)", async () => {
+  const db = await createTestDb();
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "Modular",
+    name: "Smart Cake",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+  await archivePriceList(db, priceListId, "test@brink");
+
+  // Verlengen zou geldigheid beloven voor prijzen die niet meer in `prices` staan: een
+  // lege lijst met een groene datum. Zo'n merk heeft een nieuwe lijst nodig, geen datum.
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: overDagen(180) }),
+  ).rejects.toMatchObject({ reason: "archived" });
+
+  const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
+  expect(lijst.validUntil).toBe("2020-12-31");
+});
+
+test("extendPriceListValidity: onbekende lijst en onzin-datum → geweigerd met hun eigen reden", async () => {
+  const db = await createTestDb();
+  await expect(
+    extendPriceListValidity(db, {
+      priceListId: crypto.randomUUID(),
+      validUntil: overDagen(30),
+    }),
+  ).rejects.toMatchObject({ reason: "unknown_list" });
+
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "Flos Architectural",
+    name: "Find me 0 spot",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+  // 31 februari bestaat niet; de DB zou er stil iets anders van maken.
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: "2027-02-31" }),
+  ).rejects.toMatchObject({ reason: "invalid_date" });
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: "31-12-2027" }),
+  ).rejects.toMatchObject({ reason: "invalid_date" });
+});
+
+test("extendPriceListValidity: datum vóór valid_from → geweigerd (de view zou de producten alsnog verbergen)", async () => {
+  const db = await createTestDb();
+  // Kapotte brondata: een lijst die pas over jaren begint en al verlopen is.
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "Itre",
+    name: "Fastill",
+    validFrom: "2090-01-01",
+    validUntil: "2020-12-31",
+  });
+
+  await expect(
+    extendPriceListValidity(db, { priceListId, validUntil: overDagen(30) }),
+  ).rejects.toMatchObject({ reason: "before_start" });
+});
+
+test("extendPriceListValidity: lijst die nog niet begonnen is → geweigerd, óók met een datum ná valid_from", async () => {
+  // Het gat dat 'before_start' NIET dekte. De view eist twee dingen
+  // (db/migrations/0004_vijfstatussen.sql): valid_from <= CURRENT_DATE ÉN
+  // valid_until >= CURRENT_DATE. Een einddatum ná valid_from glipte langs de
+  // before_start-guard, de UPDATE ging door en het scherm meldde groen "Its products are
+  // back in the matcher" — terwijl visible_products nul rijen bleef geven omdat de lijst
+  // pas in 2090 begint. Precies het soort leugen dat de knop onbetrouwbaar maakt.
+  const db = await createTestDb();
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Itre",
+    name: "Fastill",
+    price: "120.00",
+    validFrom: "2090-01-01",
+    validUntil: "2020-12-31",
+  });
+
+  const voor = await db
+    .select()
+    .from(visibleProducts)
+    .where(eq(visibleProducts.brandId, brandId));
+  expect(voor).toHaveLength(0);
+
+  await expect(
+    // 2095 ligt ná valid_from (2090), dus before_start vuurt hier niet.
+    extendPriceListValidity(db, { priceListId, validUntil: "2095-01-01" }),
+  ).rejects.toMatchObject({ reason: "not_started" });
+
+  // Niets geschreven: dezelfde einddatum, geen event, en het product blijft onzichtbaar.
+  const [lijst] = await db.select().from(priceLists).where(eq(priceLists.id, priceListId));
+  expect(lijst.validUntil).toBe("2020-12-31");
+  expect(
+    (await db.select().from(events)).filter((e) => e.action === "price_list_extended"),
+  ).toHaveLength(0);
+  const na = await db
+    .select()
+    .from(visibleProducts)
+    .where(eq(visibleProducts.brandId, brandId));
+  expect(na, "een verlenging die niets zichtbaar maakt mag niet slagen").toHaveLength(0);
+});
+
+test("listPriceListStatus: een gearchiveerde lijst draagt replaced_at mee (het scherm mag hem geen verlengknop geven)", async () => {
+  // De bedrading achter D3: archivePriceList laat valid_until in het verleden staan, dus
+  // de rij leest als "verlopen" en kreeg een verlengformulier dat altijd faalt met
+  // 'archived'. Het scherm kan dat alleen weten als de query het veld meelevert.
+  const db = await createTestDb();
+  const { priceListId } = await seedBrandProduct(db, {
+    brand: "Modular",
+    name: "Smart Cake",
+    price: "99.00",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+
+  const voor = (await listPriceListStatus(db)).find((r) => r.id === priceListId);
+  expect(voor?.bucket).toBe("verlopen");
+  expect(voor?.replacedAt).toBeNull();
+
+  await archivePriceList(db, priceListId, "test@brink");
+
+  const na = (await listPriceListStatus(db)).find((r) => r.id === priceListId);
+  expect(na, "de rij blijft in de set — andere schermen rekenen erop").toBeDefined();
+  expect(na?.bucket).toBe("verlopen");
+  expect(na?.replacedAt).not.toBeNull();
 });
 
 test("natuurlijke sleutel: zelfde (brand, supplier_article_code) twee keer → geweigerd", async () => {

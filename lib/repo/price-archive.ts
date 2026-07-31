@@ -235,6 +235,170 @@ export async function upsertPriceLines(
   return { priceListId: list.id, inserted, updated, archivedLines };
 }
 
+// ── Verlenging: valid_until vooruit zetten (bevinding B3, retourpad van regel 3) ──
+// Ijzeren regel 3 is eenrichtingsverkeer zolang niemand de einddatum vooruit kan zetten:
+// de lijst verloopt, visible_products laat álle producten van het merk vallen, en het
+// scherm zegt letterlijk "what's needed now is an extension, not a new submission" —
+// terwijl er nergens code stond die een verlenging kon uitvoeren. Dit is die code.
+//
+// Bewust NIET replacePriceList: er komt geen nieuwe lijst en er wordt niets gearchiveerd.
+// Dezelfde lijst, dezelfde prijsregels, alleen een latere einddatum — het merk heeft
+// bevestigd dat de prijzen langer gelden. replacePriceList zou de prijsregels naar het
+// archief verplaatsen en het gat juist groter maken.
+//
+// Geen db.transaction(): neon-http gooit daarop (zie de toelichting bij upsertPriceLines,
+// ~regel 109). Nodig is het ook niet — dit is één UPDATE van één kolom.
+
+/** Waarom een verlenging geweigerd is. Codes i.p.v. losse zinnen, zodat de action-laag
+ *  ze kan vertalen naar een boodschap op het scherm zonder de tekst hier te kennen. */
+export type PriceListExtendReason =
+  | "invalid_date"
+  | "unknown_list"
+  | "archived"
+  | "date_in_past"
+  | "not_later"
+  // Twee verschillende dingen, bewust twee codes (de eerste versie had er één en die
+  // dekte de tweede helft niet — zie de guards onderaan extendPriceListValidity):
+  //  • before_start = de NIEUWE einddatum ligt vóór valid_from;
+  //  • not_started  = de LIJST is nog niet begonnen (valid_from > vandaag), wat de
+  //    tweede helft van de view-eis is en niets met de nieuwe einddatum te maken heeft.
+  | "before_start"
+  | "not_started";
+
+export class PriceListExtendError extends Error {
+  readonly reason: PriceListExtendReason;
+  constructor(reason: PriceListExtendReason, message: string) {
+    super(message);
+    this.name = "PriceListExtendError";
+    this.reason = reason;
+  }
+}
+
+/** 'YYYY-MM-DD' én een bestaande kalenderdatum — '2026-02-30' rolt door naar 03-02 en
+ *  wordt daarom afgewezen, anders zou de DB er stil iets anders van maken. */
+function isIsoDatum(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** Vandaag als 'YYYY-MM-DD' in UTC — dezelfde conventie als daysUntil() in
+ *  lib/repo/enrichment.ts, zodat "verlopen" op het scherm en hier hetzelfde betekent. */
+function isoVandaag(d: Date): string {
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * Zet de einddatum van één prijslijst vooruit. Levert de bijgewerkte rij op.
+ *
+ * Weigert (PriceListExtendError met `reason`):
+ *  • de lijst bestaat niet;
+ *  • de lijst is vervangen (`replaced_at`): zijn prijsregels staan in prices_archive, dus
+ *    een verlenging zou geldigheid beloven voor prijzen die niet meer in `prices` staan —
+ *    een lege lijst die groen kleurt. Zo'n merk heeft een nieuwe lijst nodig, geen datum;
+ *  • geen geldige YYYY-MM-DD-datum;
+ *  • een datum vóór vandaag: de view toetst `valid_until >= CURRENT_DATE` (inclusief, zie
+ *    db/migrations/0004_vijfstatussen.sql), dus vandaag mág — gisteren verandert niets;
+ *  • een datum die niet later is dan de huidige einddatum. VERKORTEN kan hier bewust niet:
+ *    een lijst korter maken haalt producten uit de matcher (regel 3) en is dus een andere
+ *    handeling, met een eigen bevestiging en een eigen event — niet iets wat per ongeluk
+ *    uit dit formulier mag rollen;
+ *  • een datum vóór `valid_from`: een lijst die eindigt vóór hij begint is geen geldige
+ *    periode, ongeacht de kalender;
+ *  • een lijst die nog niet begonnen is (`valid_from` > vandaag): de view eist ÓÓK
+ *    `valid_from <= CURRENT_DATE` (db/migrations/0004_vijfstatussen.sql), dus hoe ver de
+ *    einddatum ook vooruit gaat, de producten blijven onzichtbaar. Zonder deze guard meldt
+ *    het scherm groen "Its products are back in the matcher" terwijl visible_products nul
+ *    rijen geeft — dan liegt de knop. Hier is geen datum die dit repareert: de startdatum
+ *    moet naar voren, en dat is een andere handeling.
+ */
+export async function extendPriceListValidity(
+  db: AppDb,
+  input: { priceListId: string; validUntil: string; actor?: string },
+  today: Date = new Date(),
+) {
+  const validUntil = input.validUntil.trim();
+  if (!isIsoDatum(validUntil)) {
+    throw new PriceListExtendError(
+      "invalid_date",
+      `"${input.validUntil}" is not a valid date (expected YYYY-MM-DD)`,
+    );
+  }
+
+  const [list] = await db
+    .select()
+    .from(priceLists)
+    .where(eq(priceLists.id, input.priceListId));
+  if (!list) {
+    throw new PriceListExtendError(
+      "unknown_list",
+      `Price list ${input.priceListId} does not exist`,
+    );
+  }
+  if (list.replacedAt !== null) {
+    throw new PriceListExtendError(
+      "archived",
+      `Price list ${list.id} was replaced; its price lines are archived — extending it would promise prices that are gone`,
+    );
+  }
+
+  // Datums als tekst vergelijken mag: 'YYYY-MM-DD' is lexicografisch = chronologisch.
+  const vandaag = isoVandaag(today);
+  if (validUntil < vandaag) {
+    throw new PriceListExtendError(
+      "date_in_past",
+      `New end date ${validUntil} is in the past (today is ${vandaag})`,
+    );
+  }
+  if (validUntil <= list.validUntil) {
+    throw new PriceListExtendError(
+      "not_later",
+      `New end date ${validUntil} is not later than the current end date ${list.validUntil}`,
+    );
+  }
+  if (validUntil < list.validFrom) {
+    throw new PriceListExtendError(
+      "before_start",
+      `New end date ${validUntil} is before the start date ${list.validFrom}`,
+    );
+  }
+  // De tweede helft van de view-predicaat: `pl.valid_from <= CURRENT_DATE`. Staat NA
+  // before_start, want een einddatum vóór de startdatum is de concretere klacht en had
+  // al zijn eigen reden; deze guard vangt het geval dat daar doorheen glipt (einddatum
+  // ná valid_from, maar valid_from zelf ligt nog in de toekomst).
+  if (list.validFrom > vandaag) {
+    throw new PriceListExtendError(
+      "not_started",
+      `Price list ${list.id} has not started yet (valid_from ${list.validFrom}, today is ${vandaag}); a later end date does not make its products visible`,
+    );
+  }
+
+  const [bijgewerkt] = await db
+    .update(priceLists)
+    .set({ validUntil, updatedAt: new Date() })
+    .where(eq(priceLists.id, list.id))
+    .returning();
+
+  // Ijzeren regel 5. previousValidUntil rijdt mee: zonder de oude datum is achteraf niet
+  // te zien of dit een verlenging van een week of van vijf jaar was.
+  await logEvent(db, {
+    entity: "price_list",
+    entityId: list.id,
+    action: "price_list_extended",
+    actor: input.actor,
+    payload: {
+      brandId: list.brandId,
+      name: list.name,
+      previousValidUntil: list.validUntil,
+      validUntil,
+    },
+  });
+
+  return bijgewerkt;
+}
+
 function gelijkeBedragen(a: string, b: string): boolean {
   const x = Number(a);
   const y = Number(b);

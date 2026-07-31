@@ -194,6 +194,10 @@ export default async function MerkrelatieDetailPage({
               validUntil={validUntil}
               variant="banner"
               brandName={row.name}
+              // De melding vraagt om een verlenging; zonder href was hij kale tekst en
+              // stond de gebruiker hier stil. /data/price-lists is de plek waar die
+              // verlenging daadwerkelijk gedaan kan worden (bevinding B3).
+              href="/data/price-lists"
             />
           </div>
         )}

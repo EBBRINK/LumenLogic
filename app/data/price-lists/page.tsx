@@ -4,11 +4,24 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { PriceListStatusTable } from "@/components/data/price-list-status";
+import {
+  extendNotice,
+  PriceListExtendSection,
+} from "@/components/data/price-list-extend";
 import { listPriceListStatus } from "@/lib/repo/enrichment";
 import { requireSession } from "@/lib/session";
+import { extendPriceListAction } from "./actions";
 
-export default async function PrijslijstenPage() {
+export default async function PrijslijstenPage({
+  searchParams,
+}: {
+  // De uitkomst van een verlenging staat in de URL (bevinding B3): de action redirect
+  // hierheen met een code, deze pagina maakt er een zin van. Zo blijft de bediening een
+  // kaal <form> in een server component — geen client component, dus ook geen callAction().
+  searchParams: Promise<{ extend?: string; until?: string }>;
+}) {
   await requireSession();
+  const { extend, until } = await searchParams;
   // Geen cast: PriceListStatus is structureel toewijsbaar aan PriceListRow. Dat is precies de
   // bedoeling — dit is de énige plek waar de compiler nog controleert dat de query alle velden
   // levert die het scherm toont (o.a. lifecycle). Een `as PriceListRow[]` zou die controle
@@ -27,10 +40,18 @@ export default async function PrijslijstenPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Price lists</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Validity at a glance. Expired lists are a coverage gap: their products
-          drop out of the matcher until there's a new list.
+          drop out of the matcher until the list is extended or the brand
+          delivers a new one.
         </p>
       </header>
       <PriceListStatusTable rows={rows} />
+      {/* De melding op de verlopen rij vraagt om een verlenging ("not a new submission").
+          Dít is waar die verlenging gebeurt — direct eronder, op hetzelfde scherm. */}
+      <PriceListExtendSection
+        rows={rows}
+        extendAction={extendPriceListAction}
+        notice={extendNotice(extend, until)}
+      />
     </main>
   );
 }

@@ -92,7 +92,10 @@ export function BrandsListBlock({ brands }: { brands: BrandListRow[] }) {
                             validUntil={b.priceListValidUntil ?? null}
                             variant="badge"
                             brandName={b.name}
-                            href={`/data/brand-relations/${b.id}`}
+                            // Wees naar de merkpagina, maar dáár staat alleen dezelfde
+                            // melding — een doodlopende doorverwijzing. De verlenging
+                            // gebeurt op /data/price-lists (bevinding B3).
+                            href="/data/price-lists"
                           />
                         </div>
                       )}
