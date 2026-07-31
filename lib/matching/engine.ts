@@ -133,16 +133,28 @@ const CHOICE_FIELDS = new Set(["color", "shape", "dimmable"]);
 // B3-predicaat (puur, deterministisch): de ondubbelzinnige bijna-match.
 // Gezet ALLEEN als:
 //   • de regelstatus geel is, én
+//   • de kandidaat op lijst 1 ("aantoonbaar") staat, én
 //   • er precies één kandidaat is waarvan het slechtste veld-verdict "geel" is en die
 //     volledig beoordeelbaar is (geen rood én geen onbekend in de deviations), én
 //   • geen van de gele afwijkingen van die kandidaat een keuzeveld betreft
 //     (color/shape/dimmable — daar kiest een mens, nooit het systeem).
 // Alle andere gevallen: undefined (bestaand gedrag: geel → review).
-export function pickUnambiguousYellow<C extends { deviations: MatchDeviation[] }>(
-  status: MatchStatus,
-  candidates: C[],
-): C | undefined {
+//
+// A2 (reviewzwerm 2.5a, gereproduceerd): de lijst-eis is nieuw en repareert een gat
+// tussen Gat A/B en dit predicaat. "Geen onbekend in de deviations" ving alleen de
+// ONTBREKENDE waarde af, niet de ONBEVESTIGDE: een kandidaat wiens beam_angle wíj uit
+// de optiekklasse hebben afgeleid (FL≈39°/WF≈57°, usesUnconfirmedSource) zakt van Gat B
+// naar lijst 2, maar zijn deviations blijven schoon-geel. Dit predicaat las `scored` —
+// álle kandidaten — en accepteerde hem alsnog automatisch: reviewKind null, geen mens,
+// een match op onze eigen aanname, terwijl Gat B letterlijk "de mens kiest met reden"
+// belooft. De lijst is de enige plek waar "onbevestigd" is vastgelegd (de vlag zelf
+// leeft niet in de deviations), dus toetsen we daarop — dat dekt Gat A (specloos) mee.
+export function pickUnambiguousYellow<
+  C extends { deviations: MatchDeviation[]; list: "aantoonbaar" | "onvolledig" },
+>(status: MatchStatus, candidates: C[]): C | undefined {
   if (status !== "geel") return undefined;
+  // Ondubbelzinnigheid telt over ÁLLE kandidaten (ook lijst 2): staan er twee die
+  // bijna passen, dan kiest het systeem nooit — dat was en blijft de B3-eis.
   const cleanYellow = candidates.filter(
     (c) =>
       hasYellow(c.deviations) &&
@@ -151,6 +163,8 @@ export function pickUnambiguousYellow<C extends { deviations: MatchDeviation[] }
   );
   if (cleanYellow.length !== 1) return undefined;
   const only = cleanYellow[0];
+  // A2: en de enige mag alleen automatisch door als hij aantoonbaar is.
+  if (only.list !== "aantoonbaar") return undefined;
   const yellowOnChoiceField = only.deviations.some(
     (d) => d.verdict === "geel" && CHOICE_FIELDS.has(d.field),
   );

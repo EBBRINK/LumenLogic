@@ -549,6 +549,7 @@ test("b3: gele afwijking op een keuzeveld (dimbaarheid) → geen auto-door", asy
 
 test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt mag wél", () => {
   const colorYellow = {
+    list: "aantoonbaar" as const,
     deviations: [
       {
         field: "color",
@@ -563,6 +564,7 @@ test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt m
 
   // bewijs dat de weigering aan het KEUZEVELD ligt, niet aan het gele verdict
   const wattYellow = {
+    list: "aantoonbaar" as const,
     deviations: [
       {
         field: "watt",
@@ -576,6 +578,11 @@ test("b3: geel op kleur (keuzeveld) weigert het predicaat; zelfde geel op watt m
   expect(pickUnambiguousYellow("geel", [wattYellow])).toBe(wattYellow);
   // en zonder gele regelstatus nooit
   expect(pickUnambiguousYellow("groen", [wattYellow])).toBeUndefined();
+  // A2: exact dezelfde afwijking op lijst 2 (onvolledig/onbevestigd) nooit — daar
+  // heeft Gat A/B de kandidaat juist naartoe gedegradeerd om de mens te laten kiezen
+  expect(
+    pickUnambiguousYellow("geel", [{ ...wattYellow, list: "onvolledig" as const }]),
+  ).toBeUndefined();
 });
 
 test("b3: kandidaat met een onbekend veld → geen auto-door (niet volledig beoordeelbaar)", async () => {
@@ -874,4 +881,60 @@ test("gat B: onbevestigde kolom die NIET getoetst wordt, blokkeert niets", async
     req({ brandText: "XAL", specs: { kelvin: 3000 } }),
   );
   expect(out.status).toBe("groen");
+});
+
+// ── A2 (reviewzwerm 2.5a): Gat B en B3 zaten langs elkaar heen ───────────────
+// De drie Gat-B-tests hierboven zetten een afwijking die GROEN zou zijn (beam 51 vs 57,
+// ≤10°); de B3-tests zetten nooit tier2Source. Precies daartussen zat het gat: een
+// GELE afwijking op een onbevestigd veld. Gat B zette de kandidaat op lijst 2 ("de mens
+// kiest met reden"), maar pickUnambiguousYellow las álle kandidaten en accepteerde hem
+// alsnog automatisch — reviewKind null, geen mens, geel in het projecttotaal.
+test("A2: schoon-gele kandidaat op een ONBEVESTIGDE bron gaat niet automatisch door", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57, // uit ONZE optiekklasse-tabel (WF ≈ 57°), niet uit XAL-data
+    kelvin: 3000,
+  });
+  await db
+    .update(products)
+    .set({ tier2Source: { beamAngle: "optic-code" } })
+    .where(eq(products.name, "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K"));
+
+  // Gevraagd 40°, geleverd 57° → 17° verschil: binnen de gele band (≤25), dus een
+  // schoon-gele kandidaat — geen rood, geen onbekend, geen keuzeveld.
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { beamAngle: 40, kelvin: 3000 } }),
+  );
+
+  expect(out.provable).toHaveLength(0); // Gat B: niets aantoonbaar
+  expect(out.incomplete[0].list).toBe("onvolledig");
+  expect(
+    out.incomplete[0].deviations.find((d) => d.field === "beamAngle")?.verdict,
+  ).toBe("geel");
+  // vóór de fix stond hier de kandidaat: het systeem accepteerde zijn eigen aanname
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+test("A2: dezelfde gele kandidaat mét bevestigde herkomst gaat wél automatisch door", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57,
+    kelvin: 3000,
+  });
+  await db
+    .update(products)
+    .set({ tier2Source: { beamAngle: "parsed-from-name" } })
+    .where(eq(products.name, "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K"));
+
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "XAL", specs: { beamAngle: 40, kelvin: 3000 } }),
+  );
+  expect(out.status).toBe("geel");
+  expect(out.unambiguousYellow?.name).toContain("SASSO 100");
 });
