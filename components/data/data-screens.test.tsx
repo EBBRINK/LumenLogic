@@ -253,6 +253,46 @@ test("inlaadwachtrij: elke wachtende rij biedt óók 'Not a brand'", async () =>
   ).toBe(2);
 });
 
+// Reviewzwerm 2.5a C1: de lege wachtrij stond op een kale grijze regel — het dialect dat
+// components/ui/empty-state.tsx afschaft. De assertie hangt aan `data-slot="empty-state"`
+// en niet aan de zin: alleen zo bewijst hij dat het GEDEELDE component rendert en niet dat
+// er toevallig dezelfde woorden staan.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`lege inlaadwachtrij: de gedeelde lege toestand, framed, zonder eigen actie (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <BrandLoadQueue
+            rows={[]}
+            markLoadedAction={noopAction}
+            dismissAction={noopAction}
+          />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText(/No brands in the queue/))
+        .toBeInTheDocument();
+
+      const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+      expect(
+        leeg,
+        "geen [data-slot=empty-state]: terug op de kale grijze regel",
+      ).not.toBeNull();
+      // "framed": op /data/loading staat het blok direct in <main>, zonder <Card>.
+      expect(leeg!.dataset.variant).toBe("framed");
+      expect(leeg!.className).toContain("border-dashed");
+      // Bewuste `action={null}`: de wachtrij vult zichzelf vanuit de matcher, er is hier
+      // niets te starten — dus ook geen leeg actie-blok.
+      expect(leeg!.children.length).toBe(1);
+      expect(leeg!.querySelector("form")).toBeNull();
+
+      await page.screenshot({ path: `./data-inladen-leeg.${theme}.${device}.test.png` });
+    });
+  }
+}
+
 // ── BLOCKER, reparatie 30 jul ─────────────────────────────────────────────────────────
 // "Not a brand" was één klik op een ghost-knop en daarachter een harde delete: geen undo,
 // geen archief, geen scherm waar een afgevoerde rij nog te zien is, en de frequency (over

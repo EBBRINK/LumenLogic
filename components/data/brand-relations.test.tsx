@@ -499,6 +499,48 @@ test("de werkbalk toont het statusfilter als links met aria-current", async () =
     .toHaveAttribute("href", "/data/brand-relations?status=data_ontvangen");
 });
 
+// Reviewzwerm 2.5a C1: een filter zonder treffers gaf een kale grijze regel — het dialect
+// dat components/ui/empty-state.tsx afschaft. De assertie hangt aan
+// `data-slot="empty-state"` en niet aan de zin: alleen zo bewijst hij dat het GEDEELDE
+// component rendert en niet dat er toevallig dezelfde woorden staan.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`filter zonder treffers: de gedeelde lege toestand, framed, zonder eigen actie (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Overzicht
+          query={{ ...ALLES, q: "bestaat-niet" }}
+          paginaRijen={[]}
+          gefilterd={0}
+        />,
+      );
+      await expect
+        .element(page.getByText("No brands match the filters."))
+        .toBeInTheDocument();
+
+      const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+      expect(
+        leeg,
+        "geen [data-slot=empty-state]: terug op de kale grijze regel",
+      ).not.toBeNull();
+      // "framed": de tabel staat in een space-y-kolom naast toolbar en pager, niet in een
+      // <Card> die het kader al tekent.
+      expect(leeg!.dataset.variant).toBe("framed");
+      expect(leeg!.className).toContain("border-dashed");
+      // Bewuste `action={null}`: het filter dat deze leegte maakt staat in de werkbalk
+      // erboven, met zijn eigen wisknop.
+      expect(leeg!.children.length).toBe(1);
+      // En de tabel zelf is er niet — anders zou de lege staat naast een kop-zonder-rijen staan.
+      expect(document.querySelector("tbody")).toBeNull();
+
+      await page.screenshot({
+        path: `./data-merkrelaties-leeg.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
 // ── Punt 3: bulkactie met één bevestiging ────────────────────────────────────
 
 test("punt 3: selectie + bulkstatus gaat via één bevestiging, met de juiste lading", async () => {

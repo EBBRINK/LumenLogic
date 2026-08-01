@@ -18,6 +18,7 @@
 // samenvattingsTekst() uit lib/excel-validate-messages.ts. Dit bestand schrijft geen enkele
 // zin over het format van het bestand.
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { FIELD_CATALOG } from "@/lib/field-catalog";
 import type { RijWaarschuwing } from "@/lib/excel-validate";
 import {
@@ -586,10 +587,17 @@ export function TemplateProposal({
       )}
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          This file changes nothing: everything in it matches what we already
-          have.
-        </p>
+        // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": dit blok staat
+        // los in het formulier op het kale canvas; de <fieldset> en de banners
+        // eromheen zijn geen omhullende kaart.
+        //
+        // Bewuste `action={null}`: "Reject" en "Approve checked changes" staan in de
+        // voettekst van ditzelfde formulier. Een knop in de lege staat zou dezelfde
+        // twee submits een tweede keer aanbieden.
+        <EmptyState
+          title="This file changes nothing: everything in it matches what we already have."
+          action={null}
+        />
       ) : (
         <div className="space-y-3">
           {rows.map((diff) => (

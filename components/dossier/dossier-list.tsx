@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PhaseBadge } from "./phase-badge";
@@ -21,11 +21,25 @@ export function DossierList({
   emptyMessage = "No projects yet. Use “New project” to create one.",
 }: {
   dossiers: DossierListItem[];
-  /** Zoekactie zonder resultaat vraagt om een ander verhaal dan een lege database. */
-  emptyMessage?: ReactNode;
+  /**
+   * Zoekactie zonder resultaat vraagt om een ander verhaal dan een lege database.
+   * String en geen ReactNode: dit is de titel van de gedeelde lege toestand, en die
+   * is bewust één zin op voorgrondkleur (components/ui/empty-state.tsx).
+   */
+  emptyMessage?: string;
 }) {
   if (dossiers.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+    // Was een kale grijze regel — precies het dialect dat empty-state.tsx afschaft
+    // (UX-audit 30 jul, A6; reviewzwerm 2.5a C1).
+    //
+    // "framed": op /projects staat deze lijst op het kale canvas, er is geen <Card>
+    // omheen die het kader al tekent.
+    //
+    // Bewuste `action={null}`: de uitweg van elk van de drie gevallen staat al op het
+    // scherm — "New project" in de paginakop, en zoekterm/statusfilter in de balk er
+    // vlak boven. Een knop hier zou naar bediening wijzen die twee centimeter hoger
+    // staat, en de tekst van de lege toestand doet dat al in woorden.
+    return <EmptyState title={emptyMessage} action={null} />;
   }
   return (
     <ul className="flex flex-col gap-2">

@@ -403,3 +403,56 @@ test("lege lijst: de tekst wijst naar de knop, niet naar een kolom die weg is", 
     .toBeInTheDocument();
   expect(document.body.textContent).not.toContain("on the right");
 });
+
+// Reviewzwerm 2.5a C1: dit was een kale grijze regel — het dialect dat
+// components/ui/empty-state.tsx afschaft. De assertie hangt aan `data-slot` en niet
+// aan de zin hierboven: alleen zo bewijst hij dat het GEDEELDE component rendert en
+// niet dat er toevallig dezelfde woorden staan.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`lege lijst: de gedeelde lege toestand, framed, geen kale grijze regel (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <DossierList dossiers={[]} />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText(/Use .New project. to create one/))
+        .toBeInTheDocument();
+
+      const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+      expect(
+        leeg,
+        "geen [data-slot=empty-state]: terug op de kale grijze regel",
+      ).not.toBeNull();
+      // "framed": de lijst staat op /projects op het kale canvas, niet in een <Card>.
+      expect(leeg!.dataset.variant).toBe("framed");
+      expect(leeg!.className).toContain("border-dashed");
+      expect(leeg!.textContent).toContain("No projects yet.");
+      // De titel staat op voorgrondkleur; de oude regel was in zijn geheel muted.
+      expect(leeg!.querySelector("p")!.className).not.toContain("text-muted-foreground");
+
+      await page.screenshot({ path: `./projectlijst-leeg.${theme}.${device}.test.png` });
+    });
+  }
+}
+
+// De zoek-tak vertelt een ander verhaal dan de lege database, en moet dezelfde vorm
+// krijgen — anders is de veegbeurt alleen op de default-tekst gedaan.
+test("lege lijst na zoeken: eigen zin, zelfde gedeelde vorm", async () => {
+  await renderServer(
+    <Screen>
+      <DossierList dossiers={[]} emptyMessage="No project matches “ziekenhuis”." />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/No project matches/))
+    .toBeInTheDocument();
+  const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+  expect(leeg, "geen [data-slot=empty-state]: terug op de kale grijze regel").not.toBeNull();
+  expect(leeg!.dataset.variant).toBe("framed");
+  // Bewuste `action={null}`: alleen titel, geen leeg actie-blok.
+  expect(leeg!.children.length).toBe(1);
+});

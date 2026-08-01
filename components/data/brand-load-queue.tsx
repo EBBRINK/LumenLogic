@@ -1,6 +1,7 @@
 // Blauw-inlaadwachtrij (H-08): merken die als datagat (blauw) gevraagd zijn, gesorteerd op
 // hoe vaak. "Markeer als ingeladen" hermatcht meteen alle blauwe/open regels van dat merk.
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
   Table,
@@ -37,9 +38,16 @@ export function BrandLoadQueue({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No brands in the queue — no blue lines are open.
-      </p>
+      // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": op /data/loading
+      // staat dit blok direct in <main>, zonder omhullende kaart.
+      //
+      // Bewuste `action={null}`: deze wachtrij vult zichzelf vanuit de matcher — een
+      // merk komt hier binnen doordat een regel blauw wordt, niet doordat iemand hier
+      // iets aanmaakt. Er is dus niets te starten; leeg is hier goed nieuws.
+      <EmptyState
+        title="No brands in the queue — no blue lines are open."
+        action={null}
+      />
     );
   }
   return (
