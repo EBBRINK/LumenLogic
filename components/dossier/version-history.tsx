@@ -5,6 +5,8 @@
 // zichtbaar met hun status, niets telt op tot iets misleidends.
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -110,7 +112,7 @@ function SnapshotForm({
         type="text"
         name="note"
         placeholder="Note (optional) — e.g. after customer revision"
-        className="h-8 w-64 max-w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+        className={cn(veldClass, "w-64 max-w-full")}
       />
       <Button type="submit" size="sm">
         Save new version

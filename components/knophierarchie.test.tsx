@@ -57,13 +57,50 @@ function resolveerImport(spec: string, vanuit: string): string | null {
 
 type Knop = { bestand: string; regel: number; variant: string; label: string };
 
-/** Alle <Button>-aanroepen in één bestand, met hun variant en zichtbare label. */
+/**
+ * Een kaal navy vlak: `bg-primary` als losse utility, inclusief de prefixen en suffixen
+ * die niets aan het navy vlak veranderen.
+ *
+ * TELT MEE: `bg-primary`, `!bg-primary`, `bg-primary/90` (opacity is nog steeds navy),
+ * en media-/thema-prefixen die dezelfde knop in een andere context beschrijven:
+ * `dark:bg-primary`, `sm:bg-primary`, `dark:sm:bg-primary`.
+ *
+ * TELT NIET MEE: statusvariant-prefixen — `hover:`, `focus:`, `focus-visible:`,
+ * `active:`, `disabled:`, `group-hover:` en varianten daarvan — want die beschrijven een
+ * ándere toestand, niet de rusttoestand van de knop. Evenmin `bg-primary-foreground` en
+ * `bg-primary-hover`: een koppelteken-suffix is een andere kleur, geen navy vlak.
+ * Beide vormen staan echt in `components/ui/` (badge.tsx, button.tsx); een valse positief
+ * daar dwingt de volgende sessie om deze guard te verzwakken.
+ *
+ * TOT 2026-07-31 (reviewzwerm 2.5a, B8) stonden hier twee lookarounds die te breed
+ * blokkeerden: `(?![\w/-])` wees niet alleen `-foreground` af maar ook `/90`, en
+ * `(?<![\w:/-])` wees niet alleen `hover:` af maar élk prefix, dus ook `dark:` en `sm:`.
+ * Drie schrijfwijzen van een kale navy knop glipten daardoor langs de bewaker.
+ *
+ * BEKENDE ONTSNAPPINGEN, bewust open (duurder dan deze guard, niet gevraagd — vaar hier
+ * dus geen valse zekerheid op): een letterlijke kleurwaarde `bg-[#1A1F3A]`; een klassen-
+ * reeks die via een template-literal met backticks wordt opgebouwd; en constanten die in
+ * `components/ui/**` staan (dat pad is met opzet uitgezonderd, zie de tweede test).
+ */
+const KAAL_NAVY =
+  /(?<![\w:/-])(?:(?!(?:[\w-]+-)?(?:hover|focus|focus-visible|active|disabled|visited|target):)[\w-]+:)*bg-primary(?:\/\d+)?(?![\w/-])/;
+
+/**
+ * Alle knop-aanroepen in één bestand, met hun variant en zichtbare label.
+ *
+ * WAAROM OOK `<button>` MET KLEINE LETTER (reviewzwerm 2.5a, B8): tot 2026-07-31 matchte
+ * dit alleen `/<Button\b/` en was de test groen op 6/6 terwijl er op vier schermen een
+ * handgebouwde navy knop stond die de scan simpelweg niet zag. De regel gold daardoor
+ * feitelijk niet, en "groen" betekende niets. Een `<button className="… bg-primary …">`
+ * ís een primary — of hij nu door button.tsx komt of niet.
+ */
 function knoppenIn(bestand: string): Knop[] {
   const src = bron(bestand) ?? "";
   const uit: Knop[] = [];
-  const re = /<Button\b/g;
+  const re = /<(Button|button)\b/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) {
+    const component = m[1] === "Button";
     // Einde van de openings-tag zoeken: een '>' op accolade-diepte 0.
     let i = m.index + m[0].length;
     let diepte = 0;
@@ -77,10 +114,17 @@ function knoppenIn(bestand: string): Knop[] {
     const tag = src.slice(m.index, i + 1);
     // Geen `s`-vlag: tsconfig staat op ES2017, en `[^}]` matcht regeleindes toch al.
     const vm = tag.match(/variant=(?:"([a-z]+)"|\{([^}]*)\})/);
-    // Geen variant-prop = de defaultVariant van button.tsx, dus navy.
-    const variant = vm ? (vm[1] ?? vm[2]!.replace(/\s+/g, " ").trim()) : "default";
+    // <Button> zonder variant-prop = de defaultVariant van button.tsx, dus navy. Een
+    // kaal <button> heeft geen varianten; daar beslist de klassenreeks: navy vlak of niet.
+    const variant = component
+      ? vm
+        ? (vm[1] ?? vm[2]!.replace(/\s+/g, " ").trim())
+        : "default"
+      : KAAL_NAVY.test(tag)
+        ? "default"
+        : "handgebouwd";
     const rest = src.slice(i + 1);
-    const eind = rest.indexOf("</Button>");
+    const eind = rest.indexOf(component ? "</Button>" : "</button>");
     const label = rest
       .slice(0, eind < 0 ? 60 : eind)
       .replace(/<[^>]*\/>/g, "")
@@ -242,6 +286,36 @@ test("elk scherm heeft hoogstens één primary-knop", () => {
     "DESIGN.md §6: één primary per scherm, en dat is de zwaarste actie. " +
       "Zet de lichtere op variant=\"outline\" — of, als dit echt een dialoog, een " +
       "herhaalde beslis-kaart of een filterchip is, zet hem in NIET_MEETELLEN mét reden.",
+  ).toEqual([]);
+});
+
+test("een navy vlak komt uit button.tsx, niet uit een handgeschreven klassenreeks", () => {
+  // De andere helft van B8. De telling hierboven ziet nu ook `<button className="…
+  // bg-primary …">`, maar zo'n knop is ook los van het budget fout: hij mist wat
+  // button.tsx sinds 4d6e5a8 wél doet — `--primary-hover`, `active:bg-primary-active`
+  // en `disabled:cursor-not-allowed`. Vijf plekken deden dat (brand-relation-form,
+  // brand-message-block, custom-field-form, admin/brand-form, app/admin/brands/page),
+  // en één ervan was een <Link>, dus een test die alleen naar knoppen kijkt mist hem.
+  //
+  // Daarom hier: geen enkel element buiten components/ui/ draagt `bg-primary` als losse
+  // utility. Wie een navy vlak wil, gebruikt <Button> (met `asChild` voor een link).
+  const fouten: string[] = [];
+  for (const bestand of Object.keys(RAW)) {
+    if (!bestand.startsWith("/app/") && !bestand.startsWith("/components/")) continue;
+    if (bestand.endsWith(".test.tsx")) continue;
+    // components/ui/ is juist de plek waar de tokens wél mogen staan.
+    if (bestand.startsWith("/components/ui/")) continue;
+    const src = bron(bestand)!;
+    src.split("\n").forEach((regel, i) => {
+      // Commentaarregels die de klasse noemen (zoals deze uitleg) zijn geen code.
+      if (/^\s*(\/\/|\*|\/\*)/.test(regel)) return;
+      if (KAAL_NAVY.test(regel)) fouten.push(`${bestand}:${i + 1}`);
+    });
+  }
+  expect(
+    fouten,
+    "handgebouwd navy vlak — gebruik <Button> (of <Button asChild> om een link). " +
+      "Zie DESIGN.md §6: de knopvarianten staan in components/ui/button.tsx.",
   ).toEqual([]);
 });
 

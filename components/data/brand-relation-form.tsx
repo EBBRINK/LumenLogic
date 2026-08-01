@@ -3,6 +3,9 @@
 // Relatievelden bewerken op de detailpagina (stap 5): status, contactpersoon,
 // e-mail, laatste contact en notities — één save via dezelfde server action als
 // het overzicht (upsertBrandRelation blijft de enige schrijver, K2).
+import { Button } from "@/components/ui/button";
+import { veldClass, tekstvakClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import { STATUS_LABEL, type RelationStatus } from "@/lib/brand-relations-view";
 
 export type BrandRelationFormValues = {
@@ -29,7 +32,7 @@ export function BrandRelationForm({
         <select
           name="status"
           defaultValue={values.status}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+          className={cn(veldClass, "w-full")}
         >
           {(Object.keys(STATUS_LABEL) as RelationStatus[]).map((s) => (
             <option key={s} value={s}>
@@ -44,7 +47,7 @@ export function BrandRelationForm({
           type="date"
           name="lastContactAt"
           defaultValue={values.lastContactAt ?? ""}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+          className={cn(veldClass, "w-full")}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -54,7 +57,7 @@ export function BrandRelationForm({
           name="contactName"
           defaultValue={values.contactName ?? ""}
           placeholder="Name at the brand"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          className={cn(veldClass, "w-full")}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -64,7 +67,7 @@ export function BrandRelationForm({
           name="contactEmail"
           defaultValue={values.contactEmail ?? ""}
           placeholder="name@brand.com"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          className={cn(veldClass, "w-full")}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm sm:col-span-2">
@@ -74,16 +77,14 @@ export function BrandRelationForm({
           defaultValue={values.notes ?? ""}
           rows={3}
           placeholder="Agreements, commitments, notes…"
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className={cn(tekstvakClass, "w-full")}
         />
       </label>
       <div className="sm:col-span-2">
-        <button
-          type="submit"
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Save
-        </button>
+        {/* De primary van /data/brand-relations/[brandId]: dit is de enige actie op het
+            scherm die iets wegschrijft (DESIGN.md §6, één primary per scherm). De
+            kopieerknop en "Check template" zijn daarom outline. */}
+        <Button type="submit">Save</Button>
       </div>
     </form>
   );

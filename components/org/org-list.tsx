@@ -6,6 +6,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { Organization } from "@/db/schema";
 import { OrgMembers, type MemberRow } from "./org-members";
@@ -75,7 +76,7 @@ function NewOrgFormFields({
           id="org-plan"
           name="plan"
           defaultValue="trial"
-          className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+          className={veldClass}
         >
           <option value="trial">Trial</option>
           <option value="abonnement">Subscription</option>

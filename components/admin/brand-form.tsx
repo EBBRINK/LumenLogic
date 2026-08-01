@@ -13,6 +13,9 @@
 // wil een eigen kopje; bovendien is kilometers numeriek terwijl de renderer hardcoded
 // type="text" zet. Het milieublok staat daarom als eigen <fieldset>, buiten FIELDS.
 import { useActionState } from "react";
+import { Button } from "@/components/ui/button";
+import { veldClass, tekstvakClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import type { BrandLifecycle } from "@/db/schema";
 import { BRINK_ADDRESS } from "@/lib/brink";
 import type {
@@ -88,8 +91,10 @@ const FIELDS = [
   hint: string | null;
 }[];
 
-const inputClass =
-  "h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+// Eén bron van waarheid voor de veldtokens: components/ui/field.ts (reviewzwerm 2.5a,
+// B9/B10). Hier stond een eigen reeks op h-9 (36px, tegen O9's 44px) met de afgeschafte
+// focus-halo ring-ring/50 in plaats van de kit-ring rgba(45,90,140,.1).
+const inputClass = cn(veldClass, "w-full");
 
 function emptyValues(brand?: BrandFormBrand): BrandFormValues {
   return {
@@ -219,7 +224,7 @@ export function BrandForm({
           defaultValue={value("descriptionNl")}
           placeholder="What this brand is, and anything worth knowing — bankruptcy, merger, who to talk to."
           aria-label="Description"
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className={cn(tekstvakClass, "w-full")}
         />
       </label>
 
@@ -229,7 +234,7 @@ export function BrandForm({
           name="lifecycle"
           defaultValue={value("lifecycle")}
           aria-label="Lifecycle"
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm sm:max-w-sm"
+          className={cn(veldClass, "w-full sm:max-w-sm")}
         >
           {LIFECYCLE_ORDER.map((l) => (
             <option key={l} value={l}>
@@ -288,13 +293,11 @@ export function BrandForm({
       )}
 
       <div className="sm:col-span-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-        >
+        {/* De primary van /admin/brands/new en /admin/brands/[brandId]: dit formulier is
+            het scherm. */}
+        <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : submitLabel}
-        </button>
+        </Button>
       </div>
     </form>
   );

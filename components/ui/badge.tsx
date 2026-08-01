@@ -4,8 +4,14 @@ import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 
+// FOCUS: `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/10` —
+// identiek aan Button en Input. Een badge is geen invoerveld, dus DESIGN.md §6 "Invoer"
+// raakt hem niet; §7 wel ("focus-ring altijd zichtbaar, op elk interactief element"), en
+// een badge kán interactief zijn (asChild op een link). Hier stond nog de shadcn-halo
+// `ring-[3px] ring-ring/50`, waardoor de app twee verschillende focusstijlen naast elkaar
+// had staan (reviewzwerm 2.5a, B10). Eén stijl, en het is die van de primitives.
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/10 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
       variant: {

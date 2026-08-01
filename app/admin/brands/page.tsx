@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/db/client";
+import { Button } from "@/components/ui/button";
 import {
   BrandsListBlock,
   type BrandListRow,
@@ -60,12 +61,12 @@ export default async function AdminMerkenPage({
             Add, edit and delete brands.
           </p>
         </div>
-        <Link
-          href="/admin/brands/new"
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          New brand
-        </Link>
+        {/* De primary van /admin/brands. Via het Button-component met asChild, niet als
+            een handgebouwd navy vlak: alleen zo krijgt de knop de hover-, active- en
+            disabled-behandeling uit button.tsx én ziet knophierarchie.test.tsx hem staan. */}
+        <Button asChild>
+          <Link href="/admin/brands/new">New brand</Link>
+        </Button>
       </header>
       <BrandFilterBar q={q} phase={phase} shown={rows.length} />
       <BrandsListBlock brands={rows} />

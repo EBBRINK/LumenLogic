@@ -13,8 +13,10 @@
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { cn } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { tekstvakClass, veldClass } from "./ui/field";
 import {
   Card,
   CardContent,
@@ -134,6 +136,18 @@ const controls = (
         <Input data-testid="input-focus" defaultValue="Veld met focus" />
         <Input aria-invalid defaultValue="Veld met fout" />
         <Input disabled defaultValue="Uitgeschakeld veld" />
+        {/* `<select>` en `<textarea>` hebben geen component maar wél dezelfde tokens
+            (components/ui/field.ts). Ze staan hier zodat de geometrie van álle drie de
+            veldsoorten in één screenshot te beoordelen is. */}
+        <select data-testid="select-veld" className={cn(veldClass, "w-full")}>
+          <option>Keuzeveld</option>
+        </select>
+        <textarea
+          data-testid="tekstvak-veld"
+          className={cn(tekstvakClass, "w-full")}
+          rows={2}
+          defaultValue="Tekstvak"
+        />
       </div>
     </Section>
   </Sheet>
@@ -526,6 +540,32 @@ test("knop en invoerveld halen de kit-maten: 44px hoog, radius 6px", async () =>
   expect(buttonStyle.fontWeight, "knoptekst kit §7 (600)").toBe("600");
 });
 
+test("select en tekstvak dragen exact dezelfde veldtokens als Input", async () => {
+  // O9 noemt `formuliervelden` letterlijk in de 44px-lijst — niet alleen het
+  // Input-component. Er is geen <Select>-bouwsteen, dus de tokens komen uit
+  // components/ui/field.ts; deze test meet dat ze op een echt <select> ook landen.
+  await render(controls, "Specimen — bediening");
+  const input = document.querySelector<HTMLElement>('[data-slot="input"]')!;
+  const select = document.querySelector<HTMLElement>('[data-testid="select-veld"]')!;
+  const tekstvak = document.querySelector<HTMLElement>(
+    '[data-testid="tekstvak-veld"]',
+  )!;
+
+  expect(getComputedStyle(select).height, "veldhoogte kit §7 / O9").toBe("44px");
+  for (const eigenschap of ["borderRadius", "backgroundColor", "borderColor"] as const) {
+    expect(
+      getComputedStyle(select)[eigenschap],
+      `select wijkt af van Input op ${eigenschap}`,
+    ).toBe(getComputedStyle(input)[eigenschap]);
+    expect(
+      getComputedStyle(tekstvak)[eigenschap],
+      `textarea wijkt af van Input op ${eigenschap}`,
+    ).toBe(getComputedStyle(input)[eigenschap]);
+  }
+  // Een tekstvak heeft bewust GEEN vaste hoogte (het groeit met rows) — daarom hier
+  // alleen de rest van de tokens.
+});
+
 test("de compacte knopmaten blijven bewust onder 44px (O9)", async () => {
   // Dit is een vastgelegde afwijking van kit §7, geen vergissing: 56 plekken in
   // dense tabellen en toolbars. Deze test bestaat om te voorkomen dat iemand ze
@@ -571,4 +611,169 @@ test("het logo-palet zit niet in de interface-tokens", async () => {
       `logo-kleur in ${token} — hoort alleen in de logobestanden`,
     ).not.toContain(root.getPropertyValue(token).trim().toLowerCase());
   }
+});
+
+// ── Bronscan: gelden de normen ook buiten dit specimen? ─────────────────────
+// De tests hierboven meten het specimen. Een norm die alleen op het specimen klopt is
+// geen norm — 26 velden stonden op 32/36px terwijl Input al op 44px stond, en zeven
+// daarvan droegen nog de shadcn-resten die input.tsx zelf afgeschaft noemt (reviewzwerm
+// 2.5a, B9/B10). Niets ving dat. Vandaar deze twee scans over de échte schermen.
+//
+// De scan leest broncode via `import.meta.glob(..., "?raw")`; de tests draaien in een
+// echte browser, dus `node:fs` is hier niet beschikbaar (zelfde truc als
+// knophierarchie.test.tsx).
+const RAW: Record<string, string> = {
+  ...(import.meta.glob("/app/**/*.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>),
+  ...(import.meta.glob("/components/**/*.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>),
+};
+
+/** Bronbestanden van échte schermen: geen tests, geen fixtures. */
+const bronBestanden = () =>
+  Object.entries(RAW).filter(([pad]) => !pad.endsWith(".test.tsx"));
+
+/** Regels zonder commentaar — een uitleg die een klasse nóémt is geen klasse. */
+function codeRegels(src: string): { regel: string; nr: number }[] {
+  return src
+    .split("\n")
+    .map((regel, i) => ({ regel, nr: i + 1 }))
+    .filter(({ regel }) => !/^\s*(\/\/|\*|\/\*)/.test(regel));
+}
+
+/** Openings-tags van `<naam …>` met hun regelnummer en volledige tag-tekst. */
+function tagsIn(src: string, naam: string): { tag: string; nr: number }[] {
+  const uit: { tag: string; nr: number }[] = [];
+  const re = new RegExp(`<${naam}\\b`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    let i = m.index + m[0].length;
+    let diepte = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === "{") diepte++;
+      else if (c === "}") diepte--;
+      else if (c === ">" && diepte === 0) break;
+      i++;
+    }
+    uit.push({
+      tag: src.slice(m.index, i + 1),
+      nr: src.slice(0, m.index).split("\n").length,
+    });
+  }
+  return uit;
+}
+
+/**
+ * De klassenreeks van een tag, met klasse-constanten uit hetzelfde bestand opgelost —
+ * anders verdwijnt een overtreding zodra iemand hem in een `const inputClass = "…"` zet.
+ */
+function klassenVan(tag: string, src: string): string {
+  const cm = tag.match(/className=(?:"([^"]*)"|\{([^}]*)\})/);
+  if (!cm) return "";
+  let cls = cm[1] ?? cm[2] ?? "";
+  for (const cm2 of src.matchAll(/const\s+(\w+)\s*=\s*\n?\s*"([^"]*)"/g)) {
+    if (cls.includes(cm2[1])) cls = cls.replace(cm2[1], cm2[2]);
+  }
+  return cls;
+}
+
+/**
+ * Velden die de norm (nog) niet halen en die dit blok NIET mocht aanraken: ze staan
+ * buiten de bestandenlijst van reviewzwerm-blok 4. Deze lijst mag alleen KRIMPEN — de
+ * test hieronder eist dat elk pad hier nog een échte overtreding is, dus een opgeloste
+ * regel moet weg. Zet er nooit iets bij om een test groen te krijgen.
+ */
+const VELD_BUITEN_DIT_BLOK = [
+  "/app/projects/[id]/line/[lineId]/page.tsx",
+  "/app/projects/[id]/quote/page.tsx",
+];
+
+test("elk formulierveld haalt de 44px van O9 — geen h-8/h-9-velden", () => {
+  // DESIGN.md O9: "44px voor `default`, `lg` en formuliervelden; de compacte maten
+  // blijven zoals ze zijn." Die compacte uitzondering gaat over KNOP-maten (size="sm",
+  // "xs", "icon-*", de 56 grandfathered plekken) — native velden zaten nooit in die
+  // inventaris. Een veld op h-8/h-9 is dus een afwijking van een vastgelegde norm.
+  // De hoogte hoort uit components/ui/field.ts te komen (of uit <Input>).
+  const teLaag: string[] = [];
+  const nogSteedsFout = new Set<string>();
+  for (const [pad, src] of bronBestanden()) {
+    const codeNrs = new Set(codeRegels(src).map((r) => r.nr));
+    for (const naam of ["input", "select"]) {
+      for (const { tag, nr } of tagsIn(src, naam)) {
+        if (!codeNrs.has(nr)) continue; // staat in commentaar
+        const type = tag.match(/type="(\w+)"/)?.[1] ?? naam;
+        // Onzichtbaar of geen tekstveld: die hebben geen tastbare veldhoogte.
+        if (
+          [
+            "hidden",
+            "checkbox",
+            "radio",
+            "color",
+            "file",
+            "submit",
+            "range",
+          ].includes(type)
+        )
+          continue;
+        const hoogte = klassenVan(tag, src).match(/(?<![\w:-])h-(\d+)(?![\w.])/);
+        if (hoogte == null || Number(hoogte[1]) >= 11) continue;
+        if (VELD_BUITEN_DIT_BLOK.includes(pad)) {
+          nogSteedsFout.add(pad);
+          continue;
+        }
+        teLaag.push(`${pad}:${nr} (${naam}, ${hoogte[0]})`);
+      }
+    }
+  }
+
+  expect(
+    teLaag,
+    "DESIGN.md O9: een formulierveld is 44px hoog. Gebruik <Input> of de gedeelde " +
+      "klassen uit components/ui/field.ts in plaats van een eigen h-8/h-9-reeks.",
+  ).toEqual([]);
+
+  // De uitzonderingslijst is een KRIMPENDE lijst: staat er een pad in dat allang klopt,
+  // dan is de lijst een dode letter geworden en hoort de regel eruit.
+  expect(
+    [...nogSteedsFout].sort(),
+    "VELD_BUITEN_DIT_BLOK bevat een pad zonder overtreding — haal die regel weg",
+  ).toEqual([...VELD_BUITEN_DIT_BLOK].sort());
+});
+
+test("de afgeschafte shadcn-resten staan nergens meer in de interface", () => {
+  // components/ui/input.tsx zegt het zelf: "De dark:bg-input/30-hacks vervallen" en
+  // "Focus-ring is rgba(45,90,140,.1) volgens de kit, niet de /50-halo" — DESIGN.md §6
+  // "Invoer" schrijft die ring letterlijk voor en §3 zet de dark invoerachtergrond op
+  // #2A3145 (= --muted). Toch stonden beide klassen nog op negen plekken, dus de app had
+  // twee verschillende focusstijlen naast elkaar. Deze scan is wat dat had moeten vangen.
+  const VERBODEN: { patroon: RegExp; waarom: string }[] = [
+    {
+      patroon: /dark:bg-input\/30/,
+      waarom:
+        "dark:bg-input/30 is de shadcn-hack; bg-muted levert in dark #2A3145 (§3, kit §14)",
+    },
+    {
+      patroon: /ring-ring\/50/,
+      waarom:
+        "de /50-halo is niet de kit-ring; §6 Invoer schrijft 0 0 0 3px rgba(45,90,140,.1) voor = ring-3 ring-ring/10",
+    },
+  ];
+  const fouten: string[] = [];
+  for (const [pad, src] of bronBestanden()) {
+    for (const { regel, nr } of codeRegels(src)) {
+      for (const { patroon, waarom } of VERBODEN) {
+        if (patroon.test(regel)) fouten.push(`${pad}:${nr} — ${waarom}`);
+      }
+    }
+  }
+  expect(fouten, "afgeschafte shadcn-rest gevonden (reviewzwerm 2.5a, B10)").toEqual(
+    [],
+  );
 });

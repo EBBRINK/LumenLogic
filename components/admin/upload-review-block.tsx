@@ -2,7 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -140,7 +142,7 @@ export function UploadReviewBlock({
               id="pdl-brand"
               name="brandId"
               required
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:max-w-xs dark:bg-input/30"
+              className={cn(veldClass, "w-full sm:max-w-xs")}
             >
               <option value="">Choose brand…</option>
               {pdlBrands.map((b) => (
@@ -150,7 +152,9 @@ export function UploadReviewBlock({
               ))}
             </select>
           </div>
-          <Button type="submit" variant="outline" className="self-start">
+          {/* Geen `self-start` meer: de rij staat op `items-end`, en met een veld van
+              44px (O9) hoort de knop op dezelfde onderlijn te staan als het veld. */}
+          <Button type="submit" variant="outline">
             Import as staging
           </Button>
         </form>

@@ -44,6 +44,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { cn } from "@/lib/utils";
 import { callAction, failureDetail } from "@/lib/next-action-result";
@@ -188,7 +190,7 @@ export function BrandRelationsTable({
                 setBulkStatus(e.target.value as RelationStatus)
               }
               aria-label="Status for the selected brands"
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+              className={veldClass}
             >
               {STATUS_ORDER.map((s) => (
                 <option key={s} value={s}>
@@ -218,9 +220,15 @@ export function BrandRelationsTable({
       )}
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No brands match the filters.
-        </p>
+        // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": op
+        // /data/brand-relations staat de tabel in een `space-y-4`-kolom naast de
+        // toolbar en de pager, niet in een <Card> die al een kader tekent.
+        //
+        // Bewuste `action={null}`: het filter dat deze leegte veroorzaakt staat in
+        // BrandRelationsToolbar, direct hierboven en met zijn eigen wisknop. Deze
+        // component kent de query niet (die leeft in de URL en op de server), dus een
+        // knop hier zou zijn eigen bediening moeten nabouwen.
+        <EmptyState title="No brands match the filters." action={null} />
       ) : (
         <Table>
           <TableHeader>
@@ -294,7 +302,7 @@ export function BrandRelationsTable({
                           if (e.key === "Escape") setEditing(null);
                         }}
                         aria-label={`Status of ${r.brandName}`}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                        className={veldClass}
                       >
                         {STATUS_ORDER.map((s) => (
                           <option key={s} value={s}>
@@ -308,7 +316,11 @@ export function BrandRelationsTable({
                         disabled={pending}
                         onClick={() => setEditing(r.brandId)}
                         aria-label={`Change status of ${r.brandName}`}
-                        className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+                        // Geen invoerveld, dus DESIGN.md §6 "Invoer" raakt hem niet — §7
+                        // wél: focus is een 2px ring in de ringkleur met offset. De
+                        // ring/50-halo was de afgeschafte shadcn-stand (reviewzwerm B10)
+                        // en botste met de focusstijl van Button/Input ernaast.
+                        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                       >
                         <span
                           className={cn(

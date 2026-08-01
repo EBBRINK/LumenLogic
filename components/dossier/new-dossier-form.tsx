@@ -8,6 +8,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { XIS_PHASE_LABELS, XIS_PHASE_ORDER } from "./project-status-badge";
 
@@ -51,7 +52,7 @@ export function NewDossierForm({
           name="xisPhase"
           required
           defaultValue="start"
-          className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+          className={veldClass}
         >
           {XIS_PHASE_ORDER.map((p) => (
             <option key={p} value={p}>
@@ -69,7 +70,7 @@ export function NewDossierForm({
             id="orgId"
             name="orgId"
             defaultValue=""
-            className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+            className={veldClass}
           >
             <option value="">Internal (Brink)</option>
             {organizations.map((o) => (

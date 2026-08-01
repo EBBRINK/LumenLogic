@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { IconLock, IconUnlock } from "@/components/dossier/icons";
 
 export type XisEnvironment = "sandbox" | "productie";
@@ -36,7 +38,7 @@ export function XisBlock({
               id="xis-environment"
               name="environment"
               defaultValue={environment}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:max-w-xs dark:bg-input/30"
+              className={cn(veldClass, "w-full sm:max-w-xs")}
             >
               <option value="sandbox">Sandbox (safe)</option>
               <option value="productie">Production</option>

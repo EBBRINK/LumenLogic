@@ -14,6 +14,9 @@
 // server-actie via useActionState. Dit bestand verzint geen enkele reden waarom iets niet
 // kan.
 import { useActionState, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { veldClass, tekstvakClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import type { Compleetheidsniveau } from "@/lib/field-catalog";
 import { niveauLabel } from "@/lib/niveau-labels";
 
@@ -53,8 +56,10 @@ export const NIVEAU_UITLEG: Record<Compleetheidsniveau, string> = {
 
 const NIVEAUS: Compleetheidsniveau[] = ["must", "wanna", "nice"];
 
-const invoerClass =
-  "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm";
+// De veldtokens staan in components/ui/field.ts (reviewzwerm 2.5a, B9): hier stond een
+// eigen reeks die op ~34px uitkwam, tegen de 44px van besluit O9.
+const invoerClass = cn(veldClass, "w-full");
+const tekstvakInvoerClass = cn(tekstvakClass, "w-full");
 
 function Veld({
   label,
@@ -83,7 +88,7 @@ function Veld({
           rows={2}
           defaultValue={defaultValue}
           placeholder={placeholder}
-          className={invoerClass}
+          className={tekstvakInvoerClass}
         />
       ) : (
         <input
@@ -212,21 +217,16 @@ export function CustomFieldForm({
       )}
 
       <div className="mt-4 flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-        >
+        {/* De primary van /data/custom-fields: het formulier ís het scherm zodra het
+            open staat, en dit is de actie die het veld wegschrijft. */}
+        <Button type="submit" disabled={pending}>
           {bewerken ? "Save field" : "Add field"}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex h-9 items-center rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
-          >
+          // Ghost = wegwerpactie (DESIGN.md §6).
+          <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>

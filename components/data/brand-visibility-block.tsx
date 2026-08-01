@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { veldClass } from "@/components/ui/field";
 
 // De per-veld-uitzonderingen die de admin per merk kan sturen (J-04). Bewust een korte,
 // vaste set — de velden die commercieel/gevoelig zijn. Geen vrije-tekst-veldnaam: dat zou
@@ -58,7 +59,7 @@ export function BrandVisibilityBlock({
             name="tier"
             defaultValue={disclosureTier}
             aria-label="Disclosure tier"
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            className={veldClass}
           >
             {(["tier1", "tier2", "tier3"] as const).map((t) => (
               <option key={t} value={t}>

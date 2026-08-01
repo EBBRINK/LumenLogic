@@ -2,6 +2,7 @@
 // runs, en het steekproef-controlescherm (item per item goed/fout + publiceren/verwerpen).
 // Alles presentational + fixture-testbaar: data en form-actions komen als props binnen.
 import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
 import {
   Table,
   TableBody,
@@ -44,7 +45,7 @@ export function BrandPicker({
         <span className="text-muted-foreground">Brand</span>
         <select
           name="brandId"
-          className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+          className={veldClass}
           defaultValue={brands[0]?.id}
         >
           {brands.map((b) => (
