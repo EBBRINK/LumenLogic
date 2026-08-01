@@ -203,10 +203,21 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
-        // Wachten tot de STAART van het document er is: `document.body` bestaat al
-        // zodra er íets geflusht is, en de RSC-stream levert dit stuk in delen. De
-        // voettekst is het laatste element, dus die is het startsein voor de schoten.
+        // Twee asserties met elk een eigen taak; ze vervangen elkaar niet.
+        //
+        // 1. INHOUD (reviewzwerm 2.5a, B11): een SKU uit de regels van QuoteView zelf,
+        //    niet uit de <Screen>-wrapper. `expect.element(document.body)` bleef groen
+        //    bij een lege render, en dat was de hele bevinding.
+        await expect
+          .element(
+            page.getByText(name === "estimate-flat" ? "SKU-B" : "L360-SASSO100").first(),
+          )
+          .toBeInTheDocument();
+        // 2. VOLLEDIGHEID (A4/A7): wachten tot de STAART van het document er is. De
+        //    RSC-stream levert dit stuk in delen en de voettekst is het laatste
+        //    element, dus die is het startsein voor de schoten — inclusief het tweede
+        //    schot onder de vouw hieronder. Een SKU staat bovenaan en bewijst dus niet
+        //    dat de p.m.-verantwoording al geflusht is.
         await expect
           .element(page.getByText(/Request order is preserved/).first())
           .toBeInTheDocument();

@@ -129,7 +129,12 @@ for (const theme of ["light", "dark"] as const) {
           />
         </Screen>,
       );
-      await expect.element(document.body).toBeInTheDocument();
+      // Anker uit VersionHistory zelf (de notitie bij versie 2), niet uit de <Screen>-
+      // wrapper: met alleen `expect.element(document.body)` bleef deze test groen als
+      // de component niets rendert.
+      await expect
+        .element(page.getByText("na revisie klant").first())
+        .toBeInTheDocument();
       await page.screenshot({
         path: `./version-history.${theme}.${device}.test.png`,
       });

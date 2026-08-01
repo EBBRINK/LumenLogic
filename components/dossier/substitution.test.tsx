@@ -49,7 +49,17 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(doc);
-      await expect.element(document.body).toBeInTheDocument();
+      // Anker uit het document zelf, niet uit de wrapper: `expect.element(document.body)`
+      // alleen bleef groen bij een lege render. En niet alléén uit het kopblok: met
+      // `fields = []` (kopblok blijft, de veld-voor-veld-vergelijking verdwijnt) bleven
+      // deze vier tests groen op "ESPRIT CEIL" — gemeten. Het tweede anker is een cel uit
+      // de vergelijkingstabel, het derde het oordeel dat daaruit wordt afgeleid, zodat de
+      // kern van het document meetelt.
+      await expect.element(page.getByText("ESPRIT CEIL").first()).toBeInTheDocument();
+      await expect.element(page.getByText("120 mo").first()).toBeInTheDocument();
+      await expect
+        .element(page.getByText("better", { exact: true }).first())
+        .toBeInTheDocument();
       await page.screenshot({ path: `./substitution.${theme}.${device}.test.png` });
     });
   }

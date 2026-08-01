@@ -64,7 +64,12 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(blok());
-      await expect.element(document.body).toBeInTheDocument();
+      // Anker uit BrandMessageBlock zelf: de <h2> in `blok()` staat in dít bestand en
+      // zou ook groen blijven als het blok niets rendert. De textarea draagt de
+      // servergegenereerde tekst — dat is het inhoudelijke bewijs.
+      await expect
+        .element(page.getByLabelText("Message to the brand"))
+        .toHaveValue(message);
       await page.screenshot({
         path: `./data-merkrelatie-bericht.${theme}.${device}.test.png`,
       });

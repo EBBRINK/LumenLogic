@@ -105,6 +105,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .element(page.getByText("Pending uploads"))
         .toBeInTheDocument();
+      // Derde blok, dat tot 2.5a in géén enkele assertie van deze test zat.
+      await expect.element(page.getByText("Bouw Noord").first()).toBeInTheDocument();
       await page.screenshot({ path: `./admin.${theme}.${device}.test.png` });
     });
   }

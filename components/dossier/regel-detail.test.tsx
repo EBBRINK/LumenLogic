@@ -147,6 +147,17 @@ const screens = {
   "regel-afwijkingen": deviationScreen,
 } as const;
 
+// Ankerassertie per scherm: de <h3> in de wrappers hierboven staat in dít bestand en
+// bewijst dus niets — deze twee teksten komen uit MatchCandidates resp. DeviationTable.
+// Het anker moet de INHOUD meten, niet het omhulsel: met `CandidateRow → null` (alle
+// kandidaatkaarten weg, de twee lijstkoppen blijven staan) bleven deze vier tests groen op
+// de kop "Provably compliant" — gemeten. Nu de naam van de eerste kandidaat, die alleen uit
+// CandidateRow komt.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  "regel-kandidaten": "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K", // kandidaatkaart
+  "regel-afwijkingen": "1° breder", // note van de gele afwijkingsrij
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -154,7 +165,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }

@@ -203,6 +203,21 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per tier: precies het onderscheidende zinnetje van díe tier. Zo pint
+// elke screenshot-test ook wát er op de foto hoort te staan; `document.body` alleen
+// bleef groen als ProductCard niets rendert.
+//
+// Twéé ankers per tier waar de kaart specs toont. Met alleen het prijs-/gated-anker zaten
+// alle ankers in PriceBlock: `rows.length = 0` haalde de complete 13-regels specificatie-
+// tabel weg (de kaart valt dan terug op "No specifications available.") en deze 12 tests
+// bleven groen — gemeten. Het tweede anker is een specrij, zodat de tabel meetelt.
+// tier3 toont per definitie geen specs (awaitingData), dus daar ís de wachttekst de inhoud.
+const anchors: Record<keyof typeof screens, (string | RegExp)[]> = {
+  "tier1-prijs": ["€ 310,00", "1200 lm"],
+  "tier2-gated": ["Request price via Brink", "Ra 90"],
+  "tier3-awaiting": ["Data awaiting brand."],
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -210,7 +225,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(<Screen>{ui}</Screen>);
-        await expect.element(document.body).toBeInTheDocument();
+        for (const anchor of anchors[name as keyof typeof screens]) {
+          await expect.element(page.getByText(anchor).first()).toBeInTheDocument();
+        }
         await page.screenshot({ path: `./product-${name}.${theme}.${device}.test.png` });
       });
     }

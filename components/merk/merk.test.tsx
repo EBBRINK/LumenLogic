@@ -84,6 +84,18 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm — uit de merkportaal-componenten zelf, niet uit de <h1>'s
+// in `screens` hierboven (die staan in dít bestand en bewijzen dus niets).
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  overzicht: "Submit price list", // de tweede deur uit BrandOverview
+  data: "SASSO 100 CEIL", // productnaam uit BrandDataView
+  prijslijsten: "Awaiting review", // staging-status uit PricelistUpload
+  // Niet het tegellabel "Considered": dat is statische tekst uit BrandDashboard en bleef
+  // groen toen alle drie de tegelwaarden geblankt werden (gemeten). Nu de waarde zelf —
+  // `^12$` matcht alleen de <p> met de telling, niet een ouder met meer tekst.
+  dashboard: /^12$/, // tegelwaarde (considered) uit BrandDashboard
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -91,7 +103,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./brand-${name}.${theme}.${device}.test.png` });
       });
     }

@@ -297,6 +297,17 @@ const shots = {
   ),
 } as const;
 
+// Ankerassertie per set: één tekst die alléén door de kaarten van díe set wordt
+// gerenderd. Zonder dit anker bewees deze lus niets — `expect.element(document.body)`
+// is per definitie waar, ook als ReviewQueue niets rendert.
+const anchors: Record<keyof typeof shots, string | RegExp> = {
+  "review-queue": "VELA ROUND 900", // tweede kandidaat op de "welke van deze N"-kaart
+  // De variantknop draagt de kléúr als zichtbare tekst (de productnaam zit alleen in
+  // `title`) — dus dít is wat een lezer op de foto ziet staan.
+  "review-variant-rood": "black/gold",
+  "review-ocr": "Ld107", // regelcode van de derde OCR-kaart
+};
+
 for (const [name, ui] of Object.entries(shots)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -304,7 +315,9 @@ for (const [name, ui] of Object.entries(shots)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof shots]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }

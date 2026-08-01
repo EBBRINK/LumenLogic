@@ -9,7 +9,7 @@ import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
 import { DossierList } from "./dossier-list";
 import { PhaseBadge } from "./phase-badge";
-import { ProjectStatusBadge } from "./project-status-badge";
+import { PROJECT_STATUS_META, ProjectStatusBadge } from "./project-status-badge";
 import { ProjectStatusControls } from "./project-status-controls";
 import { StatusFilter, type ProjectStatusFilter } from "./status-filter";
 import { StatusTally } from "./status-badge";
@@ -123,6 +123,41 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm. Let op: de `Projectkop`-wrapper hierboven staat in dít
+// bestand, dus "Ziekenhuis Noord" en "Deerns" bewijzen niets — de ankers komen uit de
+// échte componenten (DossierList, ProjectStatusBadge, PhaseBadge, ProjectStatusControls,
+// StatusFilter).
+//
+// Waarom functies en geen kale `getByText`-string: het statuslabel "Concept" staat óók als
+// <option> in de status-dropdown van ProjectStatusControls. `getByText("Concept").first()`
+// pakte dié option en bleef daarom groen met `ProjectStatusBadge → null` (gemeten: 4/4
+// projectkop-status-tests groen terwijl de badge weg was) — en een <option> staat niet eens
+// op de foto. De badge-ankers lezen daarom de badge zélf, herkenbaar aan zijn title-tekst
+// (`PROJECT_STATUS_META[...].meaning`), en asserteren het label dáárbinnen.
+const anchors: Record<keyof typeof screens, () => Promise<unknown>> = {
+  // dossiernaam uit DossierList
+  "projectlijst-status": () =>
+    expect.element(page.getByText("Museum Oost").first()).toBeInTheDocument(),
+  // ProjectStatusBadge (niet de <option> met dezelfde tekst)
+  "projectkop-status": () =>
+    expect
+      .element(page.getByTitle(PROJECT_STATUS_META.concept.meaning))
+      .toHaveTextContent("Concept"),
+  // PhaseBadge (afgeleide fase) én de statusbadge ernaast
+  "projectkop-gegund": async () => {
+    await expect.element(page.getByText("Awarded").first()).toBeInTheDocument();
+    await expect
+      .element(page.getByTitle(PROJECT_STATUS_META.gegund.meaning))
+      .toHaveTextContent("Won");
+  },
+  // read-only-regel uit ProjectStatusControls
+  "projectkop-archief": () =>
+    expect.element(page.getByText("verloren tender").first()).toBeInTheDocument(),
+  // chiplabel uit StatusFilter
+  "projectfilter-knoppen": () =>
+    expect.element(page.getByText("Estimate sent").first()).toBeInTheDocument(),
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -130,7 +165,7 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await anchors[name as keyof typeof screens]();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }

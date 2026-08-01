@@ -119,6 +119,15 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm. LET OP: de <h1>'s in `screens` hierboven staan in dít
+// bestand — "Projecten" of "Ziekenhuis Noord" zou dus ook groen blijven als DossierList
+// of SpecLineTable niets rendert. Deze drie teksten komen uit de componenten zelf.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  dossiers: "Kantoor Zuid", // tweede dossiernaam uit DossierList
+  "spec-regels": "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K", // gematchte productnaam
+  "regel-auto-door": "automatically accepted near-match", // het system:auto-label
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -126,7 +135,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }

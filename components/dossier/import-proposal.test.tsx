@@ -74,6 +74,15 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm — iets uit de gerenderde ImportProposal zelf, niet uit de
+// <Screen>-wrapper hierboven. `expect.element` retryt en wacht dus de RSC-stream af.
+// Zonder dit anker was `expect.element(document.body)` de enige assertie in deze acht
+// tests, en die blijft groen als de component niets rendert.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  "import-ocr": "onleesbaar", // productText van de onzekere derde OCR-rij
+  "import-csv": "Laser Blade", // productText van de tweede CSV-rij
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -81,7 +90,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
