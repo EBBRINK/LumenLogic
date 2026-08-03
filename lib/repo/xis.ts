@@ -17,6 +17,7 @@ import { quotes, xisExports } from "@/db/schema";
 import type { AppDb } from "./db";
 import { todayIso, unitPriceOf } from "./day-price";
 import { getDossier, getSpecLines } from "./dossiers";
+import type { DossierScope } from "./toegang";
 import { logEvent } from "./events";
 
 export type XisExport = typeof xisExports.$inferSelect;
@@ -67,9 +68,10 @@ function classify(line: JoinedSpecLine): XisLineKind {
 // Bouwt de volledige payload voor één dossier, in aanvraagvolgorde.
 export async function buildXisPayload(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
 ): Promise<XisPayload> {
-  const dossier = await getDossier(db, dossierId);
+  const dossier = await getDossier(db, scope, dossierId);
   if (!dossier) throw new Error(`dossier ${dossierId} not found`);
 
   // getSpecLines sorteert al op sort_order (dan createdAt) — die volgorde houden we exact aan.
@@ -128,6 +130,7 @@ export async function buildXisPayload(
 // nog-aan-te-maken producten gaan er mee?
 export async function preflightSummary(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
 ): Promise<{
   productLines: number;
@@ -135,7 +138,7 @@ export async function preflightSummary(
   newProducts: number;
   total: number;
 }> {
-  const { lines } = await buildXisPayload(db, dossierId);
+  const { lines } = await buildXisPayload(db, scope, dossierId);
   let productLines = 0;
   let textLines = 0;
   let newProducts = 0;
@@ -151,6 +154,7 @@ export async function preflightSummary(
 // dan geven we die terug zonder een tweede rij of dubbele statuswijziging.
 export async function createXisExport(
   db: AppDb,
+  scope: DossierScope,
   input: {
     dossierId: string;
     actor?: string;
@@ -165,7 +169,7 @@ export async function createXisExport(
     .limit(1);
   if (existing) return { created: false, export: existing };
 
-  const payload = await buildXisPayload(db, input.dossierId);
+  const payload = await buildXisPayload(db, scope, input.dossierId);
   const [row] = await db
     .insert(xisExports)
     .values({

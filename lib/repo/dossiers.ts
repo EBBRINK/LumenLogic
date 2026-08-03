@@ -15,20 +15,36 @@ import type { AppDb } from "./db";
 import { todayIso, unitPriceOf } from "./day-price";
 import { logEvent } from "./events";
 import { derivePhase, type Phase, type XisPhase } from "./project-status";
+import { dossierScopeSql, type DossierScope } from "./toegang";
 
 export type { Phase };
 
 // ── Dossiers ─────────────────────────────────────────────────────────────────
-export async function listDossiers(db: AppDb) {
+//
+// ⚠️ SPRINT 3.2a — de twee leesdeuren hieronder nemen een VERPLICHTE `DossierScope`.
+// Geen default en geen optionele parameter: wie hem vergeet krijgt geen stille "alles"
+// maar een compilerfout. Dat is wat de briefing van RLS wilde lenen — kan iemand die
+// morgen een nieuwe query schrijft de scoping per ongeluk overslaan? Hier niet.
+// `lib/repo/dossier-scope.test.ts` bewaakt dat er geen vijfde deur bijkomt.
+export async function listDossiers(db: AppDb, scope: DossierScope) {
   return db
     .select()
     .from(projectDossiers)
+    .where(dossierScopeSql(scope, projectDossiers.orgId))
     .orderBy(asc(projectDossiers.createdAt));
 }
 
 // Nieuw project: altijd status 'concept' (geen statuskeuze bij aanmaken); alleen de
 // XIS-fase is te kiezen (default 'start'). `phase` wordt afgeleid (B6, regel 4) —
 // dezelfde derivePhase als setStatus/setXisPhase, dus geen tweede waarheid.
+//
+// ⚠️ 3.2a: `orgId` is nu verplicht mee te geven en mag `null` zijn. Tot deze sprint zette
+// deze functie hem helemaal niet, waardoor élk nieuw project stuurloos was: migratie 0019
+// koppelde de 13 bestaande dossiers aan brink-licht, maar het veertiende kreeg weer
+// `NULL`. Een dossier zonder organisatie is per `dossierScopeSql()` alleen voor intern
+// zichtbaar — dus een externe die er één maakte, zou hem daarna zelf niet meer zien.
+// Expliciet in de signatuur en niet uit de sessie geplukt: deze laag hoort niets over
+// sessies te weten (zelfde scheiding als G39).
 export async function createDossier(
   db: AppDb,
   input: {
@@ -36,6 +52,7 @@ export async function createDossier(
     customer?: string | null;
     xisPhase?: XisPhase;
     actor?: string;
+    orgId: string | null;
   },
 ) {
   const xisPhase = input.xisPhase ?? "start";
@@ -44,6 +61,7 @@ export async function createDossier(
     .values({
       name: input.name,
       customer: input.customer ?? null,
+      orgId: input.orgId,
       status: "concept",
       xisPhase,
       phase: derivePhase("concept", xisPhase), // afgeleid; default = veilig (regel 4)
@@ -56,6 +74,7 @@ export async function createDossier(
     actor: input.actor,
     payload: {
       name: row.name,
+      orgId: row.orgId,
       status: row.status,
       xisPhase: row.xisPhase,
       phase: row.phase,
@@ -64,11 +83,23 @@ export async function createDossier(
   return row;
 }
 
-export async function getDossier(db: AppDb, id: string) {
+/**
+ * De wortel van de hele `/projects/[id]/*`-boom: elke tab begint hier en doet `notFound()`
+ * als het antwoord leeg is. Zodra déze functie gescoped is, is de boom dat ook — de
+ * onderliggende pagina's toetsen hun eigen sleutel al (`run.dossierId !== id`,
+ * `specLine.dossierId !== dossier.id`, `proposal.dossierId !== id`).
+ *
+ * Buiten de scope voelt precies hetzelfde als "bestaat niet": één `null`, geen tweede
+ * uitkomst "bestaat wel maar mag niet". Dat is geen gemak maar de bedoeling — het verschil
+ * tussen die twee is zelf informatie (zelfde redenering als MSG_DENIED in authz.ts).
+ */
+export async function getDossier(db: AppDb, scope: DossierScope, id: string) {
   const [row] = await db
     .select()
     .from(projectDossiers)
-    .where(eq(projectDossiers.id, id))
+    .where(
+      and(eq(projectDossiers.id, id), dossierScopeSql(scope, projectDossiers.orgId)),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -458,11 +489,12 @@ export function requireUnitPrice(
 // te testen is, precies zoals bij unitPriceOf zelf; de default is de echte dag (UTC).
 export async function generateQuote(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
   actor?: string,
   today: string = todayIso(),
 ) {
-  const dossier = await getDossier(db, dossierId);
+  const dossier = await getDossier(db, scope, dossierId);
   const lines = await getSpecLines(db, dossierId);
   // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus of een
   // dagprijs op de regel (I-04). Wélke van de twee dat is beslist unitPriceOf — dezelfde

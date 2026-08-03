@@ -457,8 +457,16 @@ export const projectDossiers = pgTable("project_dossiers", {
   // (nooit alternatieven in tender) blijft geregeld via `phase` default 'tender' hierboven;
   // bestaande dossiers worden in 0006 gebackfilld naar 'tender'/'deal_making'.
   xisPhase: xisPhase("xis_phase").notNull().default("start"),
-  // H2: org-scoping (nullable → interne Brink-dossiers zonder org blijven werken).
-  orgId: uuid("org_id"),
+  // H2: org-scoping. Nullable → een dossier zonder organisatie is een Brink-dossier en
+  // sinds 3.2a alléén voor intern zichtbaar (lib/repo/toegang.ts, dossierScopeSql).
+  //
+  // ⚠️ `.references()` toegevoegd in 3.2a. De database hád de constraint al
+  // (`project_dossiers_org_id_fkey`, aangelegd door 0005_h2_h3.sql:34-35), maar Drizzle
+  // kende hem niet — TypeScript zag een vrij uuid-veld waar Postgres een bestaande
+  // organisatie eist. Dat is precies het scoping-veld, dus die twee horen niet uit elkaar
+  // te lopen. Puur een declaratie: er verandert niets aan de database, en de migraties
+  // blijven handgeschreven (drizzle-kit's snapshots stoppen bij 0003).
+  orgId: uuid("org_id").references(() => organizations.id),
   // A-05: lifecycle naast de fase. archived draagt altijd een reden.
   lifecycle: dossierLifecycle("lifecycle").notNull().default("actief"),
   archivedReason: text("archived_reason"),

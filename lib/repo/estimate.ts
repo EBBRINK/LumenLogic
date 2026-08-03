@@ -15,6 +15,7 @@ import { formatDate } from "@/lib/format";
 import type { AppDb } from "./db";
 import { todayIso, unitPriceOf } from "./day-price";
 import { getDossier, getQuote, getSpecLines } from "./dossiers";
+import type { DossierScope } from "./toegang";
 
 // Eén estimate-regel. Bewust ontkoppeld van de repo-rijvorm zodat scherm en PDF met
 // fixtures getest kunnen worden. Anders dan de gegenereerde offerte bevat de estimate
@@ -341,8 +342,14 @@ export function computeEstimate(
 // ── Db → estimate ────────────────────────────────────────────────────────────
 // Eén functie die voor een dossier alle estimate-data levert: kopblok, regels in
 // aanvraagvolgorde (getSpecLines sorteert op sort_order), en de volledige berekening.
-export async function getEstimateData(db: AppDb, dossierId: string) {
-  const dossier = await getDossier(db, dossierId);
+// 3.2a: geeft de scope door aan getDossier en heeft daarmee zelf geen tweede regel nodig —
+// buiten de scope is het antwoord `null`, precies zoals bij een dossier dat niet bestaat.
+export async function getEstimateData(
+  db: AppDb,
+  scope: DossierScope,
+  dossierId: string,
+) {
+  const dossier = await getDossier(db, scope, dossierId);
   if (!dossier) return null;
 
   const [specRows, quoteData] = await Promise.all([
