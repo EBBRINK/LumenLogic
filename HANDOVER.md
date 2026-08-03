@@ -2971,3 +2971,98 @@ non-object" (gemeten, niet beredeneerd). Daarom staat `SPEC_CSV_MAX_LINES` in
 - **Het label "Tier 1 · everything + price"** in `components/data/brand-visibility-block.tsx`
   is niet aangepast. Voor de enige kijker die vandaag bestaat (intern) klopt het nog; zodra
   er niet-interne sessies zijn, dekt het de lading niet meer.
+
+## 2026-08-03 — Sprint 2.5b: snelheid (eerst meten, dan pas optimaliseren)
+
+Volledig rapport met alle plannen en cijfers: **`docs/2.5b-snelheid.md`**. Hieronder alleen de
+aannames, de open eindes en wat een volgende sessie moet weten.
+
+### Wat er staat (4 commits, nog niet gepusht, migratie nog niet toegepast)
+
+Zes expressie-indexen (migraties `0017`, `0018`) plus drie querywijzigingen zonder schema-impact.
+Serverzijdig gemeten op de echte productiedatabase met `EXPLAIN (ANALYZE, BUFFERS)`, vóór én ná:
+exacte SKU-match in de matcher 276 → 0,10 ms (draait **per spec-regel**), exacte SKU in
+`searchProducts` 55 → 0,11 ms, merk-alleen 185–660 → 60–307 ms, merk+tekst 230 → 117 ms,
+compleetheid zwaarste merkrelaties-pagina 318 → 209 ms, `listPriceListStatus` 220 → 51 ms,
+merkgat-tegel op `/analytics` 103 → 0,54 ms.
+
+### ⚠️ Openstaande bug, gevonden tijdens het meten, NIET gerepareerd
+
+**`/catalog` crasht als je een merk kiest zonder zoektekst.** `lib/repo/products.ts:121/144` zet
+de sorteertermen op de constante `sql\`0\``; drizzle rendert dat als `order by 0 desc`, en dat is
+voor Postgres een positieverwijzing naar de select-lijst. Positie 0 bestaat niet:
+`ERROR: ORDER BY position 0 is not in select list`. Geverifieerd tegen de echte
+productiedatabase. Raakt twee gevallen: (1) een merk uit de keuzelijst met leeg zoekveld —
+precies waarvoor die lijst er staat; (2) een zoektekst zonder enig token van ≥2 tekens (bijv.
+`X`). Dezelfde bug is één laag verderop al herkend en met een poort afgevangen
+(`lib/matching/engine.ts:437-441`, mét toelichting in de code); `products.ts` heeft die poort
+niet, en zou hem daar ook niet moeten krijgen — merk-zonder-tekst is dáár een geldige
+zoekopdracht. Er is geen test die de merk-alleen-tak uitvoert (`lib/repo/rules.test.ts:37` zoekt
+met merk **én** tekst); die hoort bij de reparatie. Buiten scope gelaten conform de opdracht
+("bug melden met bewijs, niet repareren").
+
+**Gevolg voor de B5-cijfers:** de merk-alleen-tak was met de echt gegenereerde SQL niet te meten.
+De cijfers zijn gemeten op een surrogaat waarin de twee constante sorteertermen (`0 desc, 0 desc`)
+zijn weggelaten — die sorteren per definitie niets, dus `WHERE`, plan en sorteerkosten zijn
+identiek. De index-reparatie is onafhankelijk geldig (ze raakt de `WHERE`) en helpt óók de
+merk+tekst-tak, die wél draait. Maar zolang de bug er is, is er op `/catalog` niets van te zien.
+
+### Aannames
+
+- **De Neon-branch `enrichment-serien` is representatief voor productie.** Schrijvende
+  experimenten (indexen aanmaken en weer weghalen) zijn daar gedaan; rijaantallen zijn identiek
+  (211.317 producten / 210.121 prijzen). Absolute cijfers lopen soms uiteen (koudere cache); de
+  verhoudingen zijn consistent, en alles wat zonder schemawijziging kon is gewoon op productie
+  gemeten. De branch is **niet** gemerged en er staat niets van dit werk op.
+- **`prices.price_list_id` blijft `NOT NULL` met een gevalideerde FK.** Daarop leunt het weghalen
+  van de `join price_lists` uit de compleetheidsmeting. Staat nu als test in
+  `lib/repo/brand-relations.test.ts` — verandert het schema, dan wordt die test rood in plaats van
+  het cijfer stil.
+- **Wandkloktijd vanaf een werkplek in NL is geen maatstaf.** De round-trip naar `us-east-1` is
+  hier 114 ms; Vercel draait in dezelfde regio als Neon. Alle cijfers in het rapport zijn
+  serverzijdige `Execution Time`.
+
+### Open eindes
+
+- **`/catalog`'s merken-keuzelijst kost nog steeds ~250 ms, onvoorwaardelijk.** Nagemeten dat de
+  B4-reparatie (`lib/repo/catalog.ts`) **geen meetbare winst opleverde**: 246–275 ms nu tegen
+  235–248 ms voor de query die hij verving. Beide scannen `products` volledig. Drie alternatieven
+  gemeten en afgewezen (btree op `brand_name`: geen verschil; recursieve loose index scan: 220 ms;
+  merknamenlijst + `EXISTS` per merk: 146 ms maar wisselvallig). Er zijn maar 32 distinct
+  `brand_name`-waarden onder 211k producten; zonder gematerialiseerde vorm of cache is dit niet
+  structureel sneller te maken, en de code wijst caching hier expliciet af omdat ijzeren regel 3
+  geen TTL verdraagt. Die afweging deel ik — maar de 250 ms staat er dus nog.
+- **`app/projects/[id]/work-prep/page.tsx:61` doet `await` in een `for`-lus**, één
+  `getEquivalentAlternatives` per gematchte spec-regel (360–680 ms per aanroep, gemeten). Vandaag
+  geen probleem: geen enkel dossier staat op `awarded` en het zwaarste heeft 3 gematchte regels.
+  Bij 40 regels is dat 15–25 s serieel. Niet triviaal te parallelliseren: de functie schrijft een
+  event per aanroep, dus `Promise.all` verandert de volgorde in het event-log.
+- **`app/projects/[id]/page.tsx:57,59,62` doet drie onafhankelijke `await`s serieel.** Samen te
+  voegen tot één `Promise.all`; winst = twee round-trips, vanaf Vercel ~4–10 ms. Bewust niet
+  gedaan — een wijziging zonder meetbare winst is precies wat besluit G25 verbiedt.
+- **De resterende tijd in de merk-alleen-tak zit in de sortering, niet in de scan.**
+  `ORDER BY similarity(name, '') DESC` sorteert alle matchende rijen op een sleutel die voor een
+  lege zoektekst aantoonbaar constant 0 is. Vereenvoudigen kan, maar dat is rangschikkingscode
+  (ijzeren regel 2 woont daar) en hoort niet bij een snelheidsopdracht.
+- **`searchProducts` en de matcher normaliseren artikelnummers verschillend** —
+  `lower(x) = lower($1)` tegenover `regexp_replace(lower(x), '[^a-z0-9]','','g') = $1`. Daarom
+  hebben ze elk een eigen index. Bestaand gedrag, niet gelijkgetrokken (dat is een
+  gedragswijziging); wel de moeite waard om ooit te bekijken, want de twee paden vinden nu niet
+  dezelfde dingen.
+- **C6 (FK-indexen) blijft liggen**, conform opdracht: `spec_lines` heeft 204 rijen, `events`
+  1.481. Houdbaarheidsnotitie voor zodra die tabellen zes cijfers naderen.
+
+### Nog te doen bij het pushen
+
+De migraties zijn **nog niet op productie toegepast**. `bun run db:migrate` hoort bij dit blok en
+mag zowel vóór als ná de push: `0017` en `0018` voegen uitsluitend indexen toe, dus de code werkt
+identiek mét en zonder — alleen langzamer zonder. Bouwtijd 3,7 s op 211k rijen; `CREATE INDEX`
+zonder `CONCURRENTLY` houdt in die seconden een `SHARE`-lock op `products` (lezen kan door,
+schrijven wacht).
+
+### Testrun
+
+`bun vitest run`: 1494 groen, 1 overgeslagen. Vijf tests vielen om onder volle belasting
+(`huisstijl` 2×, `project-status` 2×, `custom-fields` 1× — allemaal `oklab()` vs `rgb()` op
+berekende kleuren); geïsoleerd hertest zijn ze alle 70 groen. Bekende suite-conditie, geen
+codefout, en geen van de vijf raakt iets uit dit blok.
