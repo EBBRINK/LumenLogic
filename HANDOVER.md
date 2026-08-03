@@ -4532,3 +4532,91 @@ is in alle drie de tellingen 96 en dat is het getal dat telt.
 eerste keer dat ik die fout maakte in de notitie waarin ik het patroon opschreef.
 
 **Niets van dit alles is gebouwd of gepubliceerd.**
+
+## Bugfix — `/catalog` crashte op "merk zonder zoektekst" (`ORDER BY position 0`)
+
+_2026-08-03. Eén bug, één bestand: `lib/repo/products.ts#searchProducts`. Gevonden door de
+2.5b-snelheidssessie, daar buiten scope gelaten. Deze sectie is door de sprintmaster van week 2
+onder die van week 3 gezet: de codecommits landden apart, de HANDOVER-tekst botste._
+
+**Wat er misging.** Twee sorteertermen zijn constanten zodra er geen zoektokens zijn:
+`matchCount` blijft de letterlijke `0` bij nul tokens (tokens zijn stukken van ≥2 tekens, dus
+een lege óf één-teken-zoektekst levert er nul op) en `prefixBonus` blijft `0` bij een lege
+zoektekst. Allebei gingen ze onvoorwaardelijk de `.orderBy()` in, wat rendert als
+`order by 0 desc, 0 desc, …`. Postgres leest een kale integer in ORDER BY als **kolompositie**,
+niet als waarde; positie 0 bestaat niet:
+
+```
+ERROR: ORDER BY position 0 is not in select list   (SQLSTATE 42P10)
+```
+
+Precies de twee invoeren die op `/catalog` het startpunt zijn — een merk kiezen, of één letter
+typen — gaven dus een 500. De exacte-SKU-tak en elke zoekopdracht van ≥2 tekens waren nooit
+geraakt, wat verklaart waarom dit zo lang bleef staan.
+
+**De fix.** Het afvangpatroon dat al in `lib/matching/engine.ts` (rond regel 550) staat, nu ook
+hier: een constante sorteerterm wordt **weggelaten**, niet vervangen. Bewust géén `sql`0::int``
+en géén dummy-kolom in de SELECT — één afvangpatroon in de codebase is het punt.
+
+```ts
+const orderTerms = [
+  ...(tokens.length > 0 ? [desc(matchCount)] : []),
+  ...(query.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+  asc(visibleProducts.name),
+];
+```
+
+**`score` gaat mee op `query.length > 0`, en dat is gemeten.** `similarity(name, '')` is géén
+positionele verwijzing (het is een functieaanroep, dus het crashte niet), maar op PGlite gaf hij
+**0 voor élke rij** — een sorteersleutel die niets ordent. Bij één teken is hij wél betekenisvol
+(gemeten `similarity(name,'S')` = 0 / 0,038 / 0,05 over drie namen), dus de grens ligt bij de
+lengte van de zoektekst en niet bij het aantal tokens. Hiermee is de open observatie uit de
+2.5b-sectie ("de resterende tijd in de merk-alleen-tak zit in de sortering") afgehandeld.
+
+**IJzeren regels.** Regel 2: er is geen term bij gekomen, alleen weggelaten — de ordening blijft
+`#tokens → prefix → similariteit → naam`, prijsloos. Regel 3: de query leest onveranderd uit
+`visibleProducts`. Regel 5: het `search`-event ligt buiten de `if` en logt ook nu elke zoekactie,
+inclusief de merk-alleen-tak die eerder de functie liet klappen vóórdat er iets gelogd werd.
+
+**De 2.5b-index is nu pas bereikbaar.** Gemeten met `EXPLAIN (ANALYZE)` op een PGlite-set van
+**211.001 zichtbare producten** (productieformaat), merk-alleen-tak, `limit 40`:
+
+| variant | plan op `products` | tijd |
+| --- | --- | --- |
+| na de fix (`ORDER BY name`) | **Bitmap Index Scan on `products_brand_key_trgm_idx`** (5.276 rijen) | 214 ms |
+| index gedropt | Seq Scan, 205.725 rijen weggefilterd | 310 ms |
+
+Dus ja: de merk-alleen-tak pakt `products_brand_key_trgm_idx` en doet géén seq scan meer op
+`products`. Kanttekening bij de totaaltijden — die zijn PGlite/WASM, niet Neon, en de
+`products`-kant is er maar een deel van (58 ms mét index, 181 ms zonder).
+
+### Aannames en open eindes
+
+- **Niet tegen productie gemeten.** De EXPLAIN-cijfers komen van PGlite met de productie-migraties
+  en een synthetische set van 211k rijen (32 merken → 40 hier). De plankeuze is daarmee
+  aangetoond, de absolute milliseconden zijn indicatief. Wie het hard wil: dezelfde EXPLAIN op
+  Neon draaien ná de push.
+- **Nieuwe observatie, buiten deze scope gelaten:** in de merk-alleen-tak blijft er een
+  `Seq Scan on prices` over alle 211.001 rijen staan (~65 ms gemeten) omdat de view
+  `visible_products` de prijs-join altijd volledig maakt vóór het limiet. Dat is nu de grootste
+  post in die tak — groter dan de `products`-scan die 2.5b heeft weggenomen. Geen bug, geen
+  regel-3-risico (de poort werkt), maar wel de volgende meting waard.
+- **Geen RSC-render-test voor `/catalog` toegevoegd.** Die bestaat vandaag niet (alleen
+  `lib/repo/catalog.test.ts` op de repo-laag) en er een introduceren is een grotere ingreep dan
+  deze bug rechtvaardigt. De bug is afgevangen op de laag waar hij zit.
+
+### Testrun
+
+`bun vitest run`: **1500 groen**, 1 overgeslagen, 1 rood — `custom-fields` viel om onder volle
+belasting en is geïsoleerd 15/15 groen (bekende flaky, raakt niets uit dit blok).
+`bunx tsc --noEmit` schoon. De twee nieuwe tests in
+`lib/repo/products-ordening.test.ts` zijn eerst rood gezet op de ongewijzigde code — beide
+faalden op letterlijk `ORDER BY position 0 is not in select list` — en zijn groen na de fix.
+
+### Nagemeten door de sprintmaster
+
+De twee codecommits zijn los gepusht (`27e9524`, `b3cef12`); de fix is voor de push zelf
+geverifieerd: `lib/repo/products-ordening.test.ts` geïsoleerd gedraaid, 2/2 groen, en de fix is
+letterlijk het patroon uit `lib/matching/engine.ts`. Migraties 0017 en 0018 van 2.5b zijn op
+2026-08-03 tegen de database toegepast — alle zes indexen bestaan in `pg_indexes`, en de exacte
+SKU-tak meet daar `Index Scan using products_article_code_key_idx`, 0,059 ms.
