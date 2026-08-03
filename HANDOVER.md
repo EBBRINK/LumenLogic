@@ -3651,3 +3651,32 @@ andere sessie → wel of geen bedragen in de bytes.
 35. **`generateQuote` blijft een interne handeling.** Draait een externe hem toch (de knop
     staat er, zie 32), dan worden er offerteregels mét bedragen weggeschreven — hij ziet ze
     alleen niet. Dat is geen lek, maar het hoort bij 3.2a om die knop weg te nemen.
+
+---
+
+## Tweede rebase op main — migratie 0017 werd 0019 (2026-08-03)
+
+Tijdens het werk hierboven landde sprint **2.5b** op main (vijf commits, expressie-indexen).
+De branch is dáár opnieuw op gerebased. Eén echte botsing, en het is er een die je niet met
+een merge-tool oplost:
+
+**2.5b had het nummer 0017 al ingenomen** (`0017_snelheid_indexen.sql` + `0018_analytics_
+merkgat_index.sql`), en 3.1 had zijn eigen `0017_org_type_activatie.sql`. Twee migraties met
+hetzelfde nummer laten staan maakt de volgorde dubbelzinnig, en `db/test-db.ts` — de plek die
+die volgorde écht bepaalt, want het drizzle-journal loopt maar tot 0013 — kan ze niet uit
+elkaar houden. 3.1's migratie is daarom **hernummerd naar `0019_org_type_activatie.sql`**;
+dat kon zonder gevolgen omdat hij nog niet gedeployd is. Meegegaan:
+
+- `db/migration-0017.test.ts` is nu van 2.5b (de indexen); 3.1's versie heet
+  `db/migration-0019.test.ts`. De twee bestonden onder dezelfde naam — een `add/add`-conflict.
+- Die test draait nu 0000–**0018** als voorstand en dán 0019, zoals het op Neon ook gaat.
+  De indexen raken `organizations` niet, dus de uitkomst verandert er niet van; de volgorde
+  klopt wél met productie.
+- Verwijzingen naar "migratie 0017" in `lib/repo/activation.test.ts`,
+  `scripts/cleanup-testdata.test.ts` en `components/org/org.test.tsx` zijn bijgewerkt.
+
+⚠️ **Voor het deploy-draaiboek**: het draaiboek van deploy 1 (blok "HANDOVER: draaiboek deploy
+1") noemt de migratie nog als 0017. Het bestand heet nu `0019_org_type_activatie.sql`; de
+inhoud is ongewijzigd. Op Neon moeten 0017 en 0018 van 2.5b er vóór.
+
+De stand van vóór deze tweede rebase staat als `backup/sprint31-pin-voor-tweede-rebase`.
