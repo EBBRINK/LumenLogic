@@ -3680,3 +3680,14 @@ dat kon zonder gevolgen omdat hij nog niet gedeployd is. Meegegaan:
 inhoud is ongewijzigd. Op Neon moeten 0017 en 0018 van 2.5b er vóór.
 
 De stand van vóór deze tweede rebase staat als `backup/sprint31-pin-voor-tweede-rebase`.
+
+**Meting na de tweede rebase.** `bunx tsc --noEmit` schoon. Beide migratietests groen
+(0017 van 2.5b én 0019 van 3.1), de authz-suites 32/32, pin-autorisatie + activatie 39/39,
+en de nieuwe 3.2b-suites 21/21. Volle suite: 1/1694 en 4/1694 rood in twee runs.
+
+⚠️ Eén daarvan is géén flakiness en ook niet van deze branch:
+`components/data/custom-fields.test.tsx > "archiveren vraagt om bevestiging: geen
+archivering zonder VERSE telling"` faalt óók op een kale `origin/main` (nagemeten in een
+wegwerp-worktree op 1f0fb7e: 1 rood van 1500). In isolatie is hij 3 van de 3 keer groen —
+hij valt alleen om onder de volle-suite-belasting. Bestaande bevinding, hoort bij de sessie
+die `custom-fields` bezit. De overige rode tests wisselden per run en zijn in isolatie groen.
