@@ -310,8 +310,10 @@ op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde 
 ## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
 
 *Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
-`claude/sprint31-pin` (HEAD **d2d1502**, 30 commits — na twee rebases op main en sprint 3.2b;
-het was **c982e1f**/24 toen dit draaiboek werd geschreven) en is **niet gepusht**. Elke push naar
+`claude/sprint31-pin` en is **niet gepusht**. (Het draaiboek noemde hier eerst een vaste sha,
+**c982e1f**/24 commits; die is door twee rebases op main en sprint 3.2b achterhaald. Een sha in
+een document veroudert bij de eerstvolgende commit — lees de tip van de branch, niet dit
+getal.) Elke push naar
 main deployt binnen seconden naar productie; er is geen preview-stap. Het akkoord hiervoor
 komt van Timo zelf — G32 betekent dat het er **twee** zijn, en dit is de eerste.*
 
@@ -377,7 +379,11 @@ gewoon mee. Het journal-gat is bestaande schuld, geen blokkade voor deze deploy.
 bun run db:migrate
 
 # 2. Pas daarna pushen — dit deployt binnen seconden naar productie.
-bash scripts/safe-push.sh d2d1502
+#    Zonder argument pusht safe-push.sh HEAD; sta dus op de tip van
+#    claude/sprint31-pin en controleer eerst met DRY_RUN=1 wat er zou gaan.
+git log --oneline -1            # is dit de commit die je bedoelt?
+DRY_RUN=1 bash scripts/safe-push.sh
+bash scripts/safe-push.sh
 ```
 Nooit een kale `git push origin main` — die stuurt élke commit op de lokale main mee, ook die
 van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
