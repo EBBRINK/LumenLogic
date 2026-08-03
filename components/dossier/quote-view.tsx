@@ -24,6 +24,7 @@ import {
   type EstimateZoneGroup,
   type PmStatus,
 } from "@/lib/repo/estimate";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PhaseBadge } from "./phase-badge";
 import { StatusBadge } from "./status-badge";
 import { STATUS } from "./status";
@@ -179,10 +180,27 @@ export function QuoteView({
       </header>
 
       {lines.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No spec lines yet. Add lines on the Lines tab; they appear here
-          automatically with their status.
-        </p>
+        // Was een kale grijze regel — het dialect dat empty-state.tsx afschaft
+        // (UX-audit 30 jul, A6). De externe tweeling stond al om met dezelfde titel
+        // (quote-view-extern.tsx); alleen de uitleg verschilt, want die lezer heeft
+        // het Lines-tabblad niet.
+        //
+        // "framed", en dat is gemeten en niet aangenomen: dit blok staat direct onder
+        // de </header> hierboven op het kale canvas van de estimate-tab. Er is geen
+        // <Card> of paneel omheen dat het kader al tekent — de enige rand in de buurt
+        // is de `border-b` ONDER de kop, niet een vlak eromheen.
+        //
+        // Bewuste `action={null}`: de uitweg is het Lines-tabblad, en dat staat als
+        // tab in de dossier-tabbalk vlak boven dit document (dossier-tabs.tsx, `base`
+        // = /projects/[id]). QuoteView krijgt geen dossierId binnen — een knop hier
+        // zou een extra prop plus een tweede route-opbouw kosten voor navigatie die
+        // twee centimeter hoger al staat. Zelfde afweging als dossier-list.tsx.
+        <EmptyState
+          variant="framed"
+          title="No spec lines yet."
+          description="Add lines on the Lines tab; they appear here automatically with their status."
+          action={null}
+        />
       ) : (
         <Table>
           <TableHeader>

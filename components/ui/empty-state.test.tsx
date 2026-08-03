@@ -292,8 +292,9 @@ const BEKEND_OPEN: Record<string, { aantal: number; waarom: string }> = {
   "/components/analytics-view.tsx": { aantal: 2, waarom: "veegbeurt 2" },
 
   // ── Vers werk van reviewzwerm-blok 3, in een andere worktree ──
-  // Niet aangeraakt om merge-conflicten te vermijden; doorgegeven aan de sprintmaster.
-  "/components/dossier/quote-view.tsx": { aantal: 1, waarom: "blok 3, andere worktree" },
+  // quote-view.tsx is per sprint 2 (restjes) omgezet naar <EmptyState> (framed, bewuste
+  // `action={null}`); die regel is dus weg — de lijst mag alleen krimpen. Bewijs staat in
+  // components/dossier/quote-view-leeg.test.tsx.
   "/components/admin/brands-list-block.tsx": {
     aantal: 1,
     waarom: "blok 3, andere worktree",
