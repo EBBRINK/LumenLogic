@@ -379,12 +379,28 @@ gewoon mee. Het journal-gat is bestaande schuld, geen blokkade voor deze deploy.
 bun run db:migrate
 
 # 2. Pas daarna pushen — dit deployt binnen seconden naar productie.
-#    Zonder argument pusht safe-push.sh HEAD; sta dus op de tip van
-#    claude/sprint31-pin en controleer eerst met DRY_RUN=1 wat er zou gaan.
-git log --oneline -1            # is dit de commit die je bedoelt?
-DRY_RUN=1 bash scripts/safe-push.sh
-bash scripts/safe-push.sh
+#    Eerst kijken, dan doen:
+DRY_RUN=1 bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)
+bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)
 ```
+
+⚠️ **Dat argument is niet optioneel, en `--reverse` ook niet.** Twee valkuilen, allebei
+gemeten met `DRY_RUN=1` op 3 aug:
+
+- **Kaal `bash scripts/safe-push.sh`** pusht **één commit**, niet de branch:
+  `scripts/safe-push.sh:31-32` doet bij nul argumenten `SHAS=("$(git rev-parse HEAD)")`.
+  Er staan er tientallen. Het faalt fail-closed — er gaat niets de deur uit — maar de melding luidt
+  *"Cherry-pick van … botst met de actuele origin/main: HANDOVER.md"*, en dát wijst de
+  verkeerde kant op: er is geen conflict om op te lossen, er ontbreken 31 commits. Wie die
+  melding leest gaat een niet-bestaand mergeprobleem zoeken terwijl hij tegen productie werkt.
+- **Zonder `--reverse`** krijg je exact dezelfde misleidende melding: het script cherry-pickt
+  in de volgorde die je meegeeft, en `git rev-list` levert nieuwste-eerst.
+
+Met de goede vorm cherry-pickte de hele branch schoon op de actuele `origin/main` (meting
+3 aug: 32 commits, 61 bestanden, +10639/-78). Het commando rekent het aantal zelf uit, dus
+het blijft kloppen als er commits bij komen. Dit is de fout die in week 1 vier keer is
+gemaakt; het draaiboek is de plek waar dat stopt.
+
 Nooit een kale `git push origin main` — die stuurt élke commit op de lokale main mee, ook die
 van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
 
