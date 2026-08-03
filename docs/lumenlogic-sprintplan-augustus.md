@@ -1569,6 +1569,56 @@ Vercel-integratiepagina en het Neon-dashboard en legt de uitkomst vast in
 `docs/spike-2.3-migratie-draaiboek.md`. Fout van de sprintmaster om dit als open vraag bij een
 week-3-start neer te leggen zonder de gevolgen uit te leggen.
 
+**Deploy 1 van 3.1 + 3.2b is uitgevoerd op 3 aug, op Timo's expliciete akkoord.** Volgorde zoals
+G40 voorschrijft: eerst de voorcontroles, dan migreren, dan pushen. Nameting op productie:
+`0017_snelheid_indexen` en `0018_analytics_merkgat_index` van 2.5b bleken al toegepast, dus alleen
+`0019_org_type_activatie` draaide (6 statements). Uitkomst: één organisatie `brink-licht` met
+`type = 'intern'`, drie `org_admin`-memberships op de drie bestaande adressen, alle 13 dossiers van
+`org_id IS NULL` naar gekoppeld, `activation_pins` aangemaakt en leeg. Daarna gepusht
+(`origin/main` op `21f84c3`, 61 bestanden, +10655/−78), deploy Ready in 1 minuut, `/login` HTTP 200
+met zowel het wachtwoordveld als het magic-linkpad — G32 zoals bedoeld.
+
+⚠️ **Twee correcties op eerdere versies van dit plan, allebei gemeten en niet beredeneerd.**
+(1) De migratie heet sinds de tweede rebase **0019**, niet 0017 — 2.5b claimde die nummers eerder.
+Het deploydraaiboek in `HANDOVER.md` verwees nog tienmaal naar het oude nummer en is gecorrigeerd.
+(2) Het draaiboek schreef `bash scripts/safe-push.sh` zónder argument voor. Dat pusht **precies één
+commit** (`safe-push.sh:31-32` zet `SHAS=("$(git rev-parse HEAD)")`), niet de branch, en faalde met
+een melding die naar een niet-bestaand conflict wees. Het werkende commando is
+`bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)`; `--reverse` is niet
+optioneel, want het script cherry-pickt in de opgegeven volgorde. Dezelfde val als in week 1.
+
+**Eerste echte activatie op productie, en wat die blootlegde.** Timo heeft de keten PIN → `/activate`
+→ wachtwoord → inloggen zelf doorlopen (`tpw.wittkamp@gmail.com`, 0 foute pogingen, PIN correct als
+gebruikt gemarkeerd). Daarmee is 3.1 in de praktijk bewezen. Wat het óók liet zien: dat account
+belandde in Brink's eigen organisatie met `type = 'intern'` en rol `org_admin`, want het
+PIN-scherm biedt in de organisatie-dropdown alleen "Brink Licht (intern)" aan. **3.2b is dus nog
+niet in de praktijk getoetst** — alleen in tests — omdat er geen externe organisatie bestaat om
+mee te toetsen.
+
+**Besluit G41 (Timo, 3 aug) — onboarding hoort op één scherm; dit wordt 3.2c, ná 3.2a.** Vandaag is
+"iemand toegang geven" verdeeld over twee schermen: een organisatie aanmaken kan alleen op
+`/settings/organization` (`createOrgAction`), een PIN uitgeven alleen op `/admin/users`. Timo:
+*"dit is niet helemaal gebruiksvriendelijk … ik denk dat het makkelijker wordt om alles bij elkaar
+te hebben."* Eens, en niet alleen om het gemak: aan `organizations.type` hangt of iemand prijzen
+ziet, en dat veld is **nergens instelbaar en vrijwel nergens zichtbaar** — het hangt volledig aan
+de kolomdefault `NOT NULL DEFAULT 'extern'` uit 0019. Een organisatie die per ongeluk intern is,
+geeft een installateur inkoopprijzen te zien zonder dat iemand het merkt; dat is ijzeren regel 2.
+Wat 3.2c moet doen: de organisatie-dropdown op `/admin/users` krijgt een optie "+ nieuwe
+organisatie" mét expliciete keuze intern/extern, en het type wordt getoond overal waar een
+organisatie genoemd wordt (de dropdown doet dat al, de PIN-statuslijst niet).
+
+**Besluit G42 (Timo, 3 aug) — het org-type wordt bij aanmaken bewust gekozen en is daarna vast.**
+Een organisatie die van extern naar intern kan flippen is een prijslek met één muisklik. Wie het
+anders wil, maakt een nieuwe organisatie. Dit is een grens voor 3.2c, geen losse feature.
+
+⚠️ **Gevolg voor de volgorde: 3.2a is urgenter geworden.** `saveBrandingAction`
+(`app/settings/organization/actions.ts:96`) staat achter alleen `requireSession` — vastgelegd als
+`BEKENDE_SCHULD` in `lib/repo/authz-deuren.test.ts:175` mét vastpin-test. Zolang er één
+organisatie bestond was dat theoretisch. Zodra Timo de tweede aanmaakt om 3.2b te toetsen, kan die
+tweede de branding van Brink overschrijven. Daarom: **3.2a eerst, dan 3.2c** — tenzij er eerder een
+externe installateur uitgenodigd moet worden, dan draait die volgorde om en gaat de schuld mee als
+bewust risico.
+
 ### Week 4 (10–14 aug) — alles op naam van Brink
 
 **Klaar wanneer** (vault): de slotdemo is door Brink zelf uitgevoerd, zonder hulp (17 aug).
