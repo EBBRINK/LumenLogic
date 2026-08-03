@@ -47,7 +47,7 @@ import { memberships, organizations, type MembershipRole } from "@/db/schema";
 import { issueActivationPin, type IssuedPin } from "./activation";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
-import { addMembership, removeMembership } from "./orgs";
+import { addMembership, removeMembership, setOrgBranding } from "./orgs";
 
 // Overal in dit project worden adressen zo genormaliseerd (zie lib/repo/activation.ts).
 function normalizeEmail(email: string): string {
@@ -537,6 +537,85 @@ export async function changeMembershipAsActor(
     actor: authority.email,
   });
   return { ok: true, email: verdict.email, roles: verdict.roles };
+}
+
+export type BrandingOutcome =
+  | { ok: true; orgId: string }
+  | { ok: false; reason: DenyReason; message: string };
+
+/**
+ * De derde deur (sprint 3.2a): de branding van een organisatie zetten.
+ *
+ * Tot 3.2a stond `saveBrandingAction` achter alléén `requireSession()` en las hij de
+ * `orgId` uit het formulier — een gewone gebruiker uit org A overschreef daarmee de
+ * branding van org B. Dat was vastgelegd als BEKENDE_SCHULD in
+ * `lib/repo/authz-deuren.test.ts` en is hier gedicht, in dezelfde vorm als G39: autoriseren
+ * en schrijven in ÉÉN aanroep, met `actorEmail` uit de sessie en alle rechten vers uit de
+ * database.
+ *
+ * De regel is bewust NIET `decideMembershipAuthority()`. Die gaat over lidmaatschappen en
+ * rollen, en daar hangen bepalingen aan (2a: geen org_admin toekennen; 2c: geen vreemd
+ * doeladres) die op een logo en een kleurcode niets betekenen. Hergebruiken zou een
+ * doeladres moeten verzinnen dat er niet is. De regel hier is die éne zin die wél telt:
+ * **intern mag elke organisatie, een org_admin alleen de zijne, de rest niets.**
+ */
+export async function setBrandingAsActor(
+  db: AppDb,
+  input: {
+    actorEmail: string | null | undefined;
+    orgId: string;
+    logoUrl?: string | null;
+    accentColor?: string | null;
+  },
+): Promise<BrandingOutcome> {
+  const authority = await resolveOrgAuthority(db, input.actorEmail);
+  const orgId = input.orgId.trim();
+
+  const verdict = decideBrandingChange(authority, orgId);
+  if (!verdict.allowed) {
+    await logDenial(db, authority, "org_branding_denied", verdict, { orgId });
+    return { ok: false, reason: verdict.reason, message: verdict.message };
+  }
+
+  // Vorm eerst, dan de database — zelfde reden als bij readOrgFacts: een vormloze orgId
+  // laat Postgres gooien, en dan zou een onbevoegde aanvraag een hárde fout opleveren waar
+  // dezelfde aanvraag met een bestaande org een nette weigering geeft.
+  if (!UUID_RE.test(orgId) || !(await readOrgFacts(db, orgId))) {
+    await logDenial(
+      db,
+      authority,
+      "org_branding_denied",
+      deny("onbekende_org", MSG_UNKNOWN_ORG),
+      { orgId },
+    );
+    return {
+      ok: false,
+      reason: "onbekende_org",
+      message:
+        authority.kind === "intern" ? MSG_UNKNOWN_ORG : MSG_DENIED,
+    };
+  }
+
+  await setOrgBranding(db, {
+    orgId,
+    logoUrl: input.logoUrl,
+    accentColor: input.accentColor,
+    actor: authority.email,
+  });
+  return { ok: true, orgId };
+}
+
+/** De regel achter `setBrandingAsActor`, puur — zonder database, dus uitputtend testbaar. */
+export function decideBrandingChange(
+  authority: OrgAuthority,
+  orgId: string,
+): { allowed: true } | Denial {
+  if (authority.kind === "intern") return { allowed: true };
+  // Default-deny voorop, en met dezelfde neutrale tekst als de rest van dit bestand: wie
+  // niet mag, mag ook niet uit de melding afleiden óf die organisatie bestaat.
+  if (authority.kind === "geen") return deny("geen_uitgever", MSG_DENIED);
+  if (!authority.orgIds.includes(orgId)) return deny("vreemde_org", MSG_DENIED);
+  return { allowed: true };
 }
 
 // ── Wat een scherm mag tonen ───────────────────────────────────────────────────

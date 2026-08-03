@@ -66,8 +66,19 @@ const bronnen: Record<string, string> = {
   }) as Record<string, string>),
 };
 
-/** De kale schrijffuncties. Wie deze in app-code binnenhaalt, omzeilt G36. */
-const VERBODEN_NAMEN = ["issueActivationPin", "addMembership", "removeMembership"];
+/**
+ * De kale schrijffuncties. Wie deze in app-code binnenhaalt, omzeilt G36.
+ *
+ * `setOrgBranding` is er in 3.2a bijgekomen — precies zoals het kopcommentaar hierboven
+ * voorschrijft ("wie ze uitbreidt, zet de nieuwe naam in VERBODEN_NAMEN"). App-code gaat
+ * via `setBrandingAsActor()` in lib/repo/authz.ts.
+ */
+const VERBODEN_NAMEN = [
+  "issueActivationPin",
+  "addMembership",
+  "removeMembership",
+  "setOrgBranding",
+];
 
 /** De modules waarin ze wonen: als geheel niet te importeren (namespace of dynamisch). */
 const SCHRIJFMODULES = String.raw`repo/(orgs|activation)`;
@@ -165,29 +176,27 @@ export function overtredingenIn(pad: string, bron: string): string[] {
  * Bekende, bewust openstaande overtredingen. Eén regel per stuk, exact zoals de bewaker hem
  * meldt — een nieuwe overtreding op dezelfde plek valt dus alsnog rood uit.
  *
- * Dit is geen uitzondering "omdat het mag", maar zichtbare schuld. `saveBrandingAction`
- * schrijft `organizations` met alleen `requireSession()`: de critic heeft gemeten dat een
- * gewone gebruiker uit org A daarmee de branding van org B overschrijft. Het is géén
- * G36-escalatie (de kolom `type` wordt niet geraakt, er ontstaat geen membership en geen
- * PIN), en het bestand valt buiten wat G36/G39 mocht aanraken — vandaar melden en niet
- * repareren. Het hoort bij 3.2a, en wie het daar dichtzet, haalt deze regel weg.
+ * ✅ LEEG SINDS 3.2a. Hier stond `saveBrandingAction`: die schreef de organisatietabel
+ * rechtstreeks bij met alleen `requireSession()`, waarmee een gewone gebruiker uit org A de
+ * branding van org B overschreef. Dat is gedicht in de vorm van G39 — `setOrgBranding()` in de schrijflaag,
+ * `setBrandingAsActor()` als poort ervoor, de action houdt alleen nog het formulier vast.
+ * De test hieronder houdt de lijst leeg, zodat er niet stilletjes iets bij komt.
  */
-const BEKENDE_SCHULD = [
-  "/app/settings/organization/actions.ts schrijft rechtstreeks op organizations",
-];
+const BEKENDE_SCHULD: string[] = [];
 
-test("de bekende schuld staat er nog precies zo — niet meer en niet minder", () => {
+test("er staat geen bekende schuld open", () => {
   // Zonder deze test zou BEKENDE_SCHULD een sluipende amnestie worden: iemand plakt er een
-  // regel bij en de bewaker zwijgt. Hier staat letterlijk wat er openstaat, dus het
-  // veranderen ervan is een bewuste handeling die in de diff opvalt.
-  expect(BEKENDE_SCHULD).toEqual([
-    "/app/settings/organization/actions.ts schrijft rechtstreeks op organizations",
-  ]);
-  // En de schuld is echt nog aanwezig: is hij in 3.2a gerepareerd, dan hoort deze regel
-  // weg te gaan in plaats van stil te blijven staan.
+  // regel bij en de bewaker zwijgt. Hier staat letterlijk wat er openstaat — vandaag niets.
+  expect(BEKENDE_SCHULD).toEqual([]);
+});
+
+test("saveBrandingAction schrijft niet meer rechtstreeks op organizations (3.2a)", () => {
+  // De contra-kant van de lege lijst hierboven: die is ook leeg als het bestand verdwijnt.
   const bron = bronnen["/app/settings/organization/actions.ts"];
   expect(bron, "bronbestand niet gevonden").toBeTruthy();
-  expect(/\.\s*update\s*\(\s*organizations\s*[),]/.test(bron)).toBe(true);
+  expect(/\.\s*update\s*\(\s*organizations\s*[),]/.test(bron)).toBe(false);
+  // En hij gaat via de poort, niet via een nieuwe eigen weg.
+  expect(bron).toContain("setBrandingAsActor");
 });
 
 test("de bronbestanden zijn daadwerkelijk ingelezen (anders bewijst deze test niets)", () => {
