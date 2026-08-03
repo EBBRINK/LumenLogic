@@ -78,6 +78,7 @@ const orgScreen = (
       removeMemberAction={noopAction}
       saveBrandingAction={noopAction}
       canGrantOrgAdmin
+        canCreate
     />
   </Screen>
 );
@@ -120,6 +121,7 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
         canGrantOrgAdmin
+        canCreate
       />
     </Screen>,
   );
@@ -162,6 +164,7 @@ test("A7 — lege organisatielijst: alleen de lege toestand, met het Create-form
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
         canGrantOrgAdmin
+        canCreate
       />
     </Screen>,
   );
@@ -200,6 +203,7 @@ for (const theme of ["light", "dark"] as const) {
             removeMemberAction={noopAction}
             saveBrandingAction={noopAction}
             canGrantOrgAdmin
+        canCreate
           />
         </Screen>,
       );
@@ -223,6 +227,7 @@ test("A7 — met organisaties: het formulier staat terug in zijn kaart, geen leg
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
         canGrantOrgAdmin
+        canCreate
       />
     </Screen>,
   );

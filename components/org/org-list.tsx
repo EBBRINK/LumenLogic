@@ -204,6 +204,7 @@ export function OrgList({
   removeMemberAction,
   saveBrandingAction,
   canGrantOrgAdmin,
+  canCreate,
 }: {
   orgs: OrgWithMembers[];
   createAction: (formData: FormData) => void | Promise<void>;
@@ -212,6 +213,11 @@ export function OrgList({
   saveBrandingAction: (formData: FormData) => void | Promise<void>;
   /** G36, tweede zin: alleen Brink zelf kent de org_admin-rol toe. */
   canGrantOrgAdmin: boolean;
+  /**
+   * 3.2a: een organisatie aanmaken is intern werk (`createOrgAction` weigert de rest).
+   * Gemak bovenop de poort, nooit in plaats daarvan — zelfde regel als `canManageMembers`.
+   */
+  canCreate: boolean;
 }) {
   // UX-audit 30 jul, A7: het Create-formulier stond bóven de zin "No organizations yet.
   // Create one above." — een lege toestand die naar boven wijst. Bij leeg staat er nu
@@ -222,15 +228,19 @@ export function OrgList({
     return (
       <EmptyState
         title="No organizations yet."
-        description={NEW_ORG_HINT}
-        action={<NewOrgFormFields createAction={createAction} centered />}
+        description={canCreate ? NEW_ORG_HINT : undefined}
+        action={
+          canCreate ? (
+            <NewOrgFormFields createAction={createAction} centered />
+          ) : undefined
+        }
       />
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <NewOrgForm createAction={createAction} />
+      {canCreate && <NewOrgForm createAction={createAction} />}
 
       {orgs.map(({ org, members, canManageMembers }) => (
         <Card key={org.id}>

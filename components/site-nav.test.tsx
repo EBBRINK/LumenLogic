@@ -7,6 +7,8 @@ import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { activeNavHref, NAV_ITEMS } from "./nav-items";
+import { magBij, niveauVoor } from "@/lib/route-allowlist";
+import { decideToegang, type Toegang } from "@/lib/repo/toegang";
 import { NavBar } from "./nav-link";
 
 const viewports = {
@@ -222,3 +224,76 @@ test("gerenderde balk markeert alleen Brand relations op /data/brand-relations",
     page.getByRole("link", { name: "Data", exact: true }).element(),
   ).not.toHaveAttribute("aria-current");
 });
+
+// ── 3.2a: de balk toont alleen wat deze kijker mag bereiken ──────────────────
+//
+// Zonder deze filter houdt een extern account een menu met Data, Brand relations,
+// Analytics, Brand portal en Admin — vijf links die allemaal op een 404 uitkomen, want die
+// routes staan in de allowlist op niveau `intern`. De filter zelf zit in
+// `components/site-nav.tsx` en gebruikt dezelfde `ROUTE_NIVEAUS` als de poort; hier wordt
+// vastgelegd wat dat oplevert, en dat de balk het ook echt zo rendert.
+
+const zichtbaarVoor = (toegang: Toegang) =>
+  NAV_ITEMS.filter((it) => magBij(toegang, niveauVoor(it.href))).map(
+    (it) => it.label,
+  );
+
+const INTERN = decideToegang("timo@brinklicht.nl", [
+  { orgId: "org-brink", orgType: "intern", roles: [] },
+]);
+const EXTERN_ADMIN = decideToegang("baas@installateur.nl", [
+  { orgId: "org-klant", orgType: "extern", roles: ["org_admin"] },
+]);
+const EXTERN_LID = decideToegang("jan@installateur.nl", [
+  { orgId: "org-klant", orgType: "extern", roles: ["calculator"] },
+]);
+
+test("intern ziet de hele balk", () => {
+  // De contra-test: zonder deze zou een filter die per ongeluk álles wegsnijdt ook groen zijn.
+  expect(zichtbaarVoor(INTERN)).toEqual(NAV_ITEMS.map((i) => i.label));
+});
+
+test("extern houdt Projects, Catalog en Settings over — de rest is intern", () => {
+  expect(zichtbaarVoor(EXTERN_LID)).toEqual(["Projects", "Catalog", "Settings"]);
+  // Een externe org_admin ziet hetzelfde: /admin/users staat wél op `org_admin`, maar het
+  // NAV-item wijst naar /admin (het dashboard) en dat is en blijft intern.
+  expect(zichtbaarVoor(EXTERN_ADMIN)).toEqual([
+    "Projects",
+    "Catalog",
+    "Settings",
+  ]);
+  for (const weg of ["Data", "Brand relations", "Analytics", "Brand portal", "Admin"]) {
+    expect(zichtbaarVoor(EXTERN_LID), weg).not.toContain(weg);
+  }
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`hoofdnavigatie extern (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <div className="min-h-screen bg-background text-foreground">
+          <NavBar
+            email="jan@installateur.nl"
+            pathname="/projects"
+            items={NAV_ITEMS.filter((it) =>
+              magBij(EXTERN_LID, niveauVoor(it.href)),
+            )}
+          />
+        </div>,
+      );
+      await expect
+        .element(page.getByRole("link", { name: "Projects" }))
+        .toBeInTheDocument();
+      // Wat er NIET staat is de hele eis — een screenshot alleen zou dat niet vastleggen.
+      expect(
+        document.querySelectorAll('nav a[href="/data"]').length,
+        "Data staat nog in de balk voor een extern account",
+      ).toBe(0);
+      await page.screenshot({
+        path: `./site-nav.extern.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}

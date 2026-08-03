@@ -38,15 +38,25 @@ export function NavLink({
 }
 
 // `pathname` is alleen bedoeld voor tests; in de app komt hij uit de router.
+//
+// ⚠️ 3.2a — `items` is wat DEZE kijker mag zien. `SiteNav` filtert NAV_ITEMS met dezelfde
+// allowlist die de routes bewaakt, zodat de balk geen links toont die op een 404 uitkomen.
+// Dat is gemak bovenop de poort en nooit in plaats daarvan: `bewaakRoute()` weigert
+// hetzelfde, ook als iemand het adres intikt. Default = alles, zodat bestaande tests die
+// alleen de bálk toetsen ongewijzigd blijven werken.
 export function NavBar({
   email,
   pathname,
+  items = NAV_ITEMS,
 }: {
   email?: string | null;
   pathname?: string;
+  items?: readonly { href: string; label: string }[];
 }) {
   const routePathname = usePathname();
-  const active = activeNavHref(pathname ?? routePathname ?? "");
+  // De actieve sectie wordt bepaald over de ZICHTBARE items: staat /data niet in de balk,
+  // dan hoort een pad eronder ook niets te laten oplichten.
+  const active = activeNavHref(pathname ?? routePathname ?? "", items);
   return (
     <header className="border-b border-nav-border bg-nav">
       {/* max-w-7xl = 1280px, de containerbreedte uit DESIGN.md §5. Deze balk is de
@@ -83,7 +93,7 @@ export function NavBar({
           </span>
         </Link>
         <nav className="flex items-center gap-1 text-sm">
-          {NAV_ITEMS.map((it) => (
+          {items.map((it) => (
             <NavLink
               key={it.href}
               href={it.href}
