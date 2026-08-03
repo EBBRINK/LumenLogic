@@ -195,12 +195,27 @@ function completenessSelection(
     }
     selection[field.key] = sql`count(*) filter (where ${sql.raw(`"${column}"`)} is not null)`;
   }
-  // Prijs: EXISTS op prices ⨝ price_lists — sinds 1.6-A ongeacht valid_until (dit
-  // meet aanlevering, niet geldigheid; de join blijft staan, maar de datum wordt
-  // niet meer als filter gebruikt). Nooit het bedrag (regel 2).
+  // Prijs: EXISTS op prices — sinds 1.6-A ongeacht valid_until (dit meet aanlevering,
+  // niet geldigheid). Nooit het bedrag (regel 2).
+  //
+  // 2.5b: de `join price_lists pl on pl.id = pr.price_list_id` die hier tot nu toe stond
+  // is WEG. Sinds 1.6-A werd er niets meer uit `pl` gelezen en niets op gefilterd, en de
+  // join kon ook geen rij meer wegnemen: `prices.price_list_id` is NOT NULL en draagt een
+  // gevalideerde foreign key naar `price_lists.id` (primary key), dus élke prijsrij heeft
+  // per constructie exact één lijst. De EXISTS is er dus letterlijk hetzelfde van — maar
+  // hij draait per productrij, en dat maakte de join wél duur.
+  //
+  // Gemeten op productie (EXPLAIN ANALYZE, BUFFERS), zwaarste merkrelaties-pagina
+  // (25 merken, 65.850 producten): 330 ms → 212 ms. De join was goed voor 263.400 van de
+  // 526.801 buffers in het subplan, alleen aan `Heap Fetches: 65850` op price_lists.
+  // Dat de uitkomst gelijk blijft staat vast in lib/repo/brand-relations.test.ts.
+  //
+  // ⚠️ Dit is GEEN zichtbaarheidspoort. Ijzeren regel 3 leeft in `visible_products`; deze
+  // functie raakt die view niet en heeft hem nooit geraakt. Zet hier dus ook geen
+  // datumfilter terug "voor de veiligheid" — dat zou compleetheid stil in geldigheid
+  // veranderen, precies wat 1.6-A ongedaan maakte.
   selection[PRICE_FIELD_KEY] = sql`count(*) filter (where exists (
     select 1 from ${prices} pr
-    join ${priceLists} pl on pl.id = pr.price_list_id
     where pr.product_id = ${sql.raw('"products"."id"')}
   ))`;
   return selection;

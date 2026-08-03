@@ -4,7 +4,14 @@
 import { expect, test } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
-import { brandRelations, brands, events, products } from "@/db/schema";
+import {
+  brandRelations,
+  brands,
+  events,
+  priceLists,
+  prices,
+  products,
+} from "@/db/schema";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { archiveEigenVeld, createEigenVeld } from "@/lib/repo/custom-fields";
 import {
@@ -487,4 +494,68 @@ test("bulkSetBrandRelationStatus met een lege selectie doet niets — ook geen e
   });
   expect(await db.select().from(events)).toHaveLength(0);
   expect(await db.select().from(brandRelations)).toHaveLength(0);
+});
+
+// ── 2.5b: de aanname onder de weggehaalde price_lists-join ────────────────────
+// De prijs-EXISTS in completenessSelection joinde tot 2.5b nog op price_lists, terwijl
+// er sinds 1.6-A niets meer uit die tabel werd gelezen of op gefilterd. Weghalen mocht
+// omdat de join per constructie geen rij kón wegnemen — maar dat is een eigenschap van
+// het SCHEMA, niet van de query. Wordt `price_list_id` ooit nullable, of verdwijnt de
+// foreign key, dan verandert de betekenis van het cijfer stil: een prijsrij zonder lijst
+// zou dan wél meetellen waar hij dat vroeger niet deed. Deze test maakt dat luidruchtig.
+test("2.5b: elke prijsrij heeft per constructie exact één prijslijst", async () => {
+  const db = await createTestDb();
+  const kolom = await db.execute(sql`
+    select a.attnotnull as not_null
+    from pg_attribute a
+    where a.attrelid = 'prices'::regclass and a.attname = 'price_list_id'
+  `);
+  const kolomRijen = (
+    Array.isArray(kolom) ? kolom : ((kolom as { rows?: unknown[] }).rows ?? [])
+  ) as { not_null: boolean }[];
+  expect(kolomRijen[0]?.not_null).toBe(true);
+
+  const fk = await db.execute(sql`
+    select c.convalidated
+    from pg_constraint c
+    where c.conrelid = 'prices'::regclass
+      and c.contype = 'f'
+      and c.confrelid = 'price_lists'::regclass
+  `);
+  const fkRijen = (
+    Array.isArray(fk) ? fk : ((fk as { rows?: unknown[] }).rows ?? [])
+  ) as { convalidated: boolean }[];
+  expect(fkRijen).toHaveLength(1);
+  expect(fkRijen[0].convalidated).toBe(true);
+});
+
+// En de gedragskant: het prijscijfer telt nog steeds producten, niet prijsrijen. Een
+// product met twee prijsrijen (twee lijsten) mag niet dubbel tellen — dat zou de eerste
+// misrekening zijn als iemand de EXISTS ooit tot een join platslaat.
+test("2.5b: twee prijslijsten op één product tellen als één geleverde prijs", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Merk Twee Lijsten",
+    name: "P1",
+  });
+  // `price_lists_brand_active_uniq` laat maar één níet-vervangen lijst per merk toe, dus
+  // de tweede is een vervángen lijst — precies het echte geval: het product houdt zijn
+  // prijsrij op de oude lijst én krijgt er één op de nieuwe.
+  const [tweede] = await db
+    .insert(priceLists)
+    .values({
+      brandId,
+      name: "Vervangen lijst",
+      validFrom: "2025-01-01",
+      validUntil: "2025-12-31",
+      replacedAt: new Date("2026-01-01T00:00:00Z"),
+    })
+    .returning();
+  await db
+    .insert(prices)
+    .values({ productId, priceListId: tweede.id, grossPrice: "200.00" });
+
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.productCount).toBe(1);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(1);
 });
