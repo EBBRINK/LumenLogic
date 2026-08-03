@@ -15,11 +15,12 @@ import {
   startEnrichmentRun,
 } from "@/lib/repo/enrichment";
 import { measureHitRate } from "@/lib/repo/evaluation";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 export async function startRunAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const brandId = String(formData.get("brandId") ?? "").trim();
   if (!brandId) return;
   const run = await startEnrichmentRun(db, brandId, await getActor());
@@ -27,7 +28,7 @@ export async function startRunAction(formData: FormData) {
 }
 
 export async function setVerdictAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const itemId = String(formData.get("itemId") ?? "").trim();
   const runId = String(formData.get("runId") ?? "").trim();
   const verdict = formData.get("verdict") === "fout" ? "fout" : "goed";
@@ -37,7 +38,7 @@ export async function setVerdictAction(formData: FormData) {
 }
 
 export async function publishRunAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const runId = String(formData.get("runId") ?? "").trim();
   if (!runId) return;
   await publishRun(db, runId, await getActor());
@@ -47,7 +48,7 @@ export async function publishRunAction(formData: FormData) {
 }
 
 export async function rejectRunAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const runId = String(formData.get("runId") ?? "").trim();
   if (!runId) return;
   await rejectRun(db, runId, await getActor());
@@ -67,7 +68,7 @@ function queueIdFrom(formData: FormData): string | null {
 }
 
 export async function markLoadedAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const queueId = queueIdFrom(formData);
   if (!queueId) return;
   await markBrandLoaded(db, queueId, await getActor());
@@ -78,7 +79,7 @@ export async function markLoadedAction(formData: FormData) {
 // "Not a brand" (UX-audit 30 jul, bug #12): zoneteksten die de parser als merk las horen
 // niet op de inlaadwachtrij. Afvoeren, niet als ingeladen markeren — dat zou onwaar zijn.
 export async function dismissBrandLoadAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const queueId = queueIdFrom(formData);
   if (!queueId) return;
   await dismissBrandLoad(db, queueId, await getActor());
@@ -90,7 +91,7 @@ export async function dismissBrandLoadAction(formData: FormData) {
 }
 
 export async function measureAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data");
   const label =
     String(formData.get("label") ?? "").trim() ||
     `meting ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;

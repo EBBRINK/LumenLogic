@@ -8,7 +8,7 @@ import {
 import { BrandFilterBar } from "@/components/admin/brand-filter-bar";
 import { listBrandsWithTier } from "@/lib/repo/admin";
 import type { BrandLifecycle } from "@/db/schema";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 const PHASES: BrandLifecycle[] = ["actief", "slapend", "bestaat_niet_meer"];
 
@@ -30,7 +30,7 @@ export default async function AdminMerkenPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/admin/brands");
 
   const sp = await searchParams;
   const q = parseQ(sp.q);

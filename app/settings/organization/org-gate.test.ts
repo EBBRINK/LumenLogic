@@ -14,6 +14,7 @@ import {
   listMemberships,
   listOrganizations,
 } from "@/lib/repo/orgs";
+import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -66,6 +67,8 @@ const { createOrgAction, removeMemberAction } = await import("./actions");
 async function verseDb() {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, harnas.email);
   return db;
 }
 

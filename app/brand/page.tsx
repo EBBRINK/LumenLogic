@@ -1,7 +1,7 @@
 import { db } from "@/db/client";
 import { BrandOverview } from "@/components/merk/brand-overview";
 import { resolveBrandFromParam } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Merkportaal-landing (§3.16). Buiten de dossier-layout → rendert zijn eigen <main>.
 // Welk merk het portaal toont, beslist resolveBrandFromParam — inclusief de uuid-guard
@@ -14,7 +14,7 @@ export default async function MerkPage({
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand");
   const { brand: brandId } = await searchParams;
   const brand = await resolveBrandFromParam(db, brandId);
 

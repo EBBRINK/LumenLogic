@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BrandForm } from "@/components/admin/brand-form";
-import { requireSession } from "@/lib/session";
 import { createBrandAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Merk aanmaken (sprint 1.5). Een eigen route, geen inline `<details>` op de lijst: na de
 // dubbelcheck-POST rendert de pagina opnieuw en zou een `<details>` dicht staan — dan is
 // juist de waarschuwing die de mens moet zien onzichtbaar (plan §1).
 export default async function NieuwMerkPage() {
-  await requireSession();
+  await bewaakRoute("/admin/brands/new");
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-8">

@@ -11,6 +11,7 @@ import { expect, test, vi } from "vitest";
 import { allowedEmails } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
 import { addAllowedEmail, listAllowedEmails } from "@/lib/repo/settings";
+import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -93,6 +94,8 @@ async function uitgelogd<T>(run: () => Promise<T>): Promise<T> {
 async function stand(emails: string[]) {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, harnas.email);
   // Migratie 0002 zet er twee echte adressen in; die zouden de tellingen hieronder
   // vertroebelen (de laatste-adres-vangrail telt de hele lijst).
   await db.delete(allowedEmails);

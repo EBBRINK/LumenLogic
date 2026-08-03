@@ -24,7 +24,6 @@ import {
 } from "@/lib/repo/brand-relations";
 import { listBrandUploads } from "@/lib/repo/brand-portal";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   logBrandMessagePreparedAction,
   setFieldVisibilityAction,
@@ -33,6 +32,7 @@ import {
 } from "../actions";
 import { uploadTemplateAction } from "./upload-actions";
 import { readApplySummary, TemplateApplySummary } from "./apply-summary";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function MerkrelatieDetailPage({
   params,
@@ -41,7 +41,7 @@ export default async function MerkrelatieDetailPage({
   params: Promise<{ brandId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations/[brandId]");
   const { brandId } = await params;
   // Deze pagina was het bewijsstuk van bug #1: brandId ging ongefilterd in
   // eq(brands.id, …) — de rij-check hieronder deed het goed, de cast erboven niet.

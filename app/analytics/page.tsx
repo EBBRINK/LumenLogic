@@ -13,10 +13,10 @@
 import { db } from "@/db/client";
 import { AnalyticsTilesView } from "@/components/analytics/analytics-tiles";
 import { getAnalyticsTiles } from "@/lib/repo/analytics-tiles";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function AnalyticsPage() {
-  await requireSession();
+  await bewaakRoute("/analytics");
 
   const data = await getAnalyticsTiles(db);
 

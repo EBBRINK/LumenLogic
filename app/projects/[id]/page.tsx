@@ -10,7 +10,6 @@ import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getOpenOcrRun } from "@/lib/repo/ocr";
 import type { SpecLineRow } from "@/components/dossier/types";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   addSpecCsvAction,
   addSpecLineAction,
@@ -21,6 +20,8 @@ import {
   ocrPageAction,
   startOcrImportAction,
 } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // A6-vangnet (reviewzwerm 2.5a): een EXPLICIET functieplafond, zodat het een keuze is
 // en geen platformdefault. Route Segment Config werkt op page/layout/route — niet in
@@ -48,13 +49,13 @@ export default async function RegelsTab({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ pdf?: string; ocr?: string; run?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]");
   const { id } = await params;
   // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. De dossier-layout
   // heeft dezelfde regel; beide zijn nodig (zie de toelichting daar).
   requireUuid(id);
   const { pdf, ocr, run } = await searchParams;
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const lines = (await getSpecLines(db, id)) as unknown as SpecLineRow[];
   // B5: een OCR-run die 'bezig' bleef (tab dichtgeklapt) → de upload-kaart toont

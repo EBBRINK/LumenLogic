@@ -12,13 +12,14 @@ import { getEstimateData } from "@/lib/repo/estimate";
 import { toPricelessEstimate } from "@/lib/repo/estimate-extern";
 import { resolvePrijszicht } from "@/lib/repo/prijszicht";
 import { getXisExports, preflightSummary } from "@/lib/repo/xis";
-import { requireSession } from "@/lib/session";
 import { requireUuid } from "@/lib/uuid";
 import {
   generateQuoteAction,
   saveQuoteHeaderAction,
 } from "../../actions";
 import { xisExportAction } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // A-10: kopblok bewerkbaar tot de estimate wordt uitgestuurd (bevroren → op slot).
 function KopblokBewerken({
@@ -103,22 +104,22 @@ export default async function EstimatePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/quote");
   const { id } = await params;
   // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
   // regel gooit getEstimateData de uuid-cast en wint die 500 van de nette 404 van
   // de layout. Zie de regel bij requireUuid in lib/uuid.ts.
   requireUuid(id);
 
-  const data = await getEstimateData(db, id);
+  const data = await getEstimateData(db, toegangScope(toegang), id);
   if (!data) notFound();
   const [preflight, exports, prijszicht] = await Promise.all([
-    preflightSummary(db, id),
+    preflightSummary(db, toegangScope(toegang), id),
     getXisExports(db, id),
     // Sprint 3.2b: mag deze gebruiker bedragen zien? Afgeleid uit organizations.type
     // (G31) via de sessie, en bij twijfel "extern" — default = veilig. Dezelfde functie
     // die de PDF-route gebruikt, dus scherm en download kunnen niet uit elkaar lopen.
-    resolvePrijszicht(db, session.user?.email),
+    resolvePrijszicht(db, toegang.email),
   ]);
   const { dossier, quote: q, header, lines } = data;
 

@@ -9,10 +9,10 @@ import {
   listEnrichmentRuns,
   listPriceListStatus,
 } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function DataPage() {
-  await requireSession();
+  await bewaakRoute("/data");
   const [coverage, runs, priceLists] = await Promise.all([
     getTier2Coverage(db),
     listEnrichmentRuns(db),

@@ -14,7 +14,8 @@ import {
 import { setBrandFieldOverride, setBrandTier } from "@/lib/repo/admin";
 import type { DisclosureTier } from "@/lib/repo/disclosure";
 import { logEvent } from "@/lib/repo/events";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 const TIERS: DisclosureTier[] = ["tier1", "tier2", "tier3"];
 
@@ -28,7 +29,7 @@ const STATUSSEN: BrandRelationStatus[] = [
 ];
 
 export async function updateBrandRelationAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations");
   const brandId = String(formData.get("brandId") ?? "").trim();
   if (!brandId) return;
 
@@ -65,7 +66,7 @@ export async function updateBrandRelationAction(formData: FormData) {
 const BULK_MAX = 100;
 
 export async function bulkSetBrandRelationStatusAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations");
   const status = String(formData.get("status") ?? "").trim();
   if (!STATUSSEN.includes(status as BrandRelationStatus)) return;
 
@@ -92,7 +93,7 @@ export async function bulkSetBrandRelationStatusAction(formData: FormData) {
 // (kopiëren), niet bij elke page-render — dat zou de events-tabel vervuilen met ruis
 // (zelfde afweging als brand_template_downloaded: pas bij de download zelf).
 export async function logBrandMessagePreparedAction(brandId: string) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations");
   if (!brandId) return;
   await logEvent(db, {
     entity: "brand",
@@ -110,7 +111,7 @@ export async function logBrandMessagePreparedAction(brandId: string) {
 
 // MERK-TIER zetten (J-02). Ongeldige waarde → geen wijziging (fail-safe).
 export async function setTierAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const tier = String(formData.get("tier") ?? "").trim() as DisclosureTier;
   if (!brandId || !TIERS.includes(tier)) return;
@@ -121,7 +122,7 @@ export async function setTierAction(formData: FormData) {
 
 // PER-VELD-ZICHTBAARHEID (J-04): expliciete override op de tier-basis.
 export async function setFieldVisibilityAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const field = String(formData.get("field") ?? "").trim();
   if (!brandId || !field) return;

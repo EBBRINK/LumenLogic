@@ -22,7 +22,8 @@ import {
   PriceListExtendError,
 } from "@/lib/repo/price-archive";
 import { isUuid } from "@/lib/uuid";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 // TODO (invoervalidatie): expliciete guards, om te zetten naar `lib/validation.ts` zodra die
 // geland is (parallelle sessie, zie docs/INVOERVALIDATIE.md). Bewust géén import nu — die
@@ -47,7 +48,7 @@ function herlaadVerloopschermen(brandId: string | null) {
  * staat en er nooit ruwe database-tekst in de adresbalk belandt.
  */
 export async function extendPriceListAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/price-lists");
 
   const priceListId = String(formData.get("priceListId") ?? "").trim();
   const validUntil = String(formData.get("validUntil") ?? "").trim();

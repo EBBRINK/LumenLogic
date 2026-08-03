@@ -54,13 +54,13 @@ import {
 import { beslisRoute } from "@/lib/ai/leesroute";
 import { envApiKey } from "@/lib/ai/shared";
 import { recordLeesrouteImport } from "@/lib/repo/leesroute";
-import { setDossierOrg } from "@/lib/repo/orgs";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
 import { decideReview, flagForReview, linkManualProduct } from "@/lib/repo/review";
 import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
-import { requireSession, getActor } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakProject } from "@/lib/project-poort";
 
 function intOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
@@ -82,25 +82,45 @@ function asXisPhase(v: FormDataEntryValue | null): XisPhase {
 }
 
 export async function createDossierAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
+
+  // ⚠️ 3.2a — DE ORGANISATIE HOORT ER METEEN BIJ. Tot deze sprint zette createDossier()
+  // géén org_id en werd hij hier achteraf optioneel gezet via het keuzelijstje; wie dat
+  // leeg liet, kreeg een dossier met `org_id IS NULL`. Migratie 0019 had de 13 bestaande
+  // dossiers net aan brink-licht gekoppeld, dus het veertiende viel er weer uit — en een
+  // dossier zonder organisatie is per dossierScopeSql() alleen voor intern zichtbaar.
+  // Een externe die er één maakte, zou hem daarna zelf niet meer terugzien.
+  //
+  // Intern mag kiezen (dat lijstje is er voor het koppelen van een klantproject); leeg
+  // betekent nu "van Brink zelf" en niet meer "van niemand". Extern kiest niet: zijn
+  // project valt onder zijn eigen organisatie, wat het formulier ook meestuurt — dat is
+  // dezelfde regel als G39 (de invoer bepaalt de vraag, nooit het antwoord).
+  const gevraagdeOrg = strOrNull(formData.get("orgId"));
+  const orgId =
+    toegang.soort === "intern"
+      ? (gevraagdeOrg ?? toegang.primaireOrgId)
+      : toegang.primaireOrgId;
+  // Geen bruikbare organisatie → niet aanmaken. Dat kan alleen bij een account zonder
+  // lidmaatschap of bij een extern account in meerdere organisaties (dan is er geen
+  // eerlijk antwoord — zie Toegang.primaireOrgId). Liever niets dan een stuurloos dossier.
+  if (!orgId) return;
+
   // Geen statuskeuze bij aanmaken: altijd 'concept'. Alleen de XIS-fase (default start).
   const dossier = await createDossier(db, {
     name,
     customer: strOrNull(formData.get("customer")),
     xisPhase: asXisPhase(formData.get("xisPhase")),
-    actor: await getActor(),
+    orgId,
+    actor: toegang.email ?? "anoniem",
   });
-  // Optioneel: dossier aan een org koppelen (leeg = intern Brink-dossier).
-  const orgId = strOrNull(formData.get("orgId"));
-  if (orgId) await setDossierOrg(db, dossier.id, orgId);
   redirect(`/projects/${dossier.id}`);
 }
 
 // Handmatige regel toevoegen → matcher draait direct (functioneel ontwerp 3.4-5).
 export async function addSpecLineAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
@@ -155,7 +175,7 @@ export async function addSpecLineAction(formData: FormData) {
 // laat registerServerReference klappen met "Object.defineProperties called on non-object" —
 // gemeten, niet beredeneerd.
 export async function addSpecCsvAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const csv = String(formData.get("csv") ?? "");
@@ -182,7 +202,7 @@ export async function addSpecCsvAction(formData: FormData) {
 
 // Bestek/telstaat plakken → aantallen koppelen op fixture-code (B-08/A-06).
 export async function linkBestekAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const block = String(formData.get("bestek") ?? "");
   const pairs = parseBestek(block);
@@ -204,7 +224,7 @@ export async function importArmaturenboekPagesAction(input: {
   filename: string;
   pages: string[];
 }): Promise<{ error: string } | void> {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const dossierId =
     typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
@@ -355,7 +375,7 @@ export async function startOcrImportAction(input: {
   // pagina, dus voor bestaande runs is dit één-op-één het oude donePages.
   | { runId: string; resumed: boolean; doneTiles: { page: number; tile: number }[] }
 > {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const dossierId =
     typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
@@ -377,9 +397,8 @@ export async function startOcrImportAction(input: {
         "OCR is unavailable: no AI key is configured. Add the fixture rows manually or via CSV.",
     };
   }
-  if (!(await getDossier(db, dossierId))) {
-    return { error: "Unknown project." };
-  }
+  // (De "bestaat dit project"-check die hier stond zit sinds 3.2a in bewaakProject()
+  // bovenaan deze functie — daar weegt hij meteen ook de org-scope mee.)
   const { run, resumed, doneTiles } = await startOcrRun(db, {
     dossierId,
     filename,
@@ -399,7 +418,7 @@ export async function ocrPageAction(formData: FormData): Promise<
   | { failed: string }
   | { created: number; duplicates: number; upgraded: number }
 > {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const runId = String(formData.get("runId") ?? "").trim();
@@ -504,7 +523,7 @@ export async function ocrPageAction(formData: FormData): Promise<
 // Afronden: transcript + ocrStatus 'klaar' + ocr_done-event, daarna terug naar de
 // projectpagina met ?ocr=<aantal regels>&run=<id> (zelfde patroon als ?pdf=…).
 export async function finishOcrAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const runId = String(formData.get("runId") ?? "").trim();
@@ -521,7 +540,7 @@ export async function finishOcrAction(formData: FormData) {
 
 // Matcher (opnieuw) draaien op één regel.
 export async function runMatchAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   if (specLineId) await runMatcher(db, specLineId, await getActor());
@@ -530,7 +549,7 @@ export async function runMatchAction(formData: FormData) {
 
 // Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht.
 export async function chooseCandidateAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const productId = String(formData.get("productId"));
@@ -551,7 +570,7 @@ export async function chooseCandidateAction(formData: FormData) {
 
 // Rood/paars/blauw handmatig zetten (regel-detailknoppen).
 export async function setLineStatusAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const status = String(formData.get("status"));
@@ -568,7 +587,7 @@ export async function setLineStatusAction(formData: FormData) {
 }
 
 export async function unlinkMatchAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const reason = String(formData.get("reason") ?? "").trim();
@@ -591,7 +610,7 @@ const setDayPriceSchema = z.object({
 });
 
 export async function setDayPriceAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const parsed = parseForm(setDayPriceSchema, formData);
   // Ongeldige invoer verandert niets; de gebruiker keert terug naar dezelfde regel en ziet
   // de oude prijs nog staan. Een uuid dat niet klopt heeft geen regel om naar terug te
@@ -616,7 +635,7 @@ export async function setDayPriceAction(formData: FormData) {
 // ("welke van deze N", kleurvariant) — de repo maakt de regel dan groen met merkteken
 // "handmatig gekozen" (herontwerp 2026-07-14).
 export async function decideReviewAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const decision = String(formData.get("decision")) as
@@ -643,7 +662,7 @@ export async function decideReviewAction(formData: FormData) {
 // Rood-kaart: handmatig een vergelijkbaar product linken (stap 7). Menshandeling —
 // de gebruiker zocht zelf en klikte; het systeem suggereerde niets (ijzeren regel 4).
 export async function linkManualProductAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const productId = String(formData.get("productId"));
@@ -675,7 +694,7 @@ const flagReviewSchema = z.object({
 });
 
 export async function flagReviewAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const parsed = parseForm(flagReviewSchema, formData);
   if (!parsed.ok) return;
   const { dossierId, specLineId, kind } = parsed.data;
@@ -684,7 +703,7 @@ export async function flagReviewAction(formData: FormData) {
 }
 
 export async function setQuantityAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const quantity = intOrNull(formData.get("quantity"));
@@ -694,7 +713,7 @@ export async function setQuantityAction(formData: FormData) {
 
 // A-10: kopblok van de estimate opslaan (bewerkbaar tot uitsturen).
 export async function saveQuoteHeaderAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   if (dossierId) {
     await updateQuoteHeader(
@@ -718,7 +737,7 @@ export async function saveQuoteHeaderAction(formData: FormData) {
 
 // B-10: een spec-regel bewerken → daarna de matcher opnieuw draaien.
 export async function editSpecLineAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
@@ -759,7 +778,7 @@ export async function editSpecLineAction(formData: FormData) {
 // als historie gemarkeerd ('gebruikt door <actor>'). Een niet-meer-zichtbaar product
 // gooit in de repo — dan blijft alles ongewijzigd (zelfde vangnet als setStatusAction).
 export async function useAiSuggestionAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const suggestionId = String(formData.get("suggestionId") ?? "").trim();
@@ -777,7 +796,7 @@ export async function useAiSuggestionAction(formData: FormData) {
 
 // AI-suggestie verwerpen: dismissed_at/by + event; de regel zelf blijft onaangeroerd.
 export async function dismissAiSuggestionAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const suggestionId = String(formData.get("suggestionId") ?? "").trim();
@@ -800,7 +819,7 @@ const deleteLineSchema = z.object({
 });
 
 export async function deleteLineAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const parsed = parseForm(deleteLineSchema, formData);
   if (!parsed.ok) return;
   const { dossierId, specLineId } = parsed.data;
@@ -809,9 +828,9 @@ export async function deleteLineAction(formData: FormData) {
 }
 
 export async function generateQuoteAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
-  if (dossierId) await generateQuote(db, dossierId, await getActor());
+  if (dossierId) await generateQuote(db, scope, dossierId, await getActor());
   redirect(`/projects/${dossierId}/quote`);
 }
 
@@ -819,12 +838,12 @@ export async function generateQuoteAction(formData: FormData) {
 // afgeleide fase gaat in dezelfde update mee. Archief zonder reden wordt serverside
 // geweigerd; die fout vangen we hier op (de UI dwingt de reden al af — dit is het vangnet).
 export async function setStatusAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const status = formData.get("status");
   if (!dossierId || !PROJECT_STATUSES.includes(status as ProjectStatus)) return;
   try {
-    await setStatus(db, dossierId, status as ProjectStatus, await getActor(), {
+    await setStatus(db, scope, dossierId, status as ProjectStatus, await getActor(), {
       reason: strOrNull(formData.get("reason")),
     });
   } catch {
@@ -835,11 +854,11 @@ export async function setStatusAction(formData: FormData) {
 }
 
 export async function setXisPhaseAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const xisPhase = formData.get("xisPhase");
   if (!dossierId || !XIS_PHASES.includes(xisPhase as XisPhase)) return;
-  await setXisPhase(db, dossierId, xisPhase as XisPhase, await getActor());
+  await setXisPhase(db, scope, dossierId, xisPhase as XisPhase, await getActor());
   revalidatePath(`/projects/${dossierId}`);
   revalidatePath("/projects");
 }

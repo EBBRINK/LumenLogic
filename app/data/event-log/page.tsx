@@ -9,10 +9,10 @@ import { db } from "@/db/client";
 import { EventLogView } from "@/components/data/event-log-view";
 import type { EventRow } from "@/components/data/event-log-block";
 import { countEventsByAction, recentEvents } from "@/lib/repo/events";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function EventLogPage() {
-  await requireSession();
+  await bewaakRoute("/data/event-log");
 
   const [{ actionCounts, total }, events] = await Promise.all([
     countEventsByAction(db),

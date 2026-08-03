@@ -25,8 +25,9 @@ import {
   type PriceListInput,
 } from "@/lib/repo/template-return";
 import type { ApplySelection, TemplateReturnPayload } from "@/lib/template-diff";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
 import { applySummaryQuery } from "./apply-summary";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 const voorstelPad = (brandId: string, uploadId: string) =>
   `/data/brand-relations/${brandId}/upload/${uploadId}`;
@@ -50,7 +51,7 @@ export async function uploadTemplateAction(
   _prev: TemplateUploadState,
   formData: FormData,
 ): Promise<TemplateUploadState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations/[brandId]");
   const brandId = String(formData.get("brandId") ?? "").trim();
   if (!brandId) return { status: "error", message: "Unknown brand." };
 
@@ -182,7 +183,7 @@ function selectieUit(formData: FormData): ApplySelection {
 }
 
 export async function approveTemplateProposalAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations/[brandId]");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const uploadId = String(formData.get("uploadId") ?? "").trim();
   if (!brandId || !uploadId) return;
@@ -228,7 +229,7 @@ export async function approveTemplateProposalAction(formData: FormData) {
  * niet meewerken" en mag alleen een mens via het relatieformulier zetten.
  */
 export async function rejectTemplateProposalAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/brand-relations/[brandId]");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const uploadId = String(formData.get("uploadId") ?? "").trim();
   if (!brandId || !uploadId) return;

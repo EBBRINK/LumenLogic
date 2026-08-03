@@ -9,10 +9,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { createSubstitution } from "@/lib/repo/substitution";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakProject } from "@/lib/project-poort";
 
 export async function generateSubstitutionAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const referenceProductId = String(
     formData.get("referenceProductId") ?? "",

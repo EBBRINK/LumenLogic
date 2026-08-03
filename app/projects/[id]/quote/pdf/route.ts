@@ -10,6 +10,8 @@ import { logEvent } from "@/lib/repo/events";
 import { resolvePrijszicht } from "@/lib/repo/prijszicht";
 import { isUuid } from "@/lib/uuid";
 import { getActor, requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Bestandsnaam: offertenummer als dat er is, anders de projectnaam — veilig geslugd.
 function slug(s: string): string {
@@ -25,7 +27,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/quote/pdf");
   const { id } = await params;
   // Uuid-guard (UX-audit 30 jul, bug #1). Deze route is de derde van de drie
   // route handlers en werd bij de eerste ronde overgeslagen: `id` gaat via
@@ -36,7 +38,7 @@ export async function GET(
   // dus een kale 404-Response, in het Engels zoals de rest van de UI.
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
 
-  const data = await getEstimateData(db, id);
+  const data = await getEstimateData(db, toegangScope(toegang), id);
   if (!data) return new Response("Not found", { status: 404 });
 
   // Kopblokpoort (UX-audit 30 jul, bug #6). Het scherm verbergt de downloadknop zolang
@@ -62,7 +64,7 @@ export async function GET(
   //
   // Twee volledig gescheiden renderpaden, geen vlag door één sjabloon: het externe pad
   // ziet een PricelessEstimate en dat type dráágt geen bedragen.
-  const prijszicht = await resolvePrijszicht(db, session.user?.email);
+  const prijszicht = await resolvePrijszicht(db, toegang.email);
   const bytes =
     prijszicht === "intern"
       ? await renderEstimatePdf(data)

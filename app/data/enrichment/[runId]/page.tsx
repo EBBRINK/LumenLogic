@@ -13,19 +13,19 @@ import {
 } from "@/components/data/enrichment-status";
 import { getEnrichmentRun, getSampleItems } from "@/lib/repo/enrichment";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   publishRunAction,
   rejectRunAction,
   setVerdictAction,
 } from "../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function VerrijkingRunPage({
   params,
 }: {
   params: Promise<{ runId: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/enrichment/[runId]");
   const { runId } = await params;
   // runId gaat als uuid in enrichment_runs.id — kapotte param is 404, geen 500.
   requireUuid(runId);

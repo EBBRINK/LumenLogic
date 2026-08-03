@@ -13,11 +13,11 @@ import {
   listEvaluationLines,
   listEvaluationRuns,
 } from "@/lib/repo/evaluation";
-import { requireSession } from "@/lib/session";
 import { measureAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function EvaluatiePage() {
-  await requireSession();
+  await bewaakRoute("/data/evaluation");
   const [lines, runs] = await Promise.all([
     listEvaluationLines(db),
     listEvaluationRuns(db),

@@ -6,12 +6,12 @@ import { BrandForm } from "@/components/admin/brand-form";
 import { BrandDeleteBlock } from "@/components/admin/brand-delete-block";
 import { getBrandDeleteImpact, getBrandForEdit } from "@/lib/repo/brands";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   deleteBrandAction,
   setBrandLifecycleAction,
   updateBrandAction,
 } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Merk bewerken, levensfase zetten en (proberen te) verwijderen. De verwijderimpact kost
 // acht subquery's; die telling hoort daarom hier en niet in de lijst — daar zou hij
@@ -21,7 +21,7 @@ export default async function MerkDetailPage({
 }: {
   params: Promise<{ brandId: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/admin/brands/[brandId]");
   const { brandId } = await params;
   // brandId gaat als uuid de query in (brands.id) — een kapotte param is 404, geen 500.
   requireUuid(brandId);

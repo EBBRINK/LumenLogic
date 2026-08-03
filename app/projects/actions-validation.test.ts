@@ -10,6 +10,7 @@ import { expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { events, ocrPageImages, projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
+import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -48,6 +49,8 @@ const { startOcrRun } = await import("@/lib/repo/ocr");
 async function seed() {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, harnas.email);
   const [dossier] = await db
     .insert(projectDossiers)
     .values({ name: "Ziekenhuis Noord" })

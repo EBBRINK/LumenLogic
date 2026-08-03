@@ -3,7 +3,7 @@ import { OrgList, type OrgWithMembers } from "@/components/org/org-list";
 import { RoleLegend } from "@/components/org/org-members";
 import { describeIssueScope } from "@/lib/repo/authz";
 import { listMemberships, listOrganizations } from "@/lib/repo/orgs";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 import {
   addMemberAction,
   createOrgAction,
@@ -15,17 +15,27 @@ import {
 // Brink-binnendienst zonder org; dit is de externe-uitrol-fundering. Deze pagina leeft
 // buiten de dossier-layout en rendert daarom haar eigen <main>.
 export default async function OrganisatiePage() {
-  const session = await requireSession();
+  // 3.2a: de route staat op niveau `org_admin` — een gewone gebruiker komt hier niet meer,
+  // ook niet via de directe URL.
+  const toegang = await bewaakRoute("/settings/organization");
 
   // Besluiten G36/G39: het scherm biedt geen knoppen aan die de server toch weigert. Wat
   // deze gebruiker mag beheren komt uit dezelfde laag die de actions gebruiken — één bron,
   // dus scherm en server kunnen niet uit elkaar lopen. ⚠️ Dit is gemak, geen poort:
   // addMemberAction/removeMemberAction beslissen zelf opnieuw.
-  const [orgs, scope] = await Promise.all([
+  const [alleOrgs, scope] = await Promise.all([
     listOrganizations(db),
-    describeIssueScope(db, session.user?.email),
+    describeIssueScope(db, toegang.email),
   ]);
   const beheerbaar = new Set(scope.orgs.map((o) => o.id));
+  // ⚠️ 3.2a — RIJ-SCOPING. Deze pagina toonde álle organisaties met álle leden aan iedereen
+  // met een sessie; `canManageMembers` bepaalde alleen of de knoppen erbij stonden. Kijken
+  // is hier óók iets: de ledenlijst van een andere organisatie is haar adresboek. Intern
+  // ziet nog steeds alles (`describeIssueScope` geeft intern álle orgs terug), de rest
+  // alleen wat hij beheert.
+  const orgs = toegang.soort === "intern"
+    ? alleOrgs
+    : alleOrgs.filter((o) => beheerbaar.has(o.id));
   const withMembers: OrgWithMembers[] = await Promise.all(
     orgs.map(async (org) => ({
       org,
@@ -57,6 +67,7 @@ export default async function OrganisatiePage() {
           removeMemberAction={removeMemberAction}
           saveBrandingAction={saveBrandingAction}
           canGrantOrgAdmin={scope.canGrantOrgAdmin}
+          canCreate={toegang.soort === "intern"}
         />
       </div>
     </main>

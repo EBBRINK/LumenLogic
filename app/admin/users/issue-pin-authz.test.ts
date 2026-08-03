@@ -128,21 +128,57 @@ async function nietsAangemaakt(db: TestDb, email: string) {
   expect(await pinRijen(db, email)).toHaveLength(0);
 }
 
+
+/**
+ * ⚠️ SPRINT 3.2a — DE WEIGERING IS ÉÉN LAAG NAAR VOREN VERSCHOVEN.
+ *
+ * Tot 3.2a kwam een gewone gebruiker of een passant gewoon bij `issuePinAction()` /
+ * `addMemberAction()` aan, en weigerde G36 hem daar met `{ok:false, error: GEWEIGERD}`.
+ * Sinds 3.2a staat `/admin/users` en `/settings/organization` in de route-allowlist op
+ * niveau `org_admin`, en die poort weigert hem al vóór de action zijn werk begint — met
+ * `notFound()`, want wie er niet bij mag hoort ook niet te weten dát de route bestaat.
+ *
+ * Dat is strénger, niet zwakker, en de bewijskracht van deze tests zit onveranderd in de
+ * assertie eronder: er is niets aangemaakt, niets gewijzigd, niets gewist. Wat verandert is
+ * alleen de vórm van de weigering. Deze helper legt die vorm vast, zodat een action die
+ * stiekem tóch doorloopt hier een leesbare fout geeft in plaats van pas bij de rij-telling.
+ *
+ * ⚠️ Voor een org_admin (de tak waar de meeste tests in dit bestand over gaan) verandert er
+ * níéts: die komt door de route-poort heen en wordt nog steeds door G36 geweigerd, met
+ * exact dezelfde GEWEIGERD-tekst.
+ */
+async function weigertBijDeDeur(run: () => Promise<unknown>): Promise<void> {
+  try {
+    await run();
+  } catch (e) {
+    const digest = (e as { digest?: string }).digest ?? "";
+    if (/NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/.test(digest)) return;
+    throw e;
+  }
+  throw new Error(
+    "de action liep door zonder 404 — de route-poort (niveau org_admin) staat open",
+  );
+}
+
+/** Alle `route_denied`-events, het spoor dat de route-poort achterlaat (ijzeren regel 5). */
+async function routeWeigeringen(db: TestDb) {
+  return db.select().from(events).where(eq(events.action, "route_denied"));
+}
+
 // ── Regel 3: wie geen uitgever is, mag niets ────────────────────────────────────
 
 test("een gewone gebruiker (membership zonder org_admin) mag geen PIN uitgeven", async () => {
   const { db, orgA } = await opzet();
   alsActor("calculator-a@extern.nl");
 
-  const uitslag = await issuePinAction({
-    email: "nieuw@extern.nl",
-    orgId: orgA,
-    roles: ["calculator"],
-  });
+  await weigertBijDeDeur(() =>
+    issuePinAction({
+      email: "nieuw@extern.nl",
+      orgId: orgA,
+      roles: ["calculator"],
+    }),
+  );
 
-  expect(uitslag.ok).toBe(false);
-  if (uitslag.ok) return;
-  expect(uitslag.error).toBe(GEWEIGERD);
   await nietsAangemaakt(db, "nieuw@extern.nl");
 });
 
@@ -150,11 +186,10 @@ test("iemand zonder enig membership mag geen PIN uitgeven", async () => {
   const { db, orgA } = await opzet();
   alsActor("passant@extern.nl");
 
-  const uitslag = await issuePinAction({ email: "nieuw@extern.nl", orgId: orgA });
+  await weigertBijDeDeur(() =>
+    issuePinAction({ email: "nieuw@extern.nl", orgId: orgA }),
+  );
 
-  expect(uitslag.ok).toBe(false);
-  if (uitslag.ok) return;
-  expect(uitslag.error).toBe(GEWEIGERD);
   await nietsAangemaakt(db, "nieuw@extern.nl");
 });
 
@@ -379,7 +414,7 @@ test("de escalatieketen strandt bij stap 1: een gewone gebruiker kan zichzelf ni
   const fd = new FormData();
   fd.append("orgId", internOrgId);
   fd.append("email", "calculator-a@extern.nl");
-  await orgActions.addMemberAction(fd);
+  await weigertBijDeDeur(() => orgActions.addMemberAction(fd));
 
   // De keten breekt hier: er is geen membership in de interne org bijgekomen.
   const internLeden = await db
@@ -390,14 +425,13 @@ test("de escalatieketen strandt bij stap 1: een gewone gebruiker kan zichzelf ni
   expect(internLeden[0].email).toBe("intern@brinklicht.nl");
 
   // En stap 2 faalt dus nog steeds, net als vóór stap 1.
-  const uitslag = await issuePinAction({
-    email: "marionet@extern.nl",
-    orgId: orgB,
-    roles: ["org_admin"],
-  });
-  expect(uitslag.ok).toBe(false);
-  if (uitslag.ok) return;
-  expect(uitslag.error).toBe(GEWEIGERD);
+  await weigertBijDeDeur(() =>
+    issuePinAction({
+      email: "marionet@extern.nl",
+      orgId: orgB,
+      roles: ["org_admin"],
+    }),
+  );
   await nietsAangemaakt(db, "marionet@extern.nl");
 });
 
@@ -531,7 +565,7 @@ test("G39, tweede deur: een vervalst actor-veld in de FormData wordt genegeerd �
 
   // Sessie = gewone gebruiker (mag per G36 niets), invoer = "ik ben intern".
   alsActor("calculator-a@extern.nl");
-  await orgActions.addMemberAction(post());
+  await weigertBijDeDeur(() => orgActions.addMemberAction(post()));
 
   const internLeden = await db
     .select()
@@ -539,11 +573,11 @@ test("G39, tweede deur: een vervalst actor-veld in de FormData wordt genegeerd �
     .where(eq(memberships.orgId, internOrgId));
   expect(internLeden.map((l) => l.email)).toEqual(["intern@brinklicht.nl"]);
 
-  // De weigering staat op naam van de sessie, niet van het vervalste adres.
-  const geweigerd = await db
-    .select()
-    .from(events)
-    .where(eq(events.action, "membership_change_denied"));
+  // De weigering staat op naam van de sessie, niet van het vervalste adres. Sinds 3.2a is
+  // dat de route-poort die hem noteert (`route_denied`) in plaats van G36
+  // (`membership_change_denied`) — de vraag die deze test stelt is onveranderd: wélk adres
+  // staat er in het spoor, dat uit de sessie of dat uit het formulier?
+  const geweigerd = await routeWeigeringen(db);
   expect(geweigerd).toHaveLength(1);
   expect(geweigerd[0].actor).toBe("calculator-a@extern.nl");
 
@@ -576,13 +610,15 @@ test("G39, PIN-deur: een vervalst actor-veld in de invoer wordt genegeerd — de
   };
 
   alsActor("calculator-a@extern.nl");
-  const uitslag = await issuePinAction(
-    verzoek as unknown as Parameters<typeof issuePinAction>[0],
+  await weigertBijDeDeur(() =>
+    issuePinAction(verzoek as unknown as Parameters<typeof issuePinAction>[0]),
   );
-  expect(uitslag.ok).toBe(false);
-  if (uitslag.ok) return;
-  expect(uitslag.error).toBe(GEWEIGERD);
   await nietsAangemaakt(db, "marionet@extern.nl");
+  // Het spoor staat op naam van de sessie, niet van het meegestuurde adres — dát is wat
+  // deze test toetst, en dat blijft waar nu de route-poort hem eerder stopt.
+  const spoor = await routeWeigeringen(db);
+  expect(spoor).toHaveLength(1);
+  expect(spoor[0].actor).toBe("calculator-a@extern.nl");
 
   // Positieve controle: hetzelfde verzoek met een interne sessie slaagt wél.
   alsActor("intern@brinklicht.nl");
@@ -622,24 +658,22 @@ test("de foutmelding verraadt niet of een adres of organisatie bestaat", async (
   const { db, orgB } = await opzet();
   alsActor("calculator-a@extern.nl");
 
-  const meldingen = await Promise.all([
-    // bestaand adres in een andere org
-    issuePinAction({ email: "beheerder-b@extern.nl" }),
-    // adres dat nergens voorkomt
-    issuePinAction({ email: "bestaatniet@extern.nl" }),
-    // bestaande organisatie
-    issuePinAction({ email: "iemand@extern.nl", orgId: orgB }),
-    // organisatie die niet bestaat
-    issuePinAction({
+  // Vier verzoeken die alleen verschillen in wat er wél of niet bestaat. Sinds 3.2a stopt
+  // de route-poort deze actor al vóór G36 — en die geeft geen tekst maar een 404. Dat is
+  // dezelfde eigenschap, strenger uitgevoerd: er komt géén enkel verschil naar buiten,
+  // ook geen zin. De contra-test staat een paar tests hierboven, waar een org_admin (die
+  // wél door de poort komt) voor alle gevallen exact GEWEIGERD terugkrijgt.
+  for (const verzoek of [
+    { email: "beheerder-b@extern.nl" }, // bestaand adres in een andere org
+    { email: "bestaatniet@extern.nl" }, // adres dat nergens voorkomt
+    { email: "iemand@extern.nl", orgId: orgB }, // bestaande organisatie
+    {
       email: "iemand@extern.nl",
-      orgId: "00000000-0000-4000-8000-000000000000",
-    }),
-  ]);
-
-  const teksten = new Set(
-    meldingen.map((m) => (m.ok ? "GESLAAGD" : m.error)),
-  );
-  expect(teksten).toEqual(new Set([GEWEIGERD]));
+      orgId: "00000000-0000-4000-8000-000000000000", // organisatie die niet bestaat
+    },
+  ]) {
+    await weigertBijDeDeur(() => issuePinAction(verzoek));
+  }
   expect(await pinRijen(db, "beheerder-b@extern.nl")).toHaveLength(0);
 });
 
@@ -666,14 +700,12 @@ test("G39, wissen: een vervalst actor-veld in de FormData wordt genegeerd — de
   // Sessie = gewone gebruiker uit org A, invoer = "ik ben intern", doel = de enige
   // beheerder van org B.
   alsActor("calculator-a@extern.nl");
-  await orgActions.removeMemberAction(post());
+  await weigertBijDeDeur(() => orgActions.removeMemberAction(post()));
   expect(await ledenVan(db, "beheerder-b@extern.nl")).toHaveLength(1);
 
-  // De weigering staat op naam van de sessie, niet van het vervalste adres.
-  const geweigerd = await db
-    .select()
-    .from(events)
-    .where(eq(events.action, "membership_change_denied"));
+  // De weigering staat op naam van de sessie, niet van het vervalste adres — sinds 3.2a
+  // genoteerd door de route-poort in plaats van door G36.
+  const geweigerd = await routeWeigeringen(db);
   expect(geweigerd).toHaveLength(1);
   expect(geweigerd[0].actor).toBe("calculator-a@extern.nl");
 

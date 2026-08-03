@@ -18,6 +18,7 @@ import {
   listAllowedEmails,
 } from "@/lib/repo/settings";
 import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 import {
   addEmailAction,
   removeEmailAction,
@@ -85,19 +86,36 @@ async function changePasswordAction(input: {
 // L-01/L-02/L-06: interne gebruikers, LLM-budget en XIS-koppeling op één plek. Deze pagina
 // leeft buiten de dossier-layout en rendert daarom zijn eigen <main>.
 export default async function InstellingenPage() {
-  // De sessie levert hier méér dan de poort: het eigen adres gaat naar de allowlist,
+  // 3.2a: de route staat op `iedereen` — iedereen moet zijn eigen wachtwoord kunnen
+  // wijzigen, en dat is het enige blok op deze pagina dat over de kijker zelf gaat. De
+  // rest (toegelaten adressen, LLM-budget, XIS-sleutel) is intern beheer en wordt
+  // hieronder per blok afgeschermd. "Intern? toon", niet "extern? verberg": een kijker
+  // van wie we het type niet kunnen vaststellen ziet de interne blokken dus niet.
+  //
+  // De toegang levert hier méér dan de poort: het eigen adres gaat naar de allowlist,
   // zodat je jezelf niet kunt uitsluiten (UX-audit bug #5).
-  const session = await requireSession();
+  const toegang = await bewaakRoute("/settings");
+  const intern = toegang.soort === "intern";
 
-  const [emails, budget, spendByPurpose, xisEnv, xisKey] = await Promise.all([
-    listAllowedEmails(db),
-    getSetting<number>(db, "llm_budget_eur"),
-    // Volledige uitsplitsing (UX-audit 30 jul, bug #10): eerder twee losse queries op
-    // 'vangnet' en 'ocr', waardoor 'leesroute' stil in het totaal bleef zitten.
-    getLlmSpendByPurpose(db),
-    getSetting<string>(db, "xis_environment"),
-    getSetting<string>(db, "xis_api_key"),
-  ]);
+  // De interne queries draaien alleen voor intern. Niet omdat het scherm ze verbergt —
+  // dan zou de data nog steeds gelezen zijn — maar omdat ze voor een externe kijker geen
+  // vraag zijn die gesteld hoort te worden.
+  const internData = intern
+    ? await Promise.all([
+        listAllowedEmails(db),
+        getSetting<number>(db, "llm_budget_eur"),
+        // Volledige uitsplitsing (UX-audit 30 jul, bug #10): eerder twee losse queries op
+        // 'vangnet' en 'ocr', waardoor 'leesroute' stil in het totaal bleef zitten.
+        getLlmSpendByPurpose(db),
+        getSetting<string>(db, "xis_environment"),
+        getSetting<string>(db, "xis_api_key"),
+      ])
+    : null;
+  const emails = internData?.[0] ?? [];
+  const budget = internData?.[1] ?? null;
+  const spendByPurpose = internData?.[2] ?? [];
+  const xisEnv = internData?.[3] ?? null;
+  const xisKey = internData?.[4] ?? null;
 
   // Het totaal is de som van de uitsplitsing, niet een tweede query (reparatie 30 jul).
   // getLlmSpend() en getLlmSpendByPurpose() draaien over exact dezelfde rijen met exact
@@ -116,32 +134,43 @@ export default async function InstellingenPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Login access, LLM budget and the XIS connection.
+          {intern
+            ? "Login access, LLM budget and the XIS connection."
+            : "Your account."}
         </p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="lg:col-span-2">
-          <AllowedEmailsBlock
-            emails={emails.map((e) => ({ email: e.email, addedBy: e.addedBy }))}
-            addAction={addEmailAction}
-            removeAction={removeEmailAction}
-            sessionEmail={session.user?.email ?? null}
-          />
-        </div>
-        <LlmBudgetBlock
-          budgetEur={budget}
-          spentEur={spent}
-          breakdown={spendByPurpose}
-          saveAction={saveBudgetAction}
-        />
-        <XisBlock
-          environment={environment}
-          keyIsSet={keyIsSet}
-          saveAction={saveXisAction}
-        />
+        {intern && (
+          <>
+            <div className="lg:col-span-2">
+              <AllowedEmailsBlock
+                emails={emails.map((e) => ({
+                  email: e.email,
+                  addedBy: e.addedBy,
+                }))}
+                addAction={addEmailAction}
+                removeAction={removeEmailAction}
+                sessionEmail={toegang.email}
+              />
+            </div>
+            <LlmBudgetBlock
+              budgetEur={budget}
+              spentEur={spent}
+              breakdown={spendByPurpose}
+              saveAction={saveBudgetAction}
+            />
+            <XisBlock
+              environment={environment}
+              keyIsSet={keyIsSet}
+              saveAction={saveXisAction}
+            />
+          </>
+        )}
         {/* UX-audit 30 jul (bug #11): /settings/organization had nul inkomende links —
-            gebouwd, maar alleen via de URL te bereiken. Dit is de ingang. */}
+            gebouwd, maar alleen via de URL te bereiken. Dit is de ingang. Alleen voor wie
+            er ook door mag: de route staat op niveau `org_admin`. */}
+        {toegang.adminOrgIds.length > 0 && (
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Organizations</CardTitle>
@@ -159,6 +188,7 @@ export default async function InstellingenPage() {
             </Link>
           </CardContent>
         </Card>
+        )}
         <PasswordBlock
           minPasswordLength={MIN_PASSWORD_LENGTH}
           maxPasswordLength={MAX_PASSWORD_LENGTH}

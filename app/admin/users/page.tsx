@@ -21,29 +21,36 @@ import {
   PIN_MAX_ATTEMPTS,
   PIN_TTL_DAYS,
 } from "@/lib/repo/activation";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 import { issuePinAction } from "./actions";
 
 // GEBRUIKERS OVER ORGS (§3.16, L-03/04) + PIN-uitgifte (sprint 3.1, besluit G26). De
 // memberships-tabel blijft alleen-lezen; het PIN-blok erboven is waar Brink een account
 // aanmaakt en de eenmalige activatie-PIN krijgt. Eigen <main>.
 export default async function AdminGebruikersPage() {
-  const session = await requireSession();
+  const toegang = await bewaakRoute("/admin/users");
 
   // Besluit G36. Deze pagina bepaalt zélf niets: ze vraagt de autorisatielaag wat deze
   // gebruiker mag, en toont niet meer dan dat. Zou dit scherm de regels overschrijven, dan
   // stonden ze op twee plekken — en dan is het een kwestie van tijd tot ze verschillen.
   // ⚠️ Dit is gemak, geen poort: issuePinAction weigert hetzelfde, ook zonder formulier.
-  const [memberships, scope] = await Promise.all([
+  const [alleMemberships, scope] = await Promise.all([
     listAllMemberships(db),
-    describeIssueScope(db, session.user?.email),
+    describeIssueScope(db, toegang.email),
   ]);
 
-  // ⚠️ Deze tabel toont ALLE memberships aan iedereen die de pagina opent — ook aan een
-  // externe org_admin. Dat is geen nieuwe situatie en het is bewust niet met G36 meegenomen:
-  // "extern ziet alleen eigen spullen" is org-scoping over routes, en dat is item 3.2a. G36
-  // gaat over wie er iets mag DOEN; deze tabel heeft geen enkele knop. Staat als open eind
-  // in HANDOVER.md.
+  // ✅ 3.2a — RIJ-SCOPING. Hier stond: "deze tabel toont ALLE memberships aan iedereen die
+  // de pagina opent, ook aan een externe org_admin … staat als open eind in HANDOVER.md".
+  // Dat open eind is dit item, en dit is de sluiting. De route staat op niveau `org_admin`
+  // (G36 geeft een externe beheerder het recht om binnen zijn eigen organisatie PIN's uit
+  // te geven), dus dichtzetten was geen optie — maar kíjken is hier óók iets: de ledenlijst
+  // van een andere organisatie is haar adresboek.
+  //
+  // De scope komt uit `describeIssueScope()`, dezelfde bron die de action gebruikt: intern
+  // krijgt daar álle organisaties terug, een org_admin alleen de zijne. Scherm en server
+  // kunnen zo niet uit elkaar lopen.
+  const zichtbareOrgs = new Set(scope.orgs.map((o) => o.id));
+  const memberships = alleMemberships.filter((m) => zichtbareOrgs.has(m.orgId));
   const rows: MembershipRow[] = memberships.map((m) => ({
     id: m.id,
     orgName: m.orgName,

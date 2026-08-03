@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import type { MembershipRole } from "@/db/schema";
 import { issuePinAsActor } from "@/lib/repo/authz";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export type IssuePinResult =
   | {
@@ -77,7 +77,7 @@ export async function issuePinAction(input: {
   orgId?: string | null;
   roles?: MembershipRole[];
 }): Promise<IssuePinResult> {
-  const session = await requireSession();
+  const toegang = await bewaakRoute("/admin/users");
   const name = input.name?.trim() || null;
 
   try {
@@ -91,7 +91,7 @@ export async function issuePinAction(input: {
     // dezelfde nette `{ok:false}` te geven als een weigering, niet een harde error op de
     // client — en zeker geen ander gedrag voor een onbevoegde dan voor een bevoegde.
     const outcome = await issuePinAsActor(db, {
-      actorEmail: session.user?.email,
+      actorEmail: toegang.email,
       email: input.email,
       name: name ?? undefined,
       orgId: input.orgId ?? null,

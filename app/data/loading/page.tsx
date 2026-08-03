@@ -8,11 +8,11 @@ import {
   type QueueRow,
 } from "@/components/data/brand-load-queue";
 import { listBrandLoadQueue } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
 import { dismissBrandLoadAction, markLoadedAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function InladenPage() {
-  await requireSession();
+  await bewaakRoute("/data/loading");
   const queue = await listBrandLoadQueue(db);
   const rows: QueueRow[] = queue.map((q) => ({
     id: q.id,

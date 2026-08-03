@@ -19,6 +19,8 @@ import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote, updateQuoteHeader } from "@/lib/repo/dossiers";
 import { setStatus } from "@/lib/repo/project-status";
 import { getXisExports } from "@/lib/repo/xis";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
+import { seedExternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -73,10 +75,16 @@ const { GET } = await import("./pdf/route");
 const { xisExportAction } = await import("./actions");
 
 // Twee tellende regels — genoeg voor een offerte met inhoud, klein genoeg om snel te zijn.
-async function seedDossier(db: TestDb) {
+//
+// ⚠️ 3.2a: het project hangt aan een KLANTORGANISATIE en niet aan Brink. Dat is geen
+// detail voor de prijszicht-test hieronder: sinds de org-scoping ziet een extern account
+// alleen projecten van zijn eigen organisatie, dus een Brink-project zou voor de externe
+// kijker helemaal niet bestaan (404) in plaats van prijsloos te renderen. De interne actor
+// ziet het sowieso — intern ziet alles.
+async function seedDossier(db: TestDb, orgId: string | null = null) {
   const [dossier] = await db
     .insert(projectDossiers)
-    .values({ name: "Ziekenhuis Noord", customer: "Deerns" })
+    .values({ name: "Ziekenhuis Noord", customer: "Deerns", orgId })
     .returning();
   const p = await seedBrandProduct(db, {
     brand: "XAL",
@@ -117,8 +125,11 @@ async function nieuweStand() {
   const db = await createTestDb();
   harnas.db = db;
   await maakActorIntern(db);
-  const dossierId = await seedDossier(db);
-  return { db, dossierId };
+  // Het project van de klant, zodat de prijszicht-test verderop een externe kijker kan
+  // opvoeren die het project wél mag zien maar de bedragen niet (3.2b binnen 3.2a).
+  const klantOrgId = await seedExternLid(db, "piet@devries.nl", "De Vries Installaties");
+  const dossierId = await seedDossier(db, klantOrgId);
+  return { db, dossierId, klantOrgId };
 }
 
 function renderPagina(id: string) {
@@ -138,7 +149,7 @@ const RENDER_WACHT = { timeout: 30_000 };
 
 test("verse generatie: de uitgangen staan er meteen — geen tussenstop", async () => {
   const { dossierId } = await nieuweStand();
-  await generateQuote(harnas.db as TestDb, dossierId, harnas.email);
+  await generateQuote(harnas.db as TestDb, ALLE_DOSSIERS, dossierId, harnas.email);
 
   await renderPagina(dossierId);
   await expect.element(downloadKnop(), RENDER_WACHT).toBeInTheDocument();
@@ -152,7 +163,7 @@ test("verse generatie: de uitgangen staan er meteen — geen tussenstop", async 
 
 test("kop leeggemaakt en niet bevroren: Download PDF is weg, de banner legt uit waarom", async () => {
   const { db, dossierId } = await nieuweStand();
-  await generateQuote(db, dossierId, harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
   await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
 
   await renderPagina(dossierId);
@@ -170,10 +181,10 @@ test("kop leeggemaakt en niet bevroren: Download PDF is weg, de banner legt uit 
 
 test("BEVROREN met een lege kop: Download PDF staat er, en er is geen banner", async () => {
   const { db, dossierId } = await nieuweStand();
-  await generateQuote(db, dossierId, harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
   await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
   // De drie-kliksval: genereren → status "estimate gestuurd" → tab Estimate.
-  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", harnas.email);
 
   await renderPagina(dossierId);
   await expect.element(downloadKnop(), RENDER_WACHT).toBeInTheDocument();
@@ -187,7 +198,7 @@ test("BEVROREN met een lege kop: Download PDF staat er, en er is geen banner", a
 
 test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async () => {
   const { db, dossierId } = await nieuweStand();
-  await generateQuote(db, dossierId, harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
   await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
 
   const geweigerd = await GET(new Request("http://test/pdf"), {
@@ -197,7 +208,7 @@ test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async 
   expect(await geweigerd.text()).toContain("Valid until");
 
   // Zelfde lege kop, nu bevroren: het stuk IS verstuurd en moet terug te halen zijn.
-  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", harnas.email);
   const toegestaan = await GET(new Request("http://test/pdf"), {
     params: Promise.resolve({ id: dossierId }),
   });
@@ -214,7 +225,7 @@ test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async 
 // waarom dit bestand bestaat.
 test("PDF-route: intern krijgt bedragen, extern krijgt er nul", async () => {
   const { db, dossierId } = await nieuweStand(); // actor zit in de interne org
-  await generateQuote(db, dossierId, harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
 
   const bedragen = async (res: Response) => {
     const pdf = await getDocumentProxy(new Uint8Array(await res.arrayBuffer()));
@@ -230,8 +241,10 @@ test("PDF-route: intern krijgt bedragen, extern krijgt er nul", async () => {
   expect(internTekst).toContain("€");
   expect(internTekst).toContain("Unit price");
 
-  // Zelfde dossier, ander account: dit adres heeft geen enkel lidmaatschap en is dus
-  // extern (default = veilig).
+  // Zelfde dossier, ander account: piet is lid van de klantorganisatie waar dit project
+  // onder valt — hij mag het dus zíén (3.2a), maar zijn organisatie is niet intern, dus
+  // hij krijgt het prijsloze stuk (3.2b, default = veilig). Precies de wissel die deze
+  // test vastpint: dezelfde GET, hetzelfde dossier, alleen een andere sessie.
   const eerder = harnas.email;
   harnas.email = "piet@devries.nl";
   try {
@@ -257,8 +270,8 @@ test("PDF-route: intern krijgt bedragen, extern krijgt er nul", async () => {
 // kern — het scheidt "de poort weigerde" van "hij exporteerde en navigeerde daarna".
 test("uitgelogd: xisExportAction stuurt niets door — /login, geen export", async () => {
   const { db, dossierId } = await nieuweStand();
-  await generateQuote(db, dossierId, harnas.email);
-  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", harnas.email);
 
   const fd = new FormData();
   fd.set("dossierId", dossierId);
@@ -281,7 +294,7 @@ test("uitgelogd: xisExportAction stuurt niets door — /login, geen export", asy
 
 test("xisExportAction: weigert bij een lege kop, laat een bevroren offerte door", async () => {
   const { db, dossierId } = await nieuweStand();
-  await generateQuote(db, dossierId, harnas.email);
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, harnas.email);
   await updateQuoteHeader(db, dossierId, { validUntil: null }, harnas.email);
 
   // Handgemaakte POST — de UI biedt deze knop nu niet aan, maar dat is geen beveiliging.
@@ -290,7 +303,7 @@ test("xisExportAction: weigert bij een lege kop, laat een bevroren offerte door"
   await xisExportAction(fd);
   expect(await getXisExports(db, dossierId)).toEqual([]);
 
-  await setStatus(db, dossierId, "estimate_gestuurd", harnas.email);
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", harnas.email);
   await xisExportAction(fd);
   expect((await getXisExports(db, dossierId)).length).toBe(1);
 });

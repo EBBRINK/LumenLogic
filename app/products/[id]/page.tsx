@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { getProductForDisclosure } from "@/lib/repo/disclosure";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 import { ProductCard, objectiveFields } from "@/components/product/product-card";
 import { AddToCompareButton, CompareTray } from "@/components/product/compare-tray";
 import { requestPriceAction } from "./actions";
@@ -42,8 +42,16 @@ export default async function ProductPage({
   // álles, zodat een kapotte link 404 geeft en geen 500.
   requireUuid(id);
   const { pricerequest } = await searchParams;
-  const session = await requireSession();
-  const ctx = { internal: Boolean(session), hasApprovedProject: false };
+  const toegang = await bewaakRoute("/products/[id]");
+  // 3.2a: `internal` komt nu uit het ORG-TYPE en niet meer uit "er is een sessie". Dat is
+  // letterlijk wat het commentaar hierboven aankondigde ("zodra het rollenmodel er is
+  // hoort `internal` uit de rol te komen"), en het is de reden dat deze regel niet kon
+  // blijven staan: sinds 3.1 kan er een sessie zijn die níet van Brink is, en die zag met
+  // `Boolean(session)` onvoorwaardelijk de tier-2-prijs. Nu weer "intern? toon".
+  const ctx = {
+    internal: toegang.soort === "intern",
+    hasApprovedProject: false,
+  };
 
   const result = await getProductForDisclosure(db, id, ctx);
   if (!result) notFound();

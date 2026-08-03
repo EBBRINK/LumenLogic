@@ -9,6 +9,7 @@ import { expect, test, vi } from "vitest";
 import { brandLoadQueue } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
 import { listEvaluationRuns } from "@/lib/repo/evaluation";
+import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -61,6 +62,8 @@ const { markLoadedAction, measureAction } = await import("./actions");
 async function verseDb() {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, harnas.email);
   return db;
 }
 

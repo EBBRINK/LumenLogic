@@ -38,13 +38,13 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { createLead } from "@/lib/repo/disclosure";
-import { requireSession } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 import { isUuid } from "@/lib/uuid";
 
 export async function requestPriceAction(formData: FormData) {
   // Poort eerst, vóór élke uitspraak over de invoer: een anonieme beller hoort niet te
   // weten of een id bestaat.
-  const session = await requireSession();
+  const toegang = await bewaakNiveau("iedereen", "requestPriceAction");
 
   const productId = String(formData.get("productId") ?? "").trim();
   const rawBrandId = String(formData.get("brandId") ?? "").trim();
@@ -57,7 +57,7 @@ export async function requestPriceAction(formData: FormData) {
   await createLead(db, {
     productId,
     brandId,
-    userEmail: session.user?.email ?? null,
+    userEmail: toegang.email,
   });
   // Terug naar de kaart met een bevestiging; de prijs blijft gated (extern), maar de aanvraag
   // staat nu als lead klaar voor Brink.

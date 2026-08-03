@@ -19,7 +19,6 @@ import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct } from "@/lib/repo/products";
 import { formatEur } from "@/lib/format";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   chooseCandidateAction,
   dismissAiSuggestionAction,
@@ -30,6 +29,8 @@ import {
   unlinkMatchAction,
   useAiSuggestionAction,
 } from "../../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 const SOURCE_LABEL: Record<string, string> = {
   manual: "manual",
@@ -47,13 +48,13 @@ export default async function RegelDetailPage({
 }: {
   params: Promise<{ id: string; lineId: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/line/[lineId]");
   const { id, lineId } = await params;
   // Beide uuid-kolommen (project_dossiers.id, spec_lines.id) — de kruislek-check op
   // regel hieronder komt pas ná de cast en vangt dit dus niet af.
   requireUuid(id, lineId);
   const [dossier, specLine] = await Promise.all([
-    getDossier(db, id),
+    getDossier(db, toegangScope(toegang), id),
     getSpecLine(db, lineId),
   ]);
   if (!dossier || !specLine || specLine.dossierId !== dossier.id) notFound();

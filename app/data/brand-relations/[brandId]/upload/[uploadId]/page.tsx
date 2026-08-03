@@ -17,18 +17,18 @@ import { TemplateProposal } from "@/components/data/template-proposal";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { getTemplateReturn } from "@/lib/repo/template-return";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import {
   approveTemplateProposalAction,
   rejectTemplateProposalAction,
 } from "../../upload-actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function TemplateVoorstelPage({
   params,
 }: {
   params: Promise<{ brandId: string; uploadId: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations/[brandId]/upload/[uploadId]");
   const { brandId, uploadId } = await params;
   // Beide params zijn uuid-kolommen (brands.id, brand_uploads.id) en beide gaan in
   // dezelfde Promise.all — één kapotte van de twee gooit dus de hele render om.

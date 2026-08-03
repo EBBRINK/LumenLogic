@@ -8,8 +8,10 @@ import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
 import { requireUuid } from "@/lib/uuid";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
 import { generateSubstitutionAction } from "../substitution/actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Werkvoorbereiding-tab (§3.11): value-engineering ná gunning. De dossier-layout levert al
 // de kop + tabs — deze pagina rendert alleen zijn eigen inhoud als fragment.
@@ -18,14 +20,14 @@ export default async function WerkvoorbereidingPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/work-prep");
   const { id } = await params;
   // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. Deze tab leunde op
   // de guard in de dossier-layout, maar layout en pagina renderen concurrent: zonder deze
   // regel is het een race wie er als eerste gooit, en de ruwe cast-fout hieronder wint van
   // een nette 404. Zie de regel bij requireUuid in lib/uuid.ts.
   requireUuid(id);
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
 
   // Ijzeren regel 4: value-engineering bestaat alleen ná gunning. In tender: poort dicht.

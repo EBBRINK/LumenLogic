@@ -12,7 +12,8 @@ import type { StatusCounts } from "@/components/dossier/types";
 import { listDossiersFiltered } from "@/lib/repo/project-status";
 import { listOrganizations } from "@/lib/repo/orgs";
 import { getStatusCounts } from "@/lib/repo/matching";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 import { createDossierAction } from "./actions";
 
 // Statusfilter (B6): zonder filter alles behálve archief.
@@ -94,12 +95,12 @@ export default async function DossiersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects");
   const sp = await searchParams;
   const filter = asFilter(sp.filter);
   const q = asQuery(sp.q);
   const [dossiers, organizations] = await Promise.all([
-    listDossiersFiltered(db, filter),
+    listDossiersFiltered(db, toegangScope(toegang), filter),
     listOrganizations(db),
   ]);
   // Zoeken op naam én klant, hoofdletterongevoelig. Bewust hier en niet in de repo:

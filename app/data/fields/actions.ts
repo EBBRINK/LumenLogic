@@ -31,7 +31,8 @@ import {
   telProductenMetWaarde,
   updateEigenVeld,
 } from "@/lib/repo/custom-fields";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 // `void` hoort in de union omdat het formulier (useActionState) hem zo typeert: een
 // no-op action in de screenshot-test levert niets terug. Hier retourneren we altijd
@@ -99,7 +100,7 @@ export async function createCustomFieldAction(
   _state: VeldActieState,
   formData: FormData,
 ): Promise<VeldActieState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/fields");
   const invoer = leesInvoer(formData);
   if ("error" in invoer) return invoer;
 
@@ -116,7 +117,7 @@ export async function updateCustomFieldAction(
   _state: VeldActieState,
   formData: FormData,
 ): Promise<VeldActieState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/fields");
   const id = tekst(formData, "id");
   if (!id) return { error: "Unknown field." };
   const invoer = leesInvoer(formData);
@@ -138,7 +139,7 @@ export async function updateCustomFieldAction(
 export async function countProductsWithValueAction(
   id: string,
 ): Promise<{ productsWithValue: number }> {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/fields");
   const perVeld = await telProductenMetWaarde(db);
   return { productsWithValue: perVeld.get(id) ?? 0 };
 }
@@ -149,7 +150,7 @@ export async function countProductsWithValueAction(
 export async function archiveCustomFieldAction(
   id: string,
 ): Promise<{ ok: boolean }> {
-  await requireSession();
+  await bewaakNiveau("intern", "/data/fields");
   if (!id) return { ok: false };
   const uitkomst = await archiveEigenVeld(db, id, await getActor());
   if (uitkomst.ok) herteken();

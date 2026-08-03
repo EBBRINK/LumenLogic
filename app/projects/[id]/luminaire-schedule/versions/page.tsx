@@ -17,8 +17,9 @@ import {
   type ArmatuurSnapshotRow,
 } from "@/lib/repo/armaturenboek-versions";
 import { isUuid, requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import { snapshotAction } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Armaturenboek-versies (G-02/03/04): binnen de dossier-layout → fragment. De layout levert
 // de kop + tabs; deze pagina rendert de versiehistorie, de diff tussen twee versies en van de
@@ -41,7 +42,7 @@ export default async function VersiesPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/luminaire-schedule/versions");
   const { id } = await params;
   const sp = await searchParams;
   // De route-param krijgt requireUuid (de pagina bestaat niet), ?from=/?to= alleen isUuid
@@ -49,7 +50,7 @@ export default async function VersiesPage({
   // die van de dossier-layout: die rendert concurrent met deze pagina. Zie de regel bij
   // requireUuid in lib/uuid.ts.
   requireUuid(id);
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
 
   const versionRows = await listVersions(db, id);

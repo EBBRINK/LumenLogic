@@ -9,11 +9,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { getEstimateData } from "@/lib/repo/estimate";
 import { createXisExport } from "@/lib/repo/xis";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
+import { bewaakProject } from "@/lib/project-poort";
 
 export async function xisExportAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   if (!dossierId) return;
   // Uuid-guard: dossierId komt uit een verborgen formulierveld en gaat zo een
@@ -26,12 +27,12 @@ export async function xisExportAction(formData: FormData) {
   // pagina en de PDF-route, dus een bevroren (al uitgestuurde) offerte komt er wél
   // door: die IS het klantstuk. Stil terug, geen throw — de UI biedt deze knop in
   // deze stand niet aan, dus dit is een vangrail, geen gebruikerspad.
-  const data = await getEstimateData(db, dossierId);
+  const data = await getEstimateData(db, scope, dossierId);
   if (!data || !data.computed.outputsAllowed) return;
 
   const environment =
     formData.get("environment") === "production" ? "production" : "sandbox";
-  await createXisExport(db, {
+  await createXisExport(db, scope, {
     dossierId,
     environment,
     actor: await getActor(),

@@ -29,18 +29,18 @@ import {
   getAllBrandCompleteness,
   listBrandRelations,
 } from "@/lib/repo/brand-relations";
-import { requireSession } from "@/lib/session";
 import {
   bulkSetBrandRelationStatusAction,
   updateBrandRelationAction,
 } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function MerkrelatiesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations");
   const query = parseBrandRelationsQuery(await searchParams);
   const today = new Date();
   const todayIso = today.toISOString().slice(0, 10);

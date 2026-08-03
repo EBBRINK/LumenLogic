@@ -12,11 +12,11 @@ import {
   listEnrichableBrands,
   listEnrichmentRuns,
 } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
 import { startRunAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function VerrijkingPage() {
-  await requireSession();
+  await bewaakRoute("/data/enrichment");
   const [brands, runs] = await Promise.all([
     listEnrichableBrands(db),
     listEnrichmentRuns(db),

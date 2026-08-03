@@ -3,8 +3,8 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { BrandDashboard } from "@/components/merk/brand-dashboard";
 import { getBrandAggregates, resolveBrandFromParam } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
 import { refreshAggregatesAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Geaggregeerd dashboard (K-05). De materialized view is de anonimiseringsgrens: het merk
 // ziet enkel zijn eigen totaal (overwogen/gekozen), nooit een onderliggend project.
@@ -17,7 +17,7 @@ export default async function MerkDashboardPage({
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand/dashboard");
   const { brand: brandParam } = await searchParams;
   const brand = await resolveBrandFromParam(db, brandParam);
   const aggregates = await getBrandAggregates(db);

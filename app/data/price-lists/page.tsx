@@ -9,8 +9,8 @@ import {
   PriceListExtendSection,
 } from "@/components/data/price-list-extend";
 import { listPriceListStatus } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
 import { extendPriceListAction } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function PrijslijstenPage({
   searchParams,
@@ -20,7 +20,7 @@ export default async function PrijslijstenPage({
   // kaal <form> in een server component — geen client component, dus ook geen callAction().
   searchParams: Promise<{ extend?: string; until?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/price-lists");
   const { extend, until } = await searchParams;
   // Geen cast: PriceListStatus is structureel toewijsbaar aan PriceListRow. Dat is precies de
   // bedoeling — dit is de énige plek waar de compiler nog controleert dat de query alle velden

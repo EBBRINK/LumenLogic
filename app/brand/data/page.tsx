@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { BrandDataView } from "@/components/merk/brand-data-view";
 import { getBrandData, resolveBrandFromParam } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Data-inzien (§3.16): het merk ziet zijn eigen producten + specs, zonder prijs of ranking.
 // Welk merk, beslist resolveBrandFromParam — inclusief de uuid-guard op ?brand=. Deze
@@ -15,7 +15,7 @@ export default async function MerkDataPage({
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand/data");
   const { brand: brandParam } = await searchParams;
   const brand = await resolveBrandFromParam(db, brandParam);
   const data = brand ? await getBrandData(db, brand.id) : null;

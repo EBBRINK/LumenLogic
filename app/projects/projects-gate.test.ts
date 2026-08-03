@@ -20,6 +20,7 @@
 import { expect, test, vi } from "vitest";
 import { projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, type TestDb } from "@/db/test-db";
+import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
@@ -75,6 +76,8 @@ const { createDossierAction, setStatusAction, deleteLineAction } = await import(
 async function verseDb() {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, harnas.email);
   return db;
 }
 

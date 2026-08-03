@@ -4,8 +4,9 @@ import { db } from "@/db/client";
 import { ArmaturenboekView } from "@/components/dossier/armaturenboek-view";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { requireUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
 import { PrintButton } from "./print-button";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Armaturenboek-tab (§3.10): overdrachtsdocument voor de bouwplaats. De dossier-layout
 // levert al de kop (naam, klant, fase, telling) + tabs — deze pagina rendert alleen zijn
@@ -15,13 +16,13 @@ export default async function ArmaturenboekPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/luminaire-schedule");
   const { id } = await params;
   // Eigen guard, niet die van de dossier-layout: die rendert concurrent met deze pagina,
   // dus wie het eerst gooit bepaalt het antwoord. Zie de regel bij requireUuid in
   // lib/uuid.ts.
   requireUuid(id);
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const lines = await getSpecLines(db, id);
 

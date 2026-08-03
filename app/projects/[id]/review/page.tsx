@@ -14,7 +14,7 @@ import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct, searchProducts } from "@/lib/repo/products";
 import { getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
 import { getColorVariants } from "@/lib/repo/variants";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
 import { requireUuid } from "@/lib/uuid";
 import {
   decideReviewAction,
@@ -22,6 +22,8 @@ import {
   linkManualProductAction,
   useAiSuggestionAction,
 } from "../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Tab REVIEW — header en tabs komen uit layout.tsx, dus deze pagina rendert alleen zijn
 // eigen inhoud (fragment). De wachtrij is elke regel met reviewKind ≠ null; afgeronde
@@ -90,7 +92,7 @@ export default async function ReviewTab({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ line?: string; q?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/review");
   const { id } = await params;
   // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
   // regel gooit getReviewQueue de uuid-cast en wint die 500 van de nette 404 van
@@ -99,7 +101,7 @@ export default async function ReviewTab({
   const { line, q } = await searchParams;
   const { pending, done } = await getReviewQueue(db, id);
   // Fase voor de AI-suggestie-render-guard (regel 4) + de suggesties zelf (B4).
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   const phase = dossier?.phase === "awarded" ? ("awarded" as const) : ("tender" as const);
   const suggestionsByLine = await getOpenSuggestionsByLine(db, id);
 

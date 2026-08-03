@@ -6,7 +6,8 @@ import {
 } from "@/components/catalog-search";
 import { listCatalogBrands } from "@/lib/repo/catalog";
 import { searchProducts, type ProductCandidate } from "@/lib/repo/products";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Los zoeken in de catalogus, zonder dossier (functioneel ontwerp §3.12). GEEN dossier-layout
 // → eigen <main>. De aanpak is bewust de eenvoudigste die werkt: een GET-form schrijft de
@@ -84,7 +85,7 @@ export default async function CatalogusPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/catalog");
   const sp = await searchParams;
 
   const values: CatalogValues = {

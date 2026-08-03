@@ -8,13 +8,15 @@ import { db } from "@/db/client";
 import { getImportRun } from "@/lib/repo/imports";
 import { getOcrPageImage } from "@/lib/repo/ocr";
 import { isUuid } from "@/lib/uuid";
-import { requireSession } from "@/lib/session";
+import { getDossier } from "@/lib/repo/dossiers";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string; runId: string; page: string }> },
 ) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/ocr-image/[runId]/[page]");
   const { id, runId, page } = await params;
   const pageNum = Number.parseInt(page, 10);
   // Het uuid-patroon stond hier inline; het woont nu in lib/uuid.ts, zodat de
@@ -38,6 +40,14 @@ export async function GET(
   }
   // Eigendomscheck (zoals de markdown-route): run onbekend of van een ander
   // dossier → zelfde 404, geen onderscheid naar buiten.
+  // 3.2a — RIJ-SCOPING. De check hieronder ("hoort deze run bij dít dossier") zegt niets
+  // over de vraag of de kijker dát dossier mag zien; zonder deze regel is een directe URL
+  // naar de import van een ander bedrijf gewoon een geldige download. `getDossier` weegt de
+  // scope mee, dus buiten de scope is het antwoord `null` — zelfde 404 als een dossier dat
+  // niet bestaat.
+  if (!(await getDossier(db, toegangScope(toegang), id))) {
+    return new Response("Not found", { status: 404 });
+  }
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== id) {
     return new Response("Not found", { status: 404 });

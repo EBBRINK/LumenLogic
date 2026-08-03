@@ -28,6 +28,7 @@ import {
   type TemplateReturnPayload,
 } from "@/lib/template-diff";
 import { stageTemplateReturn } from "@/lib/repo/template-return";
+import { seedInternLid } from "@/db/test-org";
 
 const ACTOR = "timo@brink.nl";
 
@@ -159,6 +160,8 @@ async function finishedPayload(db: TestDb) {
 test("de action stuurt de tellingen mee in de redirect-URL (en niet het kale merkpad)", async () => {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, ACTOR);
   const { brandId, uploadId } = await gestaged(db);
 
   const url = await redirectVan(() =>
@@ -197,6 +200,8 @@ test("de action stuurt de tellingen mee in de redirect-URL (en niet het kale mer
 test("dubbelklik: de tweede POST redirect met applied=already, niet met tellingen", async () => {
   const db = (await createTestDb()) as TestDb;
   harnas.db = db;
+  // 3.2a: de poorten hangen aan een lidmaatschap, niet alleen aan een sessie.
+  await seedInternLid(db, ACTOR);
   const { brandId, uploadId } = await gestaged(db);
 
   await redirectVan(() =>

@@ -4,8 +4,8 @@ import { db } from "@/db/client";
 import { PricelistUpload } from "@/components/merk/pricelist-upload";
 import type { UploadRow } from "@/components/merk/pricelist-upload";
 import { listBrandUploads, resolveBrandFromParam } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
 import { submitUploadAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Prijslijst-upload (H-11): verplichte valid_until → staging. Buiten de dossier-layout.
 // Welk merk, beslist resolveBrandFromParam — inclusief de uuid-guard op ?brand=. Deze
@@ -17,7 +17,7 @@ export default async function MerkPrijslijstenPage({
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand/price-lists");
   const { brand: brandParam } = await searchParams;
   const brand = await resolveBrandFromParam(db, brandParam);
   const uploads = brand ? await listBrandUploads(db, brand.id) : [];

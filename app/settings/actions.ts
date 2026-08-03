@@ -8,11 +8,12 @@ import {
   removeAllowedEmail,
   setSetting,
 } from "@/lib/repo/settings";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 // GEBRUIKERS: adres toevoegen (idempotent + genormaliseerd in de repo).
 export async function addEmailAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/settings (intern beheer)");
   const email = String(formData.get("email") ?? "").trim();
   if (email) await addAllowedEmail(db, email, await getActor());
   revalidatePath("/settings");
@@ -32,10 +33,10 @@ function normalizeEmail(email: string): string {
 }
 
 export async function removeEmailAction(formData: FormData) {
-  const session = await requireSession();
+  const toegang = await bewaakNiveau("intern", "/settings (intern beheer)");
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   if (!email) return;
-  const self = normalizeEmail(session.user?.email ?? "");
+  const self = normalizeEmail(toegang.email ?? "");
   if (self && email === self) return;
   const current = await listAllowedEmails(db);
   if (current.length <= 1) return;
@@ -45,7 +46,7 @@ export async function removeEmailAction(formData: FormData) {
 
 // LLM-BUDGET: maandcap opslaan (getal, €). Leeg/ongeldig laat de cap ongewijzigd.
 export async function saveBudgetAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/settings (intern beheer)");
   const raw = String(formData.get("budget") ?? "").replace(",", ".").trim();
   if (raw === "") return;
   const budget = Number(raw);
@@ -57,7 +58,7 @@ export async function saveBudgetAction(formData: FormData) {
 // XIS: omgeving + (optioneel) API-sleutel. Sandbox is de veilige default; een lege
 // sleutel behoudt de bestaande waarde. De sleutel wordt nooit teruggetoond.
 export async function saveXisAction(formData: FormData) {
-  await requireSession();
+  await bewaakNiveau("intern", "/settings (intern beheer)");
   const environment =
     formData.get("environment") === "productie" ? "productie" : "sandbox";
   await setSetting(db, "xis_environment", environment);

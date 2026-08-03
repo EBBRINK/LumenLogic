@@ -32,13 +32,13 @@ import {
   listEigenVelden,
   telProductenMetWaarde,
 } from "@/lib/repo/custom-fields";
-import { requireSession } from "@/lib/session";
 import {
   archiveCustomFieldAction,
   countProductsWithValueAction,
   createCustomFieldAction,
   updateCustomFieldAction,
 } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // De 10 template-buckets. "intern" (bucket 11) staat er nooit bij: dat is per definitie
 // wat we NIET aan het merk vragen, en een eigen veld is altijd een vraag aan het merk.
@@ -68,7 +68,7 @@ const OVERZICHT: CatalogusOverzichtBucket[] = templateBuckets(FIELD_CATALOG).map
 const CATALOGUS_KOLOMMEN = excelColumns(FIELD_CATALOG).length;
 
 export default async function EigenVeldenPage() {
-  await requireSession();
+  await bewaakRoute("/data/fields");
   const [eigen, tellingen, catalogus] = await Promise.all([
     listEigenVelden(db, { metGearchiveerd: true }),
     telProductenMetWaarde(db),

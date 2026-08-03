@@ -6,13 +6,13 @@ import {
   listBrandUploadsForReview,
   listBrandsWithTier,
 } from "@/lib/repo/admin";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // ADMIN-CONSOLE OVERZICHT (§3.16, H3): de beheerhoeken met een telling en een pad erheen.
 // Eigen <main> (buiten de dossier-layout). Sprint 2.0a: Activity verhuisde naar
 // /data/event-log — Admin toont alleen nog wat beheerhandelingen zijn.
 export default async function AdminOverviewPage() {
-  await requireSession();
+  await bewaakRoute("/admin");
 
   const [brands, uploads, memberships] = await Promise.all([
     listBrandsWithTier(db),
