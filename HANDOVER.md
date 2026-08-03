@@ -1023,6 +1023,39 @@ Geen `ALTER TABLE` vanuit de app: een veld toevoegen is een INSERT.
   (browser-mode + `waitFor` onder parallelle druk), geen bestandsprobleem — en de aanname
   "er is één bekende flaky test" klopt niet meer.
 
+#### De flaky-lijst — één plek (bijgewerkt sprint 2, restjes)
+
+> **De vaste regel: een test uit deze lijst die rood is in de volle run, hertest je
+> GEÏSOLEERD voordat je hem als kapot meldt.** Pas als hij in isolatie óók rood is, is er
+> iets stuk. Dit is geen beleefdheidsvorm maar de goedkoopste stap die er is: de sectie
+> "De testsuite is load-gevoelig" hierboven mat drie volle runs op exact dezelfde commit
+> met 3, 2 en 9 rode tests — een andere verzameling per run, bestanden erbij die de commit
+> niet aanraakte. Zonder de isolatiestap kost elke sessie tijd aan spookregressies.
+
+De drie hierboven waren de stand van sprint 1.8. Sindsdien zijn er meer bijgekomen; die
+stonden verspreid door dit bestand en in commit-berichten. Dit is de volledige lijst:
+
+| test | soort flakiness | waar de context staat |
+|---|---|---|
+| `components/data/brand-message.test.tsx` | 10s-`waitFor` op "Copied" onder volle belasting | ook los gemeld bij sprint 1.5 en 1.6 |
+| `components/admin/brand-admin.test.tsx` | "Matcher did not succeed in time" | deze sectie; niet door 1.8 aangeraakt |
+| `components/data/custom-fields.test.tsx` | idem; viel in drie latere runs als enige om, geïsoleerd 14/14 | deze sectie |
+| `components/data/data-screens.test.tsx` | dark-mode-screenshot, ~20s-timeout | los gemeld bij de variant-ranking-nulmeting (2026-07-20) |
+| `lib/repo/events.test.ts:9-18` | **structureel, niet load** — twee `logEvent`'s met `created_at DEFAULT now()`, daarna een assertie op `DESC`-volgorde | eigen bullet hierboven, mét de oorzaak — laat die staan |
+| `components/dossier/pdf-upload.test.tsx:193` | "Matcher did not succeed in time" | eigen bullet onder sprint 1.7, mét de meting (1 volle run rood, isolatie 43 groen, tweede volle run 872 groen) |
+| `components/huisstijl.test.tsx` | `oklab()` vs `rgb()` op berekende kleuren onder volle belasting | door de sprintmaster toegevoegd na de restjes: viel om bij de 2.5b-sessie (2×) én in run 1 van de restjes zelf, geïsoleerd 23/23 groen |
+| `components/project-status.test.tsx` | idem — zelfde `oklab()`/`rgb()`-oorzaak | zelfde toevoeging; 2× omgevallen bij de 2.5b-sessie, geïsoleerd groen |
+
+Twee dingen bij het lezen van deze tabel:
+
+- **`events` is de uitzondering op de isolatieregel.** Die test is niet load-gevoelig maar
+  structureel ongedefinieerd: landen beide inserts op dezelfde timestamp, dan is de volgorde
+  een gok — ook geïsoleerd. Groen in isolatie bewijst daar dus niets; hij hoort gerepareerd,
+  niet hertest.
+- **De losse vermeldingen blijven staan.** Bij `pdf-upload`, `events` en `data-screens` staat
+  op hun eigen plek meer dan hier past (de meting, de oorzaak, de sprintcontext). Deze tabel
+  is de index, niet de vervanging.
+
 ## Sprint 1.7 — Milieudata: de afstand tot Brink Licht — af 21 jul 2026
 
 Eén gegeven erbij op het merk: `brands.factory_location` (het feit van het mérk) en
@@ -4752,3 +4785,107 @@ reden is die verhouding — te duur voor het ene geval dat overblijft.**
 ⚠ Het decimaalteken is hier twee keer de valstrik geweest: een regex met `(\d{1,4})W` breekt op de
 komma in `SENSOR19,5W` en geeft een te schoon antwoord. Zelfde soort fout als een komma-regex die
 Kreons `1200-1650, 2700K` voor twee kelvinwaarden aanziet.
+## Sprint 2 — de twee laatste restjes van A6 (lege toestanden)
+
+_2026-08-03. Klein, afgebakend: de twee plekken die na de A6-veegbeurt nog hun eigen kale
+grijze regel neerzetten, plus het bijwerken van de flaky-lijst. Niets erbuiten._
+
+**Wat er om is.**
+
+| plek | variant | actie | waarom |
+|---|---|---|---|
+| `components/dossier/quote-view.tsx` (`lines.length === 0`) | `framed` | `action={null}` | Staat direct onder de `</header>` op het kale canvas van de estimate-tab; geen `<Card>` omheen die het kader al tekent. De `border-b` in de buurt zit ÓNDER de kop, niet om dit blok heen. |
+| `components/admin/brands-list-block.tsx` (`brands.length === 0`) | `inline` | `action={null}` | Zit ín `<CardContent>`; `framed` zou hier een gestreept kader binnen een kaart zetten. |
+
+**De twee `action={null}`'s zijn allebei nagekeken, niet aangenomen.**
+
+- **quote-view:** de uitweg is het Lines-tabblad, en dat staat als tab in de dossier-tabbalk
+  vlak boven het document (`components/dossier/dossier-tabs.tsx`, `base` = `/projects/[id]`).
+  `QuoteView` krijgt géén `dossierId` binnen — een knop zou een extra prop plus een tweede
+  route-opbouw kosten voor navigatie die twee centimeter hoger al staat. De verwijzing staat nu
+  in de `description`. Zelfde afweging als `dossier-list.tsx`.
+- **brands-list-block:** hier bestáát de knop wél. `app/admin/brands/page.tsx` zet
+  `<Button asChild><Link href="/admin/brands/new">New brand</Link></Button>` in de paginakop,
+  één blok hoger. Een tweede exemplaar in de lege toestand zou dezelfde route dubbel in beeld
+  zetten. De test bouwt die kop na en meet dat er precies één link naar `/admin/brands/new` op
+  het scherm staat, buiten de lege toestand — dat is het bewijs onder de keuze, geen bewering.
+
+**De bronscan is meegekrompen.** `components/ui/empty-state.test.tsx` houdt een `BEKEND_OPEN`-
+lijst bij die "alleen mag krimpen"; beide bestanden stonden erin als "blok 3, andere worktree".
+Die twee regels zijn weg. De tweede test daar (`de uitzonderingenlijst verjaart niet`) zou
+anders rood zijn gegaan — dat is het mechanisme dat precies hiervoor bestaat en het werkte.
+
+**Tests.** Twee nieuwe bestanden, elk met een eigen Screen zodat de bestaande PNG's niet
+invalideren (zelfde reden als de kop van `brand-admin.test.tsx`):
+`components/dossier/quote-view-leeg.test.tsx` en `components/admin/brands-list-leeg.test.tsx`.
+Ze meten niet "er staat tekst" — dat deed de kale grijze regel ook — maar `data-slot="empty-state"`,
+de juiste `data-variant`, dat framed écht geen kaart-voorouder heeft en inline écht wel én geen
+tweede rand tekent, dat `action={null}` geen lege actie-container achterlaat (2 kinderen), en dat
+de titel niet meer volledig op de secundaire kleur staat. Screenshots licht/donker ×
+mobiel/desktop, alle acht bekeken (23–39 KB, geen blanco captures).
+
+**Gemeld, NIET gerepareerd (Timo's regel).**
+
+- **`components/dossier/quote-view.tsx:79-87`** — het kopblok (`<dl>` met `grid-cols-2` op
+  mobiel) laat een lang e-mailadres tegen de buurcel aanlopen: op 375px leest de screenshot
+  `hello@noplasticfloralfoam.com2026-08-07`, zonder spatie tussen "Author" en "Valid until".
+  Zichtbaar in `components/dossier/estimate-leeg.dark.mobile.test.png`. Pre-existent, raakt de
+  lege toestand niet.
+- **`components/admin/brands-list-block.tsx`** — de lege toestand kent het verschil niet tussen
+  "nog geen merken" en "het filter geeft niets". Bij `?q=xyz` staat er nu "No brands yet." terwijl
+  er 437 merken zijn. `dossier-list.tsx` heeft dit opgelost met een `emptyMessage`-prop; hier zou
+  dat dezelfde ingreep zijn. Bestond al vóór deze omzetting (de oude kale regel zei letterlijk
+  hetzelfde) en de `BrandFilterBar` erboven telt wél "0 of 437 brands", dus de context staat op
+  het scherm. Buiten scope gelaten.
+- **Nog open uit `BEKEND_OPEN`:** elf kale grijze lege toestanden over zeven bestanden
+  (`spec-line-table` 1, `werkvoorbereider-view` 2, `deviation-table` 1, `enrichment-panels` 3,
+  `price-list-status` 1, `custom-fields-table` 1, `analytics-view` 2), plus twee grensgevallen
+  waarover het besluit nog niet genomen is. Dat is veegbeurt 2 en stond al op de lijst.
+
+**Eén echte regressie onderweg, door mezelf veroorzaakt en gerepareerd.** De eerste versie van
+het commentaar in `brands-list-block.tsx` noemde de knop uit de paginakop bij zijn letterlijke
+tag. `components/knophierarchie.test.tsx` scant ruwe broncode met `/<Button\b/g` en **stript geen
+commentaar**, dus die genoemde tag telde mee als tweede primary van `/admin/brands` — precies de
+regel die het commentaar stond uit te leggen. Zichtbaar als "`/app/admin/brands/page.tsx` heeft 2
+primaries", waarvan de tweede naar een commentaarregel wees. Tag uit het commentaar gehaald, en
+er staat nu een waarschuwing bij voor de volgende die daar iets uitlegt. Waard om te weten voor
+elke sessie die knoppen documenteert in commentaar.
+
+**Testrun.** Twee volle runs, en ze illustreren de regel hierboven precies.
+
+Run 1 (vóór de knophierarchie-fix): **1809 groen**, 1 overgeslagen, **6 rood**. Eén daarvan was
+echt (knophierarchie, hierboven beschreven, ook geïsoleerd rood). De andere vijf waren alle vijf
+geïsoleerd groen: `custom-fields` 15/15 · `data-screens` 49/49 · `pdf-upload` 48/48 ·
+`activate` 17/17 · `huisstijl` 23/23.
+
+Run 2 (na de fix, de stand van deze commits): **1813 groen**, 1 overgeslagen, **2 rood** —
+`components/data/custom-fields.test.tsx` en `lib/repo/events.test.ts`. Allebei staan ze in de
+flaky-tabel; `custom-fields` is geïsoleerd 15/15 groen, en `events` is het structurele geval
+waar isolatie niets bewijst (de `created_at DEFAULT now()`-race, al gedocumenteerd). Dezelfde
+commit, andere verzameling rood dan run 1 — dat is de load-gevoeligheid, niet de code.
+
+`bunx tsc --noEmit` schoon op beide.
+
+**Observatie voor de flaky-lijst:** `components/huisstijl.test.tsx` (`specimen bediening (light,
+mobile)`) viel in run 1 om en staat nog nergens vermeld; `activate` stond alleen in de
+load-gevoeligheidstabel van sprint 3.1, niet in de flaky-lijst. Allebei geïsoleerd groen, en in
+run 2 allebei groen in de volle suite. Niet aan de tabel toegevoegd omdat één waarneming te
+weinig is voor een lijst die "alleen mag krimpen" — maar de volgende die ze ziet, weet nu dat
+het niet de eerste keer is.
+
+**Aanname.** `variant="framed"` staat in `quote-view.tsx` expliciet geschreven terwijl het de
+default is. De twee naaste precedenten (`dossier-list.tsx`, `quote-view-extern.tsx`) laten hem
+weg en documenteren de keuze in een comment. Expliciet gekozen omdat de test op `data-variant`
+meet en de keuze dan greppable is; wie dat liever anders ziet, haalt het attribuut weg zonder
+gevolg voor het gedrag.
+
+### Flaky-lijst samengevoegd
+
+Het kopje "Bekend en niet gerepareerd" (sprint 1.8) noemde drie wisselvallige tests. Er staat nu
+één tabel met alle zes — `brand-message`, `brand-admin`, `custom-fields`, `data-screens`, `events`,
+`pdf-upload` — met de vaste regel erboven: **rood in de volle run betekent eerst geïsoleerd
+hertesten, dan pas melden als kapot.** De losse vermeldingen elders in dit bestand zijn blijven
+staan en worden vanuit de tabel aangewezen; daar staat meer context dan in een tabelrij past.
+`events` is daarbij expliciet als uitzondering gemarkeerd: die is structureel ongedefinieerd
+(`created_at DEFAULT now()` + assertie op `DESC`-volgorde), niet load-gevoelig, dus groen in
+isolatie bewijst er niets.
