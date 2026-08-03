@@ -149,14 +149,21 @@ export function dayPriceExpiredNote(line: EstimateLine): string | null {
 }
 
 // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
-export function notableDeviations(line: EstimateLine): Deviation[] {
+//
+// Neemt alleen de velden aan die het leest, niet de hele EstimateLine: sinds 3.2b bestaat
+// er een tweede regelvorm zonder geld (PricelessLine, lib/repo/estimate-extern.ts) en die
+// mag dezelfde afwijkingen afdrukken. Structureel typen i.p.v. een cast aan de aanroepkant.
+export function notableDeviations(line: Pick<EstimateLine, "deviations">): Deviation[] {
   return (line.deviations ?? []).filter(
     (d) => d.verdict !== "onbekend" && d.note && d.note !== "exact",
   );
 }
 
-// Gevraagde merk/type-tekst als er (nog) geen gematcht product is.
-export function requestedText(line: EstimateLine): string {
+// Gevraagde merk/type-tekst als er (nog) geen gematcht product is. Zelfde reden als
+// hierboven voor de smalle parametervorm.
+export function requestedText(
+  line: Pick<EstimateLine, "brandText" | "productText">,
+): string {
   return [line.brandText, line.productText]
     .map((s) => (s ?? "").trim())
     .filter(Boolean)

@@ -3,8 +3,11 @@
 // elke download wordt gelogd (ijzeren regel 5: elke offerte-actie in de events-tabel).
 import { db } from "@/db/client";
 import { renderEstimatePdf } from "@/lib/pdf/estimate";
+import { renderExternalEstimatePdf } from "@/lib/pdf/estimate-extern";
 import { getEstimateData } from "@/lib/repo/estimate";
+import { toPricelessEstimate } from "@/lib/repo/estimate-extern";
 import { logEvent } from "@/lib/repo/events";
+import { resolvePrijszicht } from "@/lib/repo/prijszicht";
 import { isUuid } from "@/lib/uuid";
 import { getActor, requireSession } from "@/lib/session";
 
@@ -22,7 +25,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  await requireSession();
+  const session = await requireSession();
   const { id } = await params;
   // Uuid-guard (UX-audit 30 jul, bug #1). Deze route is de derde van de drie
   // route handlers en werd bij de eerste ronde overgeslagen: `id` gaat via
@@ -51,7 +54,19 @@ export async function GET(
     );
   }
 
-  const bytes = await renderEstimatePdf(data);
+  // Sprint 3.2b: een EXTERN account krijgt het prijsloze stuk. Het prijszicht komt uit
+  // de sessie (organizations.type, G31) en wordt hier vers bepaald — niet uit een
+  // query-parameter, niet uit een prop van het scherm: deze route is rechtstreeks op te
+  // vragen en moet dus zelf beslissen. Bij twijfel (geen adres, geen membership, een
+  // org-type dat we niet kennen) levert resolvePrijszicht "extern": default = veilig.
+  //
+  // Twee volledig gescheiden renderpaden, geen vlag door één sjabloon: het externe pad
+  // ziet een PricelessEstimate en dat type dráágt geen bedragen.
+  const prijszicht = await resolvePrijszicht(db, session.user?.email);
+  const bytes =
+    prijszicht === "intern"
+      ? await renderEstimatePdf(data)
+      : await renderExternalEstimatePdf(toPricelessEstimate(data));
   const filename = `estimate-${slug(data.header.quoteNumber ?? data.dossier.name)}.pdf`;
 
   await logEvent(db, {
@@ -63,6 +78,9 @@ export async function GET(
       quoteNumber: data.header.quoteNumber,
       lineCount: data.lines.length,
       filename,
+      // Welke variant de deur uit ging (ijzeren regel 5). Zonder dit veld is achteraf
+      // niet vast te stellen óf een externe download inderdaad prijsloos was.
+      prijszicht,
     },
   });
 

@@ -3529,3 +3529,125 @@ sprintmaster heeft het vastgelegd in `9fae44d` / `02cef52`.**
     (eslint-warning) en `app/settings/organization/page.tsx` heeft een
     `react/no-unescaped-entities`-error in de headertekst. Beide bestonden vóór dit item —
     geverifieerd met `git show df156e5:…`.
+
+---
+
+## Rebase van `claude/sprint31-pin` op main (2026-08-03)
+
+De branch stond 45 commits achter. Alle 25 commits zijn opnieuw op `origin/main` gezet
+(`git rebase --onto`); de stand van vóór de rebase staat als `backup/sprint31-pin-pre-rebase`
+(e2c940c) en mag weg zodra deze branch gedeployd is. Drie conflicten, allemaal opgelost
+met béíde bedoelingen erin — main's UI-norm wint, 3.1's gedrag blijft:
+
+- **`app/settings/organization/actions.ts`** — main gaf `removeMembership` een `actor` mee
+  (het event draagt sindsdien de rollen én wordt vóór het deleten geschreven); 3.1 verving
+  de aanroep door `changeMembershipAsActor` (de G36-poort). Nu allebei: de autorisatielaag
+  stelt de actor vast en geeft hem dóór aan `removeMembership`. Het dubbele
+  `membership_removed`-event dat 3.1 zelf schreef is weg — dat gaf twee sporen van één
+  verwijdering, waarvan het onze de rollen niet eens droeg.
+- **`components/org/org-list.tsx`** — main's `EmptyState` + `NewOrgFormFields` (C1/A7)
+  samen met 3.1's `canManageMembers`/`canGrantOrgAdmin`.
+- **`HANDOVER.md`** — beide blokken achter elkaar; alleen de kop van het 3.1-blok volgt de
+  laatste versie ("G36/G39").
+
+**Wat de rebase daarná aan het licht bracht** (vijf bevindingen, allemaal in dit blok
+gerepareerd — geen ervan is een fout van 3.1 of van main, het zijn de raakvlakken):
+
+1. **De tripwire in `lib/repo/authz-deuren.test.ts` matchte op het kále voorkomen van de
+   tekst `"use server"`.** Main's reviewzwerm zette in `lib/repo/dossiers.ts` een comment
+   neer dat uitlegt waarom een constante níet in zo'n module past; dat viel rood als
+   "server action buiten app/". De match is nu regel-geankerd (een directive is een
+   statement op zijn eigen regel). De ondergrens ging mee: die stond op vijf bestanden,
+   maar vier daarvan waren comment-vermeldingen in stubs — echt is er buiten `app/` er
+   precies één, `lib/test-actions.ts`.
+2. **Vier interfacenormen van main raakten 3.1's nieuwe schermen.** `pin-block.tsx` had
+   twee kale grijze lege staten (nu `<EmptyState variant="inline">`), `password-block.tsx`
+   een submit op `secondary` (nu `outline`), en `login-chrome.tsx` de afgeschafte
+   `/50`-focus-halo (nu de knop-norm: transparante rand → `--ring` op focus + `ring-3
+   ring-ring/10`; alléén de dekking omlaag zetten zou de focus onzichtbaar maken).
+   `/login` en `/activate` staan als bewuste uitzondering op de containerbreedte-lijst,
+   mét reden.
+3. **`app/settings/organization/org-gate.test.ts` (van main) las een lege
+   organisatielijst.** Migratie 0017 zet in élke verse database de interne org "Brink
+   Licht". De test meet nu het verschil vóór/ná de POST, en de actor krijgt een membership
+   in die org — anders hield de autorisatielaag de POST tegen en bewees de test niet meer
+   dat de sessiepoort het werk deed.
+4. **⚠️ `components/knophierarchie.test.tsx` scant de ruwe bron zonder commentaar te
+   strippen.** Een comment dat `<Button>` als JSX-tag noemt telt als een échte
+   primary-knop en maakt het scherm rood. Niet gerepareerd (die scan is eigendom van de
+   interfacenorm-sessie); wél gemeden, met een waarschuwing in `login-chrome.tsx`. De
+   zusterscan in hetzelfde bestand (`bg-primary`) slaat commentaarregels wél over — de
+   twee zijn dus inconsistent.
+5. **`app/projects/[id]/quote/quote-gate.test.tsx`** liep vast op 3.2b hieronder; zie daar.
+
+**Meting.** `bunx tsc --noEmit` schoon. `lib/repo/authz*.test.ts` 32/32 en
+`app/admin/users/issue-pin-authz.test.ts` + `lib/repo/activation.test.ts` 39/39, twee keer
+gedraaid. De volle suite gaf in twee runs 8 en 6 rode tests in wisselende bestanden; alle
+14 slagen in isolatie. Dat is de bekende flakiness van de suite (zie het blok van 30 jul),
+niet dit werk — draai twee keer voor je iets een regressie noemt.
+
+---
+
+## Sprint 3.2b — prijsloze estimate voor externen (2026-08-03)
+
+Given fase 0, when een extern account een estimate opent of de PDF downloadt, then bevatten
+scherm én PDF géén prijzen, bedragen of totalen — wel regels, aantallen, statussen en
+kleuren. Intern verandert er niets.
+
+**De vorm: een projectie, geen vlag.** `toPricelessEstimate()` (`lib/repo/estimate-extern.ts`)
+levert een `PricelessEstimate` waarin `unitPrice`, de regeltotalen, de zone-subtotalen en
+het eindtotaal er niet meer *zijn* — niet op nul, niet op null, weg. Het externe renderpad
+(`lib/pdf/estimate-extern.ts`, `components/dossier/quote-view-extern.tsx`) kent alleen dat
+type, dus een bedrag afdrukken is geen vergeten `if` maar een typefout. Dat is bewust géén
+`renderEstimatePdf(data, { prijzen: false })`: die functie noemt `eur()` op zeven plekken,
+en één vergeten tak is hier geen schoonheidsfout maar een lek naar de partij die de prijzen
+juist niet mag zien.
+
+**Wie is extern.** `resolvePrijszicht()` (`lib/repo/prijszicht.ts`) leest `organizations.type`
+(G31) via de sessie. De regel staat de strenge kant op geformuleerd — **"intern? toon"**, niet
+"extern? verberg" — zodat een vierde org-type, een ontbrekend membership of een vormloos adres
+vanzelf de veilige kant op valt (ijzeren regel 4). Bewust géén hergebruik van
+`resolveOrgAuthority()`: die beantwoordt "wie mag schrijven" en heeft een `org_admin`-tak. Een
+org_admin van een externe organisatie is nog steeds extern en ziet dus geen bedragen.
+
+**Bewijs op de gerenderde output, niet op een prop.** `lib/pdf/estimate-extern.test.ts` leest
+de PDF terug met unpdf en zeeft op de VORM van een bedrag (euroteken, of een getal met precies
+twee decimalen) — niet op losse cijfers, want aantallen, zones (A-08) en artikelcodes dragen
+die ook. `components/dossier/estimate-extern.test.tsx` doet hetzelfde op de DOM, in álle vier
+de standen (licht/donker × mobiel/desktop). Beide bestanden hebben een **omgekeerde toets**:
+het interne stuk moet wél door de zeef vallen, anders bewijst de externe assertie niets. Die
+toets heeft zich meteen terugverdiend — de eerste versie las de DOM vóór React had gecommit,
+en alle "er staat geen bedrag"-asserties waren daardoor gratis groen.
+`quote-gate.test.tsx` pint de wissel op de échte route: dezelfde GET, hetzelfde dossier,
+andere sessie → wel of geen bedragen in de bytes.
+
+**Aannames en open eindes**
+
+29. **"Fase 0" is gelezen als de huidige uitrolfase, niet als `project_dossiers.phase`.** Het
+    prijszicht hangt dus niet aan tender/gegund: een externe ziet nooit bedragen, in welke
+    dossierfase dan ook. Klopt die lezing niet, dan is het één regel in `page.tsx`/`route.ts`.
+30. **Het vervalmerkteken van de dagprijs staat niet op het externe stuk** ("day price expired
+    — catalogue price used instead"). Het bevat geen bedrag, maar vertelt wél welke prijsbron
+    gebruikt is, en zonder bedrag ernaast is het voor de ontvanger betekenisloos. Zelfde reden
+    voor "p.m." en "ea.": dat zijn plaatshouders op de plek van een bedrag.
+31. **De open-punten-zinnen zijn herschreven voor een externe lezer** (`EXTERN_PM_SENTENCE`),
+    omdat de interne versie in "wij/terug naar de klant" spreekt en naar een p.m.-totaal
+    verwijst dat op dit stuk niet bestaat. Eén bron voor scherm én PDF — het interne pad heeft
+    daar twee kopieën van, wat dit bestand bewust niet herhaalt.
+32. **De actiebalk is NIET ingeperkt.** Een externe ziet nog steeds "Generate estimate",
+    "Print", "Download PDF" en de XIS-dialoog. Geen daarvan toont een bedrag (de preflight
+    telt regels), dus het is geen prijslek — maar wie wat mág is **3.2a**, en dat item is hier
+    bewust niet aangeraakt. Het kopblok-bewerkformulier rendert op het externe pad wel al niet.
+33. **`lib/pdf/estimate.ts` en `lib/pdf/estimate-extern.ts` delen hun layout-constanten en
+    tekst-helpers niet.** Een gedeelde helperlaag zou de twee sjablonen aan elkaar vastknopen,
+    en dan is "de interne PDF krijgt een kolom erbij" opnieuw een moment waarop iemand aan de
+    externe kant moet denken. Loopt de opmaak uit de pas, dan is dat zichtbaar en herstelbaar;
+    loopt het geld mee, dan niet. (De opdracht noemde `lib/pdf/render.ts` als raakvlak — dat
+    bestand is de client-side rasterisatie voor OCR en staat hier los van.)
+34. **Op mobiel scrolt de regeltabel horizontaal**, dus de statuskolom staat buiten beeld tot
+    je naar rechts veegt. Dat is bestaand gedrag van het interne estimate-scherm (acht
+    kolommen); het externe stuk heeft er zes en is dus strikt beter. Niet gerepareerd: dat is
+    een wijziging aan de gedeelde tabel en raakt het interne scherm mee.
+35. **`generateQuote` blijft een interne handeling.** Draait een externe hem toch (de knop
+    staat er, zie 32), dan worden er offerteregels mét bedragen weggeschreven — hij ziet ze
+    alleen niet. Dat is geen lek, maar het hoort bij 3.2a om die knop weg te nemen.

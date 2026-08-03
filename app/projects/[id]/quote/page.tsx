@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { QuoteView } from "@/components/dossier/quote-view";
+import { ExternalQuoteView } from "@/components/dossier/quote-view-extern";
 import {
   PrintButton,
   XisPushDialog,
@@ -8,6 +9,8 @@ import {
 } from "@/components/dossier/xis-push-dialog";
 import { Button } from "@/components/ui/button";
 import { getEstimateData } from "@/lib/repo/estimate";
+import { toPricelessEstimate } from "@/lib/repo/estimate-extern";
+import { resolvePrijszicht } from "@/lib/repo/prijszicht";
 import { getXisExports, preflightSummary } from "@/lib/repo/xis";
 import { requireSession } from "@/lib/session";
 import { requireUuid } from "@/lib/uuid";
@@ -100,7 +103,7 @@ export default async function EstimatePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const session = await requireSession();
   const { id } = await params;
   // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
   // regel gooit getEstimateData de uuid-cast en wint die 500 van de nette 404 van
@@ -109,9 +112,13 @@ export default async function EstimatePage({
 
   const data = await getEstimateData(db, id);
   if (!data) notFound();
-  const [preflight, exports] = await Promise.all([
+  const [preflight, exports, prijszicht] = await Promise.all([
     preflightSummary(db, id),
     getXisExports(db, id),
+    // Sprint 3.2b: mag deze gebruiker bedragen zien? Afgeleid uit organizations.type
+    // (G31) via de sessie, en bij twijfel "extern" — default = veilig. Dezelfde functie
+    // die de PDF-route gebruikt, dus scherm en download kunnen niet uit elkaar lopen.
+    resolvePrijszicht(db, session.user?.email),
   ]);
   const { dossier, quote: q, header, lines } = data;
 
@@ -183,6 +190,23 @@ export default async function EstimatePage({
       />
     </>
   );
+
+  // Twee renderpaden, geen vlag door één component (sprint 3.2b). Het externe pad krijgt
+  // een PricelessEstimate binnen: dat type draagt geen stukprijs, geen regeltotaal en
+  // geen totalenblok, dus er valt niets te verbergen — er is niets.
+  //
+  // Het kopblok-bewerkformulier blijft buiten het externe pad. Niet omdat het bedragen
+  // toont (dat doet het niet) maar omdat het offertevelden schrijft; wie dat mag is
+  // item 3.2a en wordt hier bewust niet uitgebreid.
+  if (prijszicht === "extern") {
+    return (
+      <ExternalQuoteView
+        estimate={toPricelessEstimate(data)}
+        phase={dossier.phase}
+        actions={actions}
+      />
+    );
+  }
 
   return (
     <>

@@ -13,7 +13,8 @@
 import { page } from "vitest/browser";
 import { expect, test, vi } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
-import { projectDossiers, specLines } from "@/db/schema";
+import { extractText, getDocumentProxy } from "unpdf";
+import { memberships, organizations, projectDossiers, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote, updateQuoteHeader } from "@/lib/repo/dossiers";
 import { setStatus } from "@/lib/repo/project-status";
@@ -97,9 +98,25 @@ async function seedDossier(db: TestDb) {
   return dossier.id;
 }
 
+// Sinds sprint 3.2b beslist de pagina óók welk renderpad je krijgt: een EXTERN account
+// ziet het prijsloze stuk, zonder kopblok-banner en zonder "Edit header". Dat pad wordt
+// apart getoetst (components/dossier/estimate-extern.test.tsx). Deze tests gaan over de
+// kopblokpoort op het INTERNE scherm, dus de sessie-actor krijgt hier een lidmaatschap
+// in de interne org — anders levert resolvePrijszicht "extern" (default = veilig) en
+// zoeken de asserties hieronder naar knoppen die op dat pad niet bestaan.
+async function maakActorIntern(db: TestDb) {
+  const orgs = await db.select().from(organizations);
+  const intern = orgs.find((o) => o.slug === "brink-licht");
+  if (!intern) throw new Error("interne org ontbreekt — migratie 0017 niet gedraaid?");
+  await db
+    .insert(memberships)
+    .values({ orgId: intern.id, email: harnas.email, roles: ["calculator"] });
+}
+
 async function nieuweStand() {
   const db = await createTestDb();
   harnas.db = db;
+  await maakActorIntern(db);
   const dossierId = await seedDossier(db);
   return { db, dossierId };
 }
@@ -186,6 +203,48 @@ test("PDF-route: 409 bij een lege kop, 200 zodra de offerte bevroren is", async 
   });
   expect(toegestaan.status).toBe(200);
   expect(toegestaan.headers.get("Content-Type")).toBe("application/pdf");
+});
+
+// ── Prijszicht op de ECHTE route (sprint 3.2b) ───────────────────────────────
+//
+// De sjablonen worden apart getoetst (lib/pdf/estimate-extern.test.ts). Wat hier wordt
+// vastgepind is de WISSEL: dezelfde GET, hetzelfde dossier, alleen een andere sessie —
+// en dan komen er wel of geen bedragen uit de bytes die de deur uit gaan. Zonder deze
+// test kun je de regel in route.ts schrappen en blijft alles groen, precies de reden
+// waarom dit bestand bestaat.
+test("PDF-route: intern krijgt bedragen, extern krijgt er nul", async () => {
+  const { db, dossierId } = await nieuweStand(); // actor zit in de interne org
+  await generateQuote(db, dossierId, harnas.email);
+
+  const bedragen = async (res: Response) => {
+    const pdf = await getDocumentProxy(new Uint8Array(await res.arrayBuffer()));
+    const { text } = await extractText(pdf, { mergePages: true });
+    return Array.isArray(text) ? text.join("\n") : text;
+  };
+  const haal = () =>
+    GET(new Request("http://test/pdf"), {
+      params: Promise.resolve({ id: dossierId }),
+    });
+
+  const internTekst = await bedragen(await haal());
+  expect(internTekst).toContain("€");
+  expect(internTekst).toContain("Unit price");
+
+  // Zelfde dossier, ander account: dit adres heeft geen enkel lidmaatschap en is dus
+  // extern (default = veilig).
+  const eerder = harnas.email;
+  harnas.email = "piet@devries.nl";
+  try {
+    const externTekst = await bedragen(await haal());
+    expect(externTekst).not.toContain("€");
+    expect(externTekst).not.toContain("Unit price");
+    expect(externTekst).not.toContain("Line total");
+    // …en het is wél het stuk van dit dossier, geen leeg vel.
+    expect(externTekst).toContain("Ziekenhuis Noord");
+    expect(externTekst).toContain("Lp301");
+  } finally {
+    harnas.email = eerder;
+  }
 });
 
 // ── De XIS-action (een verborgen knop is geen poort) ─────────────────────────
