@@ -143,17 +143,32 @@ export async function searchProducts(
           ? sql<number>`(case when ${visibleProducts.name} ilike ${query + "%"} then 1 else 0 end)`
           : sql<number>`0`;
 
+      // Regel 2: #tokens, dan prefix, dan similariteit, dan naam. Geen prijs, nergens.
+      //
+      // De constante termen worden WEGGELATEN, niet vervangen — zelfde afvangpatroon als
+      // lib/matching/engine.ts. Zonder tokens blijft `matchCount` de letterlijke `0` en
+      // zonder zoektekst `prefixBonus` ook, en een kale integer in ORDER BY leest Postgres
+      // niet als waarde maar als KOLOMPOSITIE: `order by 0 desc` → "ORDER BY position 0 is
+      // not in select list". Daarmee crashte /catalog op een merk zonder zoektekst en op
+      // een zoektekst van één teken (tokens zijn stukken van ≥2 tekens, dus één teken
+      // levert er nul op). Zet hier dus nooit een `sql`0`` of een dummy-kolom terug.
+      //
+      // `score` gaat mee op dezelfde voorwaarde. Hij is een functieaanroep en dus géén
+      // positionele verwijzing, maar `similarity(name, '')` is gemeten 0 voor élke rij —
+      // een sorteersleutel die niets ordent. Bij één teken is hij wél betekenisvol
+      // (gemeten 0 / 0,038 / 0,05), dus de grens ligt bij `query.length > 0`, niet bij
+      // het aantal tokens.
+      const orderTerms = [
+        ...(tokens.length > 0 ? [desc(matchCount)] : []),
+        ...(query.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+        asc(visibleProducts.name),
+      ];
+
       const fuzzy = await db
         .select({ ...SELECTION, score, matchCount })
         .from(visibleProducts)
         .where(conditions.length ? and(...conditions) : undefined)
-        // Regel 2: #tokens, dan prefix, dan similariteit, dan naam. Geen prijs, nergens.
-        .orderBy(
-          desc(matchCount),
-          desc(prefixBonus),
-          desc(score),
-          asc(visibleProducts.name),
-        )
+        .orderBy(...orderTerms)
         .limit(limit);
       results = fuzzy.map((r) => toCandidate(r, Number(r.score) || 0, "fuzzy"));
     }
