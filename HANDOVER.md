@@ -310,26 +310,27 @@ op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde 
 ## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
 
 *Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
-`claude/sprint31-pin` (HEAD **c982e1f**, 24 commits) en is **niet gepusht**. Elke push naar
+`claude/sprint31-pin` (HEAD **d2d1502**, 30 commits — na twee rebases op main en sprint 3.2b;
+het was **c982e1f**/24 toen dit draaiboek werd geschreven) en is **niet gepusht**. Elke push naar
 main deployt binnen seconden naar productie; er is geen preview-stap. Het akkoord hiervoor
 komt van Timo zelf — G32 betekent dat het er **twee** zijn, en dit is de eerste.*
 
 **Wat deploy 1 doet:** wachtwoord-auth komt ERNÁÁST de magic link te staan. De magic link
 blijft werken. Dat is geen tussenoplossing maar de kern van G32: gaat de magic link er in
 één keer uit, dan komt niemand meer binnen — ook niet in `/admin/users` om de eerste PIN aan
-te maken. **Deploy 2 (magic link eruit) mag pas ná stap 9 hieronder.**
+te maken. **Deploy 2 (magic link eruit) mag pas ná stap 10 hieronder.**
 
 ### Vóór de push — één minuut, voorkomt een kapotte migratie
 1. **Tel de gebruikers na.** `select email from "user";` op productie. Migratie
-   `0017_org_type_activatie.sql:59-61` noemt drie adressen **letterlijk**
+   `0019_org_type_activatie.sql:61-63` noemt drie adressen **letterlijk**
    (`hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
    geeft precies díé een `org_admin`-membership in de Brink-org. Staat er inmiddels een
    vierde adres, dan krijgt dat géén membership en kan het na deploy 2 niet meer inloggen.
    Dat is de veilige kant om op te falen, maar je wilt het wéten, niet ontdekken.
 2. **Controleer dat `organizations` leeg is** (`select count(*) from organizations;` → 0 bij
-   de meting van 30 jul). Bestaat er al een rij met slug `brink-licht`, dan is 0017 al eens
+   de meting van 30 jul). Bestaat er al een rij met slug `brink-licht`, dan is 0019 al eens
    gedraaid of heeft iemand hem handmatig aangemaakt — kijk dan eerst wat er staat.
-   ⚠️ `organizations.slug` heeft **geen unique-index**, en `0017:47` doet
+   ⚠️ `organizations.slug` heeft **geen unique-index**, en `0019:49` doet
    `SET org_id = (SELECT id FROM organizations WHERE slug = 'brink-licht')` — een scalaire
    subquery die omvalt zodra er twee zulke rijen zijn.
 3. **Weet dat de nulmeting licht vervuild is.** Er staat één sessierij van 30 jul 17:13
@@ -341,12 +342,34 @@ te maken. **Deploy 2 (magic link eruit) mag pas ná stap 9 hieronder.**
 **Er draait geen migratie mee op de deploy.** `package.json:7` is kaal `next build`, er is geen
 `vercel.json` en geen build-hook; `db:migrate` (regel 11) is een lokaal commando dat op
 `--env-file=.env.local` leunt. Push je de code eerst, dan draait er productiecode die
-`organizations.type` en `activation_pins` verwacht tegen een database die ze niet heeft —
-`/admin/users` en `/settings/organization` vallen dan om tot je alsnog migreert.
+`organizations.type` en `activation_pins` verwacht tegen een database die ze niet heeft.
+**Drie dingen gaan er dan mis, niet één:**
+1. `/admin/users` en `/settings/organization` vallen om tot je alsnog migreert.
+2. Idem voor `/activate` en het wachtwoordpad — `activation_pins` bestaat nog niet.
+3. ⚠️ **Brink zelf ziet geen bedragen meer** (sprint 3.2b). `resolvePrijszicht()` geeft
+   "extern" bij nul memberships, en op productie staan er vandaag 0 organisaties en 0
+   memberships (meting 30 jul, ongewijzigd). De koppeling ontstáát pas in deze migratie: die
+   maakt `brink-licht` aan als type `intern` en seedt de drie adressen als membership. Vóór
+   de migratie is dus iedereen extern — inclusief Timo en Eduard. Niet destructief, wel
+   meteen zichtbaar en precies verkeerd om. Dit is de derde reden waarom de volgorde vastligt;
+   lees hem niet als een detail van één scherm.
 
-Migratie 0017 is **puur additief** (`ADD COLUMN IF NOT EXISTS` mét default, twee INSERTs, één
+Migratie 0019 is **puur additief** (`ADD COLUMN IF NOT EXISTS` mét default, twee INSERTs, één
 backfill-UPDATE, `CREATE TABLE IF NOT EXISTS`; geen enkele DROP), dus de oude code draait er
-probleemloos naast. Daarom:
+probleemloos naast.
+
+⚠️ **Er landen waarschijnlijk DRIE migraties, niet één.** Sprint 2.5b heeft zijn expressie-
+indexen (`0017_snelheid_indexen.sql`, `0018_analytics_merkgat_index.sql`) wél naar main
+gepusht maar **niet** op productie toegepast — er draait geen migratiestap op de deploy, dus
+dat blijft liggen tot iemand `db:migrate` draait. Die twee voegen alleen indexen toe (de code
+werkt identiek mét en zonder, alleen langzamer zonder); `CREATE INDEX` zonder `CONCURRENTLY`
+houdt ~4 s een `SHARE`-lock op `products` — lezen kan door, schrijven wacht. Schrik dus niet
+van drie regels in `__migrations`. Daarom:
+
+ℹ️ Het drizzle-journal (`db/migrations/meta/_journal.json`) loopt maar tot 0013, maar dat
+blokkeert niets: `db/migrate.ts` leest de **map** (`readdirSync` op `db/migrations/`) en houdt
+zelf bij wat er al draaide in de tabel `__migrations`. `bun run db:migrate` pakt 0019 dus
+gewoon mee. Het journal-gat is bestaande schuld, geen blokkade voor deze deploy.
 
 ```bash
 # 1. Migreren tegen productie. Zet DATABASE_URL van productie in .env.local, of geef een
@@ -354,15 +377,16 @@ probleemloos naast. Daarom:
 bun run db:migrate
 
 # 2. Pas daarna pushen — dit deployt binnen seconden naar productie.
-bash scripts/safe-push.sh c982e1f
+bash scripts/safe-push.sh d2d1502
 ```
 Nooit een kale `git push origin main` — die stuurt élke commit op de lokale main mee, ook die
 van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
 
 ### Ná de push — verifiëren in deze volgorde
-4. **Migratie 0017 is toegepast.** `select name from __migrations order by name desc limit 3;`
-   Daarna: één org met slug `brink-licht` en `type = 'intern'`, drie memberships, en de 13
-   dossiers met een `org_id` in plaats van `NULL`.
+4. **Migratie 0019 is toegepast.** `select name from __migrations order by name desc limit 3;`
+   — verwacht `0019_org_type_activatie.sql` bovenaan, met 2.5b's `0018` en `0017` eronder als
+   die nog niet gedraaid waren. Daarna: één org met slug `brink-licht` en `type = 'intern'`,
+   drie memberships, en de 13 dossiers met een `org_id` in plaats van `NULL`.
 5. **De magic link werkt nog** — dit is de belangrijkste controle van deploy 1. Log in als
    `timo@jouwainstein.com`; de link staat in de Vercel-logs
    (`vercel logs --environment production --since 15m --expand --no-branch`; `--expand` is
@@ -379,9 +403,14 @@ van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
    opnieuw inloggen met dat wachtwoord → je ziet je eigen organisatie. Dit is exact wat
    `lib/auth-activation.test.ts` op PGlite doet; hier bewijs je het op de echte database.
 8. **Wachtwoord wijzigen** op `/settings`, met opgave van het huidige.
+9. **Een intern account ziet nog bedragen** (sprint 3.2b). Open een dossier met regels →
+   tab Estimate: stukprijzen, regeltotalen en het totalenblok horen er gewoon te staan, en
+   "Download PDF" levert een stuk mét bedragen. Zie je die niet, dan is de
+   membership-backfill van 0019 niet gelopen — controleer stap 4 opnieuw. Dit is de
+   tegenproef van punt 3 hierboven en kost tien seconden.
 
 ### De poort naar deploy 2
-9. **Timo én Eduard komen allebei aantoonbaar met een wachtwoord binnen.** Niet "het werkt bij
+10. **Timo én Eduard komen allebei aantoonbaar met een wachtwoord binnen.** Niet "het werkt bij
    mij" — allebei, elk op zijn eigen account. Pas dán mag de magic link eruit, en dat is een
    apart akkoord van Timo.
    Wat deploy 2 verder raakt: de allowlist (`allowed_emails`) verliest dan zijn énige
@@ -415,10 +444,10 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
   5 pogingen (atomair afgeschreven vóór de verificatie), één actieve PIN per adres.
   `lib/auth-activation.ts` — `redeemActivationPin` (wachtwoord zetten, sessies intrekken en
   pas dáárna een nieuwe sessie) en `changeOwnPassword`.
-- Migratie `0017_org_type_activatie.sql` — `organizations.type` (G31), de Brink-org, backfill
+- Migratie `0019_org_type_activatie.sql` — `organizations.type` (G31), de Brink-org, backfill
   van dossiers zonder org en memberships voor bestaande users, plus `activation_pins`.
 - Eerste tests die dit project op Better Auth heeft: `lib/auth-activation.test.ts` (hele flow
-  + faalpaden), `lib/repo/activation.test.ts`, `db/migration-0017.test.ts`. 29 nieuwe tests.
+  + faalpaden), `lib/repo/activation.test.ts`, `db/migration-0019.test.ts`. 29 nieuwe tests.
 
 **Aannames en open eindes**
 1. **De allowlist geldt bewust NIET voor het wachtwoordpad.** Hij blijft de poort onder de
@@ -427,7 +456,7 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
    poort onder het wachtwoordpad is dat je een PIN van Brink nodig hebt om er één te kúnnen
    zetten. **Gevolg voor deploy 2 (G27):** als de magic link eruit gaat, verliest de
    allowlist zijn enige gebruiker. Bewuste keuze van Timo nodig: weghalen of herbestemmen.
-2. **`hello@noplasticfloralfoam.com`** krijgt via 0017 een `org_admin`-membership in de
+2. **`hello@noplasticfloralfoam.com`** krijgt via 0019 een `org_admin`-membership in de
    Brink-org, net als de andere twee users — het is Timo's eigen tweede adres. Er is
    **niets** aan de allowlist veranderd. Het account kan dus pas inloggen zodra Brink er een
    PIN voor aanmaakt; via magic link kan het (op productie) niet. Bewust zo gelaten.
@@ -435,10 +464,10 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
    admin" uit de G21-kaart). Ze zijn alle drie Brink-kant; er is geen bestaande gebruiker
    waarvoor een lichtere rol klopt.
 4. **`organizations.type` default `extern`** — default = veilig (regel 4). Elke org die vóór
-   0017 bestond wordt dus `extern`; alleen de Brink-org is `intern`.
+   0019 bestond wordt dus `extern`; alleen de Brink-org is `intern`.
 5. **Minimale wachtwoordlengte 12** (NIST SP 800-63B vraagt 8). Bewust hoger: er draait geen
    check tegen gelekte wachtwoorden, dus lengte is de enige weerstand die er is.
-6. **Migratie 0017 zaait de Brink-org in élke database**, ook in een verse test-DB — zelfde
+6. **Migratie 0019 zaait de Brink-org in élke database**, ook in een verse test-DB — zelfde
    patroon als de allowlist-seed van 0004. Eén bestaande assertie in
    `scripts/cleanup-testdata.test.ts` telde het aantal organisaties en is daarop bijgesteld
    (2 → 3).
@@ -484,9 +513,9 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
   rauwe unique-violation naar de aanroeper).
 - **Magic link kon nog accounts maken** via `/magic-link/verify`; `disableSignUp: true` staat
   er nu ook op de plugin, náást de allowlist.
-- **De memberships-backfill in 0017 was een cross join over de hele user-tabel.** Nu een
+- **De memberships-backfill in 0019 was een cross join over de hele user-tabel.** Nu een
   expliciete adreslijst.
-- **De idempotentie-test draaide een overgetypte kopie.** 0017 is nu volledig idempotent
+- **De idempotentie-test draaide een overgetypte kopie.** 0019 is nu volledig idempotent
   (DO-block, `IF NOT EXISTS`) en de test draait het echte bestand twee keer.
 
 ## Sprint 3.1 golf 2 — de drie schermen — 30 jul 2026
@@ -618,7 +647,7 @@ timeouten. Ter vergelijking mat de review op `origin/main` 36 rood over 9 bestan
 volle run.
 
 **Elk testbestand van dit item, geïsoleerd gedraaid — 135 tests, alles groen:**
-`lib/repo/activation` 18 · `lib/auth-activation` 14 · `db/migration-0017` 6 ·
+`lib/repo/activation` 18 · `lib/auth-activation` 14 · `db/migration-0019` 6 ·
 `components/activate` 17 · `components/admin/pin-block` 21 · `components/login` 17 ·
 `components/settings/password-block` 16 · `components/settings/settings` 16 ·
 `components/org` 7 · `scripts/cleanup-testdata` 3.
@@ -3512,7 +3541,7 @@ sprintmaster heeft het vastgelegd in `9fae44d` / `02cef52`.**
 
 **Landmijnen en meldingen — niet gerepareerd, bewust**
 25. ⚠️ **`organizations.slug` heeft geen unique-index**, terwijl
-    `db/migrations/0017_org_type_activatie.sql:47` een scalaire subquery op
+    `db/migrations/0019_org_type_activatie.sql:49` een scalaire subquery op
     `slug = 'brink-licht'` doet. Twee organisaties met die slug (mogelijk via
     `createOrgAction` met de naam "Brink Licht") laten die migratie omvallen op een verse
     omgeving — "more than one row returned by a subquery". Gevonden door de critic in ronde
@@ -3568,7 +3597,7 @@ gerepareerd — geen ervan is een fout van 3.1 of van main, het zijn de raakvlak
    `/login` en `/activate` staan als bewuste uitzondering op de containerbreedte-lijst,
    mét reden.
 3. **`app/settings/organization/org-gate.test.ts` (van main) las een lege
-   organisatielijst.** Migratie 0017 zet in élke verse database de interne org "Brink
+   organisatielijst.** Migratie 0019 zet in élke verse database de interne org "Brink
    Licht". De test meet nu het verschil vóór/ná de POST, en de actor krijgt een membership
    in die org — anders hield de autorisatielaag de POST tegen en bewees de test niet meer
    dat de sessiepoort het werk deed.
@@ -3675,9 +3704,11 @@ dat kon zonder gevolgen omdat hij nog niet gedeployd is. Meegegaan:
 - Verwijzingen naar "migratie 0017" in `lib/repo/activation.test.ts`,
   `scripts/cleanup-testdata.test.ts` en `components/org/org.test.tsx` zijn bijgewerkt.
 
-⚠️ **Voor het deploy-draaiboek**: het draaiboek van deploy 1 (blok "HANDOVER: draaiboek deploy
-1") noemt de migratie nog als 0017. Het bestand heet nu `0019_org_type_activatie.sql`; de
-inhoud is ongewijzigd. Op Neon moeten 0017 en 0018 van 2.5b er vóór.
+✅ **Het deploy-draaiboek is meegegaan.** Élke verwijzing naar 3.1's migratie staat nu op
+`0019`, mét de verschoven regelnummers (de drie adressen staan in 0019 op regel **61-63**, was
+59-61; de scalaire subquery op **49**, was 47) en met de actuele sha in het push-commando. Er
+staan geen twee nummers meer naast elkaar: wat er nog aan `0017`/`0018` in dit document staat
+gaat over de indexmigraties van 2.5b, en die horen op Neon vóór 0019.
 
 De stand van vóór deze tweede rebase staat als `backup/sprint31-pin-voor-tweede-rebase`.
 
