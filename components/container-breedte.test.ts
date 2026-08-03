@@ -37,6 +37,23 @@ const BEWUSTE_UITZONDERINGEN: Record<string, { breedte: string; waarom: string }
       "Inlogscherm: één veld en één knop, gecentreerd, en er is geen navbalk " +
       "(de gebruiker is nog niet ingelogd) — dus geen rand om mee uit te lijnen.",
   },
+  "components/login/login-chrome.tsx": {
+    breedte: "max-w-sm",
+    waarom:
+      "Dezelfde uitzondering als components/login-form.tsx, en om dezelfde reden: " +
+      "sprint 3.1 (G27/G32) zette het inlogscherm om naar wachtwoord-eerst met de " +
+      "magic link als onthulling eronder, en dít is sindsdien de schil van /login. " +
+      "Nog steeds een gecentreerd formulier zonder navbalk om mee uit te lijnen — " +
+      "op 1280px zou het een lege bak met twee velden linksboven worden.",
+  },
+  "app/activate/page.tsx": {
+    breedte: "max-w-lg",
+    waarom:
+      "Activatiescherm (sprint 3.1, C10/G26). Zelfde familie als /login — gecentreerd, " +
+      "geen sessie en dus geen navbalk om mee uit te lijnen — maar één maat ruimer dan " +
+      "max-w-sm: de 8-cijferige InputOTP heeft ~390px nodig en werd op max-w-sm " +
+      "afgesneden. De reden staat bij het <main> zelf, mét de screenshots erbij.",
+  },
   "app/error.tsx": {
     breedte: "max-w-3xl",
     waarom:

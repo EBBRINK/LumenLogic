@@ -21,6 +21,7 @@ import { Check, Copy, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import type { MembershipRole } from "@/db/schema";
 import { callAction, failureDetail } from "@/lib/next-action-result";
@@ -427,11 +428,15 @@ export function PinBlock({
           {organizations.length === 0 ? (
             // Geen enkele organisatie waar deze gebruiker in mag uitgeven (G36 regel 3, of
             // een org_admin zonder org). Dan hoort er geen formulier te staan dat toch
-            // afgewezen wordt.
-            <p className="text-sm text-muted-foreground">
-              You can&apos;t issue PINs. Ask Brink if you think you should be
-              able to.
-            </p>
+            // afgewezen wordt. `inline`, want we zitten al in een <Card>; `action={null}`
+            // is hier de bewuste keuze: de uitweg loopt buiten het scherm om (vraag het
+            // Brink), dus er ís geen knop die we eerlijk kunnen aanbieden.
+            <EmptyState
+              variant="inline"
+              title="You can't issue PINs."
+              description="Ask Brink if you think you should be able to."
+              action={null}
+            />
           ) : (
           <form onSubmit={onCreateSubmit} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -569,7 +574,9 @@ export function PinBlock({
         </CardHeader>
         <CardContent>
           {users.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members yet.</p>
+            // Alleen-lezen statuslijst: `action={null}` is terecht — een PIN uitgeven
+            // gebeurt in de kaart hierboven, niet hier.
+            <EmptyState variant="inline" title="No members yet." action={null} />
           ) : (
             <ul className="flex flex-col divide-y divide-foreground/10">
               {users.map((u) => (

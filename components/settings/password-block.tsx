@@ -238,9 +238,13 @@ export function PasswordBlock({
             </p>
           )}
 
+          {/* `outline`, niet `secondary`: main's A13-norm (components/knophierarchie.
+              test.tsx) — het neutrale secondary-vlak is op 50% dekking niet van disabled
+              te onderscheiden, en dit is een echte submit. De primary van /settings zit
+              elders, dus geen default. */}
           <Button
             type="submit"
-            variant="secondary"
+            variant="outline"
             disabled={busy}
             className="self-start"
           >

@@ -21,9 +21,15 @@
 // trekt dit recht tot 5,47:1 tegen bg-card, exact de kit-route die O10/O12 al voor andere
 // elementen op donker kiezen (blauw → teal). Goedgekeurd door Timo als besluit G37; het
 // blijft de enige teal-op-donker tekstkleur tot --brand-blue een .dark-override krijgt.
-// De focus-ring gebruikt om diezelfde reden geen
-// focus-visible:border-ring (de summary heeft geen rand, dus dat was een no-op) maar een
-// losstaande ring mét offset, zoals §7 voorschrijft.
+// De focus-ring volgt de huisnorm van de knop-component (components/ui/button.tsx): een
+// transparante rand die op focus --ring wordt, plus de kit-halo ring-3 ring-ring/10.
+// (Schrijf die naam hier niet als JSX-tag: components/knophierarchie.test.tsx scant de
+// ruwe bron zonder commentaar te strippen en telt zo'n vermelding als een echte knop.)
+// Eerder stond hier een losstaande ring-ring/50 mét offset — die /50-halo is precies de
+// afgeschafte shadcn-rest die main's B10-scan verbiedt (§6 Invoer schrijft
+// 0 0 0 3px rgba(45,90,140,.1) voor). Alleen de dekking omlaag zetten was geen optie:
+// zónder de --ring-rand blijft er van 3px op 10% niets zichtbaars over. De rand is
+// transparant, dus de doos blijft even groot als hiervoor.
 import { MagicLinkForm } from "./magic-link-form";
 
 export function LoginChrome({ children }: { children: React.ReactNode }) {
@@ -39,7 +45,7 @@ export function LoginChrome({ children }: { children: React.ReactNode }) {
       {children}
 
       <details className="group rounded-lg bg-card ring-1 ring-foreground/10">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-4 py-3 text-sm font-medium text-brand-blue outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:text-brand-teal">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-transparent px-4 py-3 text-sm font-medium text-brand-blue outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/10 dark:text-brand-teal">
           Use a magic link instead
           <svg
             aria-hidden="true"

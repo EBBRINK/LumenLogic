@@ -75,6 +75,33 @@ function post(velden: Record<string, string>): FormData {
   return fd;
 }
 
+// Sinds sprint 3.1 (migratie 0017) draagt élke verse database de interne organisatie
+// "Brink Licht" — ook de test-DB. De organisatielijst begint dus niet leeg. Deze tests
+// gaan over de sessiepoort en niet over de inhoud van de seed, dus ze meten het VERSCHIL
+// vóór en ná de POST in plaats van een absolute lijst.
+async function orgNamen(db: TestDb): Promise<string[]> {
+  return (await listOrganizations(db)).map((o) => o.name);
+}
+
+// ⚠️ En sinds besluit G36/G39 leunt `removeMemberAction` niet meer alleen op de sessie:
+// `changeMembershipAsActor()` leidt de bevoegdheid af uit de database. Zonder deze seed
+// zou de uitgelogde variant hieronder ook groen blijven met een kapotte sessiepoort — de
+// autorisatielaag had het dan alsnog geweigerd, en dan bewees de test niet meer wat hij
+// belooft. De actor krijgt daarom een membership in de interne org (G36-regel 1: elke rol
+// binnen 'intern' telt, ook géén rol), zodat het énige wat hem nog kan tegenhouden de
+// sessiepoort is.
+async function maakActorBevoegd(db: TestDb) {
+  const orgs = await listOrganizations(db);
+  const intern = orgs.find((o) => o.slug === "brink-licht");
+  if (!intern) throw new Error("interne org ontbreekt — migratie 0017 niet gedraaid?");
+  await addMembership(db, {
+    orgId: intern.id,
+    email: harnas.email,
+    roles: [],
+    actor: "seed",
+  });
+}
+
 // redirect() gooit een fout met `digest` "NEXT_REDIRECT;…;/login;…". Loopt de action
 // gewoon door, dan staat de poort open — dan faalt deze helper met een leesbare reden.
 async function redirectVanUitgelogde(run: () => Promise<unknown>): Promise<string> {
@@ -95,25 +122,29 @@ async function redirectVanUitgelogde(run: () => Promise<unknown>): Promise<strin
 
 test("uitgelogd: createOrgAction maakt geen organisatie aan", async () => {
   const db = await verseDb();
+  const voor = await orgNamen(db);
 
   const digest = await redirectVanUitgelogde(() =>
     createOrgAction(post({ name: "Deerns", plan: "pro" })),
   );
   expect(digest).toContain("/login");
 
-  expect(await listOrganizations(db)).toEqual([]);
+  expect(await orgNamen(db)).toEqual(voor);
 });
 
 test("ingelogd: dezelfde POST maakt de organisatie wél aan", async () => {
   const db = await verseDb();
+  const voor = await orgNamen(db);
 
   await createOrgAction(post({ name: "Deerns", plan: "pro" }));
 
-  expect((await listOrganizations(db)).map((o) => o.name)).toEqual(["Deerns"]);
+  const erbij = (await orgNamen(db)).filter((n) => !voor.includes(n));
+  expect(erbij).toEqual(["Deerns"]);
 });
 
 test("uitgelogd: removeMemberAction laat het lidmaatschap staan", async () => {
   const db = await verseDb();
+  await maakActorBevoegd(db);
   const org = await createOrganization(db, { name: "Deerns", actor: "seed" });
   await addMembership(db, {
     orgId: org.id,
@@ -134,6 +165,7 @@ test("uitgelogd: removeMemberAction laat het lidmaatschap staan", async () => {
 
 test("ingelogd: dezelfde POST verwijdert het lidmaatschap wél", async () => {
   const db = await verseDb();
+  await maakActorBevoegd(db);
   const org = await createOrganization(db, { name: "Deerns", actor: "seed" });
   await addMembership(db, {
     orgId: org.id,
