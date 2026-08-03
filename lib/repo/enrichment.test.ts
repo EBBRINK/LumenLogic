@@ -3,7 +3,7 @@
 // Ijzeren regels die hier meeliften: nooit overschrijven (alleen lege velden), herkomst
 // zichtbaar per veld, en een als 'fout' beoordeeld steekproef-item wordt NIET toegepast.
 import { expect, test } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   addProductToBrand,
   createTestDb,
@@ -16,6 +16,7 @@ import {
   enrichmentItems,
   events,
   priceLists,
+  prices,
   products,
   projectDossiers,
   specLines,
@@ -671,4 +672,80 @@ test("listPriceListStatus: 0 producten en de levensfase van het merk komen mee",
   expect(leeg?.productCount).toBe(0);
   expect(leeg?.bucket).toBe("ok"); // de datum is niet het probleem, de dekking is het
   expect(leeg?.lifecycle).toBe("actief"); // norm, dus geen badge op het scherm
+});
+
+// ── 2.5b: de telling verhuisde vóór de join ──────────────────────────────────
+// listPriceListStatus telde eerst met een LEFT JOIN op prices + GROUP BY over de
+// prijslijst-kolommen; nu telt een subquery per price_list_id en wordt die uitkomst
+// aangekoppeld. Dat is puur snelheid (220 → 51 ms op productie, de oude vorm viel met
+// een external merge sort van 18 MB op schijf), dus het cijfer MOET identiek blijven.
+// Deze test draait de oude formulering ernaast op dezelfde data en vergelijkt.
+test("2.5b: de nieuwe telling geeft exact dezelfde aantallen als de oude LEFT JOIN", async () => {
+  const db = await createTestDb();
+
+  // Drie vormen naast elkaar: een lijst met meerdere prijzen, een lijst zonder prijzen,
+  // en een vervangen lijst die zijn oude prijsrij houdt.
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SASSO 100",
+  });
+  await addProductToBrand(db, { brandId, priceListId, name: "SPY 39" });
+  await addProductToBrand(db, { brandId, priceListId, name: "ENTERO 24W" });
+
+  const { brandId: leegId } = await seedBrand(db, "Itre");
+  await db.insert(priceLists).values({
+    brandId: leegId,
+    name: "Prijslijst Itre",
+    validFrom: "2026-01-01",
+    validUntil: "2999-12-31",
+  });
+
+  const { brandId: vervangenId, productId } = await seedBrandProduct(db, {
+    brand: "Flos",
+    name: "IC Lights",
+  });
+  const [oud] = await db
+    .insert(priceLists)
+    .values({
+      brandId: vervangenId,
+      name: "Flos 2025",
+      validFrom: "2025-01-01",
+      validUntil: "2025-12-31",
+      replacedAt: new Date("2026-01-01T00:00:00Z"),
+    })
+    .returning();
+  await db
+    .insert(prices)
+    .values({ productId, priceListId: oud.id, grossPrice: "150.00" });
+
+  // De OUDE formulering, letterlijk zoals hij tot 2.5b in de repo stond.
+  const oudeRijen = await db
+    .select({
+      id: priceLists.id,
+      productCount: sql<number>`count(${prices.id})`,
+    })
+    .from(priceLists)
+    .leftJoin(brands, eq(brands.id, priceLists.brandId))
+    .leftJoin(prices, eq(prices.priceListId, priceLists.id))
+    .groupBy(
+      priceLists.id,
+      priceLists.name,
+      priceLists.validUntil,
+      priceLists.replacedAt,
+      brands.name,
+      brands.lifecycle,
+    );
+  const oudPerLijst = new Map(
+    oudeRijen.map((r) => [r.id, Number(r.productCount)]),
+  );
+
+  const nieuw = await listPriceListStatus(db);
+  expect(nieuw).toHaveLength(4); // 3 merken, waarvan één met twee lijsten
+  expect(oudPerLijst.size).toBe(nieuw.length);
+  for (const r of nieuw) {
+    expect(r.productCount, `prijslijst ${r.name}`).toBe(oudPerLijst.get(r.id));
+  }
+  // En de drie vormen dragen echt verschillende aantallen — anders bewijst de
+  // vergelijking hierboven niets.
+  expect([...oudPerLijst.values()].sort()).toEqual([0, 1, 1, 3]);
 });

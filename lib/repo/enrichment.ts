@@ -826,6 +826,28 @@ export async function listPriceListStatus(
   db: AppDb,
   today: Date = new Date(),
 ): Promise<PriceListStatus[]> {
+  // 2.5b — TELLEN VÓÓR DE JOIN, niet erna. Dit was een LEFT JOIN op prices met een
+  // GROUP BY over de prijslijst-kolommen: dan gaan alle 210.121 prijsrijen door de join
+  // en moet Postgres ze sorteren om te kunnen groeperen. Hij schatte 189.224 groepen
+  // (het zijn er 438), koos daarom GroupAggregate en die viel met een external merge
+  // sort van 18 MB op schijf. Gemeten op productie: 220 ms.
+  //
+  // De telling zit nu in een subquery die zelf groepeert (438 rijen, HashAggregate) en
+  // pas dáárna aan de prijslijsten wordt gekoppeld. Gemeten: 51 ms.
+  //
+  // De uitkomst is per definitie gelijk: `count(prices.id)` over een LEFT JOIN telt per
+  // lijst het aantal niet-NULL prijsrijen, en dat is precies wat de subquery per
+  // price_list_id telt — met `coalesce(…, 0)` voor een lijst zonder prijzen, waar de
+  // LEFT JOIN één NULL-rij en dus count = 0 gaf. Vastgelegd in enrichment.test.ts.
+  const perLijst = db
+    .select({
+      priceListId: prices.priceListId,
+      aantal: sql<number>`count(${prices.id})`.as("aantal"),
+    })
+    .from(prices)
+    .groupBy(prices.priceListId)
+    .as("per_lijst");
+
   const rows = await db
     .select({
       id: priceLists.id,
@@ -833,20 +855,12 @@ export async function listPriceListStatus(
       brandName: brands.name,
       validUntil: priceLists.validUntil,
       replacedAt: priceLists.replacedAt,
-      productCount: sql<number>`count(${prices.id})`,
+      productCount: sql<number>`coalesce(${perLijst.aantal}, 0)`,
       lifecycle: brands.lifecycle,
     })
     .from(priceLists)
     .leftJoin(brands, eq(brands.id, priceLists.brandId))
-    .leftJoin(prices, eq(prices.priceListId, priceLists.id))
-    .groupBy(
-      priceLists.id,
-      priceLists.name,
-      priceLists.validUntil,
-      priceLists.replacedAt,
-      brands.name,
-      brands.lifecycle,
-    )
+    .leftJoin(perLijst, eq(perLijst.priceListId, priceLists.id))
     .orderBy(asc(priceLists.validUntil));
 
   return rows.map((r) => {
