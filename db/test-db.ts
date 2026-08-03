@@ -24,6 +24,7 @@ import milieuFabrieksafstandSql from "./migrations/0014_milieu_fabrieksafstand.s
 import eigenVeldenSql from "./migrations/0015_eigen_velden.sql?raw";
 import eigenVeldenEngelsSql from "./migrations/0016_eigen_velden_engels.sql?raw";
 import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
+import analyticsMerkgatSql from "./migrations/0018_analytics_merkgat_index.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -59,6 +60,8 @@ export async function createTestDb(): Promise<TestDb> {
   // plannen: alleen zo blijkt of de uitdrukking in de index nog letterlijk gelijk is aan
   // die in de code. Verder verandert de testomgeving er niets van.
   await client.exec(snelheidIndexenSql);
+  // 0018: idem, voor de merkgat-tegel op /analytics.
+  await client.exec(analyticsMerkgatSql);
   return drizzle(client, { schema });
 }
 

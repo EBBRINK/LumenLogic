@@ -23,16 +23,19 @@ import { sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct, type TestDb } from "./test-db";
 import { searchProducts } from "@/lib/repo/products";
 
-const MIGRATIE = (
-  import.meta.glob("./migrations/0017_snelheid_indexen.sql", {
-    query: "?raw",
-    import: "default",
-    eager: true,
-  }) as Record<string, string>
-)["./migrations/0017_snelheid_indexen.sql"];
+const MIGRATIE = Object.values(
+  import.meta.glob(
+    ["./migrations/0017_snelheid_indexen.sql", "./migrations/0018_analytics_merkgat_index.sql"],
+    { query: "?raw", import: "default", eager: true },
+  ) as Record<string, string>,
+).join("\n");
 
 const BRONNEN = import.meta.glob(
-  ["../lib/repo/products.ts", "../lib/matching/engine.ts"],
+  [
+    "../lib/repo/products.ts",
+    "../lib/matching/engine.ts",
+    "../lib/repo/analytics-tiles.ts",
+  ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
@@ -63,6 +66,13 @@ const INDEXEN = [
     index: "products_supplier_article_code_lower_idx",
     expr: "lower(supplier_article_code)",
     conditie: (e: string) => `${e} = lower('L028F1077009')`,
+  },
+  // 0018 — de merkgat-tegel op /analytics. Andere uitdrukking (btrim erbij), dus een
+  // eigen index; hij hoort in dezelfde tripwire thuis.
+  {
+    index: "products_brand_name_trimmed_lower_idx",
+    expr: "lower(btrim(brand_name))",
+    conditie: (e: string) => `${e} = lower(btrim(' XAL '))`,
   },
 ] as const;
 
@@ -95,14 +105,23 @@ test("0017 (2/3): de uitdrukkingen komen letterlijk uit de code én uit de migra
   const alleBron = Object.values(BRONNEN).join("\n");
   expect(alleBron.length).toBeGreaterThan(1000); // de glob heeft écht iets gevonden
 
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   for (const { index, expr } of INDEXEN) {
-    // In de migratie staat de uitdrukking op de kale kolomnaam.
+    // In de migratie staat de uitdrukking op de kale kolomnaam — letterlijk toetsbaar.
     expect(MIGRATIE, `migratie mist ${index}`).toContain(expr);
-    // In de code staat dezelfde uitdrukking met de drizzle-kolomreferentie ertussen;
-    // toets daarom op de twee helften rond de kolom.
-    const [voor, na] = expr.split(/brand_name|supplier_article_code|article_code/);
-    expect(alleBron, `code mist de vorm van ${index}`).toContain(voor);
-    if (na.length > 0) expect(alleBron).toContain(na);
+    // In de code staat dezelfde uitdrukking, maar met een drizzle-kolomreferentie
+    // (`${visibleProducts.brandName}`) of een alias (`p.brand_name`) op de plek van de
+    // kolom. Alleen díe plek mag verschillen; al het andere — spaties, quotes, de
+    // klassevolgorde van regexp_replace — moet teken voor teken kloppen, want daar hangt
+    // af of Postgres de index nog herkent.
+    const patroon = new RegExp(
+      esc(expr).replace(
+        /brand_name|supplier_article_code|article_code/,
+        "[^)]+",
+      ),
+    );
+    expect(patroon.test(alleBron), `code mist de vorm van ${index}`).toBe(true);
   }
 });
 
