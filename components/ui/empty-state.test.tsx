@@ -292,13 +292,12 @@ const BEKEND_OPEN: Record<string, { aantal: number; waarom: string }> = {
   "/components/analytics-view.tsx": { aantal: 2, waarom: "veegbeurt 2" },
 
   // ── Vers werk van reviewzwerm-blok 3, in een andere worktree ──
-  // quote-view.tsx is per sprint 2 (restjes) omgezet naar <EmptyState> (framed, bewuste
-  // `action={null}`); die regel is dus weg — de lijst mag alleen krimpen. Bewijs staat in
-  // components/dossier/quote-view-leeg.test.tsx.
-  "/components/admin/brands-list-block.tsx": {
-    aantal: 1,
-    waarom: "blok 3, andere worktree",
-  },
+  // WEG per sprint 2 (restjes): quote-view.tsx en brands-list-block.tsx waren de twee
+  // laatste plekken uit A6 die nog hun eigen kale grijze regel neerzetten. Allebei
+  // omgezet naar <EmptyState> — framed resp. inline, allebei met een bewuste
+  // `action={null}`. De lijst mag alleen krimpen, en dit is die krimp; de bewijstests
+  // staan in components/dossier/quote-view-leeg.test.tsx en
+  // components/admin/brands-list-leeg.test.tsx.
 
   // ── Grensgevallen: gemeld, besluit nog niet genomen ──
   // Allebei geen lege LIJST maar een gegevensstand binnen een gevuld scherm — dezelfde

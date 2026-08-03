@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
 import { priceListIndicator } from "@/lib/repo/brand-relations";
 
@@ -45,7 +46,30 @@ export function BrandsListBlock({ brands }: { brands: BrandListRow[] }) {
       </CardHeader>
       <CardContent>
         {brands.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No brands yet.</p>
+          // Was een kale grijze regel — het dialect dat empty-state.tsx afschaft
+          // (UX-audit 30 jul, A6).
+          //
+          // "inline": deze tak staat ín de <CardContent> hierboven, dus de kaart
+          // tekent het vlak al. "framed" zou hier een gestreept kader bínnen een
+          // kaart zetten — precies de fout die de variant-keuze moet voorkomen.
+          //
+          // Bewuste `action={null}`: nagekeken, niet aangenomen — "New brand" bestaat
+          // wél (app/admin/brands/page.tsx wijst naar /admin/brands/new), maar staat
+          // als primary in de PAGINAKOP, één blok hoger. Een tweede knop hier zet
+          // dezelfde route twee keer in beeld en breekt de knophierarchie van dit
+          // scherm; de uitleg wijst er in woorden naar. Zelfde afweging als
+          // dossier-list.tsx en allowed-emails-block.tsx.
+          //
+          // Schrijf hier géén letterlijke knop-tag in het commentaar: de scan in
+          // components/knophierarchie.test.tsx leest ruwe broncode met /<Button\b/ en
+          // strípt geen commentaar, dus een genoemde tag telt mee als tweede primary
+          // van dit scherm. Eén keer op gestruikeld tijdens deze omzetting.
+          <EmptyState
+            variant="inline"
+            title="No brands yet."
+            description="Brands come in with the price list import, or you add one by hand with “New brand” above."
+            action={null}
+          />
         ) : (
           <Table>
             <TableHeader>
