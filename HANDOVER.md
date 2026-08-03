@@ -4889,3 +4889,113 @@ staan en worden vanuit de tabel aangewezen; daar staat meer context dan in een t
 `events` is daarbij expliciet als uitzondering gemarkeerd: die is structureel ongedefinieerd
 (`created_at DEFAULT now()` + assertie op `DESC`-volgorde), niet load-gevoelig, dus groen in
 isolatie bewijst er niets.
+---
+
+# Sprint 3.2a — Externe toegang: route-allowlist + org-scoping (3 aug 2026)
+
+**Gebouwd, getest, NIET gepusht en NIET gedeployd.** Zes commits op deze branch. Het ontwerp
+met alle redenen staat in `docs/plan-3-2a-externe-toegang.md`.
+
+## Wat er nu staat
+
+Twee muren, twee mechanismen — los van elkaar zijn ze allebei lek.
+
+| | vraag | mechanisme |
+|---|---|---|
+| **Routes** | mag dit account deze URL openen? | `ROUTE_NIVEAUS` in `lib/route-allowlist.ts` + `bewaakRoute()` per route |
+| **Rijen** | welke projecten ziet het daarbinnen? | verplichte `DossierScope` op de vier leesdeuren van `project_dossiers` |
+
+Vier niveaus: `open` (alleen `/login`, `/activate`, `/api/auth`), `iedereen`, `org_admin`,
+`intern`. Weigeren is `notFound()` — wie er niet bij mag hoort ook niet te weten dát de route
+bestaat. Elke weigering gaat als `route_denied` de events-tabel in (regel 5).
+
+Deny-by-default zit op drie plekken en niet in een goede bedoeling:
+1. `Route = keyof typeof ROUTE_NIVEAUS` — een route die niet in de tabel staat is een
+   **typefout**, geen stille doorgang.
+2. `lib/route-allowlist.test.ts` leidt uit élk `page.tsx`/`route.ts` de route af en eist dat
+   het bestand precies díé route bewaakt. Een nieuwe route zonder regel is rood.
+3. De vier leesdeuren nemen de scope als **verplichte parameter**; vergeten compileert niet.
+   `lib/repo/dossier-scope.test.ts` scant op een vijfde deur.
+
+## Drie besluiten die ik heb genomen — toets ze
+
+Alle drie staan met de reden erbij in de code, en alle drie zijn één regel terug te draaien.
+
+1. **`/admin/users` staat op `org_admin`, niet op `intern`.** De acceptatie-eis noemt `/admin`
+   letterlijk bij de geweigerde routes, en mijn eerste versie volgde dat. Dat bleek fout: de
+   dérde acceptatie-eis zegt óók *"uitnodigen alleen admin"*, en besluit G36 (30 jul — ná de
+   zin over /admin) heeft precies dat gebouwd. Dichtzetten maakte die hele tak onbereikbaar,
+   inclusief de veertien aanvals-tests in `app/admin/users/issue-pin-authz.test.ts` die bewijzen
+   dat hij houdt. **De testsuite wees dit aan, niet ik.** Wát een externe beheerder daar ziet is
+   wél gescoped: de ledenlijst toont alleen zijn eigen organisatie(s) — dat was het open eind
+   dat in dit document stond. De rest van `/admin` is onveranderd intern.
+2. **`/settings` staat op `iedereen`.** Externen daar weigeren betekent dat ze hun eigen
+   wachtwoord niet kunnen wijzigen — precies wat 3.1 vorige week opleverde. De interne blokken
+   (toegelaten adressen, LLM-budget, XIS-sleutel) renderen alleen voor intern.
+3. **Een project zónder `org_id` is alleen voor intern zichtbaar**, en `createDossier()` zet
+   voortaan de organisatie van de maker. Tot nu toe zette hij hem helemaal niet: migratie 0019
+   koppelde de 13 bestaande dossiers aan brink-licht, en het veertiende viel er weer uit.
+
+## Wat ik buiten de opdracht heb meegenomen (en waarom)
+
+- **`saveBrandingAction`** — de opdracht vroeg erom. `setOrgBranding()` in de schrijflaag,
+  `setBrandingAsActor()` als poort ervoor, in de vorm van G39. `BEKENDE_SCHULD` in
+  `lib/repo/authz-deuren.test.ts` is **leeg**, met een test die dat vasthoudt.
+- **`createOrgAction`** stond achter alleen `requireSession()` — dezelfde deur, dus meteen mee.
+  Nu intern-only. Wie een organisatie kan aanmaken, kiest straks (G42) ook het type, en
+  `type='intern'` is per G36-regel 1 almachtig.
+- **`/products/[id]`** leidde `internal` af uit *"er is een sessie"*. Sinds 3.1 kan er een sessie
+  zijn die niet van Brink is, en die zag onvoorwaardelijk de tier-2-prijs — ijzeren regel 1 in
+  zijn kern. Komt nu uit het org-type. Het commentaar in dat bestand kondigde deze wissel zelf
+  al aan ("zodra het rollenmodel er is").
+- **De hoofdbalk** filtert nu op dezelfde allowlist. Zonder dat houdt een extern account vijf
+  links die allemaal op een 404 uitkomen.
+- **`db/schema.ts`**: `.references()` op `project_dossiers.org_id`. De database hád de constraint
+  (`0005_h2_h3.sql:34-35`); Drizzle kende hem niet. ⚠️ **Het DROP-risico uit de briefing heb ik
+  NIET kunnen toetsen** — `drizzle-kit generate` draaien tegen een database is precies wat hier
+  niet mag, en de snapshots stoppen bij 0003 (alles vanaf 0004 is handgeschreven). Wat ik wél
+  weet: de declaratie klopt nu met de database, dus de aanleiding voor een DROP is weg.
+
+## Aannames en open eindes
+
+- **`primaireOrgId` is `null` bij een extern account in méérdere organisaties**, en dan weigert
+  `createDossierAction` het project. Vandaag bestaat dat geval niet (één organisatie). Liever
+  geen project dan een project in de verkeerde organisatie — maar het is een gok over een
+  situatie die er nog niet is.
+- **Rate limiting is er niet.** De briefing liet het vrij "als het de allowlist niet vertroebelt".
+  Het vertroebelt hem: het is een andere vraag (hoe váák) op een andere as (per IP/account, niet
+  per organisatie). Blijft open.
+- **`lib/repo/analytics-tiles.ts` is niet aangesloten.** De `orgId`-parameter staat er nog steeds
+  klaar; `/analytics` staat op `intern`, dus er is vandaag geen kijker die hem zou meegeven.
+  Zodra er een externe analytics-weergave komt, is dát de plek — niet een tweede mechanisme.
+- **`lib/ai/vangnet.ts:707`** leest de fase van een dossier zonder scope. Het draait vanuit een
+  action die al door `bewaakProject()` is gekomen, dus het is een vervolgstap en geen ingang.
+  Staat met die reden in de uitzonderingslijst van `lib/repo/dossier-scope.test.ts`.
+- **`ALLE_DOSSIERS`** is de ontsnapping, voor migraties, seeds en tests. De scan meldt élk gebruik
+  ervan in `app/`, `components/` en niet-test-`lib/`.
+
+## De suite
+
+`bunx tsc --noEmit` schoon. Drie volle runs op deze branch: **2, 2 en 2 rood van 1896**, maar niet
+steeds dezelfde twee. Constant is alleen `components/data/custom-fields.test.tsx > "archiveren
+zonder VERSE telling"` — de bekende uit de briefing. De tweede wisselde per run
+(`activate zwak wachtwoord (dark, mobile)`, daarna `pdf-upload > project-ocr-done-failures`) en
+slaagt telkens in isolatie.
+
+**Nagemeten in plaats van aangenomen.** Ik heb een wegwerp-worktree op een kale `origin/main`
+gezet en daar dezelfde volle suite gedraaid: **run 1 gaf 1 rood, run 2 gaf 23 rood** — op
+identieke code, inclusief precies die `activate zwak wachtwoord (dark, mobile)` waar ik over
+twijfelde, plus login, catalog, password-block en empty-state. De flakiness uit de briefing is dus
+echt en **erger dan daar beschreven** (3/2/9 → nu 1/23). Conclusie: de tweede rode test op deze
+branch is een belastingsverschijnsel en geen regressie. Wie hier een rode test ziet die niet
+`custom-fields` heet: draai hem eerst in isolatie.
+
+⚠️ Deze branch voegt ~94 tests toe (1802 → 1896), dus de belasting waaronder die screenshot-tests
+omvallen is met dit werk toegenomen. De onderliggende breekbaarheid is niet van 3.2a, maar wie hem
+gaat repareren heeft nu een iets scherpere aanleiding.
+
+Screenshots (light/dark × mobile/desktop) van de twee standen die deze sprint maakt:
+`components/settings/settings-toegang.*.test.png` en `components/site-nav.extern.*.test.png`.
+
+⚠️ **`origin/main` is tijdens deze sessie doorgelopen** (van `a3d6d1c` naar `97b3c01`). Deze
+branch staat op `a3d6d1c`; rebasen vóór het pushen.
