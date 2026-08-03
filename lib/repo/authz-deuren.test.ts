@@ -23,8 +23,8 @@
 //      deur zou bouwen;
 //   5. dit alles in `app/`, `components/` én `lib/`. Een server action hoeft niet in `app/`
 //      te wonen, dus daar kan een toekomstige deur net zo goed staan. ⚠️ Vandaag staat er
-//      buiten `app/` géén échte server action: de vijf `"use server"`-bestanden daar zijn
-//      allemaal testinfrastructuur (stubs + lib/test-actions.ts). Er is dus geen gat in
+//      buiten `app/` géén échte server action: het enige bestand daar met een echte
+//      `"use server"`-directive is `lib/test-actions.ts`. Er is dus geen gat in
 //      productie; de bredere scan is er voor de dag dat er wél een action buiten `app/`
 //      verschijnt. De test "server actions buiten app/…" hieronder is de tripwire die dat
 //      moment zichtbaar maakt.
@@ -215,13 +215,28 @@ test("tripwire: elke `use server` buiten app/ is vandaag testinfrastructuur", ()
   // stand vast. Verschijnt er wél een — dan wordt hij hier rood, en dan is de vraag of de
   // bewaker hem dekt (dat doet hij: hij scant components/ en lib/ volledig) én of hij een
   // sessie-poort heeft. Dit is dus geen dubbeling van de scan maar een signaal.
+  //
+  // ⚠️ Een DIRECTIVE is een statement op zijn eigen regel; een comment dat de vorm noemt is
+  // dat niet. Die twee uit elkaar houden is geen muggenzifterij — de eerste versie matchte
+  // op het kále voorkomen van de tekst, en telde daarmee vier stub-bestanden mee die in hun
+  // toelichting uitleggen waaróm ze geen `"use server"`-referentie hoeven te zijn. Toen main
+  // in `lib/repo/dossiers.ts` zo'n zin neerzette ("een `use server`-module mag uitsluitend
+  // async functies exporteren"), viel die als zesde server action buiten app/ — een melding
+  // over een comment. Een bewaker die om comments rood wordt, wordt uitgezet.
+  const DIRECTIVE = /^[ \t]*["']use server["'][ \t]*;?[ \t]*$/m;
   const serverBuitenApp = Object.entries(bronnen)
     .filter(([pad]) => !pad.startsWith("/app/"))
     .filter(([pad]) => !pad.endsWith("/lib/repo/authz-deuren.test.ts")) // dit bestand zelf
-    .filter(([, bron]) => /["']use server["']/.test(bron))
+    .filter(([, bron]) => DIRECTIVE.test(bron))
     .map(([pad]) => pad);
 
-  expect(serverBuitenApp.length).toBeGreaterThanOrEqual(5);
+  // Ondergrens, want een scan die niets vindt maakt de assertie hieronder gratis groen:
+  // `lib/test-actions.ts` is vandaag de énige echte directive buiten app/. Ziet de scan hém
+  // niet, dan meet hij niets.
+  expect(
+    serverBuitenApp.some((p) => p.endsWith("/lib/test-actions.ts")),
+    "de scan vindt lib/test-actions.ts niet — dan bewijst deze test niets",
+  ).toBe(true);
   const echteActions = serverBuitenApp.filter((p) => !isTestinfrastructuur(p));
   expect(
     echteActions,
