@@ -23,6 +23,7 @@ import levensfaseSql from "./migrations/0013_merk_levensfase.sql?raw";
 import milieuFabrieksafstandSql from "./migrations/0014_milieu_fabrieksafstand.sql?raw";
 import eigenVeldenSql from "./migrations/0015_eigen_velden.sql?raw";
 import eigenVeldenEngelsSql from "./migrations/0016_eigen_velden_engels.sql?raw";
+import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -53,6 +54,11 @@ export async function createTestDb(): Promise<TestDb> {
   // 0016: label_nl/instructie_nl nullable (legacy), CHECKs EN-only — /data/fields vraagt
   // geen Nederlands meer.
   await client.exec(eigenVeldenEngelsSql);
+  // 0017: expressie-indexen (2.5b). Puur snelheid — geen kolom, geen view, geen gedrag.
+  // Ze staan hier omdat db/migration-0017.test.ts de planner ermee moet kunnen laten
+  // plannen: alleen zo blijkt of de uitdrukking in de index nog letterlijk gelijk is aan
+  // die in de code. Verder verandert de testomgeving er niets van.
+  await client.exec(snelheidIndexenSql);
   return drizzle(client, { schema });
 }
 
