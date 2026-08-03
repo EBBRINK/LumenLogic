@@ -12,6 +12,7 @@ import { asc, eq } from "drizzle-orm";
 import { projectDossiers, quoteLines, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote, getQuote, requireUnitPrice } from "./dossiers";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 // De gevallen die de opnamefilter en de prijskeuze moeten kunnen scheiden:
 //   Lp301 groen — gematcht, catalogus 310, GEEN dagprijs        → catalogusprijs
@@ -91,7 +92,7 @@ test("generateQuote: dagprijs wint van catalogusprijs op de offerteregel én in 
   const db = await createTestDb();
   const { dossierId } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
   const byCode = await linesOf(db, quote.id);
 
   // De gematchte GELE regel: catalogus 226 staat er wél, maar de dagprijs 199 is wat de
@@ -126,7 +127,7 @@ test("generateQuote: verlopen dagprijs → catalogusprijs, en de prijslijst-herk
   const db = await createTestDb();
   const { dossierId, p3 } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
   const byCode = await linesOf(db, quote.id);
 
   // Het bedrag op de offerteregel is de catalogusprijs.
@@ -152,7 +153,7 @@ test("generateQuote: een regel met alléén een verlopen dagprijs valt uit de of
   const db = await createTestDb();
   const { dossierId } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
   const byCode = await linesOf(db, quote.id);
 
   expect(byCode["Ld800"]).toBeUndefined(); // 4 × 77 komt nergens terecht
@@ -185,7 +186,7 @@ test("R1: generateQuote leest de klok één keer — filter en offerteregel zien
   const { dossierId } = await seedQuoteDossier(db);
 
   // De laatste dag waarop de dagprijzen van Ld800 en Lv700 nog geldig zijn.
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl", "2020-06-30");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl", "2020-06-30");
   const byCode = await linesOf(db, quote.id);
 
   // De regel staat erop, met zijn dagprijs — niet als gat en niet als nul.
@@ -211,7 +212,7 @@ test("R1: één dag later valt dezelfde regel uit de offerte — nooit als € 0
   const db = await createTestDb();
   const { dossierId } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl", "2020-07-01");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl", "2020-07-01");
   const byCode = await linesOf(db, quote.id);
 
   expect(byCode["Ld800"]).toBeUndefined();
@@ -238,7 +239,7 @@ test("generateQuote: prijsherkomst volgt de gekozen prijs, niet het gematchte pr
   const db = await createTestDb();
   const { dossierId, p1 } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
   const byCode = await linesOf(db, quote.id);
 
   // Catalogusprijs → wél herkomst: uit wélke prijslijst, met wélke ingangsdatum.
@@ -260,7 +261,7 @@ test("generateQuote: alleen groen/geel mét prijs komen op de offerte", async ()
   const db = await createTestDb();
   const { dossierId } = await seedQuoteDossier(db);
 
-  const quote = await generateQuote(db, dossierId, "timo@brink.nl");
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
   const byCode = await linesOf(db, quote.id);
 
   // Lz000 (groen zonder énige prijs), Lx900 (paars, telt nooit mee) en Ld800 (groen,

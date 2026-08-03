@@ -17,6 +17,7 @@ import { getEstimateData } from "@/lib/repo/estimate";
 import { toPricelessEstimate } from "@/lib/repo/estimate-extern";
 import { renderEstimatePdf } from "./estimate";
 import { renderExternalEstimatePdf } from "./estimate-extern";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 async function seedEstimateDossier(db: TestDb) {
   const [dossier] = await db
@@ -126,8 +127,8 @@ function bedragenIn(tekst: string): string[] {
 test("de INTERNE PDF valt wél door de bedragen-zeef (anders bewijst de test hieronder niets)", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
-  const data = (await getEstimateData(db, dossierId))!;
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const tekst = await pdfText(await renderEstimatePdf(data));
   // Zonder deze omgekeerde toets zou een kapotte zeef (of een lege PDF-tekst) de
@@ -140,8 +141,8 @@ test("de INTERNE PDF valt wél door de bedragen-zeef (anders bewijst de test hie
 test("de EXTERNE PDF bevat geen enkel bedrag, en wél de regels, aantallen en statussen", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
-  const data = (await getEstimateData(db, dossierId))!;
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const tekst = await pdfText(
     await renderExternalEstimatePdf(toPricelessEstimate(data)),
@@ -190,8 +191,8 @@ test("het externe stuk noemt de prijsbron nergens — ook niet het vervalmerktek
   // bedrag ernaast is hij voor de ontvanger bovendien betekenisloos.
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
-  const data = (await getEstimateData(db, dossierId))!;
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const intern = await pdfText(await renderEstimatePdf(data));
   expect(intern, "de fixture hoort een verlopen dagprijs te dragen").toContain(
@@ -213,7 +214,7 @@ test("een dossier zonder regels levert een leeg, maar geldig prijsloos stuk", as
     .values({ name: "Leeg project", customer: "Deerns" })
     .returning();
 
-  const data = (await getEstimateData(db, dossier.id))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossier.id))!;
   const tekst = await pdfText(
     await renderExternalEstimatePdf(toPricelessEstimate(data)),
   );

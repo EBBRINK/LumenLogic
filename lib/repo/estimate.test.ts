@@ -28,6 +28,7 @@ import {
   PM_STATUSES,
   type EstimateLine,
 } from "./estimate";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 // ── De wet: welke statussen tellen mee (E-02) ────────────────────────────────
 //
@@ -217,7 +218,7 @@ test("regels in aanvraagvolgorde; totalen exact wat het scherm toonde", async ()
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
-  const data = await getEstimateData(db, dossierId);
+  const data = await getEstimateData(db, ALLE_DOSSIERS, dossierId);
   expect(data).not.toBeNull();
   const { lines, computed } = data!;
 
@@ -292,7 +293,7 @@ test("A7: een verlopen dagprijs valt terug op de catalogusprijs, met merkteken, 
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
-  const { lines, computed } = (await getEstimateData(db, dossierId))!;
+  const { lines, computed } = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   const verlopen = lines.find((l) => l.fixtureCode === "Lv700")!;
 
   // De stukprijs is de CATALOGUSprijs — de verouderde 199 komt er niet meer uit.
@@ -322,7 +323,7 @@ test("zones: groepskoppen in eerste-verschijning-volgorde, met subtotalen", asyn
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
-  const { computed } = (await getEstimateData(db, dossierId))!;
+  const { computed } = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(computed.hasZones).toBe(true);
   expect(computed.groups.map((g) => g.zone)).toEqual(["A-08", "B-02"]);
 
@@ -351,7 +352,7 @@ test("kopblok: vóór genereren geen nummer maar de wachttekst, ná genereren he
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
 
-  const before = (await getEstimateData(db, dossierId))!;
+  const before = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(before.header.quoteNumber).toBeNull();
   expect(before.computed.quoteNumberDisplay).toBe(NUMBER_PENDING);
   expect(before.computed.quoteNumberAssigned).toBe(false);
@@ -363,9 +364,9 @@ test("kopblok: vóór genereren geen nummer maar de wachttekst, ná genereren he
   expect(NUMBER_PENDING).toBe("Number assigned when the estimate is generated");
   expect(NUMBER_PENDING).not.toContain("on sending");
 
-  await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
 
-  const after = (await getEstimateData(db, dossierId))!;
+  const after = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   const year = new Date().getFullYear();
   expect(after.header.quoteNumber).toBe(`BL-${year}-0001`);
   expect(after.computed.quoteNumberDisplay).toBe(`BL-${year}-0001`);
@@ -469,19 +470,19 @@ test("poort: een BEVROREN offerte is nooit gepoort, ook niet met een lege kop", 
 test("poort: getEstimateData leest de bevriezing uit de quote-rij, niet uit een prop", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "timo@brink.nl");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
 
   // De mens maakt de geldigheid leeg — dát is de enige manier waarop de poort nog
   // dichtgaat na een generatie.
   await updateQuoteHeader(db, dossierId, { validUntil: null }, "timo@brink.nl");
-  const leeg = (await getEstimateData(db, dossierId))!;
+  const leeg = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(leeg.frozen).toBe(false);
   expect(leeg.computed.outputsAllowed).toBe(false);
 
   // Status "estimate gestuurd" bevriest de offerte (I-06). Vanaf dat moment is het
   // stuk verstuurd en moet het altijd opnieuw te printen zijn — de drie-kliksval.
-  await setStatus(db, dossierId, "estimate_gestuurd", "timo@brink.nl");
-  const na = (await getEstimateData(db, dossierId))!;
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", "timo@brink.nl");
+  const na = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(na.quote?.frozenAt).not.toBeNull();
   expect(na.frozen).toBe(true);
   expect(na.computed.headerComplete).toBe(false); // de kop is nog steeds leeg…
@@ -491,9 +492,9 @@ test("poort: getEstimateData leest de bevriezing uit de quote-rij, niet uit een 
 test("generateQuote stelt een geldigheid voor, zodat een verse estimate niet meteen achter de poort valt", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "timo@brink.nl");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
 
-  const data = (await getEstimateData(db, dossierId))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(data.header.quoteDate).not.toBeNull();
   // Voorstel = offertedatum + DEFAULT_VALIDITY_DAYS, in UTC gerekend.
   const verwacht = new Date(`${data.header.quoteDate}T00:00:00Z`);
@@ -506,8 +507,8 @@ test("generateQuote stelt een geldigheid voor, zodat een verse estimate niet met
 
   // Hergenereren respecteert een handmatige geldigheid (bewaren, niet overschrijven).
   await updateQuoteHeader(db, dossierId, { validUntil: "2027-01-31" }, "timo@brink.nl");
-  await generateQuote(db, dossierId, "timo@brink.nl");
-  expect((await getEstimateData(db, dossierId))!.header.validUntil).toBe("2027-01-31");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "timo@brink.nl");
+  expect((await getEstimateData(db, ALLE_DOSSIERS, dossierId))!.header.validUntil).toBe("2027-01-31");
 });
 
 test("offertenummer met alleen witruimte telt niet als toegekend", () => {

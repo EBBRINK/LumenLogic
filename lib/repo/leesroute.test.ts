@@ -53,7 +53,7 @@ async function seedWorld(db: TestDb) {
     name: "SASSO 100 SQ SP CEIL 3000K",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Raadhuis tekstboek" });
+  const dossier = await createDossier(db, { orgId: null, name: "Raadhuis tekstboek" });
   return dossier.id;
 }
 

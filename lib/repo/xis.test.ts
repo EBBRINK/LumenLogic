@@ -12,6 +12,7 @@ import {
   getXisExports,
   preflightSummary,
 } from "./xis";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 // Zet een dossier klaar met alle vijf de statussen + een handmatig product (nieuw_product).
 // De sort_order-volgorde is bewust NIET gelijk aan prijs- of statusgroepering, zodat de
@@ -85,7 +86,7 @@ test("payload: alle regels in aanvraagvolgorde, niets weggelaten", async () => {
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
-  const payload = await buildXisPayload(db, dossierId);
+  const payload = await buildXisPayload(db, ALLE_DOSSIERS, dossierId);
 
   // (a) alle 7 regels komen mee (niets stilzwijgend weggelaten)
   expect(payload.lines).toHaveLength(7);
@@ -111,7 +112,7 @@ test("classificatie: product / tekstregel / nieuw_product", async () => {
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
-  const { lines } = await buildXisPayload(db, dossierId);
+  const { lines } = await buildXisPayload(db, ALLE_DOSSIERS, dossierId);
   const byCode = Object.fromEntries(lines.map((l) => [l.fixture_code, l]));
 
   // (b) groen/geel met artikelcode → product, mét sku/naam/stukprijs
@@ -147,7 +148,7 @@ test("A7: een verlopen dagprijs bereikt unit_price_excl_vat niet — de catalogu
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
-  const { lines } = await buildXisPayload(db, dossierId);
+  const { lines } = await buildXisPayload(db, ALLE_DOSSIERS, dossierId);
   const byCode = Object.fromEntries(lines.map((l) => [l.fixture_code, l]));
 
   expect(byCode["Lv700"].kind).toBe("product");
@@ -166,7 +167,7 @@ test("pre-flight-telling klopt", async () => {
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
-  const summary = await preflightSummary(db, dossierId);
+  const summary = await preflightSummary(db, ALLE_DOSSIERS, dossierId);
   expect(summary).toEqual({
     productLines: 3, // Lp301, Lw201 + Lv700 (A7)
     textLines: 3,
@@ -179,13 +180,13 @@ test("idempotent op dossier-id: 2× createXisExport → 1 rij, created:false de 
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
 
-  const first = await createXisExport(db, { dossierId, actor: "timo" });
+  const first = await createXisExport(db, ALLE_DOSSIERS, { dossierId, actor: "timo" });
   expect(first.created).toBe(true);
   expect(first.export.mode).toBe("file");
   expect(first.export.environment).toBe("sandbox"); // NFR 7: sandbox default
   expect(first.export.status).toBe("aangemaakt");
 
-  const second = await createXisExport(db, { dossierId, actor: "timo" });
+  const second = await createXisExport(db, ALLE_DOSSIERS, { dossierId, actor: "timo" });
   expect(second.created).toBe(false);
   expect(second.export.id).toBe(first.export.id);
 
@@ -200,7 +201,7 @@ test("idempotent op dossier-id: 2× createXisExport → 1 rij, created:false de 
 test("environment override wordt gerespecteerd", async () => {
   const db = await createTestDb();
   const dossierId = await seedDossier(db);
-  const { export: exp } = await createXisExport(db, {
+  const { export: exp } = await createXisExport(db, ALLE_DOSSIERS, {
     dossierId,
     environment: "production",
   });

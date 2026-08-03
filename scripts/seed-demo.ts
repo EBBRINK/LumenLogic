@@ -11,6 +11,7 @@ import {
   getSpecLines,
 } from "@/lib/repo/dossiers";
 import { chooseCandidate, runMatcher } from "@/lib/repo/matching";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 const NAME = "Deerns armaturenboek (demo)";
 const LINES = [
@@ -30,7 +31,7 @@ async function main() {
   for (const d of existing)
     await db.delete(projectDossiers).where(eq(projectDossiers.id, d.id));
 
-  const dossier = await createDossier(db, {
+  const dossier = await createDossier(db, { orgId: null,
     name: NAME,
     customer: "Deerns / demo Eduard",
     xisPhase: "tender",
@@ -60,7 +61,7 @@ async function main() {
     }
   }
 
-  await generateQuote(db, dossier.id, "seed@brink");
+  await generateQuote(db, ALLE_DOSSIERS, dossier.id, "seed@brink");
   const quote = await getQuote(db, dossier.id);
   console.log(`\nOfferte: ${quote?.lines.length} regels · totaal €${quote?.total.toFixed(2)}`);
   console.log(`Dossier-id: ${dossier.id}`);

@@ -22,7 +22,7 @@ const IMAGE = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6]);
 // Een run met twee paginabeelden. De beelden worden hier rechtstreeks geïnsert: deze test
 // gaat over retentie, niet over de vision-lus (die staat in lib/repo/ocr.test.ts).
 async function seedRun(db: TestDb, naam = "Deerns beeldboek") {
-  const dossier = await createDossier(db, { name: naam });
+  const dossier = await createDossier(db, { orgId: null, name: naam });
   const { run } = await startOcrRun(db, {
     dossierId: dossier.id,
     filename: "boek.pdf",

@@ -41,7 +41,7 @@ test("bevestigen maakt alleen de aangevinkte rows tot spec_lines + matcht ze", a
     price: "310.00",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Ziekenhuis Noord" });
+  const dossier = await createDossier(db, { orgId: null, name: "Ziekenhuis Noord" });
 
   const rows: ImportRow[] = [
     {
@@ -119,7 +119,7 @@ test("recordPdfImport: run 'bevestigd' mét rawMarkdown, regels gematcht + gekop
     price: "310.00",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Museum West" });
+  const dossier = await createDossier(db, { orgId: null, name: "Museum West" });
 
   const markdown = "## Pagina 1\n\nLp301 XAL SASSO 100 3000K 20";
   const { run, created } = await recordPdfImport(db, {
@@ -161,7 +161,7 @@ test("recordPdfImport: run 'bevestigd' mét rawMarkdown, regels gematcht + gekop
 
 test("recordPdfImport: geen tekstlaag → run zonder regels, notitie als controlespoor", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Beeld-PDF" });
+  const dossier = await createDossier(db, { orgId: null, name: "Beeld-PDF" });
   const { run, created } = await recordPdfImport(db, {
     dossierId: dossier.id,
     filename: "scan.pdf",
@@ -177,7 +177,7 @@ test("recordPdfImport: geen tekstlaag → run zonder regels, notitie als control
 
 test("annuleren/re-run: een al bevestigde run voegt niets extra toe (idempotent)", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Kantoor Zuid" });
+  const dossier = await createDossier(db, { orgId: null, name: "Kantoor Zuid" });
   const rows: ImportRow[] = [
     { fixtureCode: "A1", quantity: 1, brandText: "X", productText: "y", source: "csv", checked: true },
   ];
@@ -200,7 +200,7 @@ test("annuleren/re-run: een al bevestigde run voegt niets extra toe (idempotent)
 // Bevestigen verdubbelt het dossier.
 test("A9: crasht de matcher halverwege, dan blijft het bij één set regels (geen duplicaten)", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Halve import" });
+  const dossier = await createDossier(db, { orgId: null, name: "Halve import" });
   const rows: ImportRow[] = [
     { fixtureCode: "A1", quantity: 10, brandText: "X", productText: "y", source: "csv", checked: true },
     { fixtureCode: "A2", quantity: 4, brandText: "X", productText: "y", source: "csv", checked: true },

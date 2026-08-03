@@ -15,7 +15,7 @@ const ACTOR = "eduard@brinklicht.nl";
 
 test("deleteSpecLine: event mét actor en de volledige regelinhoud van vóór de verwijdering", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Raadhuis" });
+  const dossier = await createDossier(db, { orgId: null, name: "Raadhuis" });
 
   const [line] = await addSpecLines(db, dossier.id, [
     {
@@ -84,7 +84,7 @@ test("deleteSpecLine: event mét actor en de volledige regelinhoud van vóór de
 
 test("deleteSpecLine: zonder actor blijft het event bestaan (system), en een onbekende regel logt niets", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Raadhuis" });
+  const dossier = await createDossier(db, { orgId: null, name: "Raadhuis" });
   const [line] = await addSpecLines(db, dossier.id, [{ fixtureCode: "L004" }]);
 
   await deleteSpecLine(db, line.id);

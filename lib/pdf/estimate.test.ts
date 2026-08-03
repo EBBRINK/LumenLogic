@@ -9,6 +9,7 @@ import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { generateQuote } from "@/lib/repo/dossiers";
 import { countedLineTotal, getEstimateData } from "@/lib/repo/estimate";
 import { renderEstimatePdf } from "./estimate";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 // Zelfde stand als lib/repo/estimate.test.ts: groen 12×310, geel 8×199 mét
 // afwijkingsnotitie, blauw/rood/paars/open als p.m., twee zones. De open regel hoort
@@ -114,9 +115,9 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
 test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkingsnotitie", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
 
-  const data = (await getEstimateData(db, dossierId))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   const bytes = await renderEstimatePdf(data);
   const text = await pdfText(bytes);
 
@@ -244,7 +245,7 @@ test("extreem lange productnaam: geen crash, afgebroken met ellipsis", async () 
     sortOrder: 0,
   });
 
-  const data = (await getEstimateData(db, dossier.id))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossier.id))!;
   const bytes = await renderEstimatePdf(data); // mag niet crashen
   const text = await pdfText(bytes);
 
@@ -276,7 +277,7 @@ test("meerpaginasteun: veel regels → meerdere pagina's, kolomkoppen herhaald",
     })),
   );
 
-  const data = (await getEstimateData(db, dossier.id))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossier.id))!;
   const bytes = await renderEstimatePdf(data);
   const pdf = await getDocumentProxy(new Uint8Array(bytes));
   expect(pdf.numPages).toBeGreaterThanOrEqual(2);

@@ -45,6 +45,7 @@ import { getEstimateData } from "@/lib/repo/estimate";
 import { getImportRun } from "@/lib/repo/imports";
 import { finishOcrRun, processOcrPage, startOcrRun } from "@/lib/repo/ocr";
 import { decideReview, getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 const ACTOR = "hello@noplasticfloralfoam.com";
 // 2000 in + 300 uit per pagina → (2000×€1 + 300×€5)/1M = €0,0035 (EUR≈USD-aanname).
@@ -151,7 +152,7 @@ beforeAll(async () => {
     price: "180.00",
   });
 
-  const dossier = await createDossier(db, {
+  const dossier = await createDossier(db, { orgId: null,
     name: "Renovatie Museumdepot Beeldboek",
     customer: "Deerns Nederland B.V.",
     actor: ACTOR,
@@ -420,7 +421,7 @@ test("decideReview: geel → groen zonder trigger; ocr-besluiten triggeren het v
 // ── Stap 6 — estimate: de OCR-regels landen in quote en PDF ──────────────────
 test("generateQuote + estimate-PDF: OCR-regels zichtbaar (p/st, p.m. voor rood)", async () => {
   const year = new Date().getFullYear();
-  const quote = await generateQuote(db, dossierId, ACTOR);
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, ACTOR);
   expect(quote.quoteNumber).toBe(`BL-${year}-0001`);
 
   // Alleen de gekozen matches dragen een prijsregel: Lw102 (NEST WHITE) en Lp301
@@ -430,7 +431,7 @@ test("generateQuote + estimate-PDF: OCR-regels zichtbaar (p/st, p.m. voor rood)"
   // OCR levert geen aantallen (een boekpagina noemt ze niet) → stukprijs-modus (A-07).
   expect(quoteData?.lines[0].quantity).toBe(0);
 
-  const data = (await getEstimateData(db, dossierId))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(data.lines).toHaveLength(3); // álle OCR-regels — niets stilzwijgend weg
   expect(data.computed.pm.rood).toBe(1);
 
@@ -483,6 +484,7 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
     });
 
     const dossier = await createDossier(sassoDb, {
+      orgId: null,
       name: "RET Waalhaven (Deerns-beeldboek, SASSO-reproductie)",
       customer: "Deerns Nederland B.V.",
       actor: ACTOR,
@@ -617,14 +619,14 @@ describe("SASSO-acceptatietest: inhoudsopgave verdringt specs niet meer", () => 
   }, 60_000);
 
   test("generateQuote/estimate: de SASSO-regel staat p.m. rood, niet geprijsd groen", async () => {
-    await generateQuote(sassoDb, sassoDossierId, ACTOR);
+    await generateQuote(sassoDb, ALLE_DOSSIERS, sassoDossierId, ACTOR);
 
     // Rood + geen match → geen prijsregel in de offerte (E-02: alleen groen/geel
     // met een geldige prijs tellen mee).
     const quoteData = await getQuote(sassoDb, sassoDossierId);
     expect(quoteData?.lines ?? []).toHaveLength(0);
 
-    const data = (await getEstimateData(sassoDb, sassoDossierId))!;
+    const data = (await getEstimateData(sassoDb, ALLE_DOSSIERS, sassoDossierId))!;
     expect(data.lines).toHaveLength(1);
     expect(data.lines[0].fixtureCode).toBe("Lp301");
     expect(data.lines[0].status).toBe("rood");
