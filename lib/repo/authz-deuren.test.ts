@@ -73,11 +73,27 @@ const bronnen: Record<string, string> = {
  * voorschrijft ("wie ze uitbreidt, zet de nieuwe naam in VERBODEN_NAMEN"). App-code gaat
  * via `setBrandingAsActor()` in lib/repo/authz.ts.
  */
+/**
+ * ⚠️ 3.2c zet er drie bij, en dat sluit een gat dat al bestond. `organizations` stond wél in
+ * VERBODEN_TABELLEN hieronder (aanval G6: wie die tabel kan schrijven, zet zijn eigen org op
+ * 'intern' en is almachtig), maar de schrijffúncties ervoor stonden nergens — `app/settings/
+ * organization/actions.ts` importeerde `createOrganization` gewoon rechtstreeks. Dat hield
+ * omdat die action op `bewaakNiveau("intern")` stond, maar het was de enige weg naar die
+ * tabel die niet dezelfde vorm had als de rest van G39.
+ *
+ * Nu wel: app-code gaat via `createOrgAsActor()`, `createOrgAndIssuePinAsActor()` en
+ * `setSeatLimitAsActor()` in lib/repo/authz.ts. `deleteOrganization` staat erbij omdat het
+ * de compensatie is van de alles-of-niets-uitgifte (besluit 5) — een functie die
+ * organisaties wist hoort helemaal niet los aanroepbaar te zijn vanuit een scherm.
+ */
 const VERBODEN_NAMEN = [
   "issueActivationPin",
   "addMembership",
   "removeMembership",
   "setOrgBranding",
+  "createOrganization",
+  "deleteOrganization",
+  "setOrgSeatLimit",
 ];
 
 /** De modules waarin ze wonen: als geheel niet te importeren (namespace of dynamisch). */
@@ -317,6 +333,18 @@ const AANVALLEN: [naam: string, pad: string, bron: string][] = [
     "een membership rechtstreeks verwijderen",
     "/components/org/stiekem.tsx",
     `await db.delete(memberships).where(eq(memberships.email, e));`,
+  ],
+  // 3.2c. De derde deur naar organizations.type: niet de tabel, maar de schrijffunctie
+  // ervoor. Die stond tot deze sprint vrij te importeren.
+  [
+    "de org-schrijffunctie importeren in plaats van via de poort gaan",
+    "/app/admin/users/actions.ts",
+    `import { createOrganization } from "@/lib/repo/orgs";\nexport async function x() { await createOrganization(db, { name }); }`,
+  ],
+  [
+    "de zetellimiet rechtstreeks zetten",
+    "/app/admin/users/actions.ts",
+    `import { setOrgSeatLimit } from "@/lib/repo/orgs";\nawait setOrgSeatLimit(db, { orgId, seatLimit: 999 });`,
   ],
 ];
 
