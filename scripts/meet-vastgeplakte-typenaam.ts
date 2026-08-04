@@ -14,8 +14,32 @@ import { parseProductName } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
 import { ONDERDRUKKENDE_VERDENKINGEN } from "@/lib/repo/enrichment";
 
-// letters, dan cijfers, dan direct W — zonder spatie ertussen.
-const VAST = /[A-Za-z]{2,}\d+(?:[.,]\d+)?W\b/;
+// ── De afbakening, en waarom hij twee keer is bijgesteld ────────────────────
+// Eerst: `[A-Za-z]{2,}\d+…W` — twee letters, cijfers, W. Dat gaf 29 treffers, waarvan 25 een écht
+// vermogen (`MAX46W`, `Max8W`, `LED50W`). Op grond daarvan schreef ik "een regel zou 25 goede
+// waarden opeten om er 2 te repareren". Dat argument was te breed: MAX en LED zijn woorden die
+// een vermogen AANKONDIGEN, dus een serieuze regel zou ze sowieso uitzonderen. Ik telde risico
+// dat er niet was.
+//
+// Strakker, en dit is de vorm die telt: minstens DRIE letters, direct gevolgd door het getal en
+// de W, NIET voorafgegaan door een cijfer of x (anders vang je `2x11W`, een vermenigvuldiging),
+// en zonder de aankondigende woorden. Let op het decimaalteken in het getal — zonder dat breekt
+// `SENSOR19,5W` op de komma en mis je hem stil. Dat was de fout in de eerste strakke poging, en
+// het is dezelfde soort fout als een komma-regex die Kreons `1200-1650, 2700K` verkeerd leest.
+const VAST = /(?<![0-9xX])\b([A-Za-z]{3,})(\d{1,4}(?:[.,]\d+)?)W\b/;
+const AANKONDIGERS = /^(?:max|led|tot|sys|min|maks)$/i;
+
+// Wat er dan overblijft (4 aug, testkopie) — vijf namen, en de helft is geen fout:
+//
+//     19,5 W  SENSOR19,5W   TASK S 1200 … ESSENTIAL SENSOR19,5W LED 4000K   ← KLOPT
+//     24,4 W  SENSOR24,4W   TASK S 1500 … ESSENTIAL SENSOR24,4W LED 4000K   ← KLOPT
+//        —    Componi200W   Molla Vetri Componi200W        typenaam, waarde inmiddels op null
+//        —    Componi75W    Molla Vetri Componi75W         typenaam, waarde inmiddels op null
+//      240 W  MOD240W       A.24 C POWER KITXRCS/C MOD240W ← OPEN: onderdeelvraag, geen leesfout
+//
+// Twee goede waarden tegenover drie foute waarvan er twee al opgelost zijn. Bijna één op één, en
+// dus te duur voor het ene geval dat overblijft. GEEN REGEL GEBOUWD — en de reden is die
+// verhouding, niet "het zou een bloedbad worden".
 
 async function main() {
   logGuard(await assertBranchDb(process.cwd()));
@@ -27,7 +51,10 @@ async function main() {
     .from(products)
     .innerJoin(brands, eq(brands.id, products.brandId));
 
-  const raak = rijen.filter((r) => VAST.test(r.naam ?? ""));
+  const raak = rijen.filter((r) => {
+    const m = (r.naam ?? "").match(VAST);
+    return m !== null && !AANKONDIGERS.test(m[1]);
+  });
   console.log(`namen met <letters><cijfers>W (W vast aan het getal): ${raak.length}\n`);
   const perMerk = new Map<string, { n: number; landend: number; vormen: Map<string, number> }>();
   for (const r of raak) {

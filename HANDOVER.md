@@ -4675,6 +4675,23 @@ buiten de scherfmap (dat is al zo) en de hele boom hoort buiten de worktree — 
 
 ---
 
+## 2026-08-04 — De regel boven de twee incidenten: werk dat maar op één plek bestaat
+
+> **Bestaat een stuk werk maar op één plek, dan is het al verloren — je weet het alleen nog niet.**
+> Dat geldt voor een map die niet in git staat, voor commits die alleen op een lokale branch staan,
+> en voor een meting die alleen in een gesprek genoemd is.
+
+Twee keer op één dag, en beide keren was de reparatie één commando dat pas achterāf voor de hand
+lag:
+
+| wat verdween | waar het alleen bestond | de reparatie |
+|---|---|---|
+| 19 zwermuitslagen (`zwerm/`) | ongetrackt in een worktree die hergebruikt werd | een symlink naar buiten elke worktree |
+| 2 ongepushte commits | een lokale branch, vóór een `reset --hard` | `git branch backup/xyz` vóór de reset |
+
+Wat ze duur maakte was niet de moeilijkheid van de reparatie maar dat niemand hem had opgeschreven
+vóór het misging. Vandaar dat deze regel boven de gevallen staat en niet eronder.
+
 ## 2026-08-04 — Twee ongepushte commits verdwenen door `git reset --hard origin/main`
 
 Ik reset mijn branch routinematig naar `origin/main` om vanaf de verse hoofdlijn te beginnen. Dat
@@ -4711,3 +4728,27 @@ worktree, en een branch kost één commando.
 Dit hoort in dezelfde reeks als `scripts/safe-push.sh` uit week 1: dat script bestaat omdat vier
 keer een push ongewenst werk meestuurde. Zelfde klasse, andere richting — daar ging er te véél mee,
 hier verdween er te veel.
+
+### Naschrift bij de vastgeplakte typenaam: mijn onderbouwing was te breed
+
+Ik schreef "een regel zou 25 goede wattages opeten om er 2 te repareren". Dat klopte voor mijn
+BREDE regex (`[A-Za-z]{2,}\d+…W`, 29 treffers), maar niet voor een regel die iemand werkelijk zou
+bouwen: `MAX46W` en `Max8W` zijn woorden die een vermogen AANKONDIGEN en vallen sowieso buiten zo'n
+regel. Ik telde risico dat er niet was, en dat maakte mijn conclusie sterker dan de meting droeg.
+
+Met de strakke afbakening (≥3 letters, geen cijfer of `x` ervoor, zonder de aankondigers, mét
+decimaalteken in het getal) blijven er **vijf** over, en twee daarvan zijn correct:
+
+    19,5 W  SENSOR19,5W   ← klopt, het armatuur trekt 19,5 W
+    24,4 W  SENSOR24,4W   ← klopt
+       —    Componi200W   typenaam; waarde inmiddels op null gezet
+       —    Componi75W    typenaam; waarde inmiddels op null gezet
+     240 W  MOD240W       OPEN — `A.24 C POWER KITXRCS/C MOD240W`: kan een echt driververmogen
+                          zijn. Onderdeelvraag, geen leesfout; valt onder de staande lijn.
+
+Twee goede tegenover drie foute waarvan er twee al opgelost zijn. **Geen regel gebouwd, en de
+reden is die verhouding — te duur voor het ene geval dat overblijft.**
+
+⚠ Het decimaalteken is hier twee keer de valstrik geweest: een regex met `(\d{1,4})W` breekt op de
+komma in `SENSOR19,5W` en geeft een te schoon antwoord. Zelfde soort fout als een komma-regex die
+Kreons `1200-1650, 2700K` voor twee kelvinwaarden aanziet.
