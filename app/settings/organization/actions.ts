@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { type MembershipRole } from "@/db/schema";
 import { changeMembershipAsActor, setBrandingAsActor } from "@/lib/repo/authz";
-import { createOrganization } from "@/lib/repo/orgs";
-import { bewaakNiveau, bewaakRoute } from "@/lib/route-toegang";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 const PAGE = "/settings/organization";
 
@@ -16,29 +15,17 @@ const VALID_ROLES: MembershipRole[] = [
   "org_admin",
 ];
 
-// ORG: een nieuwe organisatie. Naam is verplicht; plan en zetellimiet optioneel.
-// Een lege/ongeldige zetellimiet betekent onbeperkt (null).
-export async function createOrgAction(formData: FormData) {
-  // 3.2a: stond achter alléén `requireSession()`. Een organisatie aanmaken is de wortel
-  // van het hele org-model — wie dat kan, kan straks (G42) ook het TYPE ervan kiezen, en
-  // `type = 'intern'` betekent volgens G36-regel 1 almachtig. Dus intern, en niet
-  // "iedereen met een sessie". De bewuste type-keuze bij aanmaken is 3.2c.
-  const toegang = await bewaakNiveau("intern", "createOrgAction");
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
-  const plan = String(formData.get("plan") ?? "").trim() || undefined;
-  const seatRaw = String(formData.get("seatLimit") ?? "").trim();
-  const seat = seatRaw === "" ? NaN : Number(seatRaw);
-  const seatLimit =
-    Number.isFinite(seat) && seat > 0 ? Math.floor(seat) : null;
-  await createOrganization(db, {
-    name,
-    plan,
-    seatLimit,
-    actor: toegang.email ?? "anoniem",
-  });
-  revalidatePath(PAGE);
-}
+// ⚠️ HIER STOND `createOrgAction`, en dat is sinds sprint 3.2c bewust weg (besluit 1,
+// Timo 4 aug). Organisatiebeheer gaat volledig naar `/admin/users`:
+// `app/admin/users/actions.ts` heeft nu `createOrgAction` (los aanmaken, besluit 4a) en
+// `setSeatLimitAction` (besluit 7), plus de één-klik-variant in `issuePinAction({newOrg})`
+// (besluit 4b). Dit scherm gaat daarna puur over branding en leden van BESTAANDE
+// organisaties.
+//
+// Niet dupliceren, dus. "Iemand toegang geven" is in het hoofd van Brink één handeling en
+// kostte twee schermen; twee aanmaakformulieren laten staan verdubbelt die versnippering in
+// plaats van hem op te lossen. Wie hier een tweede ingang terugzet, zet ook de vraag terug
+// wélke van de twee de waarheid is.
 
 // LID: e-mail + gekozen petten. Onbekende rolwaarden worden weggefilterd (fail-safe);
 // een lid zonder aangevinkte rol mag — dat is een eerlijk "geen rol", geen fout.

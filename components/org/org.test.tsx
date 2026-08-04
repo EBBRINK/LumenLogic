@@ -73,13 +73,11 @@ const orgScreen = (
     <RoleLegend />
     <OrgList
       orgs={orgs}
-      createAction={noopAction}
       addMemberAction={noopAction}
       removeMemberAction={noopAction}
       saveBrandingAction={noopAction}
       canGrantOrgAdmin
-        canCreate
-    />
+      />
   </Screen>
 );
 
@@ -116,13 +114,11 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
     <Screen>
       <OrgList
         orgs={orgs}
-        createAction={noopAction}
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
         canGrantOrgAdmin
-        canCreate
-      />
+        />
     </Screen>,
   );
   // beide organisaties
@@ -150,45 +146,85 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
   expect(badges).toHaveLength(3);
 });
 
-// A7 (UX-audit 30 jul): het Create-formulier stond bóven "No organizations yet. Create
-// one above." — de lege toestand wees naar boven. Deze twee tests pinnen de volgorde:
-// bij leeg is er géén formulier buiten de lege toestand, en de zin "Create one above"
-// bestaat niet meer; zodra er één organisatie is, staat het formulier terug in zijn kaart.
-test("A7 — lege organisatielijst: alleen de lege toestand, met het Create-formulier erín", async () => {
+// ⚠️ 3.2c, BESLUIT 1 — HET AANMAAKFORMULIER IS HIER WEG. Hier stonden twee A7-tests
+// (UX-audit 30 jul) over wáár het Create-formulier op dit scherm hoorde te staan. Die vraag
+// bestaat niet meer: een organisatie aanmaken gebeurt op /admin/users, bij de PIN-uitgifte,
+// omdat "iemand toegang geven" één handeling is die over twee schermen verdeeld stond.
+//
+// Deze twee tests zijn de vervangers, en ze meten de andere kant op: dat er hier écht geen
+// tweede ingang is blijven hangen. Twee aanmaakformulieren zou de versnippering verdubbelen
+// in plaats van hem oplossen — en dan is de vraag welke van de twee de waarheid is.
+// Het bewijs dat het formulier op de nieuwe plek wél werkt staat in
+// components/admin/orgs.test.tsx.
+test("besluit 1 — lege organisatielijst wijst naar Admin en biedt geen formulier", async () => {
   await renderServer(
     <Screen>
       <OrgList
         orgs={[]}
-        createAction={noopAction}
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
         canGrantOrgAdmin
-        canCreate
       />
     </Screen>,
   );
   await expect
     .element(page.getByText("No organizations yet."))
     .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/created in Admin/))
+    .toBeInTheDocument();
 
-  // De tekst die naar boven wees is weg.
-  expect(document.body.textContent).not.toContain("Create one above");
-  // De kaart "New organization" staat er niet — anders had je twee ingangen.
-  expect(document.body.textContent).not.toContain("New organization");
-
-  const empty = document.querySelector('[data-slot="empty-state"]');
-  expect(empty).not.toBeNull();
-  // Precies één aanmaak-formulier, en dat zit binnen de lege toestand.
+  // Geen aanmaak-formulier, nergens op dit scherm — ook niet in de lege toestand.
   const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
     f.querySelector('input[name="name"]'),
   );
-  expect(forms).toHaveLength(1);
-  expect(empty!.contains(forms[0])).toBe(true);
+  expect(forms).toEqual([]);
+  // Bewust op de KAARTKOP en niet op de body-tekst: de lege toestand noemt "New
+  // organizations are created in Admin", en een kale substring-check op "New organization"
+  // zou daarop afketsen. Wat weg moet is de kaart, niet het woord.
+  const koppen = Array.from(
+    document.querySelectorAll('[data-slot="card-title"]'),
+  ).map((k) => k.textContent);
+  expect(koppen).not.toContain("New organization");
 });
 
-// Het formulier ín een gecentreerd kader is de riskantste layout van deze wijziging:
-// drie velden plus een knop moeten op 375px net zo netjes vallen als op 1280px.
+test("besluit 1 — met organisaties: nog steeds geen aanmaak-formulier, alleen leden en branding", async () => {
+  await renderServer(
+    <Screen>
+      <OrgList
+        orgs={orgs}
+        addMemberAction={noopAction}
+        removeMemberAction={noopAction}
+        saveBrandingAction={noopAction}
+        canGrantOrgAdmin
+      />
+    </Screen>,
+  );
+  // ⚠️ Eerst een await-assertie op iets dat er wél staat: `renderServer` is pas na een
+  // await gespoeld, en een synchrone querySelectorAll erop vindt anders een lege body —
+  // waarmee élke "er staat geen formulier"-assertie gratis groen wordt.
+  await expect
+    .element(page.getByText("Installatiebedrijf De Vries"))
+    .toBeInTheDocument();
+
+  const koppen = Array.from(
+    document.querySelectorAll('[data-slot="card-title"]'),
+  ).map((k) => k.textContent);
+  expect(koppen).not.toContain("New organization");
+  const aanmaak = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="name"]'),
+  );
+  expect(aanmaak).toEqual([]);
+  // Wat er wél staat: de branding-formulieren, één per organisatie.
+  const branding = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="logoUrl"]'),
+  );
+  expect(branding).toHaveLength(orgs.length);
+});
+
+// De lege toestand blijft een screenshot waard: zonder het formulier erin is het een
+// ander kader dan vóór 3.2c, en het moet op 375px net zo netjes vallen als op 1280px.
 for (const theme of ["light", "dark"] as const) {
   for (const [device, viewport] of Object.entries(viewports)) {
     test(`organisatie leeg (${theme}, ${device})`, async () => {
@@ -198,13 +234,11 @@ for (const theme of ["light", "dark"] as const) {
         <Screen>
           <OrgList
             orgs={[]}
-            createAction={noopAction}
             addMemberAction={noopAction}
             removeMemberAction={noopAction}
             saveBrandingAction={noopAction}
             canGrantOrgAdmin
-        canCreate
-          />
+            />
         </Screen>,
       );
       await expect
@@ -216,31 +250,6 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
-
-test("A7 — met organisaties: het formulier staat terug in zijn kaart, geen lege toestand", async () => {
-  await renderServer(
-    <Screen>
-      <OrgList
-        orgs={orgs}
-        createAction={noopAction}
-        addMemberAction={noopAction}
-        removeMemberAction={noopAction}
-        saveBrandingAction={noopAction}
-        canGrantOrgAdmin
-        canCreate
-      />
-    </Screen>,
-  );
-  await expect.element(page.getByText("New organization")).toBeInTheDocument();
-
-  const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
-    f.querySelector('input[name="name"]'),
-  );
-  expect(forms).toHaveLength(1);
-  // Het formulier zit in de kaart, niet in een lege toestand.
-  expect(forms[0].closest('[data-slot="empty-state"]')).toBeNull();
-  expect(forms[0].closest('[data-slot="card"]')).not.toBeNull();
-});
 
 test("rol-uitleg en default-landing kloppen; de rol kiest de VIEW, niet de engine", async () => {
   await renderServer(

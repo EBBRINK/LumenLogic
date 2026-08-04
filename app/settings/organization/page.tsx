@@ -6,7 +6,6 @@ import { listMemberships, listOrganizations } from "@/lib/repo/orgs";
 import { bewaakRoute } from "@/lib/route-toegang";
 import {
   addMemberAction,
-  createOrgAction,
   removeMemberAction,
   saveBrandingAction,
 } from "./actions";
@@ -51,10 +50,13 @@ export default async function OrganisatiePage() {
     <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
+        {/* 3.2c, besluit 1: het aanmaakformulier is hier weg — organisatiebeheer zit in
+            Admin, bij de PIN-uitgifte. Deze pagina gaat sinds die verhuizing puur over de
+            leden en de branding van organisaties die al bestaan, en de kop zegt dat. */}
         <p className="text-sm text-muted-foreground">
-          Organizations, their members and the roles those members come in with. A
-          role sets the default view, never what the engine shows — that's the phase
-          of the project.
+          Members and branding per organization. A role sets the default view,
+          never what the engine shows — that&apos;s the phase of the project. New
+          organizations are created in Admin, where the PINs are issued.
         </p>
       </header>
 
@@ -62,12 +64,10 @@ export default async function OrganisatiePage() {
         <RoleLegend />
         <OrgList
           orgs={withMembers}
-          createAction={createOrgAction}
           addMemberAction={addMemberAction}
           removeMemberAction={removeMemberAction}
           saveBrandingAction={saveBrandingAction}
           canGrantOrgAdmin={scope.canGrantOrgAdmin}
-          canCreate={toegang.soort === "intern"}
         />
       </div>
     </main>
