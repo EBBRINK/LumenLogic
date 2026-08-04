@@ -3682,6 +3682,121 @@ niet dit werk — draai twee keer voor je iets een regressie noemt.
 
 ---
 
+## Sprint 3.2c — onboarding op één scherm (2026-08-04)
+
+Werkbranch `claude/jovial-mcclintock-3a09d3`. **Niets gepusht, niets gedeployed, productie
+onaangeraakt.** Alles getest op PGlite.
+
+⚠️ **De worktree stond 252 commits achter** (branch uit 27 juli). Die commits zaten al als
+equivalent in `origin/main` (`git cherry` gaf ze alle vijf als `-`), dus de branch is op
+`origin/main` gezet vóór er iets gebouwd werd. Wie hier verder werkt: eerst `git fetch`, dan
+kijken — een parallelle sessie shipt intussen naar main.
+
+**Waarom.** Iemand toegang geven is in het hoofd van Brink één handeling, maar kostte twee
+schermen: organisatie aanmaken kon alleen op `/settings/organization`, een PIN uitgeven
+alleen op `/admin/users`. Erger: `organizations.type` was nergens te kiezen én vrijwel
+nergens te zien — het rolde uit de kolomdefault van migratie 0019. Aan dat veld hangt of
+iemand inkoopprijzen ziet (`lib/repo/prijszicht.ts`).
+
+### Wat er staat
+
+- **Organisatiebeheer is verhuisd naar `/admin/users`** (besluit 1). Het aanmaakformulier is
+  wég uit `components/org/org-list.tsx` en `app/settings/organization/actions.ts` —
+  verhuisd, niet gekopieerd. Dat scherm gaat nu puur over branding en leden van bestaande
+  organisaties; de lege toestand wijst naar Admin.
+- **Nieuw blok `components/admin/orgs-block.tsx`**: aanmaakformulier (naam, plan, zetels) +
+  de organisatielijst met per rij het type als badge, de bezetting (`3/5 seats`) en een
+  inline zetellimiet-formulier (besluiten 4a, 7, 8). Alleen zichtbaar voor intern.
+- **Vier nieuwe deuren in `lib/repo/authz.ts`**, allemaal in de G39-vorm (autoriseren en
+  schrijven in één aanroep, actor uit de sessie): `createOrgAsActor`, `setSeatLimitAsActor`,
+  `createOrgAndIssuePinAsActor` en `decideOrgCreate` als pure regel.
+- **`createOrganization()` zet `type: 'extern'` hardgecodeerd** — geen parameter, dus er is
+  geen code-pad dat een tweede interne organisatie kan maken (besluiten 3 + 9/G42). 'intern'
+  bestaat alleen omdat migratie 0019 Brink Licht zo aanmaakte; nodig? Eén regel SQL.
+- **De één-klik-variant** (besluit 4b): de organisatiekeuze in het PIN-formulier heeft een
+  optie "+ New organization…" die naam/plan/zetels tevoorschijn haalt.
+- **Zetellimiet wordt gehandhaafd** (besluit 6, bevestigd door de sprintmaster op 4 aug):
+  bij PIN-uitgifte én bij lid toevoegen. Standaard 5 voor een nieuwe organisatie.
+- **Type zichtbaar waar een organisatie genoemd wordt** (besluit 8): PIN-dropdown (deed het
+  al), PIN-statuslijst (`PinUserRow.orgs` draagt nu naam + type in plaats van één string),
+  de organisatielijst in Admin én de kaartkoppen op `/settings/organization`.
+
+### Drie dingen om te weten vóór je hieraan verder werkt
+
+1. ⚠️ **"Alles-of-niets" is compensatie, geen transactie — en dat kan niet anders.** De
+   neon-http-driver kent geen transacties (`lib/repo/activation.ts:157` legt dat al uit voor
+   dezelfde reeks schrijfacties). `createOrgAndIssuePinAsActor()` doet daarom (a) een
+   droogloop vóór er iets bestaat — die vangt de verreweg meest voorkomende mislukking, een
+   vertypt adres, af zonder de database aan te raken — en (b) een compensatie achteraf: gaat
+   het daarna alsnog mis, dan wordt de zojuist aangemaakte organisatie verwijderd
+   (`ON DELETE CASCADE` neemt het lidmaatschap mee). Bewezen met foutinjectie op de
+   PIN-insert in `app/admin/users/org-admin-authz.test.ts`.
+   **Wat er wél achterblijft:** de `user`-rij die `issueActivationPin` vóór de PIN aanmaakt.
+   Bewust: het account hoort bij niemand, duikt niet in een dropdown op, en de volgende
+   poging pikt hem op (conflict-tolerante insert). Besluit 5 gaat over de lege organisatie.
+2. ⚠️ **De zetel-telling zit in de `WHERE` van de insert**, niet in een lezing ervoor
+   (`addMembership` in `lib/repo/orgs.ts`, rauwe SQL). De poort in `authz.ts` leest de
+   zetels óók, maar alleen om een bruikbare melding te kunnen geven; de grens is de SQL.
+   **Wat dit niet is:** een slot. Twee écht gelijktijdige statements kunnen onder READ
+   COMMITTED allebei dezelfde telling zien; daarvoor zou je de org-rij moeten locken, en dat
+   vraagt een transactie die de driver niet heeft. Het venster is nu één statement breed in
+   plaats van een hele request. `lib/repo/orgs.test.ts` meet dat parallel (10 gelijktijdige
+   uitnodigingen op 3 plekken → 3 leden, en het aantal `true`-antwoorden = het aantal rijen).
+3. ⚠️ **`VERBODEN_NAMEN` in `lib/repo/authz-deuren.test.ts` is uitgebreid** met
+   `createOrganization`, `deleteOrganization` en `setOrgSeatLimit`. Dat sluit een gat dat al
+   bestond: `organizations` stond wél in `VERBODEN_TABELLEN` (aanval G6), maar de
+   schrijffuncties ervoor niet — `app/settings/organization/actions.ts` importeerde
+   `createOrganization` gewoon rechtstreeks.
+
+### Aannames en open eindes
+
+- **Onbeperkt (`seat_limit = null`) is via de interface niet te kiezen**, ook niet bij het
+  aanpassen. Het bestaat alleen nog voor Brink Licht zelf, dat zo op productie staat; het
+  veld toont dan "unlimited" als placeholder in plaats van een verzonnen getal. Wil Brink
+  ooit een klant zonder limiet, dan is dat — net als 'intern' — één regel SQL. Aanname,
+  niet expliciet besloten.
+- **De limiet mag lager gezet worden dan het huidige aantal leden.** Er wordt dan niemand
+  verwijderd; er kan alleen niemand meer bij, en de lijst toont eerlijk `6/5 seats`. Dat is
+  een bruikbare "bevries deze organisatie"-handeling, maar het is een keuze die niet in de
+  besluiten stond.
+- **Het "Plan"-veld is meeverhuisd** (trial/abonnement/per-dossier). De besluiten noemen het
+  niet, maar het stond in het oude formulier en zou anders stilzwijgend onbereikbaar worden.
+- **Geen unique-index op `organizations.slug`.** Twee organisaties met dezelfde naam geven
+  nog steeds dezelfde slug, zonder waarschuwing. Bestond al vóór 3.2c (staat sinds 3.1 als
+  open punt), en 3.2c maakt het zichtbaarder omdat aanmaken nu vaker gebeurt.
+- **`/admin/users` heeft geen eigen RSC-paginatest.** De samenstelling in `page.tsx` (welke
+  org bij welk membership hoort) leunt op typen en op de blok-tests. Daarom draagt
+  `PinUserRow` nu `orgs: {name, type}[]` in plaats van een kant-en-klare string: het
+  samenvoegen gebeurt in het component, waar een test het kán vastpinnen.
+
+### Productie ná deze sprint (nog niet uitgevoerd)
+
+Er is **geen migratie** in deze sprint — alleen code. Wel één gevolg om te weten vóór je
+deployt: **TEST 123 heeft `seat_limit = 1` en één lid, dus die zit vanaf de deploy vol.**
+Een tweede PIN voor die organisatie wordt geweigerd met "This organization has used all its
+seats (1 of 1). Raise the seat limit to add someone." De knop om dat te doen staat er
+(besluit 7, naast de organisatie in de lijst). Bekend en geaccepteerd — het is een
+testorganisatie.
+
+### Meting
+
+`bunx tsc --noEmit` schoon. Eigen suites: `lib/repo/orgs.test.ts` 9/9,
+`app/admin/users/org-admin-authz.test.ts` 12/12, `components/admin/orgs.test.tsx` 23/23,
+en de bestaande authz/PIN/org-suites 187/187 samen. Screenshots licht/donker ×
+mobiel/desktop staan naast de testfiles (`orgs-block.*`, `orgs-block-leeg.*`,
+`pin-block-nieuwe-org-velden.*`, plus het volle PIN-blok op desktop).
+
+⚠️ **Eén echte regressie gevonden en gefixt door de eigen bewakers:**
+`components/knophierarchie.test.tsx` ving twee primary-knoppen op `/admin/users`. De
+"Create"-knop van het organisatieblok staat nu op `variant="outline"` — de zwaarste actie op
+dat scherm is "Create account & issue PIN".
+
+Volle suite: 2/1966 en 4/1966 rood in twee runs, allemaal bekende flakiness — in isolatie
+groen, en `components/data/custom-fields.test.tsx > "archiveren … zonder VERSE telling"`
+faalt óók op een kale `origin/main` (zie de 3.2b-sectie hieronder).
+
+---
+
 ## Sprint 3.2b — prijsloze estimate voor externen (2026-08-03)
 
 Given fase 0, when een extern account een estimate opent of de PDF downloadt, then bevatten
