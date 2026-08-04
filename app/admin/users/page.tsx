@@ -8,6 +8,7 @@ import {
   type OrgOption,
   type PinUserRow,
 } from "@/components/admin/pin-block";
+import { OrgsBlock, type OrgRow } from "@/components/admin/orgs-block";
 import { listAllMemberships } from "@/lib/repo/admin";
 import {
   decidePinIssue,
@@ -22,7 +23,7 @@ import {
   PIN_TTL_DAYS,
 } from "@/lib/repo/activation";
 import { bewaakRoute } from "@/lib/route-toegang";
-import { issuePinAction } from "./actions";
+import { createOrgAction, issuePinAction, setSeatLimitAction } from "./actions";
 
 // GEBRUIKERS OVER ORGS (§3.16, L-03/04) + PIN-uitgifte (sprint 3.1, besluit G26). De
 // memberships-tabel blijft alleen-lezen; het PIN-blok erboven is waar Brink een account
@@ -51,6 +52,13 @@ export default async function AdminGebruikersPage() {
   // kunnen zo niet uit elkaar lopen.
   const zichtbareOrgs = new Set(scope.orgs.map((o) => o.id));
   const memberships = alleMemberships.filter((m) => zichtbareOrgs.has(m.orgId));
+  // ✅ 3.2c, besluit 8 — HET TYPE STAAT WAAR DE ORGANISATIE GENOEMD WORDT. De dropdown in
+  // het PIN-formulier deed dit al ("TEST 123 (extern)"), de statuslijst eronder niet: daar
+  // stond alleen "Brink Licht · org_admin". Aan `organizations.type` hangt of iemand
+  // inkoopprijzen ziet (lib/repo/prijszicht.ts), en dat moet je kunnen controleren zonder
+  // in de database te kijken. Het type komt uit dezelfde `scope` als de dropdown, dus die
+  // twee kunnen niet uit elkaar lopen; het samenvoegen tot tekst doet `PinBlock`.
+  const orgById = new Map(scope.orgs.map((o) => [o.id, o]));
   const rows: MembershipRow[] = memberships.map((m) => ({
     id: m.id,
     orgName: m.orgName,
@@ -71,7 +79,8 @@ export default async function AdminGebruikersPage() {
     string,
     {
       display: string;
-      orgNames: Set<string>;
+      /** Op orgId, zodat dezelfde organisatie via twee rijen niet dubbel verschijnt. */
+      orgs: Map<string, { name: string; type: string }>;
       roles: Set<string>;
       /** Ruwe org/rol-paren — de feiten die de autorisatielaag hieronder nodig heeft. */
       membershipsRaw: { orgId: string; roles: MembershipRole[] }[];
@@ -81,11 +90,18 @@ export default async function AdminGebruikersPage() {
     const key = m.email.toLowerCase().trim();
     const entry = byEmail.get(key) ?? {
       display: m.email,
-      orgNames: new Set<string>(),
+      orgs: new Map<string, { name: string; type: string }>(),
       roles: new Set<string>(),
       membershipsRaw: [] as { orgId: string; roles: MembershipRole[] }[],
     };
-    entry.orgNames.add(m.orgName);
+    const scopeOrg = orgById.get(m.orgId);
+    entry.orgs.set(m.orgId, {
+      name: scopeOrg?.name ?? m.orgName,
+      // Onbekend type kan hier niet voorkomen (deze rijen zijn al op `scope.orgs`
+      // gefilterd), maar als het ooit wél gebeurt is "unknown" eerlijker dan niets: een
+      // ontbrekend type mag niet als "gewoon extern" gelezen worden.
+      type: scopeOrg?.type ?? "unknown",
+    });
     for (const r of m.roles ?? []) entry.roles.add(r);
     entry.membershipsRaw.push({
       orgId: m.orgId,
@@ -114,7 +130,7 @@ export default async function AdminGebruikersPage() {
     const status = statusByEmail.get(key);
     return {
       email: entry.display,
-      orgName: [...entry.orgNames].join(", "),
+      orgs: [...entry.orgs.values()],
       roles: [...entry.roles],
       state: status?.state ?? "geen",
       expiresAtIso: status?.expiresAt ? status.expiresAt.toISOString() : null,
@@ -141,6 +157,20 @@ export default async function AdminGebruikersPage() {
     needsOrgAdmin: o.needsOrgAdmin,
   }));
 
+  // 3.2c, besluiten 1/4a/7: organisatiebeheer hoort in Admin. Alleen intern — een externe
+  // org_admin komt sinds 3.2a wél op deze route (G36 geeft hem het recht mensen aan te
+  // maken), maar organisaties aanmaken en zetellimieten aanpassen is Brink-werk. Hij ziet
+  // dit blok dus niet eens. ⚠️ Gemak, geen poort: createOrgAction en setSeatLimitAction
+  // staan zelf op `bewaakNiveau("intern")` én gaan door decideOrgCreate().
+  const orgRows: OrgRow[] = scope.orgs.map((o) => ({
+    id: o.id,
+    name: o.name,
+    type: o.type,
+    plan: o.plan,
+    seatLimit: o.seatLimit,
+    seatsUsed: o.seatsUsed,
+  }));
+
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-8">
       {/* UX-audit 30 jul (bug #10): dit scherm heette "Users" en de kaart eronder
@@ -164,7 +194,15 @@ export default async function AdminGebruikersPage() {
           pinLength={PIN_LENGTH}
           pinTtlDays={PIN_TTL_DAYS}
           canGrantOrgAdmin={scope.canGrantOrgAdmin}
+          canCreateOrgs={scope.canCreateOrgs}
         />
+        {scope.canCreateOrgs && (
+          <OrgsBlock
+            orgs={orgRows}
+            createAction={createOrgAction}
+            setSeatLimitAction={setSeatLimitAction}
+          />
+        )}
         <MembershipsBlock memberships={rows} />
       </div>
     </main>
