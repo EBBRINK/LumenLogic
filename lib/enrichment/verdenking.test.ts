@@ -62,6 +62,40 @@ test("tunable white: bereik en losse aanduiding", () => {
   expect(vlaggen("PANEL 40W 3000K DIM TO WARM")).toContain("kelvin:tunable-white");
 });
 
+// ── Drie scheidingstekens, dezelfde productvraag (31 jul) ───────────────────
+// Timo zag met het oog in het reviewscherm dat `Oja 29 | 3000/4000K` als kelvin 4000 landde
+// zonder één vlag, terwijl dezelfde constructie met een koppelteken wél werd onderdrukt. Het
+// verschil zat in het scheidingsteken en niet in het product. Deze test zet de drie vormen die
+// aantoonbaar in de catalogus staan naast elkaar, met de echte namen, zodat ze niet meer los
+// van elkaar kunnen wegzakken.
+test("twee kleurtemperaturen: koppelteken, schuine streep en beide-met-K vallen alle drie op", () => {
+  const koppel = "PANEL 40W 2700-6500K DALI";
+  const schuin = "Oja 29 | 3000/4000K | 3-Step | Ceiling light | White";
+  const beideK = "STRANGE 1.0 LED 2700K/3000K B 6W 220-240VAC";
+
+  // De parser pakt in alle drie de gevallen één van de twee, en NIET steeds dezelfde: bij de
+  // eerste twee vormen wint het laatste getal (alleen dát wordt door K gevolgd), bij de derde
+  // het eerste. Dat de uitkomst van het scheidingsteken afhangt is precies waarom dit een
+  // productvraag is en geen parseervraag.
+  expect(parseProductName(koppel).kelvin).toBe(6500);
+  expect(parseProductName(schuin).kelvin).toBe(4000);
+  expect(parseProductName(beideK).kelvin).toBe(2700);
+
+  // …en juist daarom moet de poort ze alle drie tegenhouden.
+  expect(vlaggen(koppel)).toContain("kelvin:bereik");
+  expect(vlaggen(schuin)).toContain("kelvin:bereik");
+  expect(vlaggen(beideK)).toContain("kelvin:bereik");
+});
+
+// De keerzijde: de regel mag NIET losgaan op een schuine streep die niets met kelvin te maken
+// heeft, en niet op de Kreon-vorm met een komma. Een regex op komma gaf 64 treffers die stuk
+// voor stuk `1200-1650, 2700K` waren — een lengtemaat, een komma, en dán de enige kelvin.
+test("de schuine streep raakt alleen kelvin, niet de rest", () => {
+  expect(vlaggen("DOWNLIGHT 24V 50/60Hz 3000K 20W")).not.toContain("kelvin:bereik");
+  expect(vlaggen("SPOT LED 6/9W 3000K 220-240VAC")).not.toContain("kelvin:bereik");
+  expect(vlaggen("up-down 1200-1650, 2700K, cri90")).not.toContain("kelvin:bereik");
+});
+
 test("meerdere waarden voor hetzelfde veld: de parser nam de eerste", () => {
   expect(vlaggen("DOWNLIGHT 3000K/4000K 20W")).toContain("kelvin:meerdere-waarden");
   expect(vlaggen("SPOT CRI80 CRI90 15W 3000K")).toContain("cri:meerdere-waarden");

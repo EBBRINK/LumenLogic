@@ -47,10 +47,23 @@ function meerdereWaarden(naam: string, re: RegExp): string[] | null {
 
 // ── Bekende, benoemde faalvormen ────────────────────────────────────────────
 
-// Kelvin over een bereik: "2700-6500K" (tunable white). De parser pakt hier 6500 — het getal
-// vóór het streepje wordt niet door K gevolgd — maar wélke waarde "de" kleurtemperatuur is, is
-// geen parseervraag maar een productvraag.
-const KELVIN_BEREIK = /\d{3,5}\s*[-–]\s*\d{3,5}\s*K\b/i;
+// Kelvin over een bereik of een keuze: "2700-6500K" (tunable white), "3000/4000K" en
+// "2700K/3000K" (schakelbaar). De parser pakt hier de LAATSTE van de twee — het getal vóór het
+// scheidingsteken wordt in de eerste vorm niet door K gevolgd — maar wélke waarde "de"
+// kleurtemperatuur is, is geen parseervraag maar een productvraag.
+//
+// ── Waarom de schuine streep er 31 jul bij kwam ─────────────────────────────
+// Timo zag het met het oog in het reviewscherm: `Oja 29 | 3000/4000K | 3-Step | Ceiling light`
+// kreeg kelvin 4000 en géén enkele vlag, terwijl `… TW 2700K-6500K …` wél werd onderdrukt.
+// Het verschil was het scheidingsteken, niet het product. Twee vormen komen aantoonbaar voor:
+//
+//     3000/4000K    getal / getal+K    23 producten, alle Nordlux
+//     2700K/3000K   getal+K / getal+K  27 producten, alle Wever & Ducré
+//
+// Daarom is `K` op het eerste getal optioneel geworden en staat `/` in de tekenklasse. Bewust
+// NIET de komma: een regex daarop gaf 64 Kreon-treffers, maar die matchten `1200-1650, 2700K` —
+// een lengtemaat, een komma, en dán de enige kelvin. Kreon heeft dit probleem niet.
+const KELVIN_BEREIK = /\d{3,5}\s*K?\s*[-–\/]\s*\d{3,5}\s*K\b/i;
 const TUNABLE = /\b(?:TW|TUNABLE|DIM\s*TO\s*WARM|D2W|DTW)\b/i;
 
 // Bundelhoek versus kantelhoek: een "30°" naast een kantelwoord is waarschijnlijk niet de bundel.
