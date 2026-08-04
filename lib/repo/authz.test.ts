@@ -19,6 +19,7 @@ import {
   mayViewPinStatus,
   resolveOrgAuthority,
   type OrgAuthority,
+  type OrgFacts,
   type TargetFacts,
 } from "@/lib/repo/authz";
 import { addMembership, createOrganization } from "@/lib/repo/orgs";
@@ -33,6 +34,25 @@ const beheerderA: OrgAuthority = {
   orgIds: [ORG_A],
 };
 const niemand: OrgAuthority = { kind: "geen", email: "passant@extern.nl" };
+
+/**
+ * Org-feiten voor de pure beslisfuncties. Sinds 3.2c dragen die ook de zetellimiet
+ * (besluit 6, 4 aug). Deze helper houdt de bestaande G36-tests vrij van dat detail door
+ * standaard een organisatie zónder limiet te geven: die tests gaan over bevoegdheid, niet
+ * over zetels. De zetelpoort heeft zijn eigen tests, verderop en in orgs.test.ts.
+ */
+function orgFeiten(
+  id: string,
+  hasOrgAdmin: boolean,
+  zetels: { seatLimit?: number | null; seatsUsed?: number } = {},
+): OrgFacts {
+  return {
+    id,
+    hasOrgAdmin,
+    seatLimit: zetels.seatLimit ?? null,
+    seatsUsed: zetels.seatsUsed ?? 0,
+  };
+}
 
 const onbekendDoel: TargetFacts = {
   email: "nieuw@extern.nl",
@@ -72,7 +92,7 @@ test("G36 als tabel: dezelfde vraag, drie soorten actoren, drie uitkomsten", asy
   const vraag = {
     target: onbekendDoel,
     orgId: ORG_A,
-    org: { id: ORG_A, hasOrgAdmin: true },
+    org: orgFeiten(ORG_A, true),
   };
 
   const alsIntern = decidePinIssue({
@@ -97,7 +117,7 @@ test("G36 als tabel: dezelfde vraag, drie soorten actoren, drie uitkomsten", asy
   if (!alsNiemand.allowed) expect(alsNiemand.reason).toBe("geen_uitgever");
 
   // Dezelfde vraag, maar nu in een andere organisatie: alleen intern komt er nog door.
-  const elders = { ...vraag, orgId: ORG_B, org: { id: ORG_B, hasOrgAdmin: true } };
+  const elders = { ...vraag, orgId: ORG_B, org: orgFeiten(ORG_B, true) };
   expect(
     decidePinIssue({ authority: intern, ...elders, roles: ["calculator"] }).allowed,
   ).toBe(true);
@@ -150,7 +170,7 @@ test("beide deuren delen dezelfde kern: PIN-uitgifte en het organisatiescherm be
     for (const target of doelen) {
       for (const roles of rolsets) {
         for (const orgId of [ORG_A, ORG_B]) {
-          const org = { id: orgId, hasOrgAdmin: true };
+          const org = orgFeiten(orgId, true);
           const pin = decidePinIssue({ authority, target, orgId, org, roles });
           const lid = decideMembershipChange({
             authority,
@@ -174,7 +194,7 @@ test("beide deuren delen dezelfde kern: PIN-uitgifte en het organisatiescherm be
 });
 
 test("het besluit draagt de UITKOMST, niet het verzoek: de bootstrap-rol zit erin, dubbele rollen niet", async () => {
-  const zonderBeheerder = { id: ORG_A, hasOrgAdmin: false };
+  const zonderBeheerder = orgFeiten(ORG_A, false);
   const besluit = decidePinIssue({
     authority: intern,
     target: onbekendDoel,
@@ -241,7 +261,7 @@ test("een org_admin komt niet bij een doeladres dat elders lid is, zelf beheerde
       authority: beheerderA,
       target: doel,
       orgId: ORG_A,
-      org: { id: ORG_A, hasOrgAdmin: true },
+      org: orgFeiten(ORG_A, true),
       roles: [],
     });
     expect(besluit.allowed).toBe(false);
@@ -252,7 +272,7 @@ test("een org_admin komt niet bij een doeladres dat elders lid is, zelf beheerde
         authority: intern,
         target: doel,
         orgId: ORG_A,
-        org: { id: ORG_A, hasOrgAdmin: true },
+        org: orgFeiten(ORG_A, true),
         roles: [],
       }).allowed,
     ).toBe(true);
