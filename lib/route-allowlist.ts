@@ -81,6 +81,9 @@ export const ROUTE_NIVEAUS = {
   "/login": "open",
   "/activate": "open",
   "/api/auth/[...all]": "open",
+  // De uptime-monitor logt niet in. Geeft alleen {"status":"ok"} terug — geen data,
+  // geen versie, geen foutreden; zie de kop van app/api/health/route.ts.
+  "/api/health": "open",
 
   // ── Iedereen: projecten (org-gescoped), catalogus, eigen instellingen ───────
   "/": "iedereen", // redirect naar /projects; leest zelf niets

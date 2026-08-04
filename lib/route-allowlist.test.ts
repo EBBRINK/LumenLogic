@@ -116,16 +116,28 @@ test("elke niet-open route bewaakt zichzelf, met precies zijn eigen route", () =
   ).toEqual([]);
 });
 
-test("de open routes zijn er precies drie, en ze staan hier met naam", () => {
+test("de open routes zijn er precies vier, en ze staan hier met naam", () => {
   // Dit is de uitzonderingslijst, en die hoort niet stilletjes te groeien. `/login` en
   // `/activate` móéten zonder sessie werken (je komt er juist om er een te krijgen) en
   // `/api/auth/[...all]` ís het auth-endpoint zelf — die drie kunnen per definitie niet
   // achter een sessiepoort. Alles daarbuiten wél.
+  //
+  // `/api/health` is er als vierde bij gekomen (monitoring, sprint 3) en is van een
+  // andere soort dan de eerste drie: die zijn open omdat je er een sessie kómt halen,
+  // deze omdat een uptime-monitor er nooit een heeft. Hij is daarom zo klein mogelijk
+  // gehouden — hij raakt de database aan maar geeft alleen `{"status":"ok"}` terug, en
+  // `app/api/health/health.test.ts` pint vast dat er geen tabelnaam, adres of
+  // foutmelding in het antwoord kan lekken.
   const open = Object.entries(ROUTE_NIVEAUS)
     .filter(([, n]) => n === "open")
     .map(([r]) => r)
     .sort();
-  expect(open).toEqual(["/activate", "/api/auth/[...all]", "/login"]);
+  expect(open).toEqual([
+    "/activate",
+    "/api/auth/[...all]",
+    "/api/health",
+    "/login",
+  ]);
 });
 
 test("er is geen middleware.ts die stilletjes een tweede waarheid wordt", () => {
