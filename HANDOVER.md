@@ -4672,3 +4672,42 @@ de runs in de database. Opnieuw draaien kan dus.
 ⚠ **Wie dat doet: laat de uitvoer niet in een wegwerpmap landen.** Ongetrackte uitvoer in een
 worktree is geen bewijs, want bewijs dat kan verdwijnen is geen bewijs. De antwoordsleutel hoort
 buiten de scherfmap (dat is al zo) en de hele boom hoort buiten de worktree — of in git.
+
+---
+
+## 2026-08-04 — Twee ongepushte commits verdwenen door `git reset --hard origin/main`
+
+Ik reset mijn branch routinematig naar `origin/main` om vanaf de verse hoofdlijn te beginnen. Dat
+gaat goed zolang alles gepusht is. Vanmiddag was dat niet zo:
+
+    dc61fce HEAD@{0}: commit: Gemeten en NIET gebouwd: de vastgeplakte typenaam …
+    55f55ee HEAD@{1}: reset: moving to origin/main      ← hier gingen ze weg
+    8add2f3 HEAD@{2}: commit: HANDOVER: de flaky events-test, de smalle meting …
+    2c69b35 HEAD@{3}: commit: CLS gedeblokkeerd: de W van W-DMX en de toeslagregel
+
+`2c69b35` en `8add2f3` stonden op de branch, waren **niet** gepusht (de droogloop lag nog bij Timo),
+en na de reset wees geen enkele branch er meer naar. De objecten bestonden nog — een reset gooit
+niets weg, hij verplaatst alleen de wijzer — maar ze stonden op de nominatie voor `git gc`. De
+sprintmaster zag het en zette ze veilig op `redding/ldc407-fix`; daarvandaan is verder gewerkt.
+
+**Wat dit is, en wat het niet is.** Het is niet "git is gevaarlijk": de reflog had ze dertig dagen
+bewaard en `git reset --hard ORIG_HEAD` zou genoeg zijn geweest. Het is dat ik een commando gebruik
+waarvan de veiligheid afhangt van een voorwaarde (alles is gepusht) die ik niet controleerde.
+
+**De regel die daaruit volgt:**
+
+> Reset nooit naar `origin/main` zolang er ongepushte commits op je branch staan. Wil je van de
+> verse hoofdlijn beginnen, maak dan éérst een branch op je huidige HEAD — `git branch backup/xyz`
+> kost niets en is de enige stap die dit onmogelijk maakt.
+>
+> Toets vooraf: `git log --oneline origin/main..HEAD` moet leeg zijn.
+
+**Dit is vandaag de tweede keer dat werk verdween omdat het maar op één plek stond.** Vanochtend de
+map `zwerm/` met alle 19 zwermuitslagen, ongetrackt in een worktree die hergebruikt werd; nu deze
+twee commits. Beide keren was de oorzaak identiek: **werk dat alleen bestond waar het toevallig
+gemaakt was.** De reparatie is beide keren dezelfde vorm — de zwermuitvoer staat nu buiten elke
+worktree, en een branch kost één commando.
+
+Dit hoort in dezelfde reeks als `scripts/safe-push.sh` uit week 1: dat script bestaat omdat vier
+keer een push ongewenst werk meestuurde. Zelfde klasse, andere richting — daar ging er te véél mee,
+hier verdween er te veel.
