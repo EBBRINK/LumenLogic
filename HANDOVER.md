@@ -4999,3 +4999,78 @@ Screenshots (light/dark × mobile/desktop) van de twee standen die deze sprint m
 
 ⚠️ **`origin/main` is tijdens deze sessie doorgelopen** (van `a3d6d1c` naar `97b3c01`). Deze
 branch staat op `a3d6d1c`; rebasen vóór het pushen.
+
+## 2026-08-04 — Flos' korte kleurcode: de notatie eerst bewezen, toen pas gelezen
+
+_Aanleiding: Flos Architectural leverde 222 verrijkte producten op 18.263 — 18.218 zonder
+kelvin, 18.236 zonder CRI. Geen ontbrekende data maar een NOTATIE die de parser niet kende:
+`L.SHADOW SPOT MRM WH 30KC90 SP` draagt gewoon 3000 K en CRI 90._
+
+**Wat het bewijs is, en waarom het geen gelijkenis-argument is.** De vertaling staat in Flos'
+eigen catalogus. Vijf productlijnen dragen BEIDE notaties naast elkaar:
+
+    FIND ME 2 BLACK POWER LED 2700K CRI90    naast   FIND ME 0 WHITE POWER LED 27K C90
+    BON JOUR 45 WHITE POWER LED 3000K CRI90  naast   BON JOUR 90 WHITE LED ARRAY 3K CRI90
+    RUN.MAGNET 2.0 FINDME SUSPLED 8W 2700K   naast   RUN.MAGNET 2.0 FINDME SUSP 27K C90 CHR
+
+Elf van de twaalf korte waarden hebben zo een exacte lange tegenhanger binnen dezelfde lijn; de
+twaalfde (`UT SPOT … 4K`) mist er alleen een omdat die lijn geen 4000K-naam in de lange vorm
+kent. Tegenspraak: 0 op 18.263. Drie onafhankelijke bevestigingen daarnaast:
+
+- **De getalspreiding.** Over 15.842 treffers komen alléén 22, 27, 30, 35, 40, 50 (×100) en
+  3, 4 (×1000) voor — exact de LED-kleurtemperatuurladder, met families die netjes over
+  {27,30,40,50} variëren. Bij een typemaat of vermogen zou je 12, 45 of 88 zien.
+- **Twee assen.** In 27 families varieert het getal ná de K (80/90/98) terwijl de K gelijk
+  blijft; in 1.821 families varieert de K terwijl dat getal gelijk blijft. Dat zijn precies
+  kleurtemperatuur en kleurweergave, onafhankelijk van elkaar.
+- **Geen botsing.** Geen enkele familie draagt zowel `3K` als `30K` (beide zouden 3000 zijn).
+
+**HC is géén CRI-aanduiding.** Van de 624 HC-namen dragen er 312 een 90 en 312 een 98, dus het
+getal is de variabele en HC een vaste optiecode van de WORKM-lijn.
+
+**Waarom de regel in de PARSER hoort en niet in de voorstelpoort.** De poort kan alleen
+onderdrukken, nooit een lezing toevoegen. Deze notatie bestond nog niet als lezing, dus daar
+valt niets te weren. De aanvraagkant is apart nagemeten in plaats van beredeneerd: van de 204
+`spec_lines` draagt er **0** de korte notatie, dus het matchgedrag verandert daar feitelijk niet
+(`scripts/meet-flos-aanvraagkant.ts`).
+
+**Twee eisen, allebei uit een gemeten valse positief.** De K moet VAST aan het getal zitten (de
+enige Flos-naam met een spatie is een driver: `ALIM.LED … MP32 K2110-240V`), en er mag geen
+letter direct achter de K staan — anders leest de regel Sylvania's kilolumen (`19KLM` → 1900 K,
+`40KLM` → 4000 K, 68 namen). Voor de kale `C<nn>` gelden er twee méér: geen letter ervóór
+(weert `ECLECTIC 90`, `DC 90-305V`, `XTSC 635-3`, `LC43MINI`, `QR-CBC51`) en geen spatie erná
+(weert Artemide's `A.24 C 90° CORNER`, 101 namen — dat is een HOEK). Ondergrens 80 op een CRI
+zonder label: alles daaronder dat als `C<nn>` geschreven staat is een maat- of typecode.
+
+### ⚠ Open eind — de kelvin-regel raakt 34.711 producten van ANDERE merken
+
+Gemeten met de echte parser en de echte poort (`scripts/meet-flos-regel-breedte.ts`):
+
+| | landende voorstellen |
+|---|---|
+| Flos Architectural | kelvin 15.386 · cri 14.223 |
+| Lombardo | kelvin 34.389 · cri 0 |
+| Marset | kelvin 191 · cri 0 |
+| Sylvania | kelvin 87 · cri 0 |
+| Artemide Architectural | kelvin 44 · cri 0 |
+
+De CRI-regel raakt **nul** producten buiten Flos. De kelvin-regel raakt er 34.711, vrijwel
+allemaal Lombardo (`Anda Nero 3K`, `Anda Nero 4K`). Dat is ver boven "een handvol", en het is
+**niet bewezen**: voor Lombardo vond ik maar 2 bevestigingen via een lange vorm in dezelfde
+lijn, en 0 tegenspraken — te weinig om op te varen. Voor Marset, Sylvania en Artemide
+Architectural is er 0 bevestiging én 0 tegenspraak.
+
+Dit is geen probleem voor de Flos-run zelf (`startEnrichmentRun` werkt per merk, dus Lombardo
+krijgt hier geen voorstel), maar het wordt er wél één zodra iemand een van die vier merken
+verrijkt. **Besluit ligt bij Timo:** de regel laten zoals hij is en die vier merken apart
+bewijzen vóór hun run, óf de lezing beperken tot de samengestelde vorm (`<nn>K` mét
+CRI-code) — dat sluit Lombardo volledig uit maar kost Flos de 1.709 kale-vorm-voorstellen.
+
+**Regressie: nul.** Geen enkel merk raakt een bestaand voorstel kwijt doordat `verdenking.ts`
+nu ook korte vormen als kandidaat telt, en geen enkele naam waar de lange vorm al een kelvin
+gaf krijgt een andere waarde (`scripts/meet-flos-regressie.ts`). `scripts/toets-instrument.ts`
+staat vóór en ná op 8/8.
+
+**Run op de testkopie, NIET gepubliceerd, geen steekproefoordeel gezet:**
+`37b62ebd-ecbc-4c86-abe3-7fac8e5ac6ea` — 18.263 producten, 29.609 voorstellen, steekproef 100.
+Beoordeelblokken per leesregel: `bun --env-file=.env.branch scripts/toon-flos-leesregels.ts <runId>`.

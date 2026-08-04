@@ -303,3 +303,74 @@ test("een gewone wattage blijft staan, ook naast koppeltekens elders in de naam"
   expect(parseProductName("STREX SUSP 1.0 LED 8W 2700K B-B 220-240VAC").maxWattage).toBe(8);
   expect(parseProductName("DOWNLIGHT 24V 12W 3000K 1-10V DIM").maxWattage).toBe(12);
 });
+
+// ── Flos' korte kleurcode (4 aug) ───────────────────────────────────────────
+// "30KC90" = 3000 K, CRI 90. Elke naam hieronder staat letterlijk zo in de catalogus; de
+// vertaling zelf is niet geraden maar afgelezen uit vijf productlijnen die BEIDE notaties
+// dragen (zie de meting bij KELVIN_KORT_RE in parser.ts).
+test("korte kleurcode — twee cijfers is ×100, één cijfer is ×1000", () => {
+  expect(parseProductName("L.SHADOW SPOT MRM WH 30KC90 SP")).toMatchObject({ kelvin: 3000, cri: 90 });
+  expect(parseProductName("L.SHADOW SPOT MRM BK 27KC90 MD")).toMatchObject({ kelvin: 2700, cri: 90 });
+  expect(parseProductName("WORKM.SUSP. UP&DW HE AP T-LED 35K C90 WF")).toMatchObject({ kelvin: 3500, cri: 90 });
+  expect(parseProductName("UT SPOT TR 57 BLACK FL LED ARR 3K C90 DA")).toMatchObject({ kelvin: 3000, cri: 90 });
+  expect(parseProductName("INFINITY 25 SURFACE L1000 4K C90 AN.SILV")).toMatchObject({ kelvin: 4000, cri: 90 });
+  expect(parseProductName("GLOWING TR SUSP. L1200 BK 22K90 CB")).toMatchObject({ kelvin: 2200, cri: 90 });
+  expect(parseProductName("SPOT MRM WHT POWER LED 50K C90 MD")).toMatchObject({ kelvin: 5000, cri: 90 });
+});
+
+// De CRI zonder C ertussen, vastgeplakt achter de kelvin. HC is géén CRI-aanduiding: van de
+// 624 HC-namen dragen er 312 een 90 en 312 een 98, dus het getal is de variabele en HC een
+// vaste optiecode van de WORKM-lijn.
+test("korte kleurcode — de CRI mag zonder C, ook met een lettercode erachter", () => {
+  expect(parseProductName("WORKM.IN-TR LARGE FS BK 40K98HC")).toMatchObject({ kelvin: 4000, cri: 98 });
+  expect(parseProductName("WORKM.TR SMALL HE BK 30K90HC DA")).toMatchObject({ kelvin: 3000, cri: 90 });
+  expect(parseProductName("MY SPOT 25-S ZRT PRO BK 27K90SP NODIM")).toMatchObject({ kelvin: 2700, cri: 90 });
+});
+
+// De kale vorm zonder CRI. Komt vooral voor doordat Flos-namen op 40 tekens worden afgekapt
+// (6.424 van de 18.263 namen zijn exact 40 lang), waardoor het CRI-deel wegvalt.
+test("korte kleurcode — kale vorm levert wél kelvin en géén geraden CRI", () => {
+  const s = parseProductName("JOHNNY80 1L TRIM RND BK SPPOWER LED 27K");
+  expect(s.kelvin).toBe(2700);
+  expect(s.cri).toBeUndefined();
+});
+
+// De C-vorm die los staat, zonder K ervoor.
+test("losse C-vorm is CRI, naast een kelvin in de lange notatie", () => {
+  expect(parseProductName("UT SPOT TRACK 86 WHITE LED ARR C80 3000K")).toMatchObject({ kelvin: 3000, cri: 80 });
+  expect(parseProductName("EASY KAP 80 W-W RND GOLD DW LED ARRAY C95 13W").cri).toBe(95);
+});
+
+// ── Wat de regel bewust NIET leest ──────────────────────────────────────────
+// Alle vier gemeten valse positieven uit de catalogus. Ze zijn het bestaansrecht van de twee
+// eisen (K vast aan het getal, en géén letter direct achter de K).
+test("korte kleurcode — kilolumen, typecodes en hoeken blijven ongelezen", () => {
+  // Sylvania's kilolumen: 68 namen. "19KLM" is 19.000 lumen, geen 1900 K.
+  expect(parseProductName("KUBIXX 4000K 19KLM SMAL PIR").kelvin).toBe(4000);
+  expect(parseProductName("RAIDEN IP66 40KLM 830 A-SYMMETRISCH").kelvin).toBeUndefined();
+  expect(parseProductName("Areum Floor 14KLM 92W 13700lm 840 Alu").kelvin).toBeUndefined();
+  // Een spatie vóór de K: de enige Flos-naam met die vorm is een driver, geen armatuur.
+  expect(parseProductName("ALIM.LED AC/DC TCI MP32 K2110-240V 50/60").kelvin).toBeUndefined();
+  // Artemide's 90° is een HOEK. 101 namen; met een spatie-tolerantie na de C zou dit CRI 90 worden.
+  const hoek = parseProductName("A.24 C 90° CORNER DIFF. MOD. 3000K WHITE");
+  expect(hoek.kelvin).toBe(3000);
+  expect(hoek.cri).toBeUndefined();
+  // De C uit een woord ("ECLECTIC 90") of uit een bestelcode — nooit een CRI.
+  expect(parseProductName("ECLECTIC 90 FIX CONE BL LED-A 27K C90 SP")).toMatchObject({ kelvin: 2700, cri: 90 });
+  expect(parseProductName("EASY KAP 80 ADJ.RND BLACK QR-CBC51 GX5.3").cri).toBeUndefined();
+  expect(parseProductName("PROLONGADOR T INTER. DALI BLANCO XTSC 635-3").cri).toBeUndefined();
+  expect(parseProductName("DRIVER HELVAR LC43MINI-CC-300-1050 CON T").cri).toBeUndefined();
+  // Onder de 80 is elke kale C<nn> in deze catalogus een maat- of typecode.
+  expect(parseProductName("DISCOCO C 68 WHITE").cri).toBeUndefined();
+  expect(parseProductName("DRO 2.0 SUSPENSION SET E14 B max. 6W C35 220-240VAC").cri).toBeUndefined();
+  // Buiten 2000–8000 blijft de kelvin leeg, ook in de korte vorm.
+  expect(parseProductName("PANEL 19K C90").kelvin).toBeUndefined();
+  expect(parseProductName("PANEL 9K C90").kelvin).toBeUndefined();
+});
+
+// De lange vorm moet zich exact gedragen als vóór deze wijziging: geen enkele naam in de
+// catalogus combineert de twee vormen met een verschillende waarde (gemeten: 0 van 18.263).
+test("de lange vorm blijft leidend en verandert niet", () => {
+  expect(parseProductName("FIND ME 2 BLACK POWER LED 3000K CRI90")).toMatchObject({ kelvin: 3000, cri: 90 });
+  expect(parseProductName("JUNCOS 250MM BLACK 3000K CRI 80 2.2W")).toMatchObject({ kelvin: 3000, cri: 80 });
+});
