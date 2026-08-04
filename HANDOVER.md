@@ -4620,3 +4620,55 @@ geverifieerd: `lib/repo/products-ordening.test.ts` geïsoleerd gedraaid, 2/2 gro
 letterlijk het patroon uit `lib/matching/engine.ts`. Migraties 0017 en 0018 van 2.5b zijn op
 2026-08-03 tegen de database toegepast — alle zes indexen bestaan in `pg_indexes`, en de exacte
 SKU-tak meet daar `Index Scan using products_article_code_key_idx`, 0,059 ms.
+
+---
+
+## 2026-07-31 — Drie dingen uit de CLS-fix die niet in de commit passen
+
+### 1. `lib/repo/events.test.ts` faalt ongeveer één op de drie runs, ook op kale main
+
+*"recentEvents geeft de nieuwste rijen terug, meest recent eerst"* → `expected 'search' to be
+'match'`. Twee events landen in dezelfde milliseconde en dan is de volgorde van `ORDER BY
+created_at DESC` willekeurig. Drie runs aan beide kanten gemeten:
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| met de CLS-fix | ✓ | ✓ | ✗ |
+| kale origin/main | ✓ | ✓ | ✗ |
+
+Geen regressie, maar het gaat vroeg of laat een echte bevinding maskeren. Reparatie zou zijn: de
+twee events een verschillende `created_at` geven, of secundair op `id` sorteren.
+
+### 2. Mijn "precies twee waarden veranderen" was de smalle vraag
+
+Ik dumpte per product wat er LANDT (parser levert iets, kolom leeg, niet onderdrukt), vóór en ná,
+en vond 2 verschillen. Dat klopt. De sprintmaster dumpte wat de poort VOORSTELT, ongeacht de
+kolomstand, en vond er 835:
+
+    landend (kolom leeg)            2 verschillen  — de CLS-driver en de toeslagregel
+    voorgesteld (kolomstand buiten beschouwing)   835 — plus 834 XAL UNICO-bestelcodes
+
+Die 834: `UNICO-000 305W-B010-B010 … 12,6W 3000K` droeg vóór de reparatie twee wattages (305 én
+12,6), kreeg daarom `maxWattage:meerdere-waarden` en werd onderdrukt. Nu leest de parser er nog
+maar één en valt de vlag weg — dus van onderdrukt naar voorstelbaar. Ze landen vandaag nergens
+(0 van de 834 heeft een lege kolom, op de testkopie én op productie), en als ze ooit landen is
+12,6 het juiste getal. Geen risico, wél een gedragsverandering.
+
+**Dit is de tweede les van 30 juli, op mijn eigen meting toegepast:** hij droeg alleen de vraag
+die hij letterlijk stelde. "Wat verandert er aan de data" en "wat verandert er aan het gedrag van
+de poort" zijn niet dezelfde vraag, en ik presenteerde het antwoord op de eerste als het antwoord
+op allebei.
+
+### 3. De map `zwerm/` is weg — en dat is een ontwerpfout, geen ongeluk
+
+Alle 19 zwermuitslagen (scherven, antwoorden, antwoordsleutels) stonden ONGETRACKT in de worktree
+`relaxed-tereshkova-c27ac7`, en die is door een andere sessie hergebruikt. Nooit gecommit, dus
+niet terug te halen. Daarmee bestaat het bewijs over de rijen die Timo's steekproef níét dekte
+niet meer — alleen de conclusies in dit document.
+
+Wat er wél nog is: de gereedschappen op main (`zwerm-export`, `zwerm-lees`, `zwerm-overzicht`) en
+de runs in de database. Opnieuw draaien kan dus.
+
+⚠ **Wie dat doet: laat de uitvoer niet in een wegwerpmap landen.** Ongetrackte uitvoer in een
+worktree is geen bewijs, want bewijs dat kan verdwijnen is geen bewijs. De antwoordsleutel hoort
+buiten de scherfmap (dat is al zo) en de hele boom hoort buiten de worktree — of in git.
