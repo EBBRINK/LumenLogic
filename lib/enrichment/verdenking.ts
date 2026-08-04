@@ -63,6 +63,16 @@ function meerdereWaarden(naam: string, re: RegExp): string[] | null {
 // Daarom is `K` op het eerste getal optioneel geworden en staat `/` in de tekenklasse. Bewust
 // NIET de komma: een regex daarop gaf 64 Kreon-treffers, maar die matchten `1200-1650, 2700K` —
 // een lengtemaat, een komma, en dán de enige kelvin. Kreon heeft dit probleem niet.
+// Een toeslagregel is geen product maar een prijsopslag, en de getallen erin verwijzen naar een
+// ÁNDER artikel: `Meerprijs Casambi Bluetooth control (Enkel voor de 37 Watt)` kreeg maxWattage
+// 37, terwijl die 37 W het armatuur is waarvóór de toeslag geldt.
+//
+// Gemeten (31 jul, testkopie): 151 namen dragen een toeslagwoord, allemaal CLS, en precies ÉÉN
+// daarvan levert überhaupt een geparste waarde op — die ene. De regel kost dus geen enkele goede
+// waarde. Dat is meteen zijn beperking: hij is gemeten op één merk en één geval, dus hij bewijst
+// niets over leveranciers die deze woorden anders gebruiken.
+const TOESLAGREGEL = /\b(?:meerprijs|toeslag|surcharge|supplement|aufpreis)\b/i;
+
 const KELVIN_BEREIK = /\d{3,5}\s*K?\s*[-–\/]\s*\d{3,5}\s*K\b/i;
 const TUNABLE = /\b(?:TW|TUNABLE|DIM\s*TO\s*WARM|D2W|DTW)\b/i;
 
@@ -259,6 +269,7 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
       (ACCESSOIRE_MAXW.test(naam) && !LAMP_FITTING_BREED.test(naam)));
   if (
     ONDERDEEL_START.test(naam) ||
+    TOESLAGREGEL.test(naam) ||
     ONDERDEEL_STERK.test(naam) ||
     isLosseLamp ||
     isKapMetMaxW ||
@@ -273,7 +284,7 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
       vlag(
         veld,
         "product-is-onderdeel",
-        `de naam begint met een onderdeel (voeding/driver/trafo), dus deze waarde beschrijft dat onderdeel en niet een armatuur`,
+        `het product is zelf geen armatuur (voeding/driver/trafo, kap, losse lamp, railadapter of toeslagregel), dus deze waarde beschrijft iets anders`,
       );
     }
     return uit; // verder toetsen heeft geen zin: alles van dit product zwijgt

@@ -372,3 +372,20 @@ test("connectorset en voedingsstekker zijn onderdelen", () => {
     expect(vlaggen(n).some((v) => v.endsWith(":product-is-onderdeel"))).toBe(true);
   }
 });
+
+// ── De toeslagregel is geen product (31 jul) ────────────────────────────────
+// `Meerprijs Casambi Bluetooth control (Enkel voor de 37 Watt)` kreeg maxWattage 37, maar die
+// 37 W is het armatuur WAARVOOR de toeslag geldt. Gemeten: 151 namen met een toeslagwoord,
+// allemaal CLS, en precies één daarvan levert überhaupt een waarde op — deze.
+test("een toeslagregel draagt geen armatuurspec", () => {
+  const naam = "Meerprijs Casambi Bluetooth control (Enkel voor de 37 Watt)";
+  expect(parseProductName(naam).maxWattage).toBe(37); // de parser ziet hem wél…
+  expect(vlaggen(naam)).toContain("maxWattage:product-is-onderdeel"); // …en de poort weert hem
+});
+
+// De keerzijde: het woord mag niet losgaan op een gewoon armatuur.
+test("de toeslagregel raakt geen echte armaturen", () => {
+  expect(vlaggen("SUPPLEMENT RAIL 3000K 20W")).toContain("maxWattage:product-is-onderdeel");
+  expect(vlaggen("PANEL 40W 3000K DALI")).not.toContain("maxWattage:product-is-onderdeel");
+  expect(vlaggen("SUPERNOVA 60 LED 3000K 25W WHITE")).not.toContain("maxWattage:product-is-onderdeel");
+});

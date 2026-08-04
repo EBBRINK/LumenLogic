@@ -106,7 +106,18 @@ function toNumber(raw: string): number {
 // • `F13W`, `F36W`, `Componi200W` (12 gevallen): daar zit de W VAST aan het getal, en dan is hij
 //   wél de eenheid — een T5-buis van 13 W. Vandaar de eis dat de W los staat.
 const WATT_VALS: RegExp[] = [
-  /\b\d+\s+W-W\b/i, // typemaat gevolgd door de kleurcode W-W ("EASY KAP 80 W-W")
+  // Een W die met een koppelteken aan letters vastzit is geen eenheid maar het eerste teken van
+  // een samenstelling. Dit was `W-W` (de kleurcode warm-white, "EASY KAP 80 W-W"); sinds 31 jul
+  // dekt hij élk achtervoegsel, want de vorm is dezelfde en de smallere versie liet er één door:
+  //
+  //     CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver  →  maxWattage 407
+  //
+  // Catalogusbreed gemeten (`scripts/meet-valse-watt-vormen.ts`): 1.173 namen dragen `<cijfer>W-`
+  // met letters erachter, en geen ervan is een vermogen. Het zijn er drie soorten: `W-W` (48,
+  // warm-white), XAL's bestelcodes (`UNICO-000 305W-E040-E040`, 1.124) en deze ene CLS-driver.
+  // Eén regel in plaats van een tweede regel ernaast — de vorige les was dat elke extra regex een
+  // gok op één merk is.
+  /\b\d+\s*W-[A-Za-z]/i,
   // Decimale typemaat plus losse kleurcode: "ODREY SHADE 4.0 W", "ILANE CEILING SURF 2.0 W 2.0m".
   // Een écht decimaal vermogen schrijft de eenheid vast ("17,9W", "38.4W"), nooit los.
   /\b\d+\.\d\s+W\b/i,

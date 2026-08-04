@@ -278,3 +278,28 @@ test("een vermogen per meter is geen armatuurvermogen", () => {
   // Vaste-lengtevarianten dragen wél een totaal en blijven staan.
   expect(parseProductName("ILANE CEILING REC 2.0m LED 3000K 30W 48V CRI90").maxWattage).toBe(30);
 });
+
+// ── De W die bij het volgende woord hoort (31 jul) ──────────────────────────
+// Timo vond in de CLS-steekproef: `CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver` kreeg
+// maxWattage 407. De 407 is het typenummer LDC-407 en de W hoort bij W-DMX, het draadloze
+// DMX-protocol. Een 4-kanaals 700 mA driver zit rond de 50 W.
+//
+// De regel die dit vangt bestond al in smallere vorm (`W-W`, de kleurcode warm-white) en is
+// veralgemeend naar élk letterachtervoegsel. Catalogusbreed dragen 1.173 namen die vorm en geen
+// ervan is een vermogen: 48× `W-W`, 1.124 XAL-bestelcodes en deze ene driver.
+test("een W met een koppelteken en letters erachter is geen eenheid", () => {
+  expect(parseProductName("CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver").maxWattage).toBeUndefined();
+  expect(parseProductName("EASY KAP 80 W-W RND GOLD DW LED ARRAY C95 13W").maxWattage).toBe(13);
+  // XAL's bestelcode: 305W- is de code, 12,5W het echte vermogen even verderop.
+  expect(
+    parseProductName("UNICO-000 305W-E040-E040 XAL UNICO L2 BASIC CEIL 12,5W 3000K").maxWattage,
+  ).toBe(12.5);
+});
+
+// De keerzijde: een W die gewoon de eenheid is mag niet sneuvelen.
+test("een gewone wattage blijft staan, ook naast koppeltekens elders in de naam", () => {
+  expect(parseProductName("PANEL 40W 3000K DALI").maxWattage).toBe(40);
+  expect(parseProductName("SPOT 1x10W 3000K").maxWattage).toBe(10);
+  expect(parseProductName("STREX SUSP 1.0 LED 8W 2700K B-B 220-240VAC").maxWattage).toBe(8);
+  expect(parseProductName("DOWNLIGHT 24V 12W 3000K 1-10V DIM").maxWattage).toBe(12);
+});
