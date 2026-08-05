@@ -5053,3 +5053,36 @@ en het schema · dev-server rendert `/login` zonder console-fouten · `bun.lock`
   onafhankelijk van de compilerwissel, niet meegenomen.
 - **De migratie is gemeten op een lokale boom die 252 commits achterliep op `origin/main`**
   (t/m sprint 3.2a + health-endpoint). Direct erna samengevoegd — zie de merge-notitie hieronder.
+
+### Samengevoegd met origin/main (5 aug, merge `d6386e6`)
+
+De lokale `main` liep **252 commits achter** en 6 vooruit; 5 van die 6 waren al via een PR op
+`origin/main` geland onder een andere sha. Samengevoegd met een gewone merge. Twee
+conflicten, allebei in documentatie: `HANDOVER.md` (beide kanten hadden onderaan aangeplakt —
+beide behouden, upstream eerst, TypeScript 7 als laatste sectie) en
+`docs/lumenlogic-sprintplan-augustus.md` (onze kant was de verouderde versie van hetzelfde plan;
+upstream bevat dezelfde tekst plus G21/G22 — upstream genomen). Geen enkel conflict in code.
+
+**Wat de merge blootlegde — `node_modules/.bin/tsc` wees naar TypeScript 6.** Niet zichtbaar bij
+de eerste installatie, wél na een incrementele `bun install`: `@typescript/typescript6` hangt zelf
+op `@typescript/old` (= `npm:typescript@^6`) en dát pakket declareert óók een bin `tsc`. Bun hoist
+die naar `.bin/` en overschrijft de `tsc` van typescript@7 — wie wint hangt af van de
+installvolgorde. Gemeten: `bunx tsc --version` gaf `6.0.3`. `next build` is er ongevoelig voor
+(`verify-typescript-setup.js` resolvet `typescript/bin/tsc` als module, niet via `.bin`), maar
+`bun run typecheck` en elke kale `tsc` typechecken dan stil met de verkeerde compiler.
+`scripts/link-typescript6.mjs` zet `.bin/tsc` daarom hard terug naar typescript@7.
+`.bin/tsserver` mag wél van TS6 blijven — TS7 levert er geen.
+
+Ook opgeruimd: `.next/` bevatte gegenereerde types die nog naar het door 2.0a verwijderde
+`app/admin/events/page` verwezen (`tsconfig.json` include't `.next/types/**` en `.next/dev/types/**`).
+Twee TS2307's die niets met de merge of met TS7 te maken hadden; `rm -rf .next` en weg.
+
+**Groen op de samengevoegde boom** (na `rm -rf node_modules && bun install`): `tsc --noEmit`
+schoon op TypeScript 7.0.2 · `next build` groen, 30 routes, TypeScript-stap 1046 ms ·
+`bun vitest run` **1920/1922 groen** (1 failure: `components/data/custom-fields.test.tsx`,
+geïsoleerd 15/15 groen — dat is één van de drie bekende suite-flaky bestanden uit het sprintplan) ·
+`bun run lint` draait, 64 errors / 74 warnings over 509 bestanden. Die 64 zijn **niet** van deze
+merge of van TS7: het waren er 19 vóór het samenvoegen, en de 45 erbij komen uit de 252
+binnengekomen commits (37× `no-explicit-any`, 12× `react-hooks/immutability`). Lint is hier
+kennelijk nooit onderdeel van de werkwijze geweest — zolang typescript-eslint crashte kón dat ook
+niet opvallen. **Opvolgtaak.**

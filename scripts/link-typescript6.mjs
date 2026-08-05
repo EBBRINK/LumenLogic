@@ -49,3 +49,18 @@ for (const consumer of consumers) {
 if (linked.length) {
   console.log(`${linked.join(", ")} → @typescript/typescript6 (TS7 heeft geen JS-API)`);
 }
+
+// En dan de tweede helft van dezelfde munt. `@typescript/typescript6` hangt zelf op
+// `@typescript/old` (= npm:typescript@^6), en dát pakket declareert een bin `tsc`. Bun hoist
+// die naar node_modules/.bin/tsc en overschrijft daarmee de `tsc` van typescript@7 — welke van
+// de twee wint hangt af van de installvolgorde. Gemeten: ná een incrementele `bun install`
+// gaf `bunx tsc --version` ineens 6.0.3. `next build` merkt er niets van (het resolvet
+// `typescript/bin/tsc` als module, niet via .bin), maar `bun run typecheck` typecheckt dan
+// stilletjes met de verkeerde compiler. Daarom zetten we .bin/tsc hier hard terug.
+const realTsc = join(modules, "typescript", "bin", "tsc");
+const binTsc = join(modules, ".bin", "tsc");
+if (existsSync(realTsc) && existsSync(join(modules, ".bin"))) {
+  if (lstatSync(binTsc, { throwIfNoEntry: false })) unlinkSync(binTsc);
+  symlinkSync(relative(join(modules, ".bin"), realTsc), binTsc, "file");
+  console.log("node_modules/.bin/tsc → typescript@7 (niet de tsc van @typescript/old)");
+}
