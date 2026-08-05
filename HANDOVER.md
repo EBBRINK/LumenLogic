@@ -1860,3 +1860,58 @@ Gegroepeerd naar dader-laag, want dat bepaalt wie het oplost.
 deterministische 15/20) · merkkolom 16/20 correct (9 van de 13 gevulde, 7 van de 7 lege — leeg
 lezen wáár het boek `n.t.b.` zegt is correct gedrag, geen misser) · bruikbare kandidaten vóór
 bevinding 1: 0/20.
+
+## TypeScript 7 (goal-typescript-7, 5 aug)
+
+De codebase draait op **TypeScript 7.0.2** — de native (Go) compiler. `tsc --noEmit` is schoon
+zonder één regel broncode te wijzigen: de hele migratie zat in de toolketen, niet in de types.
+Typecheck van de hele repo (312 projectbestanden) gaat van ~7 s naar **0,8 s**.
+
+Wat er wél moest gebeuren, en waarom:
+
+- **`next` 16.2.10 → 16.2.12** + `experimental.useTypeScriptCli: true` in `next.config.ts`.
+  Het TS7-pakket levert géén JavaScript-API meer (`lib/typescript.js` is weg; Microsoft brengt
+  de programmatic API terug in 7.1). Next gebruikte die API voor de build-typecheck en voor het
+  inladen van `next.config.ts`. Zonder de vlag concludeert `next build` dat TypeScript ontbreekt
+  en probeert het het **zelf bij te installeren** — hier greep het naar `pnpm` en zette het een
+  `pnpm-lock.yaml` + `pnpm-workspace.yaml` naast `bun.lock` (opgeruimd; als je dit ooit weer ziet:
+  `rm -rf node_modules && bun install`). 16.2.12 is de patch waarin Vercel de vlag naar de stabiele
+  16.2-lijn heeft teruggebackport; 16.3.0 heeft hem ook, maar dat is een minor erbij die deze
+  opdracht niet nodig had.
+- **`@typescript/typescript6` + `scripts/link-typescript6.mjs` (postinstall).** typescript-eslint
+  draait volledig op de oude JS-API en crasht al bij het inladen
+  (`Cannot read properties of undefined (reading 'Cjs')`); zijn peer-range is `<6.1.0`, TS7 wordt
+  dus ook formeel niet ondersteund (typescript-eslint#12518, gesloten als "not planned").
+  Microsoft's overbrugging is `@typescript/typescript6`: TypeScript 6.0 onder een eigen pakketnaam
+  (bin `tsc6`), zodat hij naast typescript@7 past. Het script symlinkt die kopie als `typescript`
+  onder `node_modules/@typescript-eslint/` en `node_modules/ts-api-utils/`. **Waarom een script:**
+  `typescript` is een *peer* dependency, en bun kent geen nested overrides ("Bun currently does not
+  support nested overrides") — gemeten: een platte override vervangt óók `node_modules/typescript`
+  zelf, en dan verliest de editor de TS7-taalserver. Weg zodra typescript-eslint de 7.1-API
+  ondersteunt.
+- **`bun run typecheck`** toegevoegd (`tsc --noEmit`) — er was geen script voor.
+
+Geverifieerd: `tsc --noEmit` schoon · `next build` groen (alle routes) · `bun run lint` draait
+weer · `bun vitest run` 952/955 groen (2 timeouts, beide geïsoleerd groen — de bekende
+suite-brede flakiness, zie hierboven) · `bunx drizzle-kit generate` laadt `drizzle.config.ts`
+en het schema · dev-server rendert `/login` zonder console-fouten · `bun.lock` bevat alle
+20 platform-binaries van TS7, dus ook `linux-x64` voor de Vercel-build.
+
+**Bewust niet gedaan / open eindes:**
+- **De 19 lint-errors in projectbestanden zijn NIET gerepareerd.** `react/no-unescaped-entities`
+  (11×), `react-hooks/immutability` (3×), `react-hooks/set-state-in-effect`, `no-html-link-for-pages`
+  e.a. Ze bestonden al en staan los van TypeScript; lint kón alleen niet draaien omdat
+  typescript-eslint crashte. **Opvolgtaak.**
+- **`.claude/worktrees/*/.next/**` wordt wél gelint** — 2 581 van de 2 600 errors komen uit
+  gegenereerde buildoutput van geneste worktrees. `globalIgnores` in `eslint.config.mjs` dekt
+  alleen het `.next/**` in de repowortel; `vitest.config.ts` heeft die exclude wél
+  (`**/.claude/**`). Eén regel werk, maar het is een lint-config-kwestie, geen TS7-kwestie.
+  **Opvolgtaak.**
+- **`plugins: [{ name: "next" }]` staat nog in `tsconfig.json`.** TS7 ondersteunt geen
+  tsserver-plugins; `tsc` negeert het veld. Laten staan kost niets en houdt editors die nog op
+  TS 5/6 draaien werkend.
+- **`@types/node` blijft op ^20** (26 is beschikbaar) en `target` blijft `ES2017` — allebei
+  onafhankelijk van de compilerwissel, niet meegenomen.
+- **De lokale `main` liep bij aanvang 10 commits achter op `origin/main`** (sprint 3.2a +
+  health-endpoint) en 5 vooruit. Deze migratie is gemeten op de lokale boom; na het samenvoegen
+  moeten `tsc --noEmit` en `next build` opnieuw langs de code uit die 10 commits.

@@ -11,12 +11,21 @@ Lees `docs/BUILD-PLAN.md` vóór je iets bouwt; achtergrond in `docs/lumenlogic-
 5. Elke zoekactie/match/offerte wordt gelogd in de events-tabel.
 
 ## Stack & commando's
-Next.js 16 (App Router, RSC) · TypeScript · Drizzle + Neon · Better Auth (magic link →
+Next.js 16 (App Router, RSC) · TypeScript 7 (native) · Drizzle + Neon · Better Auth (magic link →
 serverconsole) · Tailwind 4 + shadcn/ui · Bun · Vercel.
 - `bun dev` — dev-server
+- `bun run typecheck` — `tsc --noEmit` (hele repo in ±1 s)
 - `bun vitest run` — tests incl. screenshots (PNG's naast de testfile — bekijk ze!)
 - `bunx drizzle-kit generate` / `migrate` — schema-migraties
 - `bun run import` — brondata (`data/source/*.csv`) → database
+
+⚠️ **TypeScript 7 levert géén JavaScript-API meer** (`lib/typescript.js` is weg, komt terug in
+7.1). Twee dingen hangen daaraan en zijn geen toeval:
+- `experimental.useTypeScriptCli: true` in `next.config.ts` — anders denkt `next build` dat
+  TypeScript ontbreekt en installeert het ongevraagd een tweede packagemanager erbij.
+- `scripts/link-typescript6.mjs` (postinstall) geeft typescript-eslint + ts-api-utils de oude API
+  uit `@typescript/typescript6`. Zonder die symlink crasht `bun run lint` vóór de eerste regel.
+Beide mogen weg zodra typescript-eslint de 7.1-API ondersteunt; zie `HANDOVER.md`.
 
 Magic link ophalen (fase zonder mailprovider) — lokaal staat hij in de `bun dev`-terminal,
 op de deploy in de Vercel-logs:
