@@ -1,7 +1,7 @@
 // Import-voorstel: bevestigen maakt alléén spec_lines van de aangevinkte rows (OCR staat
 // standaard uit), draait de matcher erop, en zet de run op 'bevestigd'. De niet-aangevinkte
 // rij mag géén spec-regel worden — anders wordt er stilzwijgend iets geïmporteerd.
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
 import { createDossier, getSpecLines } from "@/lib/repo/dossiers";
 import {
@@ -13,6 +13,25 @@ import {
 import type { ImportRow } from "@/db/schema";
 import { STATUS } from "@/components/dossier/status";
 
+// A9: één regelbare crash in de matcher-lus, verder de échte matcher. Zolang
+// `crashOpAanroep` null is gedraagt deze module zich exact als het origineel, zodat de
+// tests hieronder hun echte statussen houden.
+const harnas = vi.hoisted(() => ({ crashOpAanroep: null as number | null, aanroepen: 0 }));
+vi.mock("@/lib/repo/matching", async (importOriginal) => {
+  const echt = await importOriginal<typeof import("@/lib/repo/matching")>();
+  return {
+    ...echt,
+    runMatcher: async (...args: Parameters<typeof echt.runMatcher>) => {
+      harnas.aanroepen++;
+      if (harnas.crashOpAanroep === harnas.aanroepen) {
+        // exact de fout die engine.ts zelf documenteert (:371-374)
+        throw new Error("invalid input syntax for type integer");
+      }
+      return echt.runMatcher(...args);
+    },
+  };
+});
+
 test("bevestigen maakt alleen de aangevinkte rows tot spec_lines + matcht ze", async () => {
   const db = await createTestDb();
   // een merk in de catalogus zodat de matcher een echte status kan zetten
@@ -22,7 +41,7 @@ test("bevestigen maakt alleen de aangevinkte rows tot spec_lines + matcht ze", a
     price: "310.00",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Ziekenhuis Noord" });
+  const dossier = await createDossier(db, { orgId: null, name: "Ziekenhuis Noord" });
 
   const rows: ImportRow[] = [
     {
@@ -100,7 +119,7 @@ test("recordPdfImport: run 'bevestigd' mét rawMarkdown, regels gematcht + gekop
     price: "310.00",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Museum West" });
+  const dossier = await createDossier(db, { orgId: null, name: "Museum West" });
 
   const markdown = "## Pagina 1\n\nLp301 XAL SASSO 100 3000K 20";
   const { run, created } = await recordPdfImport(db, {
@@ -142,7 +161,7 @@ test("recordPdfImport: run 'bevestigd' mét rawMarkdown, regels gematcht + gekop
 
 test("recordPdfImport: geen tekstlaag → run zonder regels, notitie als controlespoor", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Beeld-PDF" });
+  const dossier = await createDossier(db, { orgId: null, name: "Beeld-PDF" });
   const { run, created } = await recordPdfImport(db, {
     dossierId: dossier.id,
     filename: "scan.pdf",
@@ -158,7 +177,7 @@ test("recordPdfImport: geen tekstlaag → run zonder regels, notitie als control
 
 test("annuleren/re-run: een al bevestigde run voegt niets extra toe (idempotent)", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Kantoor Zuid" });
+  const dossier = await createDossier(db, { orgId: null, name: "Kantoor Zuid" });
   const rows: ImportRow[] = [
     { fixtureCode: "A1", quantity: 1, brandText: "X", productText: "y", source: "csv", checked: true },
   ];
@@ -173,4 +192,37 @@ test("annuleren/re-run: een al bevestigde run voegt niets extra toe (idempotent)
   expect(second.created).toHaveLength(0);
   const lines = await getSpecLines(db, dossier.id);
   expect(lines).toHaveLength(1);
+});
+
+// A9 (reviewzwerm 2.5a, bewezen door de weerlegger): de idempotentietest hierboven dekt
+// alleen een eerste aanroep die sláágde. De echte toestand is de halve mislukking: de
+// regels staan er, de matcher klapt, de run blijft op 'voorstel' → tweede klik op
+// Bevestigen verdubbelt het dossier.
+test("A9: crasht de matcher halverwege, dan blijft het bij één set regels (geen duplicaten)", async () => {
+  const db = await createTestDb();
+  const dossier = await createDossier(db, { orgId: null, name: "Halve import" });
+  const rows: ImportRow[] = [
+    { fixtureCode: "A1", quantity: 10, brandText: "X", productText: "y", source: "csv", checked: true },
+    { fixtureCode: "A2", quantity: 4, brandText: "X", productText: "y", source: "csv", checked: true },
+    { fixtureCode: "A3", quantity: 6, brandText: "X", productText: "y", source: "csv", checked: true },
+  ];
+  const run = await createImportRun(db, { dossierId: dossier.id, source: "csv", rows });
+
+  harnas.aanroepen = 0;
+  harnas.crashOpAanroep = 2; // regel 2 van 3
+  await expect(confirmImportRun(db, run.id, [0, 1, 2])).rejects.toThrow(
+    /invalid input syntax/,
+  );
+  harnas.crashOpAanroep = null;
+
+  // de regels stáán er — dat was en blijft zo, er is geen transactie om op terug te vallen
+  expect(await getSpecLines(db, dossier.id)).toHaveLength(3);
+  // …maar de run is bevestigd, dus de poort staat dicht (vóór de fix: 'voorstel')
+  expect((await getImportRun(db, run.id))?.status).toBe("bevestigd");
+
+  // de gebruiker klikt nogmaals op Bevestigen
+  const tweede = await confirmImportRun(db, run.id, [0, 1, 2]);
+  expect(tweede.created).toHaveLength(0);
+  // vóór de fix stonden hier 6 regels: verdubbelde aantallen op het klantstuk
+  expect(await getSpecLines(db, dossier.id)).toHaveLength(3);
 });

@@ -16,19 +16,23 @@ import { brands } from "@/db/schema";
 import { TemplateProposal } from "@/components/data/template-proposal";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { getTemplateReturn } from "@/lib/repo/template-return";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   approveTemplateProposalAction,
   rejectTemplateProposalAction,
 } from "../../upload-actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function TemplateVoorstelPage({
   params,
 }: {
   params: Promise<{ brandId: string; uploadId: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations/[brandId]/upload/[uploadId]");
   const { brandId, uploadId } = await params;
+  // Beide params zijn uuid-kolommen (brands.id, brand_uploads.id) en beide gaan in
+  // dezelfde Promise.all — één kapotte van de twee gooit dus de hele render om.
+  requireUuid(brandId, uploadId);
 
   const [[brand], retour] = await Promise.all([
     db.select().from(brands).where(eq(brands.id, brandId)).limit(1),
@@ -67,7 +71,7 @@ export default async function TemplateVoorstelPage({
   // (zie besluit 9 over het /admin/imports-gat).
   if (upload.status !== "staging") {
     return (
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
+      <main className="mx-auto w-full max-w-7xl px-6 py-8">
         {terug}
         <h1 className="mb-2 text-2xl font-semibold tracking-tight">
           Template proposal
@@ -98,7 +102,7 @@ export default async function TemplateVoorstelPage({
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       {terug}
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">

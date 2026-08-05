@@ -15,7 +15,9 @@
 import { asc, eq } from "drizzle-orm";
 import { quotes, xisExports } from "@/db/schema";
 import type { AppDb } from "./db";
+import { todayIso, unitPriceOf } from "./day-price";
 import { getDossier, getSpecLines } from "./dossiers";
+import type { DossierScope } from "./toegang";
 import { logEvent } from "./events";
 
 export type XisExport = typeof xisExports.$inferSelect;
@@ -36,7 +38,7 @@ export type XisLine = {
   zone: string | null;
   product_ref: string | null; // XIS-artikelcode (A1); null als het product nog niet in XIS staat
   product_name: string | null;
-  unit_price_excl_vat: number | null; // manualPrice ?? bruto catalogusprijs
+  unit_price_excl_vat: number | null; // de prijs die I-04 kiest (lib/repo/day-price.ts)
 };
 
 export type XisPayload = {
@@ -66,9 +68,10 @@ function classify(line: JoinedSpecLine): XisLineKind {
 // Bouwt de volledige payload voor één dossier, in aanvraagvolgorde.
 export async function buildXisPayload(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
 ): Promise<XisPayload> {
-  const dossier = await getDossier(db, dossierId);
+  const dossier = await getDossier(db, scope, dossierId);
   if (!dossier) throw new Error(`dossier ${dossierId} not found`);
 
   // getSpecLines sorteert al op sort_order (dan createdAt) — die volgorde houden we exact aan.
@@ -83,10 +86,18 @@ export async function buildXisPayload(
     .orderBy(asc(quotes.createdAt))
     .limit(1);
 
+  // ÉÉN KLOK VOOR DE HELE EXPORT (zelfde regel als in generateQuote en getEstimateData).
+  // Deze payload wordt als één bestand weggeschreven en in Lynx als één waarheid gelezen;
+  // hij mag niet half op de ene en half op de volgende dag geprijsd zijn omdat de export
+  // toevallig over middernacht UTC heen liep.
+  const vandaag = todayIso();
+
   const lines: XisLine[] = specLines.map((l) => {
     const kind = classify(l);
     const isProduct = kind !== "tekstregel";
-    const price = l.manualPrice ?? l.matchedPrice; // I-04: dagprijs wint van catalogusprijs
+    // I-04 + A7: dagprijs wint van catalogusprijs tenzij hij verlopen is — één bron
+    // (lib/repo/day-price.ts), en één kloklezing voor alle regels.
+    const { unitPrice: price } = unitPriceOf(l, vandaag);
     const reqSummary = [l.brandText, l.productText].filter(Boolean).join(" ");
     return {
       sort_order: l.sortOrder,
@@ -119,6 +130,7 @@ export async function buildXisPayload(
 // nog-aan-te-maken producten gaan er mee?
 export async function preflightSummary(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
 ): Promise<{
   productLines: number;
@@ -126,7 +138,7 @@ export async function preflightSummary(
   newProducts: number;
   total: number;
 }> {
-  const { lines } = await buildXisPayload(db, dossierId);
+  const { lines } = await buildXisPayload(db, scope, dossierId);
   let productLines = 0;
   let textLines = 0;
   let newProducts = 0;
@@ -142,6 +154,7 @@ export async function preflightSummary(
 // dan geven we die terug zonder een tweede rij of dubbele statuswijziging.
 export async function createXisExport(
   db: AppDb,
+  scope: DossierScope,
   input: {
     dossierId: string;
     actor?: string;
@@ -156,7 +169,7 @@ export async function createXisExport(
     .limit(1);
   if (existing) return { created: false, export: existing };
 
-  const payload = await buildXisPayload(db, input.dossierId);
+  const payload = await buildXisPayload(db, scope, input.dossierId);
   const [row] = await db
     .insert(xisExports)
     .values({

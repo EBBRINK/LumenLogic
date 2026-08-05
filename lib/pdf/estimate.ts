@@ -18,10 +18,15 @@ import { formatEur } from "@/lib/format";
 import {
   countedLineTotal,
   countsInTotal,
+  dayPriceExpiredNote,
   notableDeviations,
+  pmSummary,
   requestedText,
+  ESTIMATE_DISCLAIMER,
+  PM_STATUSES,
   type EstimateData,
   type EstimateLine,
+  type PmStatus,
 } from "@/lib/repo/estimate";
 
 // ── Layout-constanten (A4 staand, punten) ────────────────────────────────────
@@ -46,14 +51,14 @@ const MUTED = rgb(0.45, 0.47, 0.51);
 const LINE = rgb(0.84, 0.85, 0.87);
 
 // Statuskleuren als rustige inkttinten (badge-taal overal gelijk, ook op papier).
-const STATUS_COLOR: Record<MatchStatus, RGB> = {
-  open: MUTED,
-  groen: rgb(0.02, 0.55, 0.38),
-  geel: rgb(0.75, 0.51, 0.05),
-  blauw: rgb(0.04, 0.51, 0.72),
-  rood: rgb(0.82, 0.26, 0.35),
-  paars: rgb(0.53, 0.36, 0.83),
-};
+// Sprint 2.0b: de waarden stonden hier als losse kopie naast die van het scherm,
+// waardoor de belofte "één bron van waarheid" in status.ts alleen voor het scherm
+// gold. Ze staan nu in STATUS[...].print — dezelfde floats, ongewijzigd. Het zijn
+// bewust dónkerdere tinten dan de schermkleuren (papier heeft geen backlight), dus
+// gelijktrekken is niet de bedoeling; op één plek zetten wel.
+const STATUS_COLOR: Record<MatchStatus, RGB> = Object.fromEntries(
+  (Object.keys(STATUS) as MatchStatus[]).map((s) => [s, rgb(...STATUS[s].print)]),
+) as Record<MatchStatus, RGB>;
 
 // pdf-lib's StandardFonts kunnen alleen WinAnsi aan. Onbekende tekens worden "?" in
 // plaats van een crash; de nl-NL-valutaspaties (NBSP/narrow) worden gewone spaties.
@@ -79,7 +84,13 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
   const { header, computed } = data;
   const { totals, pm, groups, hasZones } = computed;
 
-  doc.setTitle(`Estimate ${computed.quoteNumberDisplay} — ${data.dossier.name}`);
+  // Zonder nummer geen nummer in de titel: "Estimate Number assigned on sending — X"
+  // leest als onzin (UX-audit bug #6). Het kopveld zégt het wel, daar hoort het.
+  doc.setTitle(
+    computed.quoteNumberAssigned
+      ? `Estimate ${computed.quoteNumberDisplay} — ${data.dossier.name}`
+      : `Estimate — ${data.dossier.name}`,
+  );
 
   let page: PDFPage;
   let y = 0;
@@ -229,10 +240,16 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
 
       for (const { line } of group.lines) {
         const notable = notableDeviations(line);
+        // A7: en het merkteken "verlopen dagprijs" deelt diezelfde subregel — het staat
+        // vooraan, want het gaat over het BEDRAG dat ernaast staat.
+        const expiredNote = dayPriceExpiredNote(line);
         // B3: het auto-door-label deelt de subregel met de afwijkingsnotitie.
         // Stap 7: idem voor het merkteken "handmatig gekozen".
         const hasSubLine =
-          notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
+          notable.length > 0 ||
+          !!line.autoAccepted ||
+          !!line.manuallyChosen ||
+          expiredNote != null;
         const rowH = 13 + (hasSubLine ? 10 : 0);
         need(rowH);
 
@@ -273,6 +290,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         // groen. B3: het label "automatisch geaccepteerde bijna-match" erachteraan.
         if (hasSubLine) {
           const parts: string[] = [];
+          if (expiredNote) parts.push(expiredNote); // A7 — vooraan: het gaat over het bedrag
           if (notable.length > 0)
             parts.push(`deviation: ${notable.map((d) => d.note).join(" · ")}`);
           if (line.autoAccepted) parts.push("automatically accepted near-match");
@@ -318,19 +336,22 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
     text("Combined (green + yellow)", labelX, { font: bold, size: 9.5 });
     textRight(eur(totals.samen), COL.totalRight, { font: bold, size: 9.5 });
     y -= 13;
+    // Verantwoordingsregel: élke niet-tellende status die er is, uit één bron
+    // (pmSummary) die het scherm óók afdrukt. Stond hier eerst met de hand als
+    // "blue · red · purple", waardoor een dossier van alleen open regels pm.total 0
+    // had en deze regel compleet verdween.
     if (pm.total > 0) {
-      textRight(
-        `Shown, not totaled (blue ${pm.blauw} · red ${pm.rood} · purple ${pm.paars}) — p.m.`,
-        COL.totalRight,
-        { size: 7.5, color: MUTED },
-      );
+      textRight(`Shown, not totaled (${pmSummary(pm)}) — p.m.`, COL.totalRight, {
+        size: 7.5,
+        color: MUTED,
+      });
       y -= 12;
     }
   }
 
   // ── p.m.-sectie: open punten & acties (niets wordt stilzwijgend weggelaten) ──
-  const { blauwLines, roodLines, paarsLines, brandFreq } = computed;
-  if (blauwLines.length > 0 || roodLines.length > 0 || paarsLines.length > 0) {
+  const { pmLines, pmByStatus, brandFreq } = computed;
+  if (pmLines.length > 0) {
     need(30);
     y -= 8;
     text("Open items & actions (p.m.)", MARGIN, { font: bold, size: 9.5 });
@@ -346,22 +367,19 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
       );
       y -= 12;
     };
-    for (const l of blauwLines) {
-      pmItem(
-        l,
-        `load brand ${(l.brandText ?? "").trim() || "unknown"} (us)`,
-        STATUS_COLOR.blauw,
-      );
-    }
-    for (const l of roodLines) {
-      pmItem(l, "back to customer (brand known, this product not)", STATUS_COLOR.rood);
-    }
-    for (const l of paarsLines) {
-      pmItem(
-        l,
+    // Eén eerlijke zin per p.m.-status. Exhaustief getypeerd (Record<PmStatus, …>):
+    // komt er een status bij, dan weigert de compiler te bouwen tot hij hier een tekst
+    // heeft — in plaats van stilzwijgend als kale "p.m." in de kolom te belanden.
+    const pmSentence: Record<PmStatus, (l: EstimateLine) => string> = {
+      blauw: (l) => `load brand ${(l.brandText ?? "").trim() || "unknown"} (us)`,
+      rood: () => "back to customer (brand known, this product not)",
+      paars: (l) =>
         `outside assortment${requestedText(l) ? ` — ${requestedText(l)}` : ""} (reported explicitly, p.m.)`,
-        STATUS_COLOR.paars,
-      );
+      open: (l) =>
+        `not matched yet${requestedText(l) ? ` — ${requestedText(l)}` : ""} (no product chosen)`,
+    };
+    for (const s of PM_STATUSES) {
+      for (const l of pmByStatus[s]) pmItem(l, pmSentence[s](l), STATUS_COLOR[s]);
     }
 
     if (brandFreq.length > 0) {
@@ -377,11 +395,11 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
     }
   }
 
-  // ── Voettekst (zelfde uitleg als op het scherm) ──────────────────────────────
-  const disclaimer =
-    "Gross prices excl. VAT from valid price lists. Only green and yellow count; " +
-    "blue, red and purple are shown as p.m. — displayed, not totaled. Request order is preserved.";
-  const discLines = wrap(disclaimer, CONTENT_W, regular, 7.5);
+  // ── Voettekst (letterlijk dezelfde string als op het scherm) ─────────────────
+  // Uit lib/repo/estimate.ts, opgebouwd uit de afgeleide statuslijsten: de zin noemt
+  // élke niet-tellende status. De handgeschreven versie hier zei "blue, red and purple"
+  // en verzweeg daarmee dat ook open-regels als p.m. worden afgedrukt.
+  const discLines = wrap(ESTIMATE_DISCLAIMER, CONTENT_W, regular, 7.5);
   need(10 + discLines.length * 10);
   y -= 8;
   for (const l of discLines) {
@@ -400,7 +418,11 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
       font: regular,
       color: MUTED,
     });
-    const brand = clean(`Brink Licht · Estimate ${computed.quoteNumberDisplay}`);
+    const brand = clean(
+      computed.quoteNumberAssigned
+        ? `Brink Licht · Estimate ${computed.quoteNumberDisplay}`
+        : "Brink Licht · Estimate",
+    );
     p.drawText(brand, {
       x: MARGIN,
       y: MARGIN - 18,

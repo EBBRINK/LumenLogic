@@ -6,6 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // Wat een merk van zijn eigen data ziet (§3.16): de opgenomen producten met hun specs.
 // Bewust GEEN prijs en GEEN ranking — dit is een spiegel van de techniek, niet een
@@ -44,9 +45,11 @@ export function BrandDataView({
         technical mirror.
       </p>
       {products.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-          No products of this brand recorded yet.
-        </p>
+        // Merkportaal-inzage: producten komen uit de import, niet uit dit scherm.
+        <EmptyState
+          title="No products of this brand recorded yet."
+          action={null}
+        />
       ) : (
         <Table>
           <TableHeader>

@@ -70,6 +70,20 @@ const incomplete: RegelCandidate[] = [
     deviations: [
       { field: "cri", requested: 90, delivered: null, verdict: "onbekend" },
       { field: "ip", requested: "IP44", delivered: null, verdict: "onbekend" },
+      // UX-audit 30 jul (bug #8): dit zijn de twee velden waarvan de camelCase-sleutel
+      // letterlijk op het scherm stond. Ze horen in élke fixture die de pillen rendert.
+      {
+        field: "beamAngle",
+        requested: 24,
+        delivered: null,
+        verdict: "onbekend",
+      },
+      {
+        field: "dimmable",
+        requested: "DALI",
+        delivered: null,
+        verdict: "onbekend",
+      },
     ],
   },
 ];
@@ -78,6 +92,15 @@ const deviations: Deviation[] = [
   { field: "kelvin", requested: 2700, delivered: 2700, verdict: "groen", note: "exact" },
   { field: "straalhoek", requested: 12, delivered: 13, verdict: "geel", note: "1° breder" },
   { field: "ip", requested: "IP44", delivered: null, verdict: "onbekend" },
+  // Idem voor de transparantietabel: de Field-kolom toonde `beamAngle`, en de Verdict-cel
+  // zei twee keer "no data" (badge + note).
+  {
+    field: "beamAngle",
+    requested: 24,
+    delivered: null,
+    verdict: "onbekend",
+    note: "no data for beam angle",
+  },
 ];
 
 function Screen({ children }: { children: React.ReactNode }) {
@@ -124,6 +147,17 @@ const screens = {
   "regel-afwijkingen": deviationScreen,
 } as const;
 
+// Ankerassertie per scherm: de <h3> in de wrappers hierboven staat in dít bestand en
+// bewijst dus niets — deze twee teksten komen uit MatchCandidates resp. DeviationTable.
+// Het anker moet de INHOUD meten, niet het omhulsel: met `CandidateRow → null` (alle
+// kandidaatkaarten weg, de twee lijstkoppen blijven staan) bleven deze vier tests groen op
+// de kop "Provably compliant" — gemeten. Nu de naam van de eerste kandidaat, die alleen uit
+// CandidateRow komt.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  "regel-kandidaten": "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K", // kandidaatkaart
+  "regel-afwijkingen": "1° breder", // note van de gele afwijkingsrij
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -131,7 +165,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
@@ -160,26 +196,115 @@ test("MatchCandidates: prijzen worden getoond (nooit gesorteerd)", async () => {
   await expect.element(page.getByText("226,00")).toBeInTheDocument();
 });
 
-test("MatchCandidates: onvolledige kandidaat toont 'geen data' per onbekend veld", async () => {
+// UX-audit 30 jul (item 3): de prijs stond rechtsboven als zwaarste element van de kaart,
+// terwijl van de match zélf niets zichtbaar was. Deze test pint de omkering vast: de prijs
+// mag niet groter of vetter zijn dan de match-onderbouwing.
+test("MatchCandidates: prijs is niet zwaarder dan de match-onderbouwing", async () => {
   await renderServer(candidatesScreen);
-  await expect.element(page.getByText("cri: no data")).toBeInTheDocument();
-  await expect.element(page.getByText("ip: no data")).toBeInTheDocument();
+  // Eerst wachten tot de render geflusht is; .element() leest synchroon.
+  await expect
+    .element(page.getByText("1 of 1 requested fields within margin"))
+    .toBeInTheDocument();
+  const samenvatting = page
+    .getByText("1 of 1 requested fields within margin")
+    .element();
+  const prijs = page.getByText("310,00").element();
+  const px = (el: Element) => parseFloat(getComputedStyle(el).fontSize);
+  const gewicht = (el: Element) => parseInt(getComputedStyle(el).fontWeight, 10);
+  expect(px(prijs)).toBeLessThanOrEqual(px(samenvatting));
+  expect(gewicht(prijs)).toBeLessThan(gewicht(samenvatting));
 });
 
-test("MatchCandidates: afrondings-knoppen (rood/blauw/paars) + dagprijs aanwezig", async () => {
+// Het luide element is nu de onderbouwing: wélke velden zijn getoetst en binnen welke
+// marge. Geen verzonnen getal — de engine levert per veld een oordeel, dus dát staat er.
+test("MatchCandidates: elke kaart onderbouwt de match per veld", async () => {
+  await renderServer(candidatesScreen);
+  // Aantoonbare kandidaat p1: één gevraagd veld, exact geleverd.
+  await expect
+    .element(page.getByText("1 of 1 requested fields within margin"))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("Kelvin 2700: exact")).toBeInTheDocument();
+  // Onvolledige kandidaat p3: vier velden, geen enkele bewezen, alle vier zonder data.
+  await expect
+    .element(
+      page.getByText("0 of 4 requested fields within margin · 4 without data"),
+    )
+    .toBeInTheDocument();
+  // Er staat nergens een score-percentage: de matcher produceert er geen.
+  expect(document.body.textContent).not.toMatch(/\d+\s*%/);
+});
+
+// Kandidaat p2 heeft een lege verdicts-lijst. Een lege ruimte zou als instemming lezen;
+// de kaart zegt daarom dat er niets is vastgelegd.
+test("MatchCandidates: zonder oordelen zegt de kaart dát, in plaats van niets", async () => {
   await renderServer(candidatesScreen);
   await expect
-    .element(page.getByRole("button", { name: "Set to Red" }))
+    .element(page.getByText("No field-level verdicts recorded for this candidate."))
+    .toBeInTheDocument();
+});
+
+test("MatchCandidates: onvolledige kandidaat toont 'geen data' per onbekend veld", async () => {
+  await renderServer(candidatesScreen);
+  await expect.element(page.getByText("CRI: no data")).toBeInTheDocument();
+  await expect.element(page.getByText("IP: no data")).toBeInTheDocument();
+});
+
+// UX-audit 30 jul (bug #8): de pillen droegen de ruwe veldsleutel. NB: page.getByText is
+// case-insensitive substring, dus alleen een positieve assert bewijst hier niets over de
+// vorm — de negatieve gaat daarom over de rauwe DOM-tekst.
+test("MatchCandidates: de pillen dragen een leesbaar label, geen code-identifier", async () => {
+  await renderServer(candidatesScreen);
+  await expect
+    .element(page.getByText("beam angle: no data"))
     .toBeInTheDocument();
   await expect
-    .element(page.getByRole("button", { name: "Add to load list" }))
+    .element(page.getByText("dimmability: no data"))
     .toBeInTheDocument();
-  await expect
-    .element(page.getByRole("button", { name: "Set to Purple" }))
-    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("beamAngle");
+  expect(document.body.textContent).not.toContain("dimmable");
+});
+
+// UX-audit 30 jul (item 5): twee van de drie knoppen heetten naar een kleur ("Set to Red",
+// "Set to Purple") en vertelden dus niets over het gevolg. Ze zeggen nu wat er gebeurt.
+// De BADGE ernaast houdt de kleurnaam — dat is O13 (het geprinte `word` moet het kleurwoord
+// blijven, FUNCTIONEEL-ONTWERP §577) en die kant mag niet meebewegen.
+test("MatchCandidates: afrondings-knoppen benoemen het gevolg, badges de kleur", async () => {
+  await renderServer(candidatesScreen);
+  for (const naam of [
+    "Report back to customer",
+    "Add to load list",
+    "Mark as outside assortment",
+  ]) {
+    await expect
+      .element(page.getByRole("button", { name: naam }))
+      .toBeInTheDocument();
+  }
+  // Geen kleurnaam meer op een knop.
+  for (const knop of document.querySelectorAll("button")) {
+    expect(knop.textContent).not.toMatch(/Set to (Red|Purple)/);
+  }
+  // O13 blijft staan: de statusbadges dragen nog steeds hun kleurwoord.
+  for (const woord of ["Red", "Blue", "Purple"]) {
+    await expect
+      .element(page.getByText(woord, { exact: true }))
+      .toBeInTheDocument();
+  }
   await expect
     .element(page.getByText("Spot price on this line", { exact: true }))
     .toBeInTheDocument();
+});
+
+// UX-audit 30 jul (item 12): dit is de enige plek waar de belofte nog hoort te staan —
+// hier valt de status daadwerkelijk te kiezen. De uitleg-flourish in de kop is weg.
+test("MatchCandidates: de 'niets stil weglaten'-belofte staat er precies één keer", async () => {
+  await renderServer(candidatesScreen);
+  await expect
+    .element(page.getByText("Every line keeps a status — nothing is silently omitted."))
+    .toBeInTheDocument();
+  const tekst = document.body.textContent ?? "";
+  expect(tekst.match(/silently omitted/g)).toHaveLength(1);
+  expect(tekst).not.toContain("Resolve it honestly");
+  expect(tekst).not.toContain("Report explicitly, don't omit");
 });
 
 test("MatchCandidates: zonder kandidaten verschijnt de 'draai de matcher'-knop", async () => {
@@ -205,6 +330,45 @@ test("MatchCandidates: zonder kandidaten verschijnt de 'draai de matcher'-knop",
   await expect
     .element(page.getByRole("button", { name: "Run the matcher" }))
     .toBeInTheDocument();
+  // A6: de "draai de matcher"-knop zit ín de lege toestand, niet ernaast.
+  const empty = document.querySelector('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  expect(empty!.querySelector("form")).not.toBeNull();
+});
+
+// A6 (UX-audit 30 jul): één lege kolom gebruikte een eigen "gestreept kadertje" — het
+// derde dialect. Die kolom draagt nu dezelfde lege toestand als de rest.
+test("MatchCandidates: een lege kolom draagt de gedeelde lege toestand", async () => {
+  await renderServer(
+    <Screen>
+      <MatchCandidates
+        dossierId="d1"
+        specLine={{
+          id: "s1",
+          fixtureCode: "Lp301",
+          brandText: "XAL",
+          productText: "SASSO 100",
+        }}
+        provable={provable}
+        incomplete={[]}
+        chooseAction={noopAction}
+        setLineStatusAction={noopAction}
+        setDayPriceAction={noopAction}
+        runMatchAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("No candidates in this list."))
+    .toBeInTheDocument();
+  const empties = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-slot="empty-state"]'),
+  );
+  expect(empties).toHaveLength(1);
+  expect(empties[0].dataset.variant).toBe("framed");
+  await page.screenshot({
+    path: "./regel-kandidaten-lege-kolom.light.desktop.test.png",
+  });
 });
 
 test("DeviationTable: kolommen + een afwijking (gevraagd 12, geleverd 13) zichtbaar", async () => {
@@ -220,6 +384,68 @@ test("DeviationTable: kolommen + een afwijking (gevraagd 12, geleverd 13) zichtb
   await expect.element(page.getByText("13", { exact: true })).toBeInTheDocument();
   // Onbekend veld = eerlijke grijze vlag "geen data", nooit stil weggelaten.
   await expect.element(page.getByText("no data", { exact: true }).first()).toBeInTheDocument();
+});
+
+// UX-audit 30 jul (bug #8) + REPARATIE 30 jul (bevindingen 3 en 7), drie dingen in één rij:
+//  1. de Field-kolom toonde `beamAngle` — nu een leesbaar label;
+//  2. de Field-kolom had daarna vier conventies in vier rijen (`kelvin` · `Straalhoek` ·
+//     `IP` · `beam angle`). Eén conventie: begin-van-de-regel, afkortingen intact;
+//  3. de rij zei drie keer "no data" (grijze Delivered-cel, badge, note). De eerste ronde
+//     haalde alleen de nóte weg, dus het AANGRENZENDE paar — "no data" grijs, pal gevolgd
+//     door "● no data" — bleef staan, en dat was nu juist de klacht.
+test("DeviationTable: de Field-kolom heeft één conventie", async () => {
+  await renderServer(deviationScreen);
+  // Eerst wachten tot de render geflusht is; querySelectorAll leest synchroon.
+  await expect
+    .element(page.getByText("Beam angle", { exact: true }))
+    .toBeInTheDocument();
+  const velden = Array.from(
+    document.querySelectorAll("tbody tr td:first-child"),
+  ).map((td) => td.textContent);
+  expect(velden).toEqual(["Kelvin", "Straalhoek", "IP", "Beam angle"]);
+  expect(document.body.textContent).not.toContain("beamAngle");
+});
+
+test("DeviationTable: 'no data' staat één keer per rij", async () => {
+  await renderServer(deviationScreen);
+  await expect
+    .element(page.getByText("no data", { exact: true }).first())
+    .toBeInTheDocument();
+  // De rijen zonder geleverde waarde (ip, beamAngle) zeggen het via de badge; de
+  // Delivered-cel toont het gewone streepje.
+  for (const rij of Array.from(document.querySelectorAll("tbody tr"))) {
+    const treffers = (rij.textContent ?? "").match(/no data/g) ?? [];
+    expect(treffers.length, rij.textContent ?? "").toBeLessThanOrEqual(1);
+  }
+  expect(document.body.textContent).not.toContain("no data for beam angle");
+  // En de note zit niet meer in een `title`: een tooltip is niet bereikbaar met
+  // toetsenbord of touch, dus dat is geen weergave.
+  expect(
+    document.querySelector('[title="no data for beam angle"]'),
+  ).toBeNull();
+});
+
+// REPARATIE 30 jul, bevinding 7, de andere helft: bij "onbekend" mét een geleverde waarde
+// onderdrukte de eerste ronde de note óók — die rij verloor daarmee haar enige uitleg.
+test("DeviationTable: 'onbekend' mét een waarde houdt zijn uitleg", async () => {
+  await renderServer(
+    <Screen>
+      <DeviationTable
+        deviations={[
+          {
+            field: "ip",
+            requested: "IP44",
+            delivered: "IP20",
+            verdict: "onbekend",
+            note: "brand data incomplete — value not verifiable",
+          },
+        ]}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText(/brand data incomplete/))
+    .toBeInTheDocument();
 });
 
 test("DeviationTable: leeg → eerlijke uitleg i.p.v. niets", async () => {

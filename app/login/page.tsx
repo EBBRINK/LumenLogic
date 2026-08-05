@@ -1,53 +1,41 @@
-"use client";
+// Inloggen. Twee dingen komen hier samen.
+//
+// 1. UX-audit bug #7: deze pagina was een client component zónder sessiecheck, dus een
+//    ingelogde gebruiker kreeg de volledige navbalk én een "Send magic link"-formulier.
+//    Daarom een serverwrapper: is er een sessie, dan valt hier niets te kiezen en gaat de
+//    gebruiker door naar /projects. Bewust getSession() en niet requireSession() — die
+//    laatste redirect juist naar /login en zou hier een lus opleveren. Bewaakt door
+//    app/login/login-gate.test.ts.
+//
+// 2. G27/G32: wachtwoord is sinds sprint 3.1 het hoofdpad, de magic link staat ernáást als
+//    secundair pad — hij verdwijnt pas in deploy 2, ná bewezen wachtwoord-login door Timo
+//    én Eduard (docs/sprint3-1-briefing.md §5 punt 6, correctie in G35). Vóór die tweede
+//    deploy is de magic link nog altijd nodig — ook om /admin te bereiken en de eerste
+//    PIN's aan te maken.
+//
+// Schikking: het wachtwoordformulier staat open en eerst (primaire knop, DESIGN.md §6
+// default-variant: navy vlak, wit label). De magic link staat achter een
+// <details>-onthulling — zelfde patroon als de bestaande CatalogFieldsOverview in
+// components/data/custom-fields-table.tsx. Twee even zware formulieren naast elkaar zou het
+// sobere scherm meteen twee keer zo druk maken; een onthulling houdt één duidelijke
+// hoofdhandeling terwijl het secundaire pad gewoon aanwezig en bereikbaar blijft.
+//
+// De omlijsting (kop + magic-link-onthulling) staat in components/login/login-chrome.tsx,
+// niet hier inline: login.test.tsx importeert dezelfde component, zodat de screenshots
+// altijd exact het verscheepte scherm tonen (golf-2-critic ronde 1).
+import { redirect } from "next/navigation";
+import { LoginChrome } from "@/components/login/login-chrome";
+import { PasswordLoginForm } from "@/components/login/password-login-form";
+import { getSession } from "@/lib/session";
+import { signInAction } from "./actions";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { authClient } from "@/lib/auth-client";
-
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const { error } = await authClient.signIn.magicLink({
-      email,
-      callbackURL: "/projects",
-    });
-    if (error) setError(error.message ?? "Something went wrong");
-    else setSent(true);
-  }
+export default async function LoginPage() {
+  const session = await getSession();
+  if (session) redirect("/projects");
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-6 px-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Lumen Logic</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Spec, calculation and quotation tool — Brink Licht.
-        </p>
-      </div>
-      {sent ? (
-        <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-          If <span className="font-medium">{email}</span> has access, a magic link
-          has been sent. In this phase the link appears in the{" "}
-          <b>server console</b> — open it there.
-        </div>
-      ) : (
-        <form onSubmit={onSubmit} className="flex flex-col gap-3">
-          <Input
-            type="email"
-            required
-            placeholder="you@brink.nl"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Button type="submit">Send magic link</Button>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </form>
-      )}
-    </main>
+    <LoginChrome>
+      <PasswordLoginForm signInAction={signInAction} />
+    </LoginChrome>
   );
 }

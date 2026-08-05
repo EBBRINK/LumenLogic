@@ -9,6 +9,7 @@ import { db } from "@/db/client";
 import { projectDossiers, specLines } from "@/db/schema";
 import { generateQuote } from "@/lib/repo/dossiers";
 import { chooseCandidate, runMatcher } from "@/lib/repo/matching";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 const url = process.env.DATABASE_URL!;
 const sql = neon(url);
@@ -95,7 +96,7 @@ async function main() {
         fromList: "aantoonbaar",
         actor: "scenario@brink",
       });
-      await generateQuote(db, dossier.id, "scenario@brink");
+      await generateQuote(db, ALLE_DOSSIERS, dossier.id, "scenario@brink");
       console.log("✓ Lp301 herkoppeld aan XAL SASSO 100 SQ SP CEIL + offerte herzien");
     }
     console.log(`Dossier-id: ${dossier.id}`);

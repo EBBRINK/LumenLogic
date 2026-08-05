@@ -10,6 +10,7 @@
 //   archief (read-only) — heropenen kan alleen via de status.
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -87,7 +88,7 @@ export function ProjectStatusControls({
             }
             submitStatus(next);
           }}
-          className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+          className={veldClass}
         >
           {PROJECT_STATUS_ORDER.map((s) => (
             <option key={s} value={s}>
@@ -110,7 +111,7 @@ export function ProjectStatusControls({
             const next = e.target.value as XisPhase;
             if (next !== xisPhase) submitXisPhase(next);
           }}
-          className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          className={veldClass}
         >
           {XIS_PHASE_ORDER.map((p) => (
             <option key={p} value={p}>

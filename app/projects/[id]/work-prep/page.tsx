@@ -3,11 +3,15 @@ import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { WerkvoorbereiderView } from "@/components/dossier/werkvoorbereider-view";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { WerkvoorbereiderLine } from "@/components/dossier/types";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getEquivalentAlternatives } from "@/lib/repo/equivalence";
-import { getActor, requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
+import { getActor } from "@/lib/session";
 import { generateSubstitutionAction } from "../substitution/actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Werkvoorbereiding-tab (§3.11): value-engineering ná gunning. De dossier-layout levert al
 // de kop + tabs — deze pagina rendert alleen zijn eigen inhoud als fragment.
@@ -16,23 +20,27 @@ export default async function WerkvoorbereidingPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/work-prep");
   const { id } = await params;
-  const dossier = await getDossier(db, id);
+  // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. Deze tab leunde op
+  // de guard in de dossier-layout, maar layout en pagina renderen concurrent: zonder deze
+  // regel is het een race wie er als eerste gooit, en de ruwe cast-fout hieronder wint van
+  // een nette 404. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
 
   // Ijzeren regel 4: value-engineering bestaat alleen ná gunning. In tender: poort dicht.
   // De fase-badge staat al in de dossier-layout; hier alleen een nette melding.
   if (dossier.phase !== "awarded") {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">This tab only exists when awarded</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Alternatives and value engineering only appear once the project is set to
-          “Won”. Default = safe: during the tender phase the tool shows nothing that
-          could jeopardize spec equivalence.
-        </p>
-      </div>
+      // Geen actie: de fase omzetten gebeurt op het dossier zelf, niet hier. Dat is
+      // een bewuste `action={null}` — ijzeren regel 4 wil hier geen uitweg bieden.
+      <EmptyState
+        title="This tab only exists when awarded"
+        description="Alternatives and value engineering only appear once the project is set to “Won”. Default = safe: during the tender phase the tool shows nothing that could jeopardize spec equivalence."
+        action={null}
+      />
     );
   }
 

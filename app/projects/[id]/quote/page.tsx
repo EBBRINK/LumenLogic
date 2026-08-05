@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { QuoteView } from "@/components/dossier/quote-view";
+import { ExternalQuoteView } from "@/components/dossier/quote-view-extern";
 import {
   PrintButton,
   XisPushDialog,
@@ -8,19 +9,24 @@ import {
 } from "@/components/dossier/xis-push-dialog";
 import { Button } from "@/components/ui/button";
 import { getEstimateData } from "@/lib/repo/estimate";
+import { toPricelessEstimate } from "@/lib/repo/estimate-extern";
+import { resolvePrijszicht } from "@/lib/repo/prijszicht";
 import { getXisExports, preflightSummary } from "@/lib/repo/xis";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   generateQuoteAction,
   saveQuoteHeaderAction,
 } from "../../actions";
 import { xisExportAction } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // A-10: kopblok bewerkbaar tot de estimate wordt uitgestuurd (bevroren → op slot).
 function KopblokBewerken({
   dossierId,
   q,
   frozen,
+  openen,
 }: {
   dossierId: string;
   q: {
@@ -34,6 +40,8 @@ function KopblokBewerken({
     validUntil: string | null;
   } | null;
   frozen: boolean;
+  /** Kop nog niet compleet → meteen open; de gebruiker moet hier toch zijn (bug #6). */
+  openen: boolean;
 }) {
   if (!q || frozen) return null;
   const field = (
@@ -53,7 +61,7 @@ function KopblokBewerken({
     </label>
   );
   return (
-    <details className="mb-6 rounded-lg border">
+    <details open={openen} className="mb-6 rounded-lg border">
       <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
         Edit header
       </summary>
@@ -70,7 +78,9 @@ function KopblokBewerken({
           {field("authorEmail", "Author", q.authorEmail)}
         </div>
         <div className="mt-3">
-          <Button type="submit" size="sm">
+          {/* Sub-formulier in een uitklap: het corrigeert kopvelden. De primary van dit
+              scherm is "Generate / Refresh estimate" in de actiebalk. */}
+          <Button type="submit" size="sm" variant="outline">
             Save header
           </Button>
         </div>
@@ -94,14 +104,22 @@ export default async function EstimatePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/quote");
   const { id } = await params;
+  // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
+  // regel gooit getEstimateData de uuid-cast en wint die 500 van de nette 404 van
+  // de layout. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
 
-  const data = await getEstimateData(db, id);
+  const data = await getEstimateData(db, toegangScope(toegang), id);
   if (!data) notFound();
-  const [preflight, exports] = await Promise.all([
-    preflightSummary(db, id),
+  const [preflight, exports, prijszicht] = await Promise.all([
+    preflightSummary(db, toegangScope(toegang), id),
     getXisExports(db, id),
+    // Sprint 3.2b: mag deze gebruiker bedragen zien? Afgeleid uit organizations.type
+    // (G31) via de sessie, en bij twijfel "extern" — default = veilig. Dezelfde functie
+    // die de PDF-route gebruikt, dus scherm en download kunnen niet uit elkaar lopen.
+    resolvePrijszicht(db, toegang.email),
   ]);
   const { dossier, quote: q, header, lines } = data;
 
@@ -114,35 +132,90 @@ export default async function EstimatePage({
       }
     : null;
 
+  // UX-audit bug #6: Print / Download PDF / → To XIS zijn uitgangen naar de klant.
+  // Zolang datum of geldigheid leeg is, is het stuk geen aanbod en horen ze er niet te
+  // staan — afwezig, niet uitgegrijsd (zelfde lijn als BrandDeleteBlock: een dode knop
+  // leert niets en nodigt uit tot klikken). "Generate estimate" blijft wél staan: dát
+  // is de stap die datum én geldigheid invult.
+  //
+  // De poort zelf (outputsAllowed) komt uit computeEstimate en telt de bevriezing mee:
+  // een uitgestuurde offerte IS het klantstuk en gaat nooit op slot. Zonder die
+  // uitzondering haalde deze pagina Print/PDF/XIS weg bij élke bestaande offerte —
+  // en bij een bevroren offerte rendert KopblokBewerken hieronder niets, dus er was
+  // geen weg terug.
+  const frozen = data.frozen;
+  const outputsAllowed = data.computed.outputsAllowed;
+  // Is "Edit header" straks écht in beeld? Exact dezelfde voorwaarde als
+  // KopblokBewerken hieronder — de banner in QuoteView mag alleen naar dat blok
+  // verwijzen als het er staat.
+  const headerEditable = q != null && !frozen;
+
   const actions = (
     <>
       <form action={generateQuoteAction}>
         <input type="hidden" name="dossierId" value={dossier.id} />
-        <Button type="submit" variant="secondary" size="sm">
+        {/* De primary van /projects/[id]/quote (DESIGN.md §6): dit bouwt de estimate op
+            en overschrijft bij "Refresh" een bestaande — het zwaarste gevolg op deze
+            pagina. Stond op het neutrale `secondary`-vlak, dus het lichtste element van
+            het scherm. "Send to XIS" is zwaarder, maar die knop staat ín de dialoog en
+            heeft dáár zijn eigen primary; de trigger op deze pagina opent alleen. */}
+        <Button type="submit" size="sm">
           {q ? "Refresh estimate" : "Generate estimate"}
         </Button>
       </form>
-      <PrintButton />
-      <Button asChild variant="outline" size="sm">
-        <a href={`/projects/${dossier.id}/quote/pdf`} download>
-          Download PDF
-        </a>
-      </Button>
+      {outputsAllowed && (
+        <>
+          <PrintButton />
+          <Button asChild variant="outline" size="sm">
+            <a href={`/projects/${dossier.id}/quote/pdf`} download>
+              Download PDF
+            </a>
+          </Button>
+        </>
+      )}
+      {/* De XIS-dialoog blijft staan óók als de poort dicht is: hij is niet alleen de
+          verzendknop maar ook de plek waar "Already sent — {datum} ({omgeving},
+          {status})" te lezen valt. Dat exportspoor verbergen omdat het kopblok leeg is
+          zou een administratie wissen om een lege datum. Alleen de push zelf gaat op
+          slot — in de dialoog én in xisExportAction (een verborgen knop is geen poort). */}
       <XisPushDialog
         dossierId={dossier.id}
         preflight={preflight}
         existing={existing}
         action={xisExportAction}
+        blockedReason={
+          outputsAllowed
+            ? null
+            : `The quote header is incomplete (${data.computed.missingHeaderFields.join(", ")}). Fill it in before sending to XIS.`
+        }
       />
     </>
   );
+
+  // Twee renderpaden, geen vlag door één component (sprint 3.2b). Het externe pad krijgt
+  // een PricelessEstimate binnen: dat type draagt geen stukprijs, geen regeltotaal en
+  // geen totalenblok, dus er valt niets te verbergen — er is niets.
+  //
+  // Het kopblok-bewerkformulier blijft buiten het externe pad. Niet omdat het bedragen
+  // toont (dat doet het niet) maar omdat het offertevelden schrijft; wie dat mag is
+  // item 3.2a en wordt hier bewust niet uitgebreid.
+  if (prijszicht === "extern") {
+    return (
+      <ExternalQuoteView
+        estimate={toPricelessEstimate(data)}
+        phase={dossier.phase}
+        actions={actions}
+      />
+    );
+  }
 
   return (
     <>
       <KopblokBewerken
         dossierId={dossier.id}
         q={q}
-        frozen={q?.frozenAt != null}
+        frozen={frozen}
+        openen={!outputsAllowed}
       />
       <QuoteView
         dossierName={dossier.name}
@@ -150,6 +223,8 @@ export default async function EstimatePage({
         header={header}
         lines={lines}
         actions={actions}
+        frozen={frozen}
+        headerEditable={headerEditable}
       />
     </>
   );

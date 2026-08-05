@@ -62,11 +62,155 @@ function toNumber(raw: string): number {
 
 // Vermogen: getal (komma/punt-decimaal) direct gevolgd door W of Watt. "17,9W" → 17.9,
 // "24 W" → 24, "12.5Watt" → 12.5. Alleen positieve waarden.
+// ── Vier valse wattages, gevonden door de agent-zwerm op Flos (30 jul) ───────
+// `WATT_RE` is `(\d+(?:[.,]\d+)?)\s*(?:watt|w)\b`, en die `\s*` plus de losse `w` maken hem
+// gulzig: élk getal met ergens daarna een W erachter telt. Vier vormen gaan daardoor mis, alle
+// vier zelf nagemeten met deze parser en alle vier door de zwerm aangewezen:
+//
+//   "UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W"  → 90    de CRI, met een losse W als kleurcode
+//   "EASY KAP 80 W-W RND BLK DWLED ARRAY C95"   → 80    typemaat + kleurcode "W-W" (dim-to-warm)
+//   "EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W"  → 5.3   de lampvoet GX5.3
+//   "CIRCLE OF LIGHT Ø300 LED 12X3W"            → 3     per LED; het armatuur is 36 W
+//
+// Gemeten omvang catalogusbreed op landende voorstellen: 1.442 van 71.883 (2,01 %), waarvan
+// 1.412 de NxM-vorm (TossB 1.103, Wever & Ducré 299) en 30 de andere drie.
+//
+// Let op wat GEEN bug is en dus niet geweerd wordt: "1x10W" is één lichtbron van 10 W en daar
+// is 10 het juiste vermogen. Alleen N ≥ 2 maakt de waarde onvolledig. Mijn eerste telling zei
+// 1.529 omdat hij de 1x-vorm meenam; dat was een meetfout, geen bug.
+//
+// Alle vier worden ZWIJGEND overgeslagen in plaats van gerepareerd. Bij "12X3W" zou 36 te
+// berekenen zijn, maar dan neemt de parser een productbesluit (zijn het 12 lichtbronnen in één
+// armatuur, of een set van 12?) en dat is precies wat de ijzeren regel ontbrekend ≠ fout
+// verbiedt. Zwijgen laat de kolom leeg, en een lege kolom kan een betere bron later nog vullen.
+
+// ── De losse W is bijna nooit een eenheid ───────────────────────────────────
+// Eén regel voor een hele familie, en hij is gemeten voordat hij gebouwd werd. `WATT_RE` staat
+// een spatie toe tussen het getal en de W (`(\d+)\s*(?:watt|w)\b`), en juist die spatie is het
+// probleem: een W die LOS staat is in deze catalogi meestal de kleurcode "wit", niet de eenheid
+// watt. Staat er dan vlak vóór het getal een letter, dan is het getal een TYPECODE:
+//
+//   RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10   → las 16   (lamptype; 12W staat ernaast!)
+//   EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W            → las 5.3  (lampvoet)
+//   GINGER A XL42 W.CANOPY OAK                          → las 42   (typemaat)
+//   LIFESAFE PRO TS 700 IP65 W EM3 NM DA                → las 65   (IP-KLASSE als vermogen)
+//   UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W            → las 90   (CRI)
+//
+// Gemeten catalogusbreed: 140 landende voorstellen, Wever & Ducré 134 · Sylvania 4 · Marset 2.
+// Bij PAR16 is het extra schadelijk: de júiste waarde (`max. 12W`) staat tien tekens verderop in
+// dezelfde naam, dus de verkeerde verdringt een goede.
+//
+// ── Twee dingen die de regel bewust NIET raakt, allebei nagemeten ────────────
+// • `1x10W` (87 gevallen, TossB 84): de letter ervoor is de vermenigvuldigings-x en 10 is dan het
+//   juiste vermogen van één lichtbron. De maal-vorm wordt apart afgehandeld (WATT_PER_BRON).
+// • `F13W`, `F36W`, `Componi200W` (12 gevallen): daar zit de W VAST aan het getal, en dan is hij
+//   wél de eenheid — een T5-buis van 13 W. Vandaar de eis dat de W los staat.
+const WATT_VALS: RegExp[] = [
+  // Een W die met een koppelteken aan letters vastzit is geen eenheid maar het eerste teken van
+  // een samenstelling. Dit was `W-W` (de kleurcode warm-white, "EASY KAP 80 W-W"); sinds 31 jul
+  // dekt hij élk achtervoegsel, want de vorm is dezelfde en de smallere versie liet er één door:
+  //
+  //     CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver  →  maxWattage 407
+  //
+  // Catalogusbreed gemeten (`scripts/meet-valse-watt-vormen.ts`): 1.173 namen dragen `<cijfer>W-`
+  // met letters erachter, en geen ervan is een vermogen. Het zijn er drie soorten: `W-W` (48,
+  // warm-white), XAL's bestelcodes (`UNICO-000 305W-E040-E040`, 1.124) en deze ene CLS-driver.
+  // Eén regel in plaats van een tweede regel ernaast — de vorige les was dat elke extra regex een
+  // gok op één merk is.
+  /\b\d+\s*W-[A-Za-z]/i,
+  // Decimale typemaat plus losse kleurcode: "ODREY SHADE 4.0 W", "ILANE CEILING SURF 2.0 W 2.0m".
+  // Een écht decimaal vermogen schrijft de eenheid vast ("17,9W", "38.4W"), nooit los.
+  /\b\d+\.\d\s+W\b/i,
+];
+
+// Een getal dat DIRECT achter een letter staat en gevolgd wordt door een LOSSE W: typecode.
+// Twee voorwaarden, want elk apart is te grof — zie de meting hierboven.
+const WATT_TYPECODE = /[A-Za-z]\d+(?:[.,]\d+)?\s+W\b/;
+
+// "… incl. driver 4W": het vermogen hóórt bij de meegeleverde driver, niet bij het product.
+// Gemeten: 40 producten, alle Wever & Ducré, en geen enkele draagt daarnaast een eigen
+// wattage — een plafondbasis heeft er ook geen. Deze namen leveren dus terecht niets.
+//
+// Let op het verschil met Kreon's 1.806 namen die "driver incl." zeggen ZONDER getal: die
+// blijven ongemoeid, want daar is geen wattage-span om over te slaan. De volgorde in de tekst
+// verschilt ook — "incl. driver 4W" tegen "driver incl., carrara" — en alleen de eerste vorm
+// zet een vermogen naast het woord.
+const WATT_VAN_DRIVER = /\bincl\.?\s*(?:\d+\s*x\s*)?drivers?\s*$/i;
+// Meerdere lichtbronnen: "12X3W", "2 x 24 W". N ≥ 2, want 1x is gewoon één bron.
+//
+// De tweede vorm kwam uit de vierde zwermronde: "SNEAK CEILING REC 2.0 … 2X6/9W 350/500mA".
+// Daar zit een vermenigvuldiging én een bereik door elkaar, en de eerste regel miste hem omdat
+// hij een W direct achter het getal eist ("2x6" wordt gevolgd door "/9W"). De parser las 9,
+// terwijl het armatuur er twee draagt en dus 18 W is — structureel de helft te laag. Gemeten:
+// 122 producten, alle Wever & Ducré, 340 landende veldvullingen. Bij de 1.0-varianten ("6/9W",
+// zonder vermenigvuldiging) is 9 juist wél correct, en die blijven staan.
+const WATT_PER_BRON =
+  /\b(?:[2-9]|\d{2,})\s*[xX]\s*\d+(?:[.,]\d+)?\s*(?:\/\s*\d+(?:[.,]\d+)?\s*)?W\b/i;
+
+// Vermogen PER METER: "JANE 2000 IP40 LIGHT ROPE 14,4W/M LED 3000K", "ILANE … 15W/m". Het
+// totaal hangt af van de lengte — een strip van 5 m trekt 50 W bij 10 W/m — dus dit is geen
+// armatuurvermogen. Gemeten: 147 producten (Kreon 113, W&D 20, XAL 14), 185 landende
+// veldvullingen. Vaste-lengtevarianten van hetzelfde profiel dragen wél een totaal ("30W bij
+// 2 m") en die blijven staan.
+const WATT_PER_METER = /\d+(?:[.,]\d+)?\s*W\s*\/\s*m\b/i;
+
+// Is de match op deze plek een TYPECODE of TYPEMAAT in plaats van een vermogen?
+function isValseWatt(name: string, index: number, treffer: string): boolean {
+  const kop = name.slice(0, index);
+  // "12X3W": de vermenigvuldigings-x — daar is het getal het vermogen van één lichtbron.
+  if (/\d[xX*]$/.test(kop)) return false;
+  // "PAR16 W", "GX5.3 W", "IP65 W": een letter direct vóór het getal én een LOSSE W erna.
+  if (/[A-Za-z]$/.test(kop) && /\d\s+W/i.test(treffer)) return true;
+  // "… incl. driver 4W": de span staat direct achter het woord driver.
+  if (WATT_VAN_DRIVER.test(kop.slice(-24))) return true;
+  // "ODREY SHADE 4.0 W", "80 W-W": decimale typemaat of kleurcode, altijd met een losse W.
+  // Bewust een KLEIN venster achter de match: "80 W" alleen laat de "-W" niet zien, maar de
+  // hele reststring zou een látere match ten onrechte veroordelen op tekst die verderop staat.
+  // Drie tekens is genoeg voor "-W" en te weinig om een volgende typemaat binnen te halen.
+  const venster = name.slice(index, index + treffer.length + 3);
+  if (WATT_VALS.some((re) => re.test(venster))) return true;
+  return false;
+}
+
+// De wattage-kandidaten van een naam, ná aftrek van typecodes en typematen. ÉÉN bron van
+// waarheid: `parseWatt` neemt hier de eerste uit, en `verdenking.ts` telt hier hoeveel er zijn.
+//
+// Waarom dat één functie moet zijn (30 jul, tweede correctie): eerst sloeg de parser de valse
+// span over terwijl `verdenkingen()` hem nog als kandidaat telde. Gevolg: "… 1.1 B ROUND incl.
+// driver 4W" landde en "… 1.1 W ROUND incl. driver 4W" werd geweerd op `meerdere-waarden` —
+// zelfde armatuur, andere kleurcode, andere uitkomst. Dat is exact het Muuto-bezwaar waarmee
+// deze opdracht begon, alleen een laag opgeschoven: niet meer in de parser maar in de poort.
+// Twee lagen die onafhankelijk over hetzelfde teken oordelen, geven vroeg of laat tegengestelde
+// antwoorden op twee namen die hetzelfde product zijn.
+export function wattKandidaten(name: string): string[] {
+  if (!name || WATT_PER_BRON.test(name) || WATT_PER_METER.test(name)) return [];
+  const globaal = new RegExp(WATT_RE.source, "gi");
+  const uit: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = globaal.exec(name)) !== null) {
+    if (isValseWatt(name, m.index, m[0])) continue;
+    uit.push(m[1]);
+  }
+  return uit;
+}
+
 function parseWatt(name: string): number | undefined {
-  const raw = firstCapture(name, WATT_RE);
-  if (raw == null) return undefined;
-  const w = toNumber(raw);
-  return w > 0 ? w : undefined;
+  if (WATT_PER_BRON.test(name) || WATT_PER_METER.test(name)) return undefined;
+
+  // ── Per SPAN beoordelen, niet per naam (30 jul, tweede versie) ─────────────
+  // De eerste versie wees de hele naam af zodra er ergens een typemaat-W in stond. Gemeten
+  // gevolg: 16 namen verloren een AANWEZIGE juiste waarde, zoals
+  // "SIRRO SPOT INSET 1.0 W max. 12W" — de 1.0 is de typemaat, maar max. 12W staat er gewoon.
+  //
+  // Dat is precies de willekeur die dit hele spoor moest wegnemen: twee producten uit dezelfde
+  // familie kregen een verschillende uitkomst omdat de kleurcode toevallig W was
+  // ("… 1.1 B ROUND incl. driver 4W" gaf 4, "… 1.1 W ROUND incl. driver 4W" gaf niets).
+  // Nu slaan we de valse span over en kijken naar de volgende kandidaat.
+  for (const raw of wattKandidaten(name)) {
+    const w = toNumber(raw);
+    if (w > 0) return w;
+  }
+  return undefined;
 }
 
 // Kleurtemperatuur: 3-5 cijfers gevolgd door K/Kelvin. Alleen het reële LED-bereik
@@ -115,9 +259,35 @@ function parseLumen(name: string): number | undefined {
   return lm > 0 ? lm : undefined;
 }
 
+// Dimbaarheid is het enige veld met een ONTKENNING die de parser zelf niet zag: "NON DIM" bevat
+// het token DIM en `/\bDIM\b/` matcht dat — het streepje én de spatie zijn een woordgrens. De
+// parser zei dan "dimbaar" terwijl de naam het tegendeel zegt.
+//
+// Gemeten op de branch (scripts/meet-nondim.ts, scripts/meet-nondim-conflict.ts, 30 jul):
+// 3.635 namen ontkennen dimbaarheid, en 3.164 daarvan zouden op een LEGE kolom landen —
+// XAL 2.810, Wever & Ducré 273, CLS 58, Flos Architectural 33. Het zijn aansluitdozen en
+// plafondkappen: "THROUGH WIRING CONNECTION BOX NON DIM 3-POLE". Geen ontbrekende waarde maar
+// de OMGEKEERDE, en `publishRun` is onomkeerbaar.
+//
+// Waarom dit meer is dan een verrijkingsfout: `judgeDimmable` (lib/matching/tolerances.ts:119)
+// doet substring-matching in BEIDE richtingen na het strippen van niet-alfanumeriek. Een bestek
+// dat "DIM" vraagt krijgt dus GROEN op een niet-dimbaar armatuur; vraagt het DALI, dan geel
+// ("ander protocol") in plaats van `onbekend`. Beide duwen de kandidaat omhoog.
+//
+// De ontkenning onderdrukt het veld VOLLEDIG, ook als er een protocolnaam in staat. Gemeten
+// zijn dat 26 namen, en het zijn stuk voor stuk varianten-opsommingen: "TRACK LINEAR CONNECTOR
+// NON DIM/ZIGBEE/DALI 48VDC" somt op wát er leverbaar is. Voor dít artikel is geen van beide
+// lezingen een feit — dus zwijgen, conform de ijzeren regel ontbrekend ≠ fout.
+//
+// Eén definitie, gedeeld met lib/enrichment/verdenking.ts (die importeert hem hiervandaan, niet
+// andersom — verdenking.ts hangt al aan parser.ts en een cyclus is het niet waard).
+export const NIET_DIMBAAR =
+  /\b(?:NON[\s-]*DIM\w*|NOT[\s-]*DIM\w*|NIET[\s-]*DIMBAAR|EXCL\.?\s*DIM\w*|ZONDER[\s-]*DIM\w*|NO[\s-]*DIM\b)/i;
+
 // Dimbaarheid: herken het protocol. Specifiek vóór generiek (DALI/TRIAC/PHASE/x-10V vóór
 // het kale "DIM"). Retour is de genormaliseerde protocolnaam.
 function parseDimmable(name: string): string | undefined {
+  if (NIET_DIMBAAR.test(name)) return undefined;
   if (/\bDALI\b/i.test(name)) return "DALI";
   if (/\bTRIAC\b/i.test(name)) return "TRIAC";
   if (/\bPHASE\b/i.test(name)) return "PHASE";

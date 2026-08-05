@@ -47,7 +47,7 @@ async function seed() {
 
 test("createSubstitution: veld-voor-veld met bron 'brand-provided' + prijsverschil als tekst", async () => {
   const { db, ref, alt } = await seed();
-  const dossier = await createDossier(db, { name: "Ziekenhuis Noord", xisPhase: "deal_making" });
+  const dossier = await createDossier(db, { orgId: null, name: "Ziekenhuis Noord", xisPhase: "deal_making" });
 
   const row = await createSubstitution(db, {
     dossierId: dossier.id,
@@ -88,7 +88,7 @@ test("createSubstitution: veld-voor-veld met bron 'brand-provided' + prijsversch
 
 test("createSubstitution: duurdere alternatief → 'Additional cost' als tekst (nog steeds geen sortering)", async () => {
   const { db, ref } = await seed();
-  const dossier = await createDossier(db, { name: "Kantoor Zuid", xisPhase: "deal_making" });
+  const dossier = await createDossier(db, { orgId: null, name: "Kantoor Zuid", xisPhase: "deal_making" });
   // Een duurder, gelijkwaardig alternatief.
   const { productId: duur } = await seedBrandProduct(db, {
     brand: "Occhio",
@@ -108,7 +108,7 @@ test("createSubstitution: duurdere alternatief → 'Additional cost' als tekst (
 
 test("getSubstitution + listSubstitutions: identiteit uit de catalogus + samenvatting", async () => {
   const { db, ref, alt } = await seed();
-  const dossier = await createDossier(db, { name: "School West", xisPhase: "deal_making" });
+  const dossier = await createDossier(db, { orgId: null, name: "School West", xisPhase: "deal_making" });
   const row = await createSubstitution(db, {
     dossierId: dossier.id,
     referenceProductId: ref,
@@ -132,7 +132,7 @@ test("getSubstitution + listSubstitutions: identiteit uit de catalogus + samenva
 
 test("createSubstitution: onzichtbaar (verlopen) product geeft geen voorstel", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Verlopen", xisPhase: "deal_making" });
+  const dossier = await createDossier(db, { orgId: null, name: "Verlopen", xisPhase: "deal_making" });
   const { productId: ref } = await seedBrandProduct(db, {
     brand: "XAL",
     name: "SASSO 100 CEIL",
@@ -157,7 +157,7 @@ test("createSubstitution: onzichtbaar (verlopen) product geeft geen voorstel", a
 
 test("systeemAlternatieven: N spots in een zone → voorstel voor één lijnsysteem", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: "Kliniek", xisPhase: "deal_making" });
+  const dossier = await createDossier(db, { orgId: null, name: "Kliniek", xisPhase: "deal_making" });
   await addSpecLines(db, dossier.id, [
     { fixtureCode: "Lp01", quantity: 4, zone: "Gang", productText: "Inbouwspot" },
     { fixtureCode: "Lp02", quantity: 3, zone: "Gang", productText: "LED spot" },

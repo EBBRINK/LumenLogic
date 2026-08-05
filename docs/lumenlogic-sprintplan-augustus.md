@@ -1159,6 +1159,16 @@ week 3, waar de rollen leven.
 ontwerp), en op /analytics staat op echte events wat goed loopt, wat ontbreekt, en waar omzet
 blijft liggen — elk blok toont "nog geen data" waar de data er nog niet is.
 
+**Besluit G21 (Timo, 29 jul) — de IA-as van 2.0a = vier inlog-/rollentypen.** De hoofdnavigatie
+wordt georganiseerd rond vier rollen — **Intern · Intern super admin · User (lichtontwerper/
+architect/aannemer) · Brand** — en "wie wat ziet" is een eerste-klas ontwerpvraag, geen bijzaak.
+Volledige boom + schermmapping in `docs/ia-notitie-2.0a.md` §3–4. **Grens die de sprintmaster
+bewaakt:** 2.0a legt de *structuur* langs deze rollen vast (boom, namen, minder klikken) en zet een
+rol→schermen-kaart klaar; het *afdwingen* (server-side gating, org-scoping) en de rollen/accounts
+zelf blijven **week 3** (besluiten 11 + G18; 3.1 + 3.2a). Er bestaat nu nog geen rol in de db
+(0 orgs, 0 memberships), dus 2.0a bouwt géén auth. Nog met Timo scherp te krijgen: hoe "live" de
+per-rol-nav in week 2 al moet zijn. *Labels/bundeling (knopen 2–6) nog open; Timo tekent op de boom.*
+
 **2.0 — UI/UX-fundament** (~10 u) · **twee fases, ontwerp eerst, dán code** (besluit G20)
 De kern van de week en Timo's hoogste prioriteit. Timo doet het bewust in twee stappen: eerst de
 navigatie- en informatiestructuur helemaal opnieuw, dán de visuele afwerking met een **brand kit
@@ -1180,10 +1190,24 @@ door de sprintmaster dichtgetimmerd.** Wat vaststaat als probleem dat het moet o
 - Werkwijze: een design-/IA-notitie in `docs/` met de nieuwe boom (elk scherm → nieuwe plek),
   waarop Timo tekent, dán bouwen. Screenshots light/dark × mobile/desktop, zelf bekeken.
 
-*2.0b — visuele afwerking (wacht op de brand kit).* Zodra Timo de brand kit levert: het geheel
-"voorbeeldig op papier" zetten en dan doorvoeren — kleur, typografie, componenten. Volgt de
-`frontend-design`-werkwijze (reference-first). **Start niet vóór de kit er is;** tot dan is 2.0b
-alleen voorbereiding.
+*2.0b — visuele afwerking.* Kleur, typografie, componenten op basis van de brand kit
+(`/Users/timowittkamp/Downloads/lumenlogic_brand_kit.md`, geleverd 29 jul).
+
+**Besluit G23 (Timo, 29 jul) — de brand kit is leidend, trouw bouwen.** De sprintmaster meldde dat
+de kit botst met Timo's eigen frontend-design-veto's (Inter-font, card-grids met teal-linkerstreep,
+schaduwen op elke card, drie blauwtinten i.p.v. één accent) én dat de kit zichzelf tegenspreekt
+(v1.0 vs v2.0) en logo-/font-assets mist. Timo kiest bewust: **merk-autoriteit wint, bouw 1:1 op de
+kit** — dit overschrijft voor dit project de smaakregels uit de `frontend-design`-skill (die skill
+staat dat expliciet toe: merk/DESIGN.md > skill). Openstaand: de echte logo-/font-bestanden nog op
+te halen bij Eduard; tot dan gelabelde placeholders, niets van het web halen.
+
+**Besluit G24 (Timo, 29 jul) — 2.0b splitst in papier-nu / bouw-later.** De grill-me + plan-fase
+(DESIGN.md uit de kit + token-plan + plan-review) is puur papier en raakt geen code, dus die draait
+**nu, parallel aan 2.0a**. De **bouw-fase wacht tot 2.0a geland is op origin/main** — 2.0a
+herschrijft juist nav, layout en `globals.css`-tokens; 2.0b-code daar bovenop zou botsen. Twee
+chips: een paper-chip (eindigt op een door Timo getekende DESIGN.md + implementatieplan) en daarna
+een bouw-chip. Dark mode: de app heeft al light/dark, dus de kit-§14-dark-palette wordt toegepast
+(niet "optional future" laten liggen).
 
 **2.1 — Interne stuur-analytics op echte events** (~5 u)
 Uitsluitend de widgets die vandaag écht data hebben; een blok zonder data toont "nog geen data",
@@ -1195,11 +1219,20 @@ nooit een lege of brekende widget.
 - **Niet** de projectfunnel (1 offerte, 16 dossiers → niets te tonen) en **niet** het
   demo-merkaccount (0 organisaties). Die verhuizen naar week 3.
 
-**2.2 — Commerciële analytics: gemiste vraag = gemiste order** (~4 u)
-De winst-kant die Timo vroeg. **Advies (open beslissing, zie onder):** meet wat klanten zoeken dat
-Brink niet kan leveren. Elke zoekopdracht zonder treffer (84 `search`) en elke rode regel (64) is
-een gemiste order — en wijst direct aan welk merk te benaderen of welk product in te kopen. Raakt
-ijzeren regel 2 niet: het gaat over wat ontbreekt, niet over ranking of marge.
+**2.2 — Commerciële analytics: waar kan Brink geld verdienen** (~4 u)
+
+**Besluit G22 (Timo, 29 jul) — 2.2 gaat breder dan de gap-lijst: het is een *opportunity*-signaal.**
+Timo's kader: commerciële analytics = "waar kan Brink licht[-omzet] pakken, welke data willen zij
+zien zodat ze geld kunnen maken?" Zijn scenario: een aannemer maakt een project aan (meerdere
+partijen kijken naar dezelfde tender); producten stromen door naar XIS; iemand loopt op ons
+platform vast → *dan bellen we ze om te helpen*. Marge komt óók ("dit product, zelfde prijs, beter
+voor milieu"), maar apart. **Frictie die de sprintmaster meldt:** dat scenario leunt op
+projectfunnel-events, externe gebruikers en XIS-koppeling die er nu **niet** zijn (gemeten: 1
+offerte, 16 dossiers, 0 orgs; funnel-signaal en externe rollen zijn week 3+). Wél nu meetbaar als
+eerste plak van dat opportunity-beeld: de **vraag-/gap-signalen** — 84 `search`, 64 rode regels,
+blauwe-wachtrij-druk per merk/categorie. **Open (met Timo af te maken):** of 2.2 deze week díe
+eerste plak bouwt, met het funnel-/lead-/XIS-deel als week-3-afhankelijkheid erbij gedocumenteerd.
+Raakt ijzeren regel 2 niet zolang het over ontbrekende vraag gaat, niet over ranking/marge.
 - *Given* de gap-analyse, *then* per merk/categorie: hoe vaak gezocht, hoe vaak niets gevonden, en
   de blauwe-wachtrij-druk — de outreach- én inkoop-werklijst in cijfers.
 
@@ -1209,10 +1242,46 @@ zonder downtime kan, welke env-keys/DNS geraakt worden, volgorde + terugvalstap.
 uitvoeren.
 
 **2.4 — De twee liegende UI's uit sprint 0.1** (~1 u) — *naar voren gehaald uit het oude 2.5.*
-Twee UI's die aantoonbaar onwaarheid tonen: de maandcap-reden is hardgecodeerd
-(`app/projects/actions.ts:310-311`), en budget `0` toont "No monthly cap set" terwijl het juist
-een hard plafond is (`components/settings/llm-budget-block.tsx:24`). De DB heeft het in beide
-gevallen wél goed. De rest van de 0.1-hygiëne (zes punten, in `HANDOVER.md`) blijft bufferwerk.
+Twee UI's die aantoonbaar onwaarheid tonen. De DB/domeinlaag heeft het in beide gevallen wél goed.
+De rest van de 0.1-hygiëne (zes punten, in `HANDOVER.md`) blijft bufferwerk.
+*Regelverwijzingen gecorrigeerd 30 jul (sprintmaster, gemeten tegen `origin/main`) — het oude plan
+noemde `app/projects/actions.ts:310-311`, verschoven door het OCR-werk:*
+- **De stopreden wordt platgeslagen.** `lib/ai/leesroute.ts:247` onderscheidt **drie** redenen
+  (`no_key` · `budget_run` = plafond dit boek · `budget_month` = maandcap), maar
+  `app/projects/actions.ts:403` maakt daar `"budget"` van, waarna
+  `components/dossier/pdf-upload-card.tsx:299` **altijd** meldt dat het €1-boekbudget op is — ook
+  als de máándcap de oorzaak is. Andere oorzaak, andere oplossing.
+- **Budget 0 leest als "geen plafond".** `components/settings/llm-budget-block.tsx:24`
+  (`budgetEur > 0`) laat een cap van 0 in de else-tak vallen → "No monthly cap set", terwijl 0
+  juist betekent dat er niets uitgegeven mag worden.
+
+**2.5 — Afsluiting van sprint 2: reviewzwerm, dan snelheid** (besluit G25) — *ná alle andere items.*
+Twee fases, elk met dezelfde poort: **eerst een plan, Timo keurt goed, dán uitvoeren.**
+- *2.5a — reviewzwerm over alle code.* Meerdere agents die de codebase nakijken langs
+  gescheiden assen (correctheid · ijzeren regels 1–5 · tests/dekking · consistentie na de
+  huisstijl-omzetting), met adversariële verificatie: een bevinding telt pas als een tweede agent
+  hem niet kan weerleggen. Levert een gerangschikte bevindingenlijst — **geen fixes**. Timo bepaalt
+  wat er van de lijst gerepareerd wordt.
+- *2.5b — snelheid.* **Eerst meten, dan pas optimaliseren.** Er ligt al één gemeten kandidaat uit
+  2.0a: `getAllBrandCompleteness` scant de hele products-tabel (~210k rijen) met ~67
+  `count(...)`-expressies per rij plus een gecorreleerde subquery per merk — vandaar de trage
+  Brand-relations-pagina (gemeld, bewust niet gefixt in 2.0a). Plan = meet de echte trage paden,
+  rangschik op winst/risico, en leg voor. Pas daarna bouwen.
+- **Harde voorwaarde:** 2.5a start **pas als alle sprint-2-items op `origin/main` staan**. Een zwerm
+  die een bewegend doelwit reviewt, levert bevindingen op code die morgen anders is.
+- **Bekende schuld die de zwerm sowieso zal vinden** (nu al gemeten, zodat het geen "nieuwe"
+  bevinding lijkt): 26 bestanden met 163 hardgecodeerde Tailwind-statuskleuren (amber 72 ·
+  emerald 37 · slate 27 · sky 23 · orange 4) die de tokenwissel niet meepakken · 132 dode
+  NL-strings in `field-catalog.ts` · de drie flaky testbestanden · O8 (`#8E9BA8` onder WCAG AA,
+  bewuste afwijking — géén bug).
+- **⚠️ Sterkste kandidaat, gevonden én geverifieerd 30 jul (uit 2.4, bewust niet daar gefixt):
+  de AI-leesroute laat dezelfde stopreden vallen.** `lib/repo/leesroute.ts:51` kent
+  `gestopt: "budget_run" | "budget_month" | "no_key" | null`, maar `app/projects/actions.ts:236`
+  stopt die alleen in de event-payload; de `redirect()` eronder draagt hem niet. Gevolg: **een
+  halverwege afgekapte import presenteert zich als een geslaagde, kleinere import** — dezelfde
+  bugklasse als 2.4's bug 1, één laag verderop. Zeven verwante bevindingen staan met bewijs in
+  `HANDOVER.md` (o.a.: hervatten na een budgetstop kost dubbel én dupliceert regels, en een
+  maandcap is nooit meer te wissen).
 
 **Naar week 3 verschoven (stond in het oude week 2):** merk-demo-pagina + demo-merkaccount +
 org-scoping (vereist organisaties en rollen die daar leven) · architect-analytics-ontwerpnotitie
@@ -1223,12 +1292,12 @@ org-scoping (vereist organisaties en rollen die daar leven) · architect-analyti
 NL-labels uit `field-catalog.ts` (132 dode strings, opvolgtaak van 1.9) · uuid-cast/`payload`-guards
 in de analytics-queries (één afwijkend event mag de pagina nooit breken).
 
-**⚠️ Eén open beslissing die het plan afmaakt:** de commerciële vraag van 2.2. Advies hierboven:
-*"wat vragen klanten dat we niet kunnen leveren"* — meetbaar met wat er ligt, raakt de ranking
-niet, en het is meteen een werklijst. Alternatieven: *"meest overwogen producten"* (bevestigt
-vooral wat je al inkoopt) of *"waar zit de marge"* (direct commercieel, maar raakt ijzeren regel 2
-en moet dan strikt gescheiden). Zonder dit besluit staat 2.2 op mijn advies; met een ander
-antwoord herschrijf ik het.
+**✓ De open beslissing van 2.2 is beantwoord (besluit G22, 29 jul):** de commerciële richting is
+"waar kan Brink geld verdienen / opportunity-signaal", breder dan de oorspronkelijke gap-lijst. Wat
+resteert is geen richtingskeuze meer maar een **scoping-frictie**: het volle scenario (funnel →
+vastloper → outreach → XIS) vereist week-3+-data die er nu niet is, dus 2.2 bouwt deze week
+hoogstens de meetbare eerste plak (vraag-/gap-signalen). Dat laatste bevestigt Timo vóór de
+2.2-briefing uitgaat; zie G22 bij item 2.2.
 
 **Risico's & plan B:** design-gate loopt vast op smaak → één referentie vooraf laat Timo tekenen
 vóór er code is · de eventlaag is testdata, geen gebruikersgedrag → de widgets tonen dat eerlijk
@@ -1242,18 +1311,241 @@ zijn de eerste schrap, want 2.0 is de prioriteit.
 installateur die er die week doorheen loopt. Zelfde logica als week 1 — je bouwt dát
 merkgegevens binnen kunnen stromen, niet dat een merk het die week ook doet.
 
+**Nulmeting bij aanvang (sprintmaster, 30 jul, productie-Neon via `psql`):** `organizations` **0** ·
+`memberships` **0** · `user` **3** · `events` **1430** · `project_dossiers` **13** · `products`
+**211.317**. De 22-jul-meting (0 organisaties, 0 memberships) staat er dus nog steeds — week 2 heeft
+daar niets aan veranderd. Consequentie voor de briefingen: **3.2a kan niets scopen wat nog niet
+bestaat.** Er is geen enkele organisatie, geen enkele membership en dus geen enkele rol; het
+`organizations`/`memberships`-schema staat er wél (`db/schema.ts:907-934`, met `membership_role`-enum
+op `:124`) maar is nooit gevuld. Het aanmaken van de eerste organisatie + memberships hoort daarom
+bij 3.1 (dat is precies wat "Brink maakt een account aan en koppelt het aan een organisatie" doet),
+niet bij 3.2a — anders bouwt 3.2a scoping op lege verzamelingen en bewijst de test niets. Ook
+gemeten: er is **geen `middleware.ts`** op `origin/main`, dus de route-allowlist van 3.2a moet
+per-route server-side (in `lib/session.ts`-laag of per `page.tsx`), niet via middleware — 37
+`page.tsx`-routes in `app/`.
+
 **3.1 — Onboarding externen: PIN → wachtwoord** (~8 u) — *mechanisme gekozen 16 jul (besluit C10);
 het oorspronkelijke Resend/e-mail-ontwerp is vervallen met besluit 6.*
 - *Given* Brink in de instellingen, *when* Brink een gebruiker aanmaakt en aan een organisatie koppelt, *then* krijgt dat account een **tijdelijke PIN**.
 - *Given* die PIN, *when* de gebruiker hem invult, *then* kiest hij direct een wachtwoord; dat wachtwoord zijn daarna zijn inloggegevens en hij zit in de juiste organisatie.
 - *Given* een gebruiker die zijn wachtwoord vergeet, *when* hij zich bij Brink meldt, *then* geeft Brink een **nieuwe PIN** — zelfde pad als onboarding, géén apart resetmechanisme, geen mail nodig.
-- Nog te bepalen bij het ontwerp (klein, geen blocker): hoe de PIN de gebruiker bereikt (out-of-band — telefonisch/persoonlijk) · PIN-lengte, geldigheidsduur, eenmalig gebruik, rate limiting · of intern (Timo/Eduard) ook overgaat of op magic link blijft.
+- ~~Nog te bepalen: hoe de PIN de gebruiker bereikt · of intern ook overgaat~~ → **beantwoord 30 jul, besluiten G26 en G27.** Nog open (klein, geen blocker): PIN-lengte, geldigheidsduur, eenmalig gebruik, rate limiting.
 - ⚠️ **Raakt Better Auth**: de app draait nu op magic link **zonder** wachtwoorden. Dit is een wissel naar wachtwoord-auth (andere plugin, hashing, sessieflow) — schat dat in vóór week 3 begint.
+
+**Besluit G26 (Timo, 30 jul) — de PIN gaat per handmatige mail van Brink zelf, niet uit de app.**
+De sprintmaster legde drie afleveropties voor (eenmalig tonen / opvraagbaar houden / tonen met
+kopieerbaar berichtje). Timo's antwoord: *"Wij sturen gewoon zelf een mailtje op met een pin. We
+moeten gewoon in admin de pin kunnen aanmaken en daarna kunnen we die zelf naar mailen zetten. We
+maken gewoon zelf een layout voor het verzenden."* Dus: **de app genereert en toont de PIN in
+`/admin`, met een kopieerknop en een kopieerbaar tekstsjabloon; de app verstuurt zélf niets.** Het
+mailkanaal is Brinks eigen mailbox — besluit 6 (geen mailverzending vanuit Lumen Logic) blijft
+daarmee volledig overeind, en de "out-of-band, telefonisch/persoonlijk"-formulering uit C10 wordt
+hiermee vervangen door "handmatige mail door Brink". *Aanname van de sprintmaster, niet expliciet
+door Timo bevestigd:* de PIN is **eenmalig zichtbaar bij aanmaken** en staat daarna gehasht in de
+database — kwijt betekent een nieuwe PIN genereren, precies het pad dat C10 al voor "wachtwoord
+vergeten" voorschrijft. Wordt bevestigd of teruggedraaid in de 3.1-briefing.
+
+**Besluit G27 (Timo, 30 jul) — iedereen gaat over naar wachtwoord; magic link verdwijnt.** Ook
+intern (Timo/Eduard) logt straks in met wachtwoord; er blijft géén tweede inlogpad naast staan. Eén
+inlogpad betekent één set tests, één flow om aan Brink over te dragen in week 4, en de helft van het
+oppervlak dat de route-allowlist van 3.2a moet afdekken. Prijs: intern doorloopt zelf ook het
+PIN-rondje (wat meteen de scherpste test van 3.1 is) en er is geen tweede deur meer als de
+wachtwoordflow stukloopt — de 3.1-briefing moet daarom een uitgeschreven terugvalstap bevatten
+(direct DB-ingrijpen) vóór de magic-link-plugin eruit gaat. *Opgelost met G32: de terugvalstap is
+niet DB-ingrijpen maar een tweede deploy — magic link blijft staan tot de wachtwoordflow bewezen is.*
+
+**Besluiten G29 t/m G34 (Timo, 30 jul) — uit de grill-sessie over 3.1.** De volledige uitwerking
+staat in `docs/sprint3-1-briefing.md`; hier alleen de besluiten zelf.
+
+- **G29 — de kwaliteitslat is tweelaags.** Hard: Microsoft Entra's *Temporary Access Pass* (exact
+  hetzelfde mechanisme als C10 — admin genereert een tijdelijke code, gebruiker zet er zelf
+  credentials mee, code één keer zichtbaar) plus NIST SP 800-63A. Visueel: shadcn `InputOTP` voor
+  de code-invoer en het bestaande `/settings`-scherm als maatstaf voor de rest. Bewust géén vreemde
+  tool als visuele referentie — die zou de builder nabouwen en met de brand kit botsen.
+- **G30 — `lib/auth.ts` wordt testbaar.** Nu importeert hij `db` uit `@/db/client` (hard aan Neon),
+  en **geen enkele test in het project raakt Better Auth** — het riskantste onderdeel van de app is
+  ook het enige ongeteste. Wordt `createAuth(db)`, zodat de hele flow op PGlite draait. Zonder deze
+  haak is de critic in de gauntlet loop geen inspecteur maar een tweede mening.
+- **G31 — het accounttype komt op de organisatie**: `organizations.type` = `intern` | `extern` |
+  `brand`. Lost de mismatch op tussen de twee rollenmodellen die naast elkaar bestonden: de enum
+  `membership_role` (`calculator`/`werkvoorbereider`/`projectleider`/`org_admin` — petten binnen een
+  org) en de vier inlogtypen uit de G21-kaart (`Intern`/`Intern super admin`/`User`/`Brand`). Die
+  assen staan haaks op elkaar; het inlogtype hoort bij de org, de pet bij de membership.
+  Brink = één `intern`-org, elke klant een `extern`-org, elk merk een `brand`-org.
+- **G32 — twee deploys, magic link laatst eruit.** Alle drie de bestaande accounts hebben
+  `password = NULL` (gemeten 30 jul), dus G27 in één keer uitvoeren zou iedereen buitensluiten,
+  Timo incluis. Deploy 1 zet wachtwoord-auth ernáást; pas als Timo én Eduard bewezen met wachtwoord
+  binnenkomen gaat in deploy 2 de magic-link-plugin eruit. Volgt ijzeren regel 4 (default = veilig).
+  **Twee losse deploy-akkoorden van Timo nodig.**
+- **G33 — de gauntlet loop draait in twee golven, met een stopconditie.** Golf 1: één builder +
+  één critic op het fundament (auth, PIN-laag, org/rollen) tot de harde lat groen is. Golf 2: drie
+  builders parallel op de drie schermen, elk met een eigen critic. Reden voor golven in plaats van
+  zes parallelle builders: anders dan bij de game uit de bronmethode zijn de stukken hier sterk
+  gekoppeld (`lib/auth.ts`, `db/schema.ts`, de migratieketen) — parallel loslaten geeft merge-puin,
+  geen snelheid. **Stopconditie:** de harde lat is objectief en laat de loop vanzelf stoppen; de
+  visuele lat krijgt een plafond van **3 rondes**, daarna gaan de screenshots naar Timo. Zonder
+  plafond blijft een critic altijd "de grootste zwakte" vinden en loopt het eeuwig door op smaak.
+- **G34 — de PIN-parameters.** 8 cijfers · 7 dagen geldig · eenmalig · max 5 foute pogingen waarna
+  de PIN sterft · één actieve PIN per gebruiker (een nieuwe overschrijft de oude). De 7 dagen wijken
+  bewust af van Entra's default van 1 uur: die gaat uit van een admin die naast de gebruiker staat,
+  terwijl Brink handmatig mailt en de ontvanger later kijkt (Entra staat tot 30 dagen toe). Een
+  ingelogde gebruiker mag zelf zijn wachtwoord wijzigen met opgave van zijn huidige wachtwoord —
+  C10 regelde alleen "vergeten", niet "veranderen".
+
+**Besluit G35 (30 jul) — sprintmasterfout: de 3.1-briefing sprak zichzelf tegen op het lock-out-risico.**
+De bouwsessie vond binnen enkele minuten een spanning tussen G32 en stuk 6 van de briefing. G32 zegt
+"wachtwoord-auth eerst ernáást, magic link pas eruit als Timo én Eduard bewezen met wachtwoord
+binnenkomen"; stuk 6 zei "loginscherm van magic link naar wachtwoord". Met 0 van de 3 accounts met een
+wachtwoord zou het uitvoeren van stuk 6 in deploy 1 iederéén buitensluiten — ook uit `/admin`, waar de
+eerste PIN aangemaakt moet worden. Precies de kip-ei die G32 juist moest voorkomen. De bouwsessie loste
+het correct op (deploy 1 = beide paden naast elkaar) en meldde het als aanname in plaats van stil door
+te bouwen — dat is exact het gedrag dat de werkwijze vraagt. Briefing gecorrigeerd bij stuk 6.
+**Les:** een besluit in een tabel opnemen is niet genoeg; als de uitwerkingsparagraaf het besluit
+tegenspreekt, wint in de praktijk de paragraaf, want daar bouwt de sessie uit. Dit is de zevende
+briefingfout die door een bouwsessie is gevangen sinds week 1 — het vangnet werkt, de briefingdiscipline
+nog niet.
+
+**Besluiten G36 t/m G38 (Timo, 30 jul) — na de oplevering van 3.1.** De bouwsessie leverde vier
+onderdelen op die allebei de latten haalden; de sprintmaster verifieerde het rapport tegen de code en
+de productiedatabase. Vier claims klopten, één niet (zie onderaan).
+
+- **G36 — wie een PIN uitgeeft, en met welke rol.** `issuePinAction` controleerde alleen
+  `requireSession()` en nam `orgId` én rollen uit de input: elke ingelogde gebruiker kon een PIN
+  uitgeven voor elk adres en zichzelf `org_admin` maken in elke organisatie. Timo's ontwerp lost dit
+  op in plaats van het af te dekken: **wie van Brink een PIN krijgt, is `org_admin` van zijn eigen
+  organisatie. Die org_admin mag zelf mensen aanmaken binnen zijn eigen org, maar die worden nooit
+  org_admin.** Daarmee kan niemand zichzelf verheffen en niemand buiten zijn eigen org uitgeven.
+  Concreet: intern (Brink) mag alles, een `org_admin` mag alleen binnen zijn eigen org en zonder de
+  org_admin-rol toe te kennen, een gewone gebruiker mag niets. *Niet doorschuiven naar 3.2a* — dat
+  item gaat over routes, en een route-allowlist dekt server actions niet automatisch.
+- **G37 — `dark:text-brand-teal` op de magic-link-onthulling is goedgekeurd.** Repareert een gemeten
+  contrastfout van 2,54:1. Breidt de redenering van O10 (teal in plaats van `--ring`, omdat blauw op
+  navy 2,27:1 haalt) uit van focusringen naar labeltekst. `DESIGN.md` §11 verbood het eenzijdig
+  invullen; hiermee is het ingevuld.
+- **G38 — de pogingenlimiet gaat naar 10 op rij en verdwijnt uit beeld.** G34 zei 5; Timo's bezwaar
+  was dat een klant die zich vertypt daardoor moet bellen. De sprintmaster bracht er tegenin dat de
+  limiet niet over vertypen gaat maar over geautomatiseerd raden: 8 cijfers = 100 miljoen combinaties,
+  scrypt kost ~46 ms per poging, dus serieel ~27 dagen maar **met 200 parallelle verzoeken ~3 uur** —
+  binnen de 7 dagen die de PIN leeft. Uitkomst: **10 foute pogingen op rij** (een mens haalt dat
+  nooit, een aanvaller heeft er niets aan) en **de teller wordt nergens getoond**. `/activate` toonde
+  hem al niet; het aftellende getal in `components/admin/pin-block.tsx:528` gaat eruit.
+  *Aanname van de sprintmaster:* de eindstatus "geblokkeerd" blíjft zichtbaar voor Brink — anders ziet
+  niemand bij een supportvraag waarom een code niet werkt. Alleen het getal verdwijnt.
+
+**Besluit G39 (sprintmaster, 30 jul — binnen het mandaat van Timo) — G36 mag zijn tweede deur
+meenemen.** Tijdens de bouw van G36 vond de critic dat de autorisatiepoort weliswaar hield (22 van
+23 aanvallen faalden dicht), maar volstrekt omzeilbaar is: `app/settings/organization/actions.ts:45`
+(`addMemberAction`) roept alléén `requireSession()` aan en neemt `orgId` én `roles` uit de formData,
+met enkel een filter op geldige rolwaarden. Een gewone gebruiker voegt daarmee zichzélf toe aan de
+Brink-org (`type='intern'`) en krijgt vanaf dat moment via G36 alles, inclusief de `org_admin`-rol
+die G36 hem juist ontzegt. *Nagemeten door de sprintmaster tegen de code, 30 jul — bevestigd.*
+De bouwsessie breidde uit eigen beweging de scope uit om dit te sluiten en meldde dat, in plaats van
+het stil te doen. **Goedgekeurd**, om twee redenen: het is niet "een bestaande bug die je toevallig
+tegenkomt" maar de tweede helft van dezelfde deur, en G36 schrijft expliciet voor dat het *in het
+ontwerp* wordt opgelost en **niet** bij 3.2a hoort — dat item gaat over routes, en een
+route-allowlist dekt server actions niet, dus daar zou het blijven liggen. Grens meegegeven: alleen
+de rol- en org-toekenning in `addMemberAction`; al het andere in dat bestand valt weer onder
+"melden, niet repareren".
+
+*Twee opdrachten die hierbij zijn meegegeven:* (a) het autorisatie-**ontwerp** herzien, niet alleen
+het lek — de critic brak de "onvervalsbare" grant door object-spread (die kopieert enumerable own
+symbol properties, en `Object.getOwnPropertySymbols` geeft ze gewoon prijs), en de les is dat een
+grant die de aanroeper meegeeft nooit een autorisatiemechanisme kan zijn; autorisatie hoort in de
+action zelf afgeleid te worden uit de sessie. (b) G38's getal vastpinnen met een test
+(`expect(PIN_MAX_ATTEMPTS).toBe(10)`): alle bestaande asserties gebruiken de constante, nooit het
+letterlijke getal, dus 10 → 11 muteren laat de hele suite groen — het mechanisme is bewaakt, het
+besluit niet.
+
+**Patroon om te onthouden (drie keer deze sprint):** een comment of docstring belooft een garantie
+die de code niet waarmaakt, en het is telkens de critic die het vangt, nooit de builder. Dat is de
+sterkste aanwijzing tot nu toe dat de builder/critic-scheiding uit de gauntlet loop echt werk doet,
+en niet alleen een dubbele rekening is.
+
+**⚠️ G40 (30 jul) — DEPLOY 1 VAN 3.1 MOET MIGREREN VÓÓR PUSHEN. Er is geen migratiestap op deploy.**
+Gevonden door de bouwsessie bij het schrijven van het deploy-runbook, daarna door de sprintmaster
+onafhankelijk nagemeten — alle vijf de onderdelen bevestigd:
+- `package.json:7` is een kale `"build": "next build"`. **Geen `vercel.json`** in de repo, geen
+  build-hook. `db:migrate` is een lokaal commando dat op `.env.local` leunt.
+- Gevolg als je normaal zou pushen: productiecode die `organizations.type` en `activation_pins`
+  verwacht, komt te staan vóór een database die geen van beide heeft. `/admin/users` en
+  `/settings/organization` vallen om tot iemand het merkt en handmatig migreert.
+- Migratie 0017 is **puur additief** (0 treffers op `DROP` of `ALTER COLUMN … NOT NULL`;
+  `ADD COLUMN IF NOT EXISTS` met default, twee inserts, één backfill, `CREATE TABLE IF NOT EXISTS`).
+  Oude code draait er probleemloos naast. **Daarom mag de volgorde om: eerst migreren, dan pushen.**
+- Twee voorwaarden die vóór de migratie geteld moeten worden, allebei nu vervuld maar breekbaar:
+  `0017:54-61` hardcodeert **drie** e-mailadressen (`hello@noplasticfloralfoam.com`,
+  `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) — productie heeft er nu precies 3, maar een
+  vierde user zou stil géén membership krijgen. En `0017:46-47` gebruikt een scalar subquery op
+  `slug = 'brink-licht'`; `organizations` heeft **alleen** `organizations_pkey` op `id`, dus **geen
+  unique index op `slug`** — bij twee rijen met die slug breekt de migratie. `organizations` is nu
+  leeg (0 rijen), dus dat is vandaag veilig.
+- De bewuste keuze om géén cross join over de hele user-tabel te doen is goed onderbouwd in de
+  migratie zelf: valt deploy 1 later dan de eerste PIN-uitgifte, dan zou zo'n join een externe
+  installateur tot `org_admin` van de interne org promoveren.
+
+**Volgorde voor deploy 1, in deze volgorde:** (1) tel de users en controleer dat `organizations`
+leeg is · (2) migreer · (3) push · (4) **controleer als eerste of de magic link nog werkt** — zo
+niet, terugrollen, want zonder magic link is er geen weg naar binnen · (5) pas als Timo én Eduard
+allebei aantoonbaar met een wachtwoord binnenkomen, mag deploy 2 (magic link eruit). Dat tweede
+akkoord is een apart besluit van Timo, niet een vervolg op het eerste.
+
+*Sprintmasterfout, voor de volledigheid:* bij het vastleggen hiervan gooide de sprintmaster met een
+`git reset --hard origin/main` zijn eigen nog-niet-gepushte G39-commit weg. Teruggehaald via
+`git reflog` + cherry-pick, niets verloren. Les: `reset --hard` op een branch met ongepusht werk is
+precies zo gevaarlijk als het klinkt, ook voor een sessie die alleen documenten schrijft.
+
+**Correctie op het opleveringsrapport (geverifieerd 30 jul):** de gemelde `rules-of-hooks`-fout op
+`app/projects/actions.ts:652` is **geen bug**. `useAiSuggestion` is een gewone async repo-functie
+(`lib/repo/ai-suggestions.ts:124`); ESLint ziet de `use`-prefix aan voor een React hook. Fout-positief.
+Wél bevestigd: de allowlist-mismatch in `db/migrations/0004_vijfstatussen.sql:131-134` (seedt
+`hello@noplasticfloralfoam.com` + `timo@jouwainstein.com`, productie heeft `timo@jouwainstein.com` +
+`e.brink@brinklicht.nl`), de atomaire pogingenteller en de reset-on-success.
+
+**Het productie-incident, nagemeten:** een bouwagent draaide een dev-server tegen productie-Neon.
+Omvang is **precies één sessierij** (30 jul 17:13, localhost-IP); de rijen van 06:38–06:43 zijn Timo
+zelf vanaf 82.75.31.121. `verification` heeft 0 rijen van die dag, `account` is nog steeds volledig
+leeg, en migratie 0017 is **niet** op productie gedraaid (`organizations` heeft geen `type`-kolom,
+`activation_pins` bestaat er niet). Geen schemawijziging, geen wachtwoord gezet. *Correctie op de
+nulmeting in deze sectie:* daar stond "0 van 3 accounts met wachtwoord" — de `account`-tabel is in
+werkelijkheid leeg (magic link maakt geen account-rij aan). Gevolg identiek, formulering onnauwkeurig.
 
 **3.2a — Externe toegang: route-allowlist + org-scoping** (~7 u)
 - *Given* een extern account, *when* het de app gebruikt, *then* zijn alléén projecten (eigen organisatie) en catalogus bereikbaar; alle andere routes (/data, /admin, Merken, interne /analytics) worden **server-side** geweigerd (besluit 11), met tests per accounttype.
 - *Given* de project-queries, *then* zijn lijst, detail, regels, review, estimate en importruns org-gescoped — een extern account kan geen enkel object van een andere org opvragen (directe-URL-test).
 - *Given* de rechten, *then* admin ≠ gewone gebruiker (instellingen/uitnodigen alleen admin).
+
+**Meegeven aan de 3.2a-briefing — drie meldingen van de week-2-sprintmaster, door de week-3-sprintmaster
+onafhankelijk nagemeten op 30 jul (twee bevestigd, één onjuist):**
+1. ✅ **Bevestigd — schema en database lopen uiteen op precies het scoping-veld.**
+   `db/schema.ts:457` declareert `orgId: uuid("org_id")` op `project_dossiers` **zonder**
+   `.references()`, terwijl `db/migrations/0005_h2_h3.sql:34-35` de kolom wél als
+   `org_id uuid REFERENCES organizations(id)` toevoegt — en de live database heeft de constraint
+   daadwerkelijk (`project_dossiers_org_id_fkey`, `FOREIGN KEY (org_id) REFERENCES organizations(id)`,
+   gemeten via `pg_constraint`). Ter vergelijking: `memberships` (`:924-926`) en `leads` (`:985`)
+   hebben de reference in Drizzle wél. Gevolg: TypeScript ziet een vrij uuid-veld, de database eist
+   een bestaande organisatie. **Extra risico dat de 3.2a-briefing moet toetsen (niet bewezen, wel
+   plausibel):** omdat Drizzle de FK niet kent, kan een volgende `drizzle-kit generate` hem als
+   overtollig zien en een DROP genereren. Dit hoort in 3.2a, niet als los klusje — en het raakt de
+   openstaande week-4-schuld "Drizzle-snapshots definitief kloppend".
+2. ✅ **Bevestigd — er is niets om aan te scopen.** Alle **13** dossiers hebben `org_id IS NULL`
+   (13/13, live gemeten 30 jul), bij 0 organisaties en 0 memberships. 3.2a moet dus niet alleen
+   scopen maar ook de bestaande dossiers kóppelen, anders ziet een extern account **niets** in plaats
+   van zijn eigen projecten — een scoping-test die "0 rijen" teruggeeft bewijst dan niets.
+3. ⏳ **Was onjuist bij eerste meting, klopt inmiddels wél.** De melding zei dat de nieuwe querylaag
+   in `lib/repo/analytics-tiles.ts` staat met een `orgId`-parameter waarop 3.2a moet aansluiten. Bij
+   de eerste meting (30 jul, vroeg) bestond dat bestand **niet** op `origin/main` — 2.1+2.2 was nog
+   niet gepusht. Een paar uur later is het alsnog geland (`f766311`, "Analytics 2.1+2.2: negen tegels
+   op echte events") en klopt de melding volledig: `lib/repo/analytics-tiles.ts:23` heeft de
+   `orgId`-parameter, `:134-140` doet een fail-closed uuid-controle, en de code documenteert zelf
+   dat een `orgId` vandaag elke tegel 0 oplevert — "de parameter staat klaar voor week 3". **Voor
+   3.2a betekent dat: sluit hierop aan, bouw géén tweede scoping-mechanisme.** Les voor de
+   sprintmaster: een melding "bestaat niet" is alleen waar op het moment van meten wanneer er
+   parallelle sessies draaien die elk moment kunnen pushen — meet opnieuw vóór je zo'n oordeel
+   naar buiten brengt.
+
+**Twee losse bevindingen uit dezelfde melding, ook nagemeten (kandidaat 2.5 of eigen item, niet 3.2a):**
+van de **204** `spec_lines` hebben er **3** een gekoppeld product, en `no_match_reason` is **0/204**
+gevuld terwijl schema en C-14/K-03 het beloven. Beide bevestigd op de live database, 30 jul.
 
 **3.2b — Prijsloze estimate voor externen** (~4 u)
 - *Given* fase 0, *when* een extern account een estimate opent of de PDF downloadt, *then* bevatten scherm én PDF **géén prijzen/bedragen/totalen** — wel regels, aantallen, statussen en kleuren (eigen render-pad + sjabloonvariant, met screenshottest); intern blijft alles zichtbaar.
@@ -1265,6 +1557,67 @@ het oorspronkelijke Resend/e-mail-ontwerp is vervallen met besluit 6.*
 **Risico's & plan B:** ~~onboarding-mechanisme niet op tijd gekozen~~ → **opgelost 16 jul met besluit C10** (PIN → wachtwoord); het resterende risico is de omvang van de Better-Auth-wissel, niet de keuze · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
 
 **Technische schuld & vooruitwerk (bufferuren):** GitHub-repo-transfer naar Brink-org alvast doen (laag risico, uit het spike-draaiboek) · minimale monitoring vóór externen: uptime-check + Vercel-foutalerts (~1 u) · restjes 2.U.
+
+**Besluit G28 (Timo, 30 jul) — de Neon-eigendomsvraag is geparkeerd tot week 4.** De sprintmaster
+legde voor of de database een Vercel-Marketplace-resource is of een los Neon-project (het bepaalt of
+de database met de Vercel-projectoverdracht meegaat of een eigen eigenaarswissel nodig heeft, en het
+blokkeert stap 4 van het migratiedraaiboek). Timo: *"Dat is een harde voorwaarde voor week 4. We
+zijn nu in week 3 … ik snap niet helemaal wat je bedoelt."* Afgesproken lijn: **niet deze week
+oplossen, en niet nogmaals aan Timo vragen in week 3.** De week-4-sprintmaster stelt de vraag
+opnieuw mét uitleg van het verschil en de gevolgen — of zoekt het zelf uit in de
+Vercel-integratiepagina en het Neon-dashboard en legt de uitkomst vast in
+`docs/spike-2.3-migratie-draaiboek.md`. Fout van de sprintmaster om dit als open vraag bij een
+week-3-start neer te leggen zonder de gevolgen uit te leggen.
+
+**Deploy 1 van 3.1 + 3.2b is uitgevoerd op 3 aug, op Timo's expliciete akkoord.** Volgorde zoals
+G40 voorschrijft: eerst de voorcontroles, dan migreren, dan pushen. Nameting op productie:
+`0017_snelheid_indexen` en `0018_analytics_merkgat_index` van 2.5b bleken al toegepast, dus alleen
+`0019_org_type_activatie` draaide (6 statements). Uitkomst: één organisatie `brink-licht` met
+`type = 'intern'`, drie `org_admin`-memberships op de drie bestaande adressen, alle 13 dossiers van
+`org_id IS NULL` naar gekoppeld, `activation_pins` aangemaakt en leeg. Daarna gepusht
+(`origin/main` op `21f84c3`, 61 bestanden, +10655/−78), deploy Ready in 1 minuut, `/login` HTTP 200
+met zowel het wachtwoordveld als het magic-linkpad — G32 zoals bedoeld.
+
+⚠️ **Twee correcties op eerdere versies van dit plan, allebei gemeten en niet beredeneerd.**
+(1) De migratie heet sinds de tweede rebase **0019**, niet 0017 — 2.5b claimde die nummers eerder.
+Het deploydraaiboek in `HANDOVER.md` verwees nog tienmaal naar het oude nummer en is gecorrigeerd.
+(2) Het draaiboek schreef `bash scripts/safe-push.sh` zónder argument voor. Dat pusht **precies één
+commit** (`safe-push.sh:31-32` zet `SHAS=("$(git rev-parse HEAD)")`), niet de branch, en faalde met
+een melding die naar een niet-bestaand conflict wees. Het werkende commando is
+`bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)`; `--reverse` is niet
+optioneel, want het script cherry-pickt in de opgegeven volgorde. Dezelfde val als in week 1.
+
+**Eerste echte activatie op productie, en wat die blootlegde.** Timo heeft de keten PIN → `/activate`
+→ wachtwoord → inloggen zelf doorlopen (`tpw.wittkamp@gmail.com`, 0 foute pogingen, PIN correct als
+gebruikt gemarkeerd). Daarmee is 3.1 in de praktijk bewezen. Wat het óók liet zien: dat account
+belandde in Brink's eigen organisatie met `type = 'intern'` en rol `org_admin`, want het
+PIN-scherm biedt in de organisatie-dropdown alleen "Brink Licht (intern)" aan. **3.2b is dus nog
+niet in de praktijk getoetst** — alleen in tests — omdat er geen externe organisatie bestaat om
+mee te toetsen.
+
+**Besluit G41 (Timo, 3 aug) — onboarding hoort op één scherm; dit wordt 3.2c, ná 3.2a.** Vandaag is
+"iemand toegang geven" verdeeld over twee schermen: een organisatie aanmaken kan alleen op
+`/settings/organization` (`createOrgAction`), een PIN uitgeven alleen op `/admin/users`. Timo:
+*"dit is niet helemaal gebruiksvriendelijk … ik denk dat het makkelijker wordt om alles bij elkaar
+te hebben."* Eens, en niet alleen om het gemak: aan `organizations.type` hangt of iemand prijzen
+ziet, en dat veld is **nergens instelbaar en vrijwel nergens zichtbaar** — het hangt volledig aan
+de kolomdefault `NOT NULL DEFAULT 'extern'` uit 0019. Een organisatie die per ongeluk intern is,
+geeft een installateur inkoopprijzen te zien zonder dat iemand het merkt; dat is ijzeren regel 2.
+Wat 3.2c moet doen: de organisatie-dropdown op `/admin/users` krijgt een optie "+ nieuwe
+organisatie" mét expliciete keuze intern/extern, en het type wordt getoond overal waar een
+organisatie genoemd wordt (de dropdown doet dat al, de PIN-statuslijst niet).
+
+**Besluit G42 (Timo, 3 aug) — het org-type wordt bij aanmaken bewust gekozen en is daarna vast.**
+Een organisatie die van extern naar intern kan flippen is een prijslek met één muisklik. Wie het
+anders wil, maakt een nieuwe organisatie. Dit is een grens voor 3.2c, geen losse feature.
+
+⚠️ **Gevolg voor de volgorde: 3.2a is urgenter geworden.** `saveBrandingAction`
+(`app/settings/organization/actions.ts:96`) staat achter alleen `requireSession` — vastgelegd als
+`BEKENDE_SCHULD` in `lib/repo/authz-deuren.test.ts:175` mét vastpin-test. Zolang er één
+organisatie bestond was dat theoretisch. Zodra Timo de tweede aanmaakt om 3.2b te toetsen, kan die
+tweede de branding van Brink overschrijven. Daarom: **3.2a eerst, dan 3.2c** — tenzij er eerder een
+externe installateur uitgenodigd moet worden, dan draait die volgorde om en gaat de schuld mee als
+bewust risico.
 
 ### Week 4 (10–14 aug) — alles op naam van Brink
 

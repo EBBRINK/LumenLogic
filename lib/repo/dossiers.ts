@@ -12,22 +12,39 @@ import {
   visibleProducts,
 } from "@/db/schema";
 import type { AppDb } from "./db";
+import { todayIso, unitPriceOf } from "./day-price";
 import { logEvent } from "./events";
 import { derivePhase, type Phase, type XisPhase } from "./project-status";
+import { dossierScopeSql, type DossierScope } from "./toegang";
 
 export type { Phase };
 
 // ── Dossiers ─────────────────────────────────────────────────────────────────
-export async function listDossiers(db: AppDb) {
+//
+// ⚠️ SPRINT 3.2a — de twee leesdeuren hieronder nemen een VERPLICHTE `DossierScope`.
+// Geen default en geen optionele parameter: wie hem vergeet krijgt geen stille "alles"
+// maar een compilerfout. Dat is wat de briefing van RLS wilde lenen — kan iemand die
+// morgen een nieuwe query schrijft de scoping per ongeluk overslaan? Hier niet.
+// `lib/repo/dossier-scope.test.ts` bewaakt dat er geen vijfde deur bijkomt.
+export async function listDossiers(db: AppDb, scope: DossierScope) {
   return db
     .select()
     .from(projectDossiers)
+    .where(dossierScopeSql(scope, projectDossiers.orgId))
     .orderBy(asc(projectDossiers.createdAt));
 }
 
 // Nieuw project: altijd status 'concept' (geen statuskeuze bij aanmaken); alleen de
 // XIS-fase is te kiezen (default 'start'). `phase` wordt afgeleid (B6, regel 4) —
 // dezelfde derivePhase als setStatus/setXisPhase, dus geen tweede waarheid.
+//
+// ⚠️ 3.2a: `orgId` is nu verplicht mee te geven en mag `null` zijn. Tot deze sprint zette
+// deze functie hem helemaal niet, waardoor élk nieuw project stuurloos was: migratie 0019
+// koppelde de 13 bestaande dossiers aan brink-licht, maar het veertiende kreeg weer
+// `NULL`. Een dossier zonder organisatie is per `dossierScopeSql()` alleen voor intern
+// zichtbaar — dus een externe die er één maakte, zou hem daarna zelf niet meer zien.
+// Expliciet in de signatuur en niet uit de sessie geplukt: deze laag hoort niets over
+// sessies te weten (zelfde scheiding als G39).
 export async function createDossier(
   db: AppDb,
   input: {
@@ -35,6 +52,7 @@ export async function createDossier(
     customer?: string | null;
     xisPhase?: XisPhase;
     actor?: string;
+    orgId: string | null;
   },
 ) {
   const xisPhase = input.xisPhase ?? "start";
@@ -43,6 +61,7 @@ export async function createDossier(
     .values({
       name: input.name,
       customer: input.customer ?? null,
+      orgId: input.orgId,
       status: "concept",
       xisPhase,
       phase: derivePhase("concept", xisPhase), // afgeleid; default = veilig (regel 4)
@@ -55,6 +74,7 @@ export async function createDossier(
     actor: input.actor,
     payload: {
       name: row.name,
+      orgId: row.orgId,
       status: row.status,
       xisPhase: row.xisPhase,
       phase: row.phase,
@@ -63,11 +83,23 @@ export async function createDossier(
   return row;
 }
 
-export async function getDossier(db: AppDb, id: string) {
+/**
+ * De wortel van de hele `/projects/[id]/*`-boom: elke tab begint hier en doet `notFound()`
+ * als het antwoord leeg is. Zodra déze functie gescoped is, is de boom dat ook — de
+ * onderliggende pagina's toetsen hun eigen sleutel al (`run.dossierId !== id`,
+ * `specLine.dossierId !== dossier.id`, `proposal.dossierId !== id`).
+ *
+ * Buiten de scope voelt precies hetzelfde als "bestaat niet": één `null`, geen tweede
+ * uitkomst "bestaat wel maar mag niet". Dat is geen gemak maar de bedoeling — het verschil
+ * tussen die twee is zelf informatie (zelfde redenering als MSG_DENIED in authz.ts).
+ */
+export async function getDossier(db: AppDb, scope: DossierScope, id: string) {
   const [row] = await db
     .select()
     .from(projectDossiers)
-    .where(eq(projectDossiers.id, id))
+    .where(
+      and(eq(projectDossiers.id, id), dossierScopeSql(scope, projectDossiers.orgId)),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -98,6 +130,10 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       reviewKind: specLines.reviewKind,
       noMatchReason: specLines.noMatchReason,
       manualPrice: specLines.manualPrice,
+      // A7: de vervaldatum van de dagprijs MOET mee de projectie in — zonder deze kolom
+      // kan unitPriceOf niet zien dat een dagprijs verlopen is en staat een achterhaald
+      // bedrag op het klantstuk. De kolom werd tot A7 door niets gelezen.
+      manualPriceValidUntil: specLines.manualPriceValidUntil,
       sortOrder: specLines.sortOrder,
       matchedProductId: specLines.matchedProductId,
       matchedName: visibleProducts.name,
@@ -239,6 +275,12 @@ export async function linkQuantities(
 }
 
 // CSV-blok plakken: kolommen code, aantal, merk, type (BUILD-PLAN §4.3.2).
+// B6 (reviewzwerm 2.5a): bovengrens op een geplakt CSV-blok. Afgedwongen in
+// addSpecCsvAction — daar staat de volledige redenering — maar de constante hoort hier,
+// naast de parser, en kán ook niet in de action staan: een "use server"-module mag
+// uitsluitend async functies exporteren.
+export const SPEC_CSV_MAX_LINES = 500;
+
 export function parseSpecCsv(block: string): SpecLineInput[] {
   const out: SpecLineInput[] = [];
   for (const raw of block.split(/\r?\n/)) {
@@ -260,12 +302,60 @@ export function parseSpecCsv(block: string): SpecLineInput[] {
   return out;
 }
 
-export async function deleteSpecLine(db: AppDb, specLineId: string) {
+// Regel verwijderen — de énige destructieve handeling op een spec-regel: de rij is
+// wég, niet gemarkeerd. Daarom draagt het event de VOLLEDIGE regelinhoud van vóór de
+// verwijdering (payload.line), zodat de handeling reconstrueerbaar blijft, plus de
+// actor (FUNCTIONEEL-ONTWERP §6: "élke schrijfactie draagt de actor").
+// LOGGEN VÓÓR DELETEN, met opzet — zelfde afweging als dismissBrandLoad in
+// lib/repo/enrichment.ts: `db.transaction()` bestaat hier niet (neon-http gooit
+// daarop), dus de volgorde is het enige wat je kunt kiezen. Andersom kan de rij weg
+// zijn zonder één spoor als het loggen faalt; nu is de slechtste uitkomst een event
+// voor een rij die er nog staat — zichtbaar, en te herhalen.
+export async function deleteSpecLine(
+  db: AppDb,
+  specLineId: string,
+  actor?: string,
+) {
+  const [line] = await db
+    .select()
+    .from(specLines)
+    .where(eq(specLines.id, specLineId))
+    .limit(1);
+  // Bestond de regel niet, dan viel er ook vóór deze reparatie niets te verwijderen —
+  // geen event over een handeling die niet gebeurde.
+  if (!line) return;
+  await logEvent(db, {
+    entity: "spec_line",
+    entityId: specLineId,
+    action: "spec_line_deleted",
+    actor,
+    payload: {
+      // Losse sleutels voor het event-logscherm (dat toont alleen bekende labels)…
+      dossierId: line.dossierId,
+      fixtureCode: line.fixtureCode,
+      quantity: line.quantity,
+      brandText: line.brandText,
+      productText: line.productText,
+      status: line.status,
+      // …en de volledige rij als reconstructiespoor.
+      line,
+    },
+  });
   await db.delete(specLines).where(eq(specLines.id, specLineId));
 }
 
 // Dagprijs op DE REGEL (I-04): de catalogus blijft leeg (het gat blijft eerlijk),
 // maar deze regel krijgt een handmatige, gemarkeerde prijs met geldigheidsdatum.
+// C4 (reviewzwerm 2.5a): een dagprijs mag niet negatief zijn. Dat is een DOMEINREGEL, geen
+// vormcontrole, en hij hoort daarom hier — niet alleen in de action en zeker niet alleen in
+// de UI (`type=number min=0` is uitleg voor de gebruiker, geen regel van het systeem). De
+// keten setDayPrice → numeric(12,2) → countedLineTotal deed nergens een tekencontrole, dus
+// € -5.000,00 kon op een klantregel belanden. Zie docs/INVOERVALIDATIE.md, de uitzondering
+// bij regel 2: invarianten die geld raken staan óók in de repo.
+//
+// Dit gooit wél (anders dan de action, die stil negeert): op dit punt is de invoer al door
+// een schema geweest, dus een negatief bedrag hier betekent dat een áándere aanroeper de
+// regel omzeilt. Dat hoort luidruchtig te falen.
 export async function setDayPrice(
   db: AppDb,
   input: {
@@ -275,6 +365,9 @@ export async function setDayPrice(
     actor?: string;
   },
 ) {
+  if (!Number.isFinite(input.price) || input.price < 0) {
+    throw new Error(`dagprijs mag niet negatief zijn (kreeg: ${input.price})`);
+  }
   await db
     .update(specLines)
     .set({
@@ -344,23 +437,91 @@ async function nextQuoteNumber(db: AppDb): Promise<string> {
   return `BL-${year}-${String(Number(n) + 1).padStart(4, "0")}`;
 }
 
+// VOORSTEL, geen regel: hoe lang een gegenereerde estimate standaard geldig is.
+// Timo mag dit getal veranderen — het staat hier als één constante zodat dat één
+// bewerking is en niet een zoektocht door de UI. De mens overschrijft het sowieso in
+// "Edit header" (A-10); dit is alleen de stand waarin de offerte geboren wordt.
+//
+// Waarom er überhaupt een voorstel staat (herstel 2026-07-30): valid_until werd door
+// GEEN ENKEL codepad gevuld, dus elke gegenereerde offerte kwam met een lege
+// geldigheid ter wereld en viel meteen achter de kopblokpoort — inclusief elke rij die
+// al in productie stond.
+export const DEFAULT_VALIDITY_DAYS = 30;
+
+// 'YYYY-MM-DD' + n dagen, weer als 'YYYY-MM-DD'. Bewust in UTC gerekend: de kolom is
+// een `date` zonder tijdzone, en lokale zomertijd zou er anders een dag naast schieten.
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// DE VANGRAIL ONDER DE € 0,00-REGEL. Een regel die bij de offerteregel-bouwer komt, is
+// door de opnamefilter gekomen — en die liet hem alleen door omdát unitPriceOf een prijs
+// teruggaf. Staat hier tóch `null`, dan hebben "heeft deze regel een prijs?" en "welke
+// prijs?" een ander antwoord gegeven: een programmeerfout, geen regel van nul euro.
+// Zonder deze controle is `Number(null)` gewoon 0 en schrijft `(0).toFixed(2)` doodleuk
+// "0.00" als stukprijs én regeltotaal het klantdocument in. Liever luidruchtig stuk dan
+// stilzwijgend een offerte van nul euro.
+//
+// Geëxporteerd puur om hem rechtstreeks te kunnen testen: langs generateQuote is dit pad
+// sinds de één-klok-reparatie hieronder onbereikbaar, en dat is precies de bedoeling.
+export function requireUnitPrice(
+  unitPrice: string | null,
+  fixtureCode: string,
+): number {
+  if (unitPrice == null)
+    throw new Error(
+      `generateQuote: regel ${fixtureCode} kwam door de opnamefilter maar heeft geen ` +
+        `stukprijs. Dat kan alleen als "heeft een prijs" en "welke prijs" met een andere ` +
+        `klok zijn beantwoord — er komt geen € 0,00-regel op een klantdocument.`,
+    );
+  return Number(unitPrice);
+}
+
 // Genereert (of hergenereert) de offerte uit alle gematchte spec-regels die een
 // geldige, niet-verlopen prijs hebben. Regel × stukprijs → totalen. Het kopblok
 // (nummer, klant, contact, …) blijft behouden bij hergenereren; een uitgestuurde
 // (bevroren) offerte wordt niet overschreven (I-06).
+//
+// `today` ('YYYY-MM-DD') is DE KLOK VAN DEZE OPERATIE — één lezing, hieronder aan beide
+// unitPriceOf-aanroepen doorgegeven. Injecteerbaar zodat de vervalgrens deterministisch
+// te testen is, precies zoals bij unitPriceOf zelf; de default is de echte dag (UTC).
 export async function generateQuote(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
   actor?: string,
+  today: string = todayIso(),
 ) {
-  const dossier = await getDossier(db, dossierId);
+  const dossier = await getDossier(db, scope, dossierId);
   const lines = await getSpecLines(db, dossierId);
-  // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus
-  // (matchedPrice) of een dagprijs op de regel (manualPrice, I-04).
+  // Groen + geel tellen mee (E-02). Een geldige prijs is nodig: uit de catalogus of een
+  // dagprijs op de regel (I-04). Wélke van de twee dat is beslist unitPriceOf — dezelfde
+  // functie die hieronder de stukprijs én de herkomst kiest, zodat "heeft een prijs" en
+  // "welke prijs" nooit uit elkaar kunnen lopen (lib/repo/day-price.ts).
+  //
+  // A7: "geldige prijs" betekent sinds de vervalregel óók NIET-VERLOPEN. Een regel
+  // waarvan de énige prijs een verlopen dagprijs was, valt hier dus uit — precies zoals
+  // een regel zonder énige prijs er altijd al uitviel. Dat is bewust: quote_lines is het
+  // klantdocument, en een regel zonder actueel bedrag heeft daar niets te zoeken (een
+  // "€ 0,00"-regel zou erger zijn dan geen regel). Weggemoffeld wordt er niets — de
+  // estimate op scherm en PDF toont die regel wél, met "—" en het merkteken dat zegt dat
+  // de dagprijs verliep. De estimate is het volledige stuk, de offerte de geprijsde snede.
+  //
+  // ÉÉN KLOK (herstel na A7). Die vervalvraag wordt hier én verderop bij het bouwen van
+  // de offerteregel gesteld — twee keer per regel. Lazen die twee elk hun eigen
+  // `todayIso()`, dan konden ze over de UTC-middernachtgrens uit elkaar lopen: een regel
+  // waarvan de dagprijs vandaag afloopt komt door de filter, en een tel later — inmiddels
+  // "morgen" — geeft de tweede aanroep `unitPrice: null`. `Number(null)` is 0, en dan
+  // schrijft `toFixed(2)` er "0.00" van: exact de € 0,00-regel die hierboven verboden
+  // wordt. Daarom staat de dag in `today`, wordt hij één keer gelezen en overal
+  // doorgegeven. De vangrail `requireUnitPrice` hierboven vangt af dat dit ooit weer
+  // stilzwijgend uit elkaar loopt.
   const matched = lines.filter(
     (l) =>
       (l.status === "groen" || l.status === "geel") &&
-      (l.matchedPrice != null || l.manualPrice != null),
+      unitPriceOf(l, today).unitPrice != null,
   );
 
   // bestaand kopblok bewaren; bevroren offerte niet aanraken (I-06)
@@ -372,6 +533,7 @@ export async function generateQuote(
     .limit(1);
   if (prev?.frozenAt) return prev; // uitgestuurd → op slot
 
+  const quoteDate = prev?.quoteDate ?? new Date().toISOString().slice(0, 10);
   const header = {
     quoteNumber: prev?.quoteNumber ?? (await nextQuoteNumber(db)),
     customer: prev?.customer ?? dossier?.customer ?? null,
@@ -379,9 +541,13 @@ export async function generateQuote(
     address: prev?.address ?? null,
     projectRef: prev?.projectRef ?? dossier?.name ?? null,
     authorEmail: prev?.authorEmail ?? actor ?? null,
-    quoteDate:
-      prev?.quoteDate ?? new Date().toISOString().slice(0, 10),
-    validUntil: prev?.validUntil ?? null,
+    quoteDate,
+    // Zelfde vorm als quoteDate hierboven: een bestaande waarde blijft staan, anders
+    // een voorstel. Dat betekent dat "Refresh estimate" een handmatig leeggemaakte
+    // geldigheid opnieuw voorstelt — precies zoals hij ook de datum opnieuw voorstelt.
+    // Wie de kop leeg wíl hebben, maakt hem leeg in "Edit header" en genereert niet
+    // opnieuw; dán, en alleen dán, gaat de kopblokpoort dicht.
+    validUntil: prev?.validUntil ?? addDays(quoteDate, DEFAULT_VALIDITY_DAYS),
   };
 
   const existing = await db
@@ -431,7 +597,12 @@ export async function generateQuote(
     }
     await db.insert(quoteLines).values(
       matched.map((l) => {
-        const unit = Number(l.manualPrice ?? l.matchedPrice);
+        // I-04: dagprijs wint van catalogusprijs — mét herkomst, zodat de regel
+        // hieronder niet nóg een keer dezelfde keuze maakt (lib/repo/day-price.ts).
+        // `today` is dezelfde kloklezing als de opnamefilter hierboven gebruikte: die
+        // twee moeten per definitie hetzelfde antwoord geven.
+        const { unitPrice, source } = unitPriceOf(l, today);
+        const unit = requireUnitPrice(unitPrice, l.fixtureCode);
         const qty = l.quantity ?? 0; // aantal ontbreekt → stukprijs-modus (A-07)
         const src = l.matchedProductId
           ? provenance.get(l.matchedProductId)
@@ -445,10 +616,12 @@ export async function generateQuote(
           quantity: qty,
           unitPrice: unit.toFixed(2),
           lineTotal: (unit * qty).toFixed(2),
-          // alleen bij een catalogusprijs (niet bij pure dagprijs, I-04)
-          priceListId: l.manualPrice != null ? null : (src?.priceListId ?? null),
+          // alleen bij een catalogusprijs (niet bij een dagprijs, I-04). Gelezen uit de
+          // herkomst van de gekozen prijs — geen tweede kopie van dezelfde regel.
+          priceListId:
+            source === "catalogus" ? (src?.priceListId ?? null) : null,
           sourceListDate:
-            l.manualPrice != null ? null : (src?.sourceListDate ?? null),
+            source === "catalogus" ? (src?.sourceListDate ?? null) : null,
         };
       }),
     );

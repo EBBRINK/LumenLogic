@@ -7,6 +7,7 @@ import type {
   VersionSnapshotLine,
 } from "@/components/dossier/version-history";
 import type { MatchStatus } from "@/components/dossier/status";
+import { formatDate } from "@/lib/format";
 import { getDossier } from "@/lib/repo/dossiers";
 import {
   datasheetsByProducts,
@@ -15,18 +16,14 @@ import {
   listVersions,
   type ArmatuurSnapshotRow,
 } from "@/lib/repo/armaturenboek-versions";
-import { requireSession } from "@/lib/session";
+import { isUuid, requireUuid } from "@/lib/uuid";
 import { snapshotAction } from "./actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Armaturenboek-versies (G-02/03/04): binnen de dossier-layout → fragment. De layout levert
 // de kop + tabs; deze pagina rendert de versiehistorie, de diff tussen twee versies en van de
 // nieuwste versie de regels mét locatie en datasheets.
-const dateFmt = new Intl.DateTimeFormat("nl-NL", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
 function toLine(
   r: ArmatuurSnapshotRow,
   datasheets?: { filename: string; url: string }[],
@@ -45,10 +42,15 @@ export default async function VersiesPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/luminaire-schedule/versions");
   const { id } = await params;
   const sp = await searchParams;
-  const dossier = await getDossier(db, id);
+  // De route-param krijgt requireUuid (de pagina bestaat niet), ?from=/?to= alleen isUuid
+  // hieronder (de pagina bestaat wél, alleen de gevraagde diff niet). Eigen guard en niet
+  // die van de dossier-layout: die rendert concurrent met deze pagina. Zie de regel bij
+  // requireUuid in lib/uuid.ts.
+  requireUuid(id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
 
   const versionRows = await listVersions(db, id);
@@ -74,7 +76,10 @@ export default async function VersiesPage({
   // Diff: expliciet gekozen (?from=&to=) of standaard de twee nieuwste versies.
   let fromRow = null;
   let toRow = null;
-  if (sp.from && sp.to) {
+  // Zelfde uuid-cast-val als bug #1, hier via QUERY-params: ?from=x&to=y gaf een 500.
+  // Géén notFound() maar terugvallen op de standaard-diff (de twee nieuwste versies) —
+  // de pagina zelf is geldig, alleen de gevraagde vergelijking niet.
+  if (isUuid(sp.from) && isUuid(sp.to)) {
     [fromRow, toRow] = await Promise.all([
       getVersion(db, sp.from),
       getVersion(db, sp.to),
@@ -112,7 +117,7 @@ export default async function VersiesPage({
       version: v.version,
       note: v.note,
       actor: v.actor,
-      createdAt: dateFmt.format(new Date(v.createdAt)),
+      createdAt: formatDate(v.createdAt),
       lineCount: snapshotRows(v.snapshot).length,
       compareHref: prev ? `?from=${prev.id}&to=${v.id}` : null,
     };

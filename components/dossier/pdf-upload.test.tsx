@@ -14,6 +14,7 @@ import {
   KaartMetErrorAction,
   KaartMetOcrBudgetStop,
   KaartMetOcrBudgetStopMidPagina,
+  KaartMetOcrMaandbudgetStop,
   KaartMetOcrHangend,
   KaartMetOcrHappy,
   KaartMetOcrResume,
@@ -420,7 +421,7 @@ test("beeld-PDF (0 tekst) → OCR-pad: voortgang per pagina zichtbaar, daarna af
     .toBeDisabled();
 });
 
-test("budget-stop halverwege → loop breekt af met melding hoeveel pagina's bleven liggen", async () => {
+test("RUN-budgetstop (€1-plafond) halverwege → loop breekt af, melding noemt dit boek en niet de maandcap", async () => {
   await renderServer(
     <Screen>
       <KaartMetOcrBudgetStop />
@@ -434,11 +435,44 @@ test("budget-stop halverwege → loop breekt af met melding hoeveel pagina's ble
   await expect
     .element(page.getByText(/€1 budget for this book is used up/))
     .toBeInTheDocument();
+  // Spiegel van de maandcap-test hieronder: nu de reden onvertaald doorkomt, is
+  // dit aantoonbaar budget_run — de maandcap-tekst mag hier dus niet staan.
+  expect(document.body.textContent).not.toContain("monthly AI budget");
   // finish is bewust NIET aangeroepen (run staat serverside op 'gestopt').
   expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
   await expect
     .element(page.getByRole("button", { name: "Import PDF" }))
     .toBeEnabled();
+});
+
+// Regressietest voor BUG 1 (sprint 2.4). ocrPageAction plette budget_run en
+// budget_month tot de string "budget", waarna de kaart bij élke budgetstop de
+// €1-boekbudget-tekst toonde. Bij een volle maandcap was dat onwaar: de gebruiker
+// kreeg te horen dat dít boek te duur was, terwijl de oplossing (cap ophogen of
+// wachten op een nieuwe maand) heel ergens anders ligt — een tweede boek proberen
+// stopt meteen weer. Deze test zou op de oude code gefaald zijn: hij vroeg om de
+// maandcap-tekst en kreeg de boektekst.
+test("MAANDCAP-stop → melding gaat over de maandcap, niet over het €1-boekbudget", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetOcrMaandbudgetStop />
+    </Screen>,
+  );
+  const boek = await makeBeeldPdf(3);
+  await uploadEnVerstuur(boek);
+  await expect
+    .element(page.getByText(/monthly AI budget is used up/))
+    .toBeInTheDocument();
+  // De kern: geen woord over het €1-boekbudget.
+  expect(document.body.textContent).not.toContain("€1 budget for this book");
+  await expect
+    .element(page.getByText(/2 of 3 pages were not \(fully\) read/))
+    .toBeInTheDocument();
+  // …en de gebruiker krijgt de juiste uitweg aangereikt.
+  await expect
+    .element(page.getByText(/Raise the monthly cap in Settings/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
 });
 
 test("hervatten (B5): donePages worden overgeslagen en de hervat-melding is zichtbaar", async () => {
@@ -767,6 +801,37 @@ for (const [name, { ui, klaar }] of Object.entries(interactieSchermen)) {
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
+  }
+}
+
+// De maandcap-melding in beeld (BUG 1). Kan niet in de lus hierboven: die uploadt
+// FIXTURE_BOEK (mét tekstlaag) en dat neemt het gewone import-pad — het OCR-pad
+// heeft een gegenereerde beeld-PDF nodig, zoals in de faaltelling-test hieronder.
+// Dit is meteen de langste foutmelding van de kaart (drie zinnen), dus juist deze
+// wil je op 375px en in dark naast de rest kunnen leggen.
+//
+// Twee pagina's, niet drie: de stub stopt bij pagina 2, dus pagina 3 wordt toch nooit
+// gelezen — hij kostte alleen rasterisatie. Met drie liep deze lus onder volle
+// suitebelasting tegen de 25s-timeout (geïsoleerd wel groen); de melding is even lang.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`project-ocr-budget-month (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <KaartMetOcrMaandbudgetStop />
+        </Screen>,
+      );
+      await uploadEnVerstuur(await makeBeeldPdf(2));
+      // Wachten tot de melding er écht staat, anders wordt het een leeg plaatje.
+      await expect
+        .element(page.getByText(/monthly AI budget is used up/))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./project-ocr-budget-month.${theme}.${device}.test.png`,
+      });
+    });
   }
 }
 

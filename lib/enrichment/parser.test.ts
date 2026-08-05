@@ -124,3 +124,182 @@ test("FIELDS bevat exact de zeven ondersteunde velden en presence = geparsed", (
   expect(Object.keys(s)).toEqual(["maxWattage"]);
   expect("kelvin" in s).toBe(false);
 });
+
+// ── Vier valse wattages (30 jul, gevonden door de agent-zwerm op Flos) ───────
+// Alle vier zijn echte namen uit de catalogus. WATT_RE is `(\d+)\s*(?:watt|w)\b` en die
+// spatie plus de losse `w` maken hem gulzig genoeg om een CRI, een typemaat, een lampvoet en
+// een per-lichtbron-vermogen als wattage te lezen.
+test("parseWatt zwijgt bij een CRI met een losse kleurcode-W erachter", () => {
+  expect(parseProductName("UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W").maxWattage).toBeUndefined();
+});
+
+test("parseWatt zwijgt bij een typemaat gevolgd door de kleurcode W-W", () => {
+  expect(parseProductName("EASY KAP 80 W-W RND BLK DWLED ARRAY C95").maxWattage).toBeUndefined();
+});
+
+test("parseWatt zwijgt bij een lampvoet gevolgd door een kleurcode", () => {
+  expect(
+    parseProductName("EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W").maxWattage,
+  ).toBeUndefined();
+});
+
+// Bij "12X3W" is 3 het vermogen per LED en 36 dat van het armatuur. Wij vullen NIET 36 in:
+// dat zou een productbesluit zijn (twaalf bronnen in één armatuur, of een set van twaalf?) en
+// de ijzeren regel is ontbrekend ≠ fout. Een lege kolom kan een betere bron later nog vullen.
+test("parseWatt zwijgt bij meerdere lichtbronnen, maar niet bij één", () => {
+  expect(parseProductName("CIRCLE OF LIGHT D300 LED 12X3W").maxWattage).toBeUndefined();
+  expect(parseProductName("TEAR DROP MEDIUM TC-TEL 2X26W").maxWattage).toBeUndefined();
+  // "1x10W" is ÉÉN lichtbron van 10 W — daar is 10 het juiste vermogen en zwijgen zou
+  // 1.412 goede waarden kosten. Dit onderscheid kostte mij een meetfout van 87 rijen.
+  expect(parseProductName("Works IP65 1x10W LED | Batten Light Fitting").maxWattage).toBe(10);
+});
+
+test("de reparatie raakt gewone namen niet", () => {
+  expect(parseProductName("SASSO 100 17,9W 3000K").maxWattage).toBeCloseTo(17.9, 2);
+  expect(parseProductName("EASY KAP 80 FIX RND BLACK PAR 16 GZ10 Max 8W").maxWattage).toBe(8);
+  expect(parseProductName("ENTERO 24W DALI 2700K 36deg").maxWattage).toBe(24);
+});
+
+// ── De losse W is bijna nooit een eenheid (30 jul, zwerm op Wever & Ducré) ───
+// Eén regel voor een familie die eerder als losse uitzonderingen groeide. Gemeten vóór het
+// bouwen: 140 landende voorstellen catalogusbreed (W&D 134, Sylvania 4, Marset 2).
+test("een typecode gevolgd door een losse W is geen wattage", () => {
+  // GEWIJZIGD 30 jul: deze assertie eiste eerst `undefined` voor de RONY-naam. Dat was het
+  // gedrag van de eerste, NAAMNIVEAU-versie van de regel, en die gooide met de verkeerde
+  // waarde ook de goede weg — `max. 12W` staat gewoon in dezelfde naam. De spanversie slaat
+  // alleen de valse span (PAR16 W) over en pakt de volgende kandidaat. Zie de test
+  // "een valse span wordt overgeslagen, niet de hele naam".
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage,
+  ).toBe(12);
+  // Zonder tweede kandidaat blijft het resultaat leeg:
+  expect(parseProductName("PLANO 1.0 SURF BOX PAR16 W").maxWattage).toBeUndefined();
+  expect(parseProductName("EASY KAP 105 EVO WW RND QR-CBC51 GX5.3 W").maxWattage).toBeUndefined();
+  expect(parseProductName("GINGER A XL42 W.CANOPY OAK").maxWattage).toBeUndefined();
+  // Een IP-KLASSE als vermogen — dit vond de zwerm en het stond op geen enkele lijst.
+  expect(parseProductName("LIFESAFE PRO TS 700 IP65 W EM3 NM DA").maxWattage).toBeUndefined();
+});
+
+test("een decimale typemaat met een losse W is geen wattage", () => {
+  // Een écht decimaal vermogen schrijft de eenheid VAST ("17,9W"), nooit los.
+  expect(parseProductName("ODREY SHADE 4.0 W").maxWattage).toBeUndefined();
+  expect(parseProductName("ILANE CEILING SURF 2.0 W 2.0m").maxWattage).toBeUndefined();
+  expect(parseProductName("1-PHASE TRACK ADAPTER 1.0 W for suspended").maxWattage).toBeUndefined();
+});
+
+test("de regel raakt de twee vormen NIET waar het getal wél het vermogen is", () => {
+  // De letter vóór het getal is hier de vermenigvuldigings-x: 10 W is het vermogen van één
+  // lichtbron. 87 gevallen, TossB 84 — zwijgen zou die allemaal kosten.
+  expect(parseProductName("Works IP65 1x10W LED | Batten Light Fitting").maxWattage).toBe(10);
+  // En hier zit de W VAST aan het getal, dus is hij de eenheid: een T5-buis van 13 W.
+  expect(parseProductName("F13W T5 fluorscentie lamp 840 Aircraft").maxWattage).toBe(13);
+  expect(parseProductName("Molla Vetri Componi200W").maxWattage).toBe(200);
+});
+
+// ── Per span beoordelen, niet per naam (30 jul, tweede versie) ───────────────
+// De eerste versie wees de hele naam af zodra er ergens een typemaat-W in stond. Gemeten:
+// 16 namen verloren daardoor een AANWEZIGE juiste waarde. Erger nog, het produceerde precies
+// de willekeur die dit spoor moest wegnemen — twee producten uit één familie kregen een
+// verschillende uitkomst omdat de kleurcode toevallig W was.
+test("een valse span wordt overgeslagen, niet de hele naam", () => {
+  expect(parseProductName("SIRRO SPOT INSET 1.0 W max. 12W").maxWattage).toBe(12);
+  expect(parseProductName("BOX INNER REFLECTOR 1.0 W max. 10W").maxWattage).toBe(10);
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 PAR16 W max. 12W GU10").maxWattage,
+  ).toBe(12);
+});
+
+test("dezelfde familie geeft dezelfde uitkomst, ongeacht de kleurcode", () => {
+  // Dit is de willekeurtoets. B en W zijn kleurcodes; het armatuur is hetzelfde.
+  const b = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W");
+  const w = parseProductName("SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W");
+  // De KERN van deze test is de symmetrie: de kleurcode mag de uitkomst niet bepalen.
+  expect(b.maxWattage).toBe(w.maxWattage);
+  // GEWIJZIGD 30 jul: de verwachte waarde was 4, en dat was toen juist. Inmiddels weten we dat
+  // die 4 het vermogen van de MEEGELEVERDE DRIVER is (40 producten, alle W&D, geen daarvan
+  // draagt daarnaast een eigen wattage), dus het juiste antwoord is voor allebei leeg. De
+  // symmetrie-assertie erboven is onveranderd en blijft de eigenlijke bewaker.
+  expect(b.maxWattage).toBeUndefined();
+
+  // Een armatuur mét fitting houdt zijn lampbelasting wél, ook symmetrisch over de kleurcode.
+  expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 B max. 12W GU10").maxWattage).toBe(
+    parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10").maxWattage,
+  );
+});
+
+test("zonder tweede kandidaat blijft de naam zwijgen", () => {
+  expect(parseProductName("ODREY SHADE 4.0 W").maxWattage).toBeUndefined();
+  expect(parseProductName("UT SPOT DOW NT 86 FL DA LED ARR 3K C90 W").maxWattage).toBeUndefined();
+});
+
+// ── "incl. driver 4W" is het vermogen van de driver ─────────────────────────
+// Gevonden bij het uitsplitsen van de 145 waarden die de span-versie terugwon: 132 daarvan
+// waren terecht (`max. 12W` bij een GU10-fitting), 13 brachten een waarde terug die de zwerm
+// al had afgekeurd. Gemeten: 40 producten, alle Wever & Ducré, en geen enkele draagt daarnaast
+// een eigen wattage — een plafondbasis heeft er ook geen.
+test("een wattage direct achter 'incl. driver' hoort bij de driver", () => {
+  for (const n of [
+    "SUSP SINGLE CEILING BASE SURF 1.1 B ROUND incl. driver 4W",
+    "SUSP SINGLE CEILING BASE SURF 1.1 W ROUND incl. driver 4W",
+    "3-PHASE TRACK ADAPTER 1.1 W incl. driver 10W 250mA",
+  ]) {
+    expect(parseProductName(n).maxWattage).toBeUndefined();
+  }
+});
+
+test("een armatuur dat zijn driver alleen VERMELDT houdt zijn eigen wattage", () => {
+  // Kreon heeft 1.806 van deze vorm: "driver incl." zónder getal ernaast. De 12W is het
+  // armatuur. Het verschil met de regel hierboven is de volgorde in de tekst.
+  expect(parseProductName("Esprit floor, marble base, driver incl., carrara 12W").maxWattage).toBe(12);
+});
+
+test("de lampbelasting bij een fitting blijft gewoon staan", () => {
+  expect(parseProductName("BLIEK CEILING REC 1.0 PAR16 W max. 12W GU10 100-240VAC").maxWattage).toBe(12);
+  expect(parseProductName("BISHOP CEILING SUSP 4.0 E27 W max. 25W A60/G95").maxWattage).toBe(25);
+});
+
+// ── Vermenigvuldiging mét bereik, en vermogen per meter (vierde zwermronde) ──
+test("2x6/9W levert niets: 9 is het vermogen per module, niet van het armatuur", () => {
+  // Gemeten 122 producten, alle W&D. Het 2.0-armatuur draagt er twee, dus 18 W — de parser las
+  // 9 en dat is structureel de helft te laag. De 1.0-variant zonder vermenigvuldiging klopt wél.
+  expect(
+    parseProductName("RON CEILING REC 2.0 LED 2700K B 2X6/9W 350/500mA 17V CRI90").maxWattage,
+  ).toBeUndefined();
+  expect(
+    parseProductName("RONY ADJUST CEILING REC 1.0 LED 2700K B 6/9W 350/500mA 17V").maxWattage,
+  ).toBe(9);
+});
+
+test("een vermogen per meter is geen armatuurvermogen", () => {
+  // 147 producten (Kreon 113, W&D 20, XAL 14). Het totaal hangt van de lengte af.
+  expect(
+    parseProductName("JANE 2000 IP40 LIGHT ROPE 14,4W/M LED 3000K 48VDC").maxWattage,
+  ).toBeUndefined();
+  // Vaste-lengtevarianten dragen wél een totaal en blijven staan.
+  expect(parseProductName("ILANE CEILING REC 2.0m LED 3000K 30W 48V CRI90").maxWattage).toBe(30);
+});
+
+// ── De W die bij het volgende woord hoort (31 jul) ──────────────────────────
+// Timo vond in de CLS-steekproef: `CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver` kreeg
+// maxWattage 407. De 407 is het typenummer LDC-407 en de W hoort bij W-DMX, het draadloze
+// DMX-protocol. Een 4-kanaals 700 mA driver zit rond de 50 W.
+//
+// De regel die dit vangt bestond al in smallere vorm (`W-W`, de kleurcode warm-white) en is
+// veralgemeend naar élk letterachtervoegsel. Catalogusbreed dragen 1.173 namen die vorm en geen
+// ervan is een vermogen: 48× `W-W`, 1.124 XAL-bestelcodes en deze ene driver.
+test("een W met een koppelteken en letters erachter is geen eenheid", () => {
+  expect(parseProductName("CLS LDC-407 W-DMX 1-4 kanaals 700mA LED driver").maxWattage).toBeUndefined();
+  expect(parseProductName("EASY KAP 80 W-W RND GOLD DW LED ARRAY C95 13W").maxWattage).toBe(13);
+  // XAL's bestelcode: 305W- is de code, 12,5W het echte vermogen even verderop.
+  expect(
+    parseProductName("UNICO-000 305W-E040-E040 XAL UNICO L2 BASIC CEIL 12,5W 3000K").maxWattage,
+  ).toBe(12.5);
+});
+
+// De keerzijde: een W die gewoon de eenheid is mag niet sneuvelen.
+test("een gewone wattage blijft staan, ook naast koppeltekens elders in de naam", () => {
+  expect(parseProductName("PANEL 40W 3000K DALI").maxWattage).toBe(40);
+  expect(parseProductName("SPOT 1x10W 3000K").maxWattage).toBe(10);
+  expect(parseProductName("STREX SUSP 1.0 LED 8W 2700K B-B 220-240VAC").maxWattage).toBe(8);
+  expect(parseProductName("DOWNLIGHT 24V 12W 3000K 1-10V DIM").maxWattage).toBe(12);
+});

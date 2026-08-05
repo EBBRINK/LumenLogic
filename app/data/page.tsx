@@ -3,42 +3,36 @@
 import { db } from "@/db/client";
 import { CoverageMeter } from "@/components/data/coverage-meter";
 import { DataCards } from "@/components/data/data-cards";
+import { isCoverageGap } from "@/components/data/price-list-status";
 import {
   getTier2Coverage,
-  listBrandLoadQueue,
   listEnrichmentRuns,
   listPriceListStatus,
 } from "@/lib/repo/enrichment";
-import { listBrandRelations } from "@/lib/repo/brand-relations";
-import { requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function DataPage() {
-  await requireSession();
-  const [coverage, runs, queue, priceLists, relations] = await Promise.all([
+  await bewaakRoute("/data");
+  const [coverage, runs, priceLists] = await Promise.all([
     getTier2Coverage(db),
     listEnrichmentRuns(db),
-    listBrandLoadQueue(db),
     listPriceListStatus(db),
-    listBrandRelations(db),
   ]);
 
   const openRuns = runs.filter((r) => r.status === "steekproef").length;
-  const waiting = queue.filter((q) => q.status === "wachtend").length;
-  const expired = priceLists.filter((p) => p.bucket === "verlopen").length;
-  // Badge = werk te verwerken: merken waarvan de data binnen is (K3).
-  const dataOntvangen = relations.filter(
-    (r) => r.status === "data_ontvangen",
-  ).length;
+  // Dezelfde predicate als de tint van de rij op /data/price-lists — geïmporteerd, niet
+  // nagebouwd. Tot 30 jul telde deze badge alleen `bucket === "verlopen"` en las hij dus "1"
+  // naast een scherm dat "1 expired · 30 with 0 products — coverage gaps" meldde. Twee
+  // schermen, één definitie van een dekkingsgat; anders lopen ze weer uit elkaar.
+  const gaps = priceLists.filter(isCoverageGap).length;
 
   const badge: Record<string, number> = {
     "/data/enrichment": openRuns,
-    "/data/loading": waiting,
-    "/data/price-lists": expired,
-    "/data/brand-relations": dataOntvangen,
+    "/data/price-lists": gaps,
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Data</h1>
         <p className="mt-1 text-sm text-muted-foreground">

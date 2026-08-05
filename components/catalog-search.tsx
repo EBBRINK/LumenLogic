@@ -1,6 +1,9 @@
 import { IconSearch } from "./dossier/icons";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { formatEur } from "@/lib/format";
 import type { Candidate } from "./dossier/types";
 
@@ -29,9 +32,10 @@ export type CatalogValues = {
 
 const EMPTY_VALUES: CatalogValues = { brand: "", q: "", kelvin: "", cri: "", ip: "" };
 
-// Native select, gestyled in dezelfde taal als <Input> (geen shadcn-select in de repo).
-const selectClass =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30";
+// Native select met exact de tokens van <Input> — dezelfde bron (components/ui/field.ts),
+// dus ook dezelfde 44px (O9) en dezelfde focus-ring. Hier stond een eigen reeks op h-8 met
+// de afgeschafte shadcn-resten dark:bg-input/30 en ring-ring/50.
+const selectClass = cn(veldClass, "w-full min-w-0");
 
 function Field({
   label,
@@ -71,7 +75,7 @@ function ResultCard({ item }: { item: CatalogResult }) {
           <p className="truncate font-medium">{item.name}</p>
           <p className="text-xs text-muted-foreground">{specs.join(" · ")}</p>
           {item.missing && item.missing.length > 0 && (
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               no data for: {item.missing.join(", ")}
             </p>
           )}
@@ -192,23 +196,28 @@ export function CatalogSearch({
       </form>
 
       {!searched ? (
-        <p className="text-sm text-muted-foreground">
-          Choose a brand or type free text and search the catalog.
-        </p>
+        // Geen actie: de zoekknop staat direct hierboven in hetzelfde formulier — een
+        // tweede knop zou naar zichzelf wijzen.
+        <EmptyState
+          title="Choose a brand or type free text and search the catalog."
+          action={null}
+        />
       ) : total === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-center">
-          <p className="font-medium">No products found</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            No visible product matches this search. That's an honest status, not an
-            error.
-          </p>
-        </div>
+        <EmptyState
+          title="No products found"
+          description="No visible product matches this search. That's an honest status, not an error."
+          action={null}
+        />
       ) : (
         <div className="flex flex-col gap-8">
           <ResultList title="Provably compliant" items={aantoonbaar} />
           <ResultList
             title="Possible — data incomplete"
-            note="No data is not a rejection: these products are (still) missing data to prove the match. They are never silently omitted."
+            // UX-audit 30 jul (item 12): hier stond "They are never silently omitted."
+            // achteraan. Die belofte staat nu nog op één plek, bij het afrondingsblok in
+            // components/dossier/match-candidates.tsx — daar valt de status te kiezen,
+            // hier valt niets te kiezen. Wat blijft is wat de lijst betekent.
+            note="No data is not a rejection: these products are (still) missing data to prove the match."
             items={onvolledig}
           />
         </div>

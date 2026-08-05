@@ -5,6 +5,8 @@
 // strengste telt).
 import { expect, test } from "vitest";
 import {
+  fieldLabel,
+  fieldLabelTitle,
   judgeWatt,
   judgeLumen,
   judgeBeamAngle,
@@ -139,4 +141,65 @@ test("SKU-normalisatie: interpunctie/spaties/case genegeerd", () => {
   expect(normalizeSku("SAS100-BK")).toBe("sas100bk");
   expect(normalizeSku("SAS100.BK")).toBe("sas100bk");
   expect(normalizeSku("sas 100 bk")).toBe("sas100bk");
+});
+
+// ── UX-audit 30 jul (bug #8): veldlabels voor de UI ──────────────────────────
+// FIELD_LABELS bestond al, maar was privé en werd alleen gebruikt om note-zinnen te
+// bouwen — de schermen toonden de ruwe sleutel. De fallback is de kern: een sleutel die
+// hier ontbreekt mag NOOIT als camelCase-identifier op het scherm belanden.
+test("fieldLabel: bekende sleutels krijgen hun vastgelegde label", () => {
+  expect(fieldLabel("beamAngle")).toBe("beam angle");
+  expect(fieldLabel("dimmable")).toBe("dimmability");
+  expect(fieldLabel("cri")).toBe("CRI");
+  expect(fieldLabel("ip")).toBe("IP");
+});
+
+test("fieldLabel: een onbekende sleutel wordt een zin, geen identifier", () => {
+  // camelCase valt uit elkaar…
+  expect(fieldLabel("kleurWeergaveIndex")).toBe("kleur weergave index");
+  // …net als snake_case en kebab-case.
+  expect(fieldLabel("nieuw_veld")).toBe("nieuw veld");
+  expect(fieldLabel("nieuw-veld")).toBe("nieuw veld");
+  // Cijfers blijven bij hun woord staan.
+  expect(fieldLabel("tier2Source")).toBe("tier2 source");
+});
+
+// REPARATIE 30 jul, bevinding 3: de Field-kolom liet vier conventies in vier rijen zien
+// (`kelvin` · `Straalhoek` · `IP` · `beam angle`) omdat de mapwaarden klein zijn en de
+// fallback een hoofdletter zette. Eén conventie: fieldLabel() is ALTIJD midden-in-de-zin,
+// fieldLabelTitle() zet de hoofdletter op de rendersite.
+test("fieldLabel is overal midden-in-de-zin, fieldLabelTitle overal begin-van-de-regel", () => {
+  // Gemengde herkomst: uit de map, uit de fallback, en een afkorting.
+  expect(["kelvin", "beamAngle", "straalhoek", "ip"].map(fieldLabel)).toEqual([
+    "kelvin",
+    "beam angle",
+    "straalhoek",
+    "IP",
+  ]);
+  expect(
+    ["kelvin", "beamAngle", "straalhoek", "ip"].map(fieldLabelTitle),
+  ).toEqual(["Kelvin", "Beam angle", "Straalhoek", "IP"]);
+});
+
+// REPARATIE 30 jul, bevinding 4: fieldLabel() had geen afkortingentabel terwijl zijn
+// zusterfunctie eventLabel() die wél had. Gemeten vóór de fix: "Ip", "Cri", "Ugr",
+// "Ip rating", "2700 k".
+test("fieldLabel: afkortingen en eenheden blijven staan", () => {
+  expect(fieldLabel("IP")).toBe("IP");
+  expect(fieldLabel("CRI")).toBe("CRI");
+  expect(fieldLabel("UGR")).toBe("UGR");
+  expect(fieldLabel("IP_RATING")).toBe("IP rating");
+  expect(fieldLabelTitle("IP_RATING")).toBe("IP rating");
+  // Een getal met een eenheidsletter is geen woord: "2700K" wordt geen "2700 k".
+  expect(fieldLabel("2700K")).toBe("2700K");
+});
+
+test("fieldLabel: degenereerde invoer valt terug op de sleutel zelf", () => {
+  // Let op wat hier gemeten wordt: de lege string gaat er ook leeg weer uit. Dat is
+  // "zichzelf", maar het IS een lege cel — het commentaar hier beweerde eerder het
+  // tegenovergestelde van wat de assert doet. Aanroepers met een mogelijk lege sleutel
+  // moeten dus zelf een streepje neerzetten.
+  expect(fieldLabel("")).toBe("");
+  expect(fieldLabel("_")).toBe("_");
+  expect(fieldLabel("-")).toBe("-");
 });

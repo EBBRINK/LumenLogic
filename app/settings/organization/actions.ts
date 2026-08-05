@@ -1,15 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { organizations, type MembershipRole } from "@/db/schema";
-import {
-  addMembership,
-  createOrganization,
-  removeMembership,
-} from "@/lib/repo/orgs";
-import { getActor, requireSession } from "@/lib/session";
+import { type MembershipRole } from "@/db/schema";
+import { changeMembershipAsActor, setBrandingAsActor } from "@/lib/repo/authz";
+import { createOrganization } from "@/lib/repo/orgs";
+import { bewaakNiveau, bewaakRoute } from "@/lib/route-toegang";
 
 const PAGE = "/settings/organization";
 
@@ -23,7 +19,11 @@ const VALID_ROLES: MembershipRole[] = [
 // ORG: een nieuwe organisatie. Naam is verplicht; plan en zetellimiet optioneel.
 // Een lege/ongeldige zetellimiet betekent onbeperkt (null).
 export async function createOrgAction(formData: FormData) {
-  await requireSession();
+  // 3.2a: stond achter alléén `requireSession()`. Een organisatie aanmaken is de wortel
+  // van het hele org-model — wie dat kan, kan straks (G42) ook het TYPE ervan kiezen, en
+  // `type = 'intern'` betekent volgens G36-regel 1 almachtig. Dus intern, en niet
+  // "iedereen met een sessie". De bewuste type-keuze bij aanmaken is 3.2c.
+  const toegang = await bewaakNiveau("intern", "createOrgAction");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const plan = String(formData.get("plan") ?? "").trim() || undefined;
@@ -35,15 +35,27 @@ export async function createOrgAction(formData: FormData) {
     name,
     plan,
     seatLimit,
-    actor: await getActor(),
+    actor: toegang.email ?? "anoniem",
   });
   revalidatePath(PAGE);
 }
 
 // LID: e-mail + gekozen petten. Onbekende rolwaarden worden weggefilterd (fail-safe);
 // een lid zonder aangevinkte rol mag — dat is een eerlijk "geen rol", geen fout.
+//
+// ⚠️ Besluiten G36/G39. Dit is de TWEEDE deur naar precies dezelfde beslissing als het
+// PIN-scherm: hier ontstaat een lidmaatschap mét rollen. Tot deze ronde stond hij open —
+// alleen `requireSession()`, org en rollen rechtstreeks uit het formulier — en daarmee was
+// de poort op het PIN-scherm zinloos: een gewone gebruiker zette zichzelf hier in de org met
+// type 'intern' en was daarna volgens G36-regel 1 almachtig (gemeten door de critic, ronde
+// 2). Beide deuren leunen nu op dezelfde regels in lib/repo/authz.ts; wie mag wat wordt
+// dáár, op het moment van schrijven, uit de sessie en de database afgeleid.
+//
+// Een weigering is hier stil: dit is een `<form action={…}>` zonder retourkanaal, dus
+// hetzelfde gedrag als bij een lege invoer hierboven. De weigering staat wél in de
+// events-tabel (regel 5), en de UI toont een org_admin de knoppen sowieso niet.
 export async function addMemberAction(formData: FormData) {
-  await requireSession();
+  const toegang = await bewaakRoute("/settings/organization");
   const orgId = String(formData.get("orgId") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   if (!orgId || !email) return;
@@ -53,35 +65,62 @@ export async function addMemberAction(formData: FormData) {
     .filter((r): r is MembershipRole =>
       (VALID_ROLES as string[]).includes(r),
     );
-  await addMembership(db, { orgId, email, roles, actor: await getActor() });
+  await changeMembershipAsActor(db, {
+    actorEmail: toegang.email,
+    orgId,
+    email,
+    roles,
+    operation: "set",
+  });
   revalidatePath(PAGE);
 }
 
 // LID: verwijderen. De repo normaliseert het adres; buiten de org valt niets te wissen.
+// Zelfde poort als hierboven (G36/G39): een org_admin kan alleen zijn eigen leden
+// verwijderen en nooit een collega-beheerder of zichzelf — dat laatste zou een organisatie
+// zonder beheerder achterlaten.
 export async function removeMemberAction(formData: FormData) {
-  await requireSession();
+  const toegang = await bewaakRoute("/settings/organization");
   const orgId = String(formData.get("orgId") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   if (!orgId || !email) return;
-  await removeMembership(db, orgId, email);
+  // De actor die main aan removeMembership meegeeft (voor het events-spoor) komt hier
+  // uit de autorisatielaag zelf: die stelt de bevoegdheid vast en geeft daarna het
+  // vastgestelde adres door aan removeMembership. Zo blijft het spoor compleet zónder
+  // dat deze action nog een tweede keer een actor uit de sessie plukt.
+  await changeMembershipAsActor(db, {
+    actorEmail: toegang.email,
+    orgId,
+    email,
+    operation: "remove",
+  });
   revalidatePath(PAGE);
 }
 
-// BRANDING: logo-URL + accentkleur op de organisatie. Lege velden worden weggelaten in
-// plaats van als lege string opgeslagen (ontbrekende data blijft eerlijk ontbreken).
-// Geen repo-helper in de gedeelde laag → directe, gerichte update op deze ene org.
+// BRANDING: logo-URL + accentkleur op de organisatie.
+//
+// ⚠️ Dit was de BEKENDE SCHULD uit `lib/repo/authz-deuren.test.ts` (sprint 3.2a). De action
+// stond achter alléén `requireSession()`, schreef rechtstreeks op de organisatietabel en
+// las de `orgId` uit het formulier — dus een gewone gebruiker uit org A overschreef de
+// branding van org B, zonder spoor. Theoretisch zolang er één organisatie was; echt zodra
+// de tweede erbij komt (G41), en dat staat op het punt te gebeuren.
+//
+// Nu dezelfde vorm als de twee deuren hierboven (G39): de poort en de schrijfactie zitten
+// in één aanroep, `actorEmail` komt uit de sessie en de bevoegdheid wordt vers uit de
+// database afgeleid. De `orgId` uit het formulier bepaalt alleen de vráág, nooit het
+// antwoord "mag hij dit".
+//
+// Een weigering is hier stil, net als bij `addMemberAction`: dit is een `<form action={…}>`
+// zonder retourkanaal. De weigering staat wél in de events-tabel (regel 5).
 export async function saveBrandingAction(formData: FormData) {
-  await requireSession();
+  const toegang = await bewaakRoute("/settings/organization");
   const orgId = String(formData.get("orgId") ?? "").trim();
   if (!orgId) return;
-  const logoUrl = String(formData.get("logoUrl") ?? "").trim();
-  const accentColor = String(formData.get("accentColor") ?? "").trim();
-  const branding: Record<string, unknown> = {};
-  if (logoUrl) branding.logoUrl = logoUrl;
-  if (accentColor) branding.accentColor = accentColor;
-  await db
-    .update(organizations)
-    .set({ branding, updatedAt: new Date() })
-    .where(eq(organizations.id, orgId));
+  await setBrandingAsActor(db, {
+    actorEmail: toegang.email,
+    orgId,
+    logoUrl: String(formData.get("logoUrl") ?? ""),
+    accentColor: String(formData.get("accentColor") ?? ""),
+  });
   revalidatePath(PAGE);
 }

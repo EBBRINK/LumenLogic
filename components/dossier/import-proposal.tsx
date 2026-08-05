@@ -5,6 +5,7 @@
 // geen fout, alleen iets dat controle vraagt.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { IconCheck } from "./icons";
 import type { ImportRow } from "@/db/schema";
 
@@ -69,7 +70,7 @@ export function ImportProposal({
       <div
         className={
           uncertain
-            ? "mb-5 rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            ? "mb-5 rounded-lg bg-status-amber-tint px-4 py-3 text-sm text-status-amber-ink"
             : "mb-5 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground"
         }
       >
@@ -103,9 +104,18 @@ export function ImportProposal({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No lines recognized in this source.
-        </p>
+        // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": dit blok staat
+        // los in het formulier op het kale canvas, er is geen <Card> die al een
+        // kader tekent.
+        //
+        // Bewuste `action={null}`: de enige zinnige uitweg is "Cancel import", en die
+        // knop staat in de voettekst van ditzelfde formulier, een stukje lager. Een
+        // tweede annuleerknop hier zou naar zichzelf wijzen (zelfde afweging als in
+        // components/catalog-search.tsx).
+        <EmptyState
+          title="No lines recognized in this source."
+          action={null}
+        />
       ) : (
         <Table>
           <TableHeader>

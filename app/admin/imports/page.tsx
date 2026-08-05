@@ -4,16 +4,16 @@ import {
   type UploadReviewRow,
 } from "@/components/admin/upload-review-block";
 import { listBrandUploadsForReview, listBrandsWithTier } from "@/lib/repo/admin";
-import { requireSession } from "@/lib/session";
 import {
   approveUploadAction,
   pdlImportAction,
   rejectUploadAction,
 } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // MERK-UPLOADS goedkeuren/afwijzen + PDL-import-stub (§3.16, H-10/H-11). Eigen <main>.
 export default async function AdminImportsPage() {
-  await requireSession();
+  await bewaakRoute("/admin/imports");
 
   const [uploads, brands] = await Promise.all([
     listBrandUploadsForReview(db),
@@ -32,7 +32,7 @@ export default async function AdminImportsPage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Imports</h1>
         <p className="text-sm text-muted-foreground">

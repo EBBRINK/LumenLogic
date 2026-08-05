@@ -65,7 +65,7 @@ function verdict(
 }
 
 function toneClass(tone: Tone): string {
-  if (tone === "good") return "text-emerald-600 dark:text-emerald-400";
+  if (tone === "good") return "text-status-green-ink";
   if (tone === "bad") return "text-destructive";
   return "text-muted-foreground";
 }
@@ -83,7 +83,7 @@ function Party({
     <div
       className={
         "rounded-lg border p-4 " +
-        (accent ? "border-emerald-600/40 bg-emerald-50/40 dark:bg-emerald-950/20" : "")
+        (accent ? "border-status-green-dot/40 bg-status-green-tint/40 dark:bg-status-green-tint/20" : "")
       }
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -138,7 +138,10 @@ export function SubstitutionDoc({
   const sustainability = fields.filter((f) => SUSTAINABILITY.has(f.field));
 
   return (
-    <article className="mx-auto max-w-3xl">
+    // Geen `mx-auto` meer — zelfde reden als in armaturenboek-view.tsx. De
+    // documentbreedte (768px) blijft; alleen de centrering binnen de bredere
+    // dossiercontainer is eruit, zodat de linkerrand met de tabbalk meeloopt.
+    <article className="max-w-3xl">
       <header className="mb-6 border-b pb-4">
         <p className="text-sm text-muted-foreground">Substitution proposal</p>
         <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>
@@ -215,11 +218,16 @@ export function SubstitutionDoc({
         </div>
       ) : null}
 
+      {/* UX-audit 30 jul (item 12): "— never silently omitted" is hier weg. Op dit blad
+          is het geen beleidsuitleg maar een herhaling: dat ontbrekende data als "no data"
+          in de tabel staat, laat het blad zélf zien. De belofte staat nog op één plek,
+          bij het afrondingsblok in match-candidates.tsx, waar de status wordt gekozen.
+          De bronvermelding en de prijs-noot blijven: dat zijn feiten over dít document,
+          niet over de app. */}
       <p className="mt-6 text-xs text-muted-foreground">
         Source of all technical and sustainability figures: manufacturer's data
         (brand-provided), not independently verified. Missing data is shown as
-        “no data” — never silently omitted. Price is informational and does not
-        count in the ranking.
+        “no data”. Price is informational and does not count in the ranking.
       </p>
     </article>
   );

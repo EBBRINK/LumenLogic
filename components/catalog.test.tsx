@@ -132,6 +132,18 @@ test("onvolledig-item benoemt de ontbrekende data (nooit stil weggelaten)", asyn
     .toBeInTheDocument();
 });
 
+// UX-audit 30 jul (item 12): de lijstnoot eindigde met "They are never silently omitted."
+// Dat is beleid dat hier niet te kiezen valt — het scherm bewíjst het al met de regel
+// hierboven ("no data for: …"). De belofte staat nog op één plek: het afrondingsblok in
+// components/dossier/match-candidates.tsx. De noot die zegt wát de lijst is, blijft.
+test("de lijstnoot zegt wat de lijst is, zonder het beleid voor te lezen", async () => {
+  await renderServer(searchedUi);
+  await expect
+    .element(page.getByText(/No data is not a rejection/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("silently omitted");
+});
+
 test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
   await renderServer(
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -142,4 +154,9 @@ test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {
     .element(page.getByText("Choose a brand or type free text and search the catalog."))
     .toBeInTheDocument();
   expect(page.getByText("Provably compliant").query()).toBeNull();
+  // A6: geen kale grijze zin meer op een verder wit scherm — de gedeelde lege toestand.
+  const empty = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  expect(empty!.dataset.variant).toBe("framed");
+  await page.screenshot({ path: "./catalog-nog-niet-gezocht.light.desktop.test.png" });
 });

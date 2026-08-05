@@ -14,6 +14,7 @@
 //    hebben; "bestaat niet meer" is dan het juiste antwoord, en dat mag geen zoektocht
 //    naar een ander scherm worden.
 import { useActionState } from "react";
+import { veldClass } from "@/components/ui/field";
 import type { BrandLifecycle } from "@/db/schema";
 import type { BrandDeleteImpact } from "@/lib/repo/brands";
 import type { BrandDeleteState } from "@/app/admin/brands/actions";
@@ -225,7 +226,7 @@ export function BrandDeleteBlock({
               lifecycle === "actief" ? "bestaat_niet_meer" : lifecycle
             }
             aria-label={`Lifecycle for ${brandName}`}
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            className={veldClass}
           >
             {LIFECYCLE_ORDER.map((l) => (
               <option key={l} value={l}>

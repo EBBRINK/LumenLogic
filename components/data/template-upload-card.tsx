@@ -95,7 +95,12 @@ export function TemplateUploadCard({
             aria-label="Choose filled template (.xlsx)"
             className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
           />
-          <Button type="submit" disabled={pending}>
+          {/* Outline, geen navy vlak. Deze knop slaat niets op — de kaarttekst hierboven
+              zegt het zelf ("Nothing is saved yet") — en op dit scherm is Save in het
+              relatieformulier de zwaarste actie. DESIGN.md §6 kent maar drie
+              uitzonderingen op één-primary-per-scherm (dialoog, herhaalde beslis-kaart,
+              filterchip) en een eenmalige sectiekaart is geen van drieën. */}
+          <Button type="submit" variant="outline" disabled={pending}>
             {pending ? "Checking…" : "Check template"}
           </Button>
         </form>
@@ -113,7 +118,7 @@ export function TemplateUploadCard({
           <div
             role="alert"
             data-reden={state.reden.code}
-            className="mt-3 rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            className="mt-3 rounded-lg bg-status-amber-tint px-4 py-3 text-sm text-status-amber-ink"
           >
             <p className="font-medium text-foreground">
               This file was not accepted

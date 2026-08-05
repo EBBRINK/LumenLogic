@@ -1,7 +1,8 @@
 // Volledige compleetheids-scorecard (sprint 1.6, besluiten G9-G12): categorie 1 t/m 10
 // gaan uitsluitend over wat het merk-Excel daadwerkelijk vraagt (G9), elk met een eigen
 // percentage; categorie "11. Internal" staat er apart onder, zichtbaar maar nooit
-// meegewogen (G10); onderaan drie totalen MUST/WANNA/NICE, veldgewogen over 1 t/m 10 (G11),
+// meegewogen (G10); onderaan drie totalen (Required/Requested/Optional — de opgeslagen
+// enum blijft must/wanna/nice, zie lib/niveau-labels.ts), veldgewogen over 1 t/m 10 (G11),
 // niet over categorieën gemiddeld (G12 — anders weegt Commercie's ene veld even zwaar als
 // Fotometrie's elf).
 //
@@ -14,17 +15,11 @@
 // bij PriceListExpiryNotice: de RSC-testbrug struikelt over de client-referentie van lucide).
 import type {
   CategorieScore,
-  Compleetheidsniveau,
   FieldCoverage,
   ScorecardAggregate,
 } from "@/lib/field-catalog";
+import { niveauLabel } from "@/lib/niveau-labels";
 import { cn } from "@/lib/utils";
-
-const NIVEAU_LABEL: Record<Compleetheidsniveau, string> = {
-  must: "must",
-  wanna: "wanna",
-  nice: "nice",
-};
 
 // Zelfde gradient als voorheen: donkergroen bij 100% must, verloop eronder.
 function dekkingKleur(ratio: number, mustComplete: boolean): string {
@@ -68,8 +63,11 @@ function FieldRow({
           </span>
         )}
       </span>
+      {/* UX-audit 30 jul (item 4): hier stond het ruwe enum-woord, in kapitalen — 66×
+          "WANNA" op een scherm dat merken te zien krijgen. De opgeslagen waarde is
+          ongewijzigd; alleen het label komt nu uit lib/niveau-labels.ts. */}
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {NIVEAU_LABEL[field.niveau]}
+        {niveauLabel(field.niveau)}
       </span>
       {ratio === null ? (
         <span className="w-24 text-right text-xs text-muted-foreground">
@@ -159,7 +157,8 @@ export function BrandScorecard({
         per field — not per category (one price field counts as much as one
         photometric field). Categories 1–10 cover exactly the{" "}
         {aggregate.templateFieldCount} fields requested in the brand Excel
-        (scored: {aggregate.scoredFieldCount}). Dark green = all must fields
+        (scored: {aggregate.scoredFieldCount}). Dark green = all{" "}
+        {niveauLabel("must")} fields
         100% filled; below that the bar tracks the coverage. Gray = not
         measurable yet. Fields with a lock are internal-commercial and are
         shown separately below — never counted in the totals.
@@ -199,14 +198,14 @@ export function BrandScorecard({
           {(["must", "wanna", "nice"] as const).map((niveau) => (
             <div
               key={niveau}
-              aria-label={`Total ${niveau}`}
+              aria-label={`Total ${niveauLabel(niveau)}`}
               className="text-center"
             >
               <div className="text-2xl font-semibold tabular-nums">
                 {Math.round(aggregate.totals[niveau].ratio * 100)}%
               </div>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                {NIVEAU_LABEL[niveau]}
+                {niveauLabel(niveau)}
               </div>
             </div>
           ))}

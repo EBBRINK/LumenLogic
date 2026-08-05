@@ -16,6 +16,7 @@ import {
   type ProjectStatus,
   type XisPhase,
 } from "@/lib/repo/project-status";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 async function getDossierRow(db: Awaited<ReturnType<typeof createTestDb>>, id: string) {
   const [row] = await db
@@ -77,13 +78,13 @@ test("isReadOnly: alléén archief; niet_gegund blijft bewerkbaar", () => {
 // ── createDossier: altijd concept, phase afgeleid ────────────────────────────
 test("createDossier: status concept, phase afgeleid van de XIS-fase", async () => {
   const db = await createTestDb();
-  const veilig = await createDossier(db, { name: "Nieuw", actor: "timo@brink" });
+  const veilig = await createDossier(db, { orgId: null, name: "Nieuw", actor: "timo@brink" });
   expect(veilig.status).toBe("concept");
   expect(veilig.xisPhase).toBe("start");
   expect(veilig.phase).toBe("tender"); // default = veilig (regel 4)
 
   // Wie een project ná gunning invoert (xis deal_making) krijgt meteen awarded.
-  const laat = await createDossier(db, {
+  const laat = await createDossier(db, { orgId: null,
     name: "Laat ingevoerd",
     xisPhase: "deal_making",
   });
@@ -94,8 +95,8 @@ test("createDossier: status concept, phase afgeleid van de XIS-fase", async () =
 // ── setStatus: status + phase in één beweging, gelogd ────────────────────────
 test("setStatus gegund: phase gaat mee naar awarded + status_changed-event met phase_changed", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Ziekenhuis Noord" });
-  await setStatus(db, d.id, "gegund", "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "Ziekenhuis Noord" });
+  await setStatus(db, ALLE_DOSSIERS, d.id, "gegund", "timo@brink");
 
   const row = await getDossierRow(db, d.id);
   expect(row.status).toBe("gegund");
@@ -116,9 +117,9 @@ test("setStatus gegund: phase gaat mee naar awarded + status_changed-event met p
 
 test("setStatus niet_gegund ná gegund: phase valt terug naar tender en blijft bewerkbaar", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Kantoor Zuid" });
-  await setStatus(db, d.id, "gegund", "timo@brink");
-  await setStatus(db, d.id, "niet_gegund", "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "Kantoor Zuid" });
+  await setStatus(db, ALLE_DOSSIERS, d.id, "gegund", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, d.id, "niet_gegund", "timo@brink");
 
   const row = await getDossierRow(db, d.id);
   expect(row.status).toBe("niet_gegund");
@@ -128,8 +129,8 @@ test("setStatus niet_gegund ná gegund: phase valt terug naar tender en blijft b
 
 test("setStatus zonder fasewissel: event zónder phase_changed in de payload", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "School West" });
-  await setStatus(db, d.id, "offerte", "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "School West" });
+  await setStatus(db, ALLE_DOSSIERS, d.id, "offerte", "timo@brink");
   const [e] = await db.select().from(events).where(eq(events.action, "status_changed"));
   expect(e.payload).toMatchObject({ from: "concept", to: "offerte" });
   expect((e.payload as Record<string, unknown>).phase_changed).toBeUndefined();
@@ -138,8 +139,8 @@ test("setStatus zonder fasewissel: event zónder phase_changed in de payload", a
 // ── setXisPhase ──────────────────────────────────────────────────────────────
 test("setXisPhase deal_making bij status concept: phase awarded + xis_phase_changed-event", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Museum Oost" });
-  await setXisPhase(db, d.id, "deal_making", "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "Museum Oost" });
+  await setXisPhase(db, ALLE_DOSSIERS, d.id, "deal_making", "timo@brink");
 
   const row = await getDossierRow(db, d.id);
   expect(row.status).toBe("concept"); // status blijft — alleen de XIS-fase wijzigde
@@ -159,25 +160,25 @@ test("setXisPhase deal_making bij status concept: phase awarded + xis_phase_chan
   });
 
   // Terug naar tender-fase → phase weer veilig.
-  await setXisPhase(db, d.id, "tender", "timo@brink");
+  await setXisPhase(db, ALLE_DOSSIERS, d.id, "tender", "timo@brink");
   expect((await getDossierRow(db, d.id)).phase).toBe("tender");
 });
 
 // ── archief: reden verplicht + read-only + heropenen wist markeringen ────────
 test("archief vereist een reden; zet archivedReason/archivedAt en is read-only", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Verloren tender" });
+  const d = await createDossier(db, { orgId: null, name: "Verloren tender" });
 
-  await expect(setStatus(db, d.id, "archief", "timo@brink")).rejects.toThrow(
+  await expect(setStatus(db, ALLE_DOSSIERS, d.id, "archief", "timo@brink")).rejects.toThrow(
     /Reason required/,
   );
   await expect(
-    setStatus(db, d.id, "archief", "timo@brink", { reason: "   " }),
+    setStatus(db, ALLE_DOSSIERS, d.id, "archief", "timo@brink", { reason: "   " }),
   ).rejects.toThrow(/Reason required/);
   // geweigerd → niets veranderd
   expect((await getDossierRow(db, d.id)).status).toBe("concept");
 
-  await setStatus(db, d.id, "archief", "timo@brink", { reason: "verloren tender" });
+  await setStatus(db, ALLE_DOSSIERS, d.id, "archief", "timo@brink", { reason: "verloren tender" });
   const row = await getDossierRow(db, d.id);
   expect(row.status).toBe("archief");
   expect(row.archivedReason).toBe("verloren tender");
@@ -185,7 +186,7 @@ test("archief vereist een reden; zet archivedReason/archivedAt en is read-only",
   expect(isReadOnly(row.status)).toBe(true);
 
   // Heropenen (terug naar concept) wist de archiveringsmarkeringen.
-  await setStatus(db, d.id, "concept", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, d.id, "concept", "timo@brink");
   const heropend = await getDossierRow(db, d.id);
   expect(heropend.status).toBe("concept");
   expect(heropend.archivedReason).toBeNull();
@@ -195,11 +196,11 @@ test("archief vereist een reden; zet archivedReason/archivedAt en is read-only",
 // ── estimate_gestuurd: koppelt de quote-freeze (I-06) ────────────────────────
 test("estimate_gestuurd freezet een bestaande, niet-bevroren quote + quote_frozen-event", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Hotel Centrum" });
-  const quote = await generateQuote(db, d.id, "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "Hotel Centrum" });
+  const quote = await generateQuote(db, ALLE_DOSSIERS, d.id, "timo@brink");
   expect(quote.frozenAt).toBeNull();
 
-  await setStatus(db, d.id, "estimate_gestuurd", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, d.id, "estimate_gestuurd", "timo@brink");
   const [frozen] = await db.select().from(quotes).where(eq(quotes.id, quote.id));
   expect(frozen.frozenAt).toBeInstanceOf(Date);
 
@@ -211,16 +212,16 @@ test("estimate_gestuurd freezet een bestaande, niet-bevroren quote + quote_froze
   });
 
   // Nog een keer estimate_gestuurd: al bevroren → geen tweede freeze-event.
-  await setStatus(db, d.id, "concept", "timo@brink");
-  await setStatus(db, d.id, "estimate_gestuurd", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, d.id, "concept", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, d.id, "estimate_gestuurd", "timo@brink");
   const again = await db.select().from(events).where(eq(events.action, "quote_frozen"));
   expect(again).toHaveLength(1);
 });
 
 test("estimate_gestuurd zonder quote: status wijzigt gewoon, geen freeze-event", async () => {
   const db = await createTestDb();
-  const d = await createDossier(db, { name: "Zonder estimate" });
-  await setStatus(db, d.id, "estimate_gestuurd", "timo@brink");
+  const d = await createDossier(db, { orgId: null, name: "Zonder estimate" });
+  await setStatus(db, ALLE_DOSSIERS, d.id, "estimate_gestuurd", "timo@brink");
   expect((await getDossierRow(db, d.id)).status).toBe("estimate_gestuurd");
   expect(
     await db.select().from(events).where(eq(events.action, "quote_frozen")),
@@ -230,39 +231,39 @@ test("estimate_gestuurd zonder quote: status wijzigt gewoon, geen freeze-event",
 // ── listDossiersFiltered: statusfilter, default verbergt archief ─────────────
 test("listDossiersFiltered: zonder filter alles behálve archief; per-statusfilter werkt", async () => {
   const db = await createTestDb();
-  const a = await createDossier(db, { name: "A concept" });
-  const b = await createDossier(db, { name: "B gegund" });
-  const c = await createDossier(db, { name: "C archief" });
-  await setStatus(db, b.id, "gegund", "timo@brink");
-  await setStatus(db, c.id, "archief", "timo@brink", { reason: "vervallen" });
+  const a = await createDossier(db, { orgId: null, name: "A concept" });
+  const b = await createDossier(db, { orgId: null, name: "B gegund" });
+  const c = await createDossier(db, { orgId: null, name: "C archief" });
+  await setStatus(db, ALLE_DOSSIERS, b.id, "gegund", "timo@brink");
+  await setStatus(db, ALLE_DOSSIERS, c.id, "archief", "timo@brink", { reason: "vervallen" });
 
-  const alle = await listDossiersFiltered(db);
+  const alle = await listDossiersFiltered(db, ALLE_DOSSIERS);
   expect(alle.map((d) => d.name).sort()).toEqual(["A concept", "B gegund"]);
 
-  const gegund = await listDossiersFiltered(db, "gegund");
+  const gegund = await listDossiersFiltered(db, ALLE_DOSSIERS, "gegund");
   expect(gegund.map((d) => d.name)).toEqual(["B gegund"]);
 
-  const archief = await listDossiersFiltered(db, "archief");
+  const archief = await listDossiersFiltered(db, ALLE_DOSSIERS, "archief");
   expect(archief.map((d) => d.name)).toEqual(["C archief"]);
 
-  const concept = await listDossiersFiltered(db, "concept");
+  const concept = await listDossiersFiltered(db, ALLE_DOSSIERS, "concept");
   expect(concept.map((d) => d.name)).toEqual(["A concept"]);
 
-  const nietGegund = await listDossiersFiltered(db, "niet_gegund");
+  const nietGegund = await listDossiersFiltered(db, ALLE_DOSSIERS, "niet_gegund");
   expect(nietGegund).toHaveLength(0);
 });
 
 // Volgordebehoud (zelfde gedrag als het oude filter): recentst bijgewerkt bovenaan.
 test("listDossiersFiltered: recentst bijgewerkt eerst", async () => {
   const db = await createTestDb();
-  const a = await createDossier(db, { name: "Oud" });
-  const b = await createDossier(db, { name: "Nieuw" });
+  const a = await createDossier(db, { orgId: null, name: "Oud" });
+  const b = await createDossier(db, { orgId: null, name: "Nieuw" });
   // a expliciet later bijwerken → bovenaan
   await db
     .update(projectDossiers)
     .set({ updatedAt: new Date(Date.now() + 60_000) })
     .where(eq(projectDossiers.id, a.id));
-  const rows = await listDossiersFiltered(db);
+  const rows = await listDossiersFiltered(db, ALLE_DOSSIERS);
   expect(rows[0].id).toBe(a.id);
   expect(rows[1].id).toBe(b.id);
 });

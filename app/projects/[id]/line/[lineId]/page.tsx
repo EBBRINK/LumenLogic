@@ -18,7 +18,7 @@ import { getDossier, getSpecLine } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct } from "@/lib/repo/products";
 import { formatEur } from "@/lib/format";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   chooseCandidateAction,
   dismissAiSuggestionAction,
@@ -29,6 +29,8 @@ import {
   unlinkMatchAction,
   useAiSuggestionAction,
 } from "../../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 const SOURCE_LABEL: Record<string, string> = {
   manual: "manual",
@@ -46,10 +48,13 @@ export default async function RegelDetailPage({
 }: {
   params: Promise<{ id: string; lineId: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/line/[lineId]");
   const { id, lineId } = await params;
+  // Beide uuid-kolommen (project_dossiers.id, spec_lines.id) — de kruislek-check op
+  // regel hieronder komt pas ná de cast en vangt dit dus niet af.
+  requireUuid(id, lineId);
   const [dossier, specLine] = await Promise.all([
-    getDossier(db, id),
+    getDossier(db, toegangScope(toegang), id),
     getSpecLine(db, lineId),
   ]);
   if (!dossier || !specLine || specLine.dossierId !== dossier.id) notFound();
@@ -174,7 +179,10 @@ export default async function RegelDetailPage({
             Changing brand, type or specs re-runs the matcher.
           </p>
           <div className="mt-2">
-            <Button type="submit" size="sm" variant="secondary">
+            {/* Echte submit → `outline` in plaats van het neutrale vlak; hij draait de
+                matcher opnieuw. De primary van dit scherm is "Choose" op een
+                aantoonbare kandidaat (DESIGN.md §6). */}
+            <Button type="submit" size="sm" variant="outline">
               Save &amp; re-match
             </Button>
           </div>
@@ -284,9 +292,13 @@ export default async function RegelDetailPage({
       {/* AFWIJKINGEN — altijd getoond, ook binnen groen (transparantieregel C-07). */}
       <section className="mt-6">
         <h3 className="text-sm font-medium">Deviations</h3>
+        {/* UX-audit 30 jul (item 12): de tweede zin ("&ldquo;No data&rdquo; is an honest
+            gray flag, not an error.") is weg — de grijze vlag mét het woord "no data"
+            staat in de tabel eronder en legt zichzelf uit. Wat blijft is wat de tabel
+            toont, niet waarom het beleid klopt. */}
         <p className="mt-0.5 mb-3 text-xs text-muted-foreground">
           Every requested field comes back with its verdict — including the fields
-          that match. &ldquo;No data&rdquo; is an honest gray flag, not an error.
+          that match.
         </p>
         <DeviationTable deviations={specLine.deviations as Deviation[] | null} />
       </section>

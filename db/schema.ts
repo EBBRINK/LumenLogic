@@ -127,6 +127,10 @@ export const membershipRole = pgEnum("membership_role", [
   "projectleider",
   "org_admin",
 ]);
+// Besluit G31: het INLOGTYPE hoort bij de organisatie, niet bij de persoon. membership_role
+// hierboven blijft "welke pet draag je binnen je org"; org_type zegt wie de org is tegenover
+// Brink. "Intern super admin" uit de G21-kaart = een org_admin in de org met type 'intern'.
+export const orgType = pgEnum("org_type", ["intern", "extern", "brand"]);
 // Dossier-lifecycle (A-05): naast de fase (tender/gegund) — opgeleverd = read-only,
 // gearchiveerd mét reden (een verloren tender is data, geen niets).
 export const dossierLifecycle = pgEnum("dossier_lifecycle", [
@@ -453,8 +457,16 @@ export const projectDossiers = pgTable("project_dossiers", {
   // (nooit alternatieven in tender) blijft geregeld via `phase` default 'tender' hierboven;
   // bestaande dossiers worden in 0006 gebackfilld naar 'tender'/'deal_making'.
   xisPhase: xisPhase("xis_phase").notNull().default("start"),
-  // H2: org-scoping (nullable → interne Brink-dossiers zonder org blijven werken).
-  orgId: uuid("org_id"),
+  // H2: org-scoping. Nullable → een dossier zonder organisatie is een Brink-dossier en
+  // sinds 3.2a alléén voor intern zichtbaar (lib/repo/toegang.ts, dossierScopeSql).
+  //
+  // ⚠️ `.references()` toegevoegd in 3.2a. De database hád de constraint al
+  // (`project_dossiers_org_id_fkey`, aangelegd door 0005_h2_h3.sql:34-35), maar Drizzle
+  // kende hem niet — TypeScript zag een vrij uuid-veld waar Postgres een bestaande
+  // organisatie eist. Dat is precies het scoping-veld, dus die twee horen niet uit elkaar
+  // te lopen. Puur een declaratie: er verandert niets aan de database, en de migraties
+  // blijven handgeschreven (drizzle-kit's snapshots stoppen bij 0003).
+  orgId: uuid("org_id").references(() => organizations.id),
   // A-05: lifecycle naast de fase. archived draagt altijd een reden.
   lifecycle: dossierLifecycle("lifecycle").notNull().default("actief"),
   archivedReason: text("archived_reason"),
@@ -912,6 +924,9 @@ export const organizations = pgTable("organizations", {
   branding: jsonb("branding").$type<Record<string, unknown>>(), // logo-url, accentkleur
   plan: text("plan").notNull().default("trial"), // L-05: prijsmodel (abonnement/per-dossier)
   seatLimit: integer("seat_limit"),
+  // G31: default 'extern' — default = veilig (regel 4). Een org zonder expliciet type is
+  // een klant, nooit Brink zelf.
+  type: orgType("type").notNull().default("extern"),
   ...timestamps,
 });
 
@@ -932,6 +947,25 @@ export const memberships = pgTable(
   },
   (t) => [uniqueIndex("memberships_org_email_uniq").on(t.orgId, t.email)],
 );
+
+// C10/G34: de tijdelijke PIN waarmee een genodigde zijn eigen wachtwoord zet. Brink maakt
+// hem aan en mailt hem zélf (besluit 6/G26 — de app verstuurt niets). De primary key op
+// e-mail ÍS de regel "één actieve PIN per gebruiker": een nieuwe PIN overschrijft de oude,
+// geldig of verlopen. Er staat alleen een scrypt-hash in — de klaartekst bestaat exact één
+// keer, in het antwoord van issueActivationPin(), en is daarna nergens meer op te halen.
+export const activationPins = pgTable("activation_pins", {
+  email: text("email").primaryKey(),
+  pinHash: text("pin_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Pogingenteller: bij PIN_MAX_ATTEMPTS is de PIN dood, ook als hij nog niet verlopen is.
+  attempts: integer("attempts").notNull().default(0),
+  // Eenmaligheid: gezet op het moment van claimen, vóór het wachtwoord wordt geschreven.
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 // ── H2: disclosure & merkrelaties (J-01…J-05) ────────────────────────────────
 // Per-veld-uitzonderingen bovenop de disclosure-tier van het merk (J-04).
@@ -1116,6 +1150,8 @@ export type Organization = typeof organizations.$inferSelect;
 export type Membership = typeof memberships.$inferSelect;
 export type MembershipRole =
   (typeof membershipRole.enumValues)[number];
+export type OrgType = (typeof orgType.enumValues)[number];
+export type ActivationPin = typeof activationPins.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type BrandUpload = typeof brandUploads.$inferSelect;
 export type BrandRelation = typeof brandRelations.$inferSelect;

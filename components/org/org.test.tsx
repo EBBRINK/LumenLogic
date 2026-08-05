@@ -25,6 +25,7 @@ const orgs: OrgWithMembers[] = [
       branding: { accentColor: "#0a7d55", logoUrl: "https://x/logo.svg" },
       plan: "abonnement",
       seatLimit: 5,
+      type: "extern", // organizations.type, nieuw in migratie 0019 (G31)
       createdAt: now,
       updatedAt: now,
     },
@@ -32,6 +33,10 @@ const orgs: OrgWithMembers[] = [
       { email: "piet@devries.nl", roles: ["calculator", "org_admin"] },
       { email: "sanne@devries.nl", roles: ["werkvoorbereider"] },
     ],
+    // Besluiten G36/G39: de server bepaalt of deze gebruiker de leden van déze organisatie
+    // mag beheren. De fixtures hieronder zijn de interne stand (mag alles) — de
+    // org_admin-stand staat in een eigen test onderaan dit bestand.
+    canManageMembers: true,
   },
   {
     org: {
@@ -41,17 +46,19 @@ const orgs: OrgWithMembers[] = [
       branding: null,
       plan: "trial",
       seatLimit: null,
+      type: "extern", // organizations.type, nieuw in migratie 0019 (G31)
       createdAt: now,
       updatedAt: now,
     },
     members: [],
+    canManageMembers: true,
   },
 ];
 
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
-      <main className="mx-auto w-full max-w-6xl">
+      <main className="mx-auto w-full max-w-7xl">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">
           Organisaties
         </h1>
@@ -70,6 +77,8 @@ const orgScreen = (
       addMemberAction={noopAction}
       removeMemberAction={noopAction}
       saveBrandingAction={noopAction}
+      canGrantOrgAdmin
+        canCreate
     />
   </Screen>
 );
@@ -111,6 +120,8 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
         addMemberAction={noopAction}
         removeMemberAction={noopAction}
         saveBrandingAction={noopAction}
+        canGrantOrgAdmin
+        canCreate
       />
     </Screen>,
   );
@@ -137,6 +148,98 @@ test("organisaties en leden met rol-badges zijn zichtbaar", async () => {
   expect(badges).toContain("Work preparer");
   // Piet (calculator + org_admin) + Sanne (werkvoorbereider) = 3 rol-badges
   expect(badges).toHaveLength(3);
+});
+
+// A7 (UX-audit 30 jul): het Create-formulier stond bóven "No organizations yet. Create
+// one above." — de lege toestand wees naar boven. Deze twee tests pinnen de volgorde:
+// bij leeg is er géén formulier buiten de lege toestand, en de zin "Create one above"
+// bestaat niet meer; zodra er één organisatie is, staat het formulier terug in zijn kaart.
+test("A7 — lege organisatielijst: alleen de lege toestand, met het Create-formulier erín", async () => {
+  await renderServer(
+    <Screen>
+      <OrgList
+        orgs={[]}
+        createAction={noopAction}
+        addMemberAction={noopAction}
+        removeMemberAction={noopAction}
+        saveBrandingAction={noopAction}
+        canGrantOrgAdmin
+        canCreate
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("No organizations yet."))
+    .toBeInTheDocument();
+
+  // De tekst die naar boven wees is weg.
+  expect(document.body.textContent).not.toContain("Create one above");
+  // De kaart "New organization" staat er niet — anders had je twee ingangen.
+  expect(document.body.textContent).not.toContain("New organization");
+
+  const empty = document.querySelector('[data-slot="empty-state"]');
+  expect(empty).not.toBeNull();
+  // Precies één aanmaak-formulier, en dat zit binnen de lege toestand.
+  const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="name"]'),
+  );
+  expect(forms).toHaveLength(1);
+  expect(empty!.contains(forms[0])).toBe(true);
+});
+
+// Het formulier ín een gecentreerd kader is de riskantste layout van deze wijziging:
+// drie velden plus een knop moeten op 375px net zo netjes vallen als op 1280px.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`organisatie leeg (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <OrgList
+            orgs={[]}
+            createAction={noopAction}
+            addMemberAction={noopAction}
+            removeMemberAction={noopAction}
+            saveBrandingAction={noopAction}
+            canGrantOrgAdmin
+        canCreate
+          />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText("No organizations yet."))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./organisatie-leeg.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
+test("A7 — met organisaties: het formulier staat terug in zijn kaart, geen lege toestand", async () => {
+  await renderServer(
+    <Screen>
+      <OrgList
+        orgs={orgs}
+        createAction={noopAction}
+        addMemberAction={noopAction}
+        removeMemberAction={noopAction}
+        saveBrandingAction={noopAction}
+        canGrantOrgAdmin
+        canCreate
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("New organization")).toBeInTheDocument();
+
+  const forms = Array.from(document.querySelectorAll("form")).filter((f) =>
+    f.querySelector('input[name="name"]'),
+  );
+  expect(forms).toHaveLength(1);
+  // Het formulier zit in de kaart, niet in een lege toestand.
+  expect(forms[0].closest('[data-slot="empty-state"]')).toBeNull();
+  expect(forms[0].closest('[data-slot="card"]')).not.toBeNull();
 });
 
 test("rol-uitleg en default-landing kloppen; de rol kiest de VIEW, niet de engine", async () => {
@@ -174,6 +277,8 @@ test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
         members={[]}
         addAction={noopAction}
         removeAction={noopAction}
+        canManage
+        canGrantOrgAdmin
       />
     </Screen>,
   );
@@ -189,4 +294,67 @@ test("het toevoeg-formulier heeft precies de vier rol-checkboxes", async () => {
     "projectleider",
     "org_admin",
   ]);
+});
+
+// ── Besluiten G36/G39: het scherm biedt niets aan dat de server toch weigert ────
+// ⚠️ UI-gemak, geen poort. Het bewijs dat addMemberAction/removeMemberAction zélf weigeren
+// staat in app/admin/users/issue-pin-authz.test.ts (de échte actions, zonder formulier).
+
+test("org_admin-stand: geen org_admin-vinkje, en geen verwijderknop bij een collega-beheerder", async () => {
+  await renderServer(
+    <Screen>
+      <OrgMembers
+        orgId="o1"
+        members={[
+          { email: "piet@devries.nl", roles: ["calculator", "org_admin"] },
+          { email: "sanne@devries.nl", roles: ["werkvoorbereider"] },
+        ]}
+        addAction={noopAction}
+        removeAction={noopAction}
+        canManage
+        canGrantOrgAdmin={false}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Add member")).toBeInTheDocument();
+
+  const boxes = Array.from(
+    document.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"][name="roles"]',
+    ),
+  );
+  expect(boxes.map((b) => b.value)).toEqual([
+    "calculator",
+    "werkvoorbereider",
+    "projectleider",
+  ]);
+
+  // Piet is org_admin: geen knop. Sanne wel.
+  const knoppen = Array.from(
+    document.querySelectorAll("button[aria-label^='Remove']"),
+  ).map((b) => b.getAttribute("aria-label"));
+  expect(knoppen).toEqual(["Remove sanne@devries.nl"]);
+});
+
+test("een organisatie die je niet beheert: geen formulier, geen knoppen, wel de lijst", async () => {
+  await renderServer(
+    <Screen>
+      <OrgMembers
+        orgId="o2"
+        members={[{ email: "iemand@anders.nl", roles: ["calculator"] }]}
+        addAction={noopAction}
+        removeAction={noopAction}
+        canManage={false}
+        canGrantOrgAdmin={false}
+      />
+    </Screen>,
+  );
+  await expect
+    .element(page.getByText("iemand@anders.nl"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/can't manage the members/))
+    .toBeInTheDocument();
+  expect(document.querySelectorAll('input[name="roles"]')).toHaveLength(0);
+  expect(document.querySelectorAll("button[aria-label^='Remove']")).toHaveLength(0);
 });

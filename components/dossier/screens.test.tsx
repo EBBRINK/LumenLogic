@@ -119,6 +119,15 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm. LET OP: de <h1>'s in `screens` hierboven staan in dít
+// bestand — "Projecten" of "Ziekenhuis Noord" zou dus ook groen blijven als DossierList
+// of SpecLineTable niets rendert. Deze drie teksten komen uit de componenten zelf.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  dossiers: "Kantoor Zuid", // tweede dossiernaam uit DossierList
+  "spec-regels": "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K", // gematchte productnaam
+  "regel-auto-door": "automatically accepted near-match", // het system:auto-label
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -126,7 +135,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
@@ -205,3 +216,79 @@ test("SpecLineTable: merkteken 'handmatig gekozen' alleen bij een niet-system ch
   expect(labels.elements().length).toBe(1); // alléén de menskeuze-regel
   expect(page.getByText("automatically accepted near-match").query()).toBeNull();
 });
+
+// ── Bevestiging vóór verwijderen (UX-audit 30 jul, bug #5) ──────────────────
+//
+// De prullenbak stond ~40px naast de Open/Load-knop die de hele dag wordt aangeklikt,
+// en was een kale form-submit op een HARDE delete (lib/repo/dossiers.ts): één misklik
+// en de regel was weg, zonder undo en zonder prullenbak in de database.
+test("SpecLineTable: verwijderen vraagt eerst om bevestiging en noemt de regelcode", async () => {
+  await renderServer(
+    <Screen>
+      <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
+    </Screen>,
+  );
+  const trigger = page.getByRole("button", { name: "Remove line Lp301" });
+  await expect.element(trigger).toBeInTheDocument();
+  // Geen submit meer op de trigger — anders is de bevestiging decoratie.
+  expect(trigger.element().getAttribute("type")).toBe("button");
+
+  await trigger.click();
+  await expect
+    .element(page.getByRole("heading", { name: "Remove line Lp301?" }))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Remove line", exact: true }))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Cancel" }))
+    .toBeInTheDocument();
+});
+
+// De vraag moet de JUISTE regel noemen: één dialoog per rij, met zijn eigen code en
+// zijn eigen specLineId. Een gedeelde dialoog die altijd de eerste regel noemt is
+// precies de fout die deze bevestiging waardeloos maakt.
+test("SpecLineTable: elke rij heeft zijn eigen bevestiging met zijn eigen id", async () => {
+  await renderServer(
+    <Screen>
+      <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
+    </Screen>,
+  );
+  await page.getByRole("button", { name: "Remove line Lw201" }).click();
+  await expect
+    .element(page.getByRole("heading", { name: "Remove line Lw201?" }))
+    .toBeInTheDocument();
+  const verborgen = [
+    ...document.querySelectorAll<HTMLInputElement>(
+      '[data-slot="dialog-content"] input[type="hidden"]',
+    ),
+  ].map((i) => [i.name, i.value]);
+  expect(verborgen).toEqual([
+    ["dossierId", "d1"],
+    ["specLineId", "s2"],
+  ]);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`regel-verwijder-bevestiging (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <SpecLineTable dossierId="d1" lines={specLines} deleteAction={noopAction} />
+        </Screen>,
+      );
+      await page.getByRole("button", { name: "Remove line Lp301" }).click();
+      await expect
+        .element(page.getByRole("heading", { name: "Remove line Lp301?" }))
+        .toBeInTheDocument();
+      // De dialoog animeert in (duration-100 in components/ui/dialog.tsx); zonder
+      // deze pauze legt de opname een half-doorzichtige, dubbel-belichte staat vast.
+      await new Promise((r) => setTimeout(r, 300));
+      await page.screenshot({
+        path: `./regel-verwijderen.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}

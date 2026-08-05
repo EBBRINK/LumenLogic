@@ -7,19 +7,23 @@ import type {
   ReviewCandidate,
   ReviewItem,
 } from "@/components/dossier/types";
+import { formatDate } from "@/lib/format";
 import { getOpenSuggestionsByLine } from "@/lib/repo/ai-suggestions";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
 import { getVisibleProduct, searchProducts } from "@/lib/repo/products";
 import { getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
 import { getColorVariants } from "@/lib/repo/variants";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   decideReviewAction,
   dismissAiSuggestionAction,
   linkManualProductAction,
   useAiSuggestionAction,
 } from "../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Tab REVIEW — header en tabs komen uit layout.tsx, dus deze pagina rendert alleen zijn
 // eigen inhoud (fragment). De wachtrij is elke regel met reviewKind ≠ null; afgeronde
@@ -29,16 +33,11 @@ import {
 // op zo'n kaart werkt via de query-string (?regel&zoek, zelfde patroon als /catalog):
 // de mens zoekt, de server leest visible_products — nooit ongevraagde suggesties
 // (ijzeren regel 4).
-const dateFmt = new Intl.DateTimeFormat("nl-NL", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
+// Eén datumformaat voor de hele app (UX-audit 30 jul, bug #9): hier stond een eigen
+// nl-NL-formatter, `09-07-2026`. `null` blijft `null` — die betekent hier "nog niet
+// beoordeeld" en dat is iets anders dan een onleesbare datum.
 function fmtDate(value: Date | string | null): string | null {
-  if (!value) return null;
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? null : dateFmt.format(d);
+  return value ? formatDate(value) : null;
 }
 
 type QueueRow = Awaited<ReturnType<typeof getReviewQueue>>["pending"][number];
@@ -59,9 +58,12 @@ function toReviewItem(r: QueueRow): ReviewItem {
     // OCR-herkomst voor de "View page image"-link op de OcrCard (bouwstap 7/8).
     sourcePage: r.sourcePage,
     importRunId: r.importRunId,
-    // Leesroute-regels hebben geen paginabeelden → de kaart linkt dan naar het
-    // markdown-controlespoor (stap 3 fase B).
-    hasPageImages: r.hasPageImages,
+    // Geen paginabeeld voor déze pagina (leesroute-run, of een OCR-run met maar
+    // een deel van zijn pagina's in beeld) → de kaart linkt naar het
+    // markdown-controlespoor in plaats van naar een 404 (UX-audit 30 jul).
+    hasPageImage: r.hasPageImage,
+    // Ruwe brontekst van de regel — waartegen de reviewer de lezing vergelijkt.
+    sourceText: r.sourceText,
   };
 }
 
@@ -90,12 +92,16 @@ export default async function ReviewTab({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ line?: string; q?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/review");
   const { id } = await params;
+  // Layout en pagina renderen concurrent en dekken elkaar dus NIET; zonder deze
+  // regel gooit getReviewQueue de uuid-cast en wint die 500 van de nette 404 van
+  // de layout. Zie de regel bij requireUuid in lib/uuid.ts.
+  requireUuid(id);
   const { line, q } = await searchParams;
   const { pending, done } = await getReviewQueue(db, id);
   // Fase voor de AI-suggestie-render-guard (regel 4) + de suggesties zelf (B4).
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   const phase = dossier?.phase === "awarded" ? ("awarded" as const) : ("tender" as const);
   const suggestionsByLine = await getOpenSuggestionsByLine(db, id);
 

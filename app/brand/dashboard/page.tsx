@@ -1,32 +1,25 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { brands } from "@/db/schema";
 import { BrandDashboard } from "@/components/merk/brand-dashboard";
-import { getBrandAggregates } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
+import { getBrandAggregates, resolveBrandFromParam } from "@/lib/repo/brand-portal";
 import { refreshAggregatesAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Geaggregeerd dashboard (K-05). De materialized view is de anonimiseringsgrens: het merk
 // ziet enkel zijn eigen totaal (overwogen/gekozen), nooit een onderliggend project.
-async function resolveBrand(brandId?: string) {
-  if (brandId) {
-    const [b] = await db.select().from(brands).where(eq(brands.id, brandId)).limit(1);
-    if (b) return b;
-  }
-  const [first] = await db.select().from(brands).orderBy(asc(brands.name)).limit(1);
-  return first ?? null;
-}
+// Welk merk, beslist resolveBrandFromParam — inclusief de uuid-guard op ?brand=. Deze
+// pagina had zijn eigen kopie van die resolver zónder guard, dus
+// /brand/dashboard?brand=nope gaf een 500 (UX-audit 30 jul, bug #1).
 
 export default async function MerkDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand/dashboard");
   const { brand: brandParam } = await searchParams;
-  const brand = await resolveBrand(brandParam);
+  const brand = await resolveBrandFromParam(db, brandParam);
   const aggregates = await getBrandAggregates(db);
   const own = brand
     ? aggregates.find((a) => a.brandName === brand.name)
@@ -34,7 +27,7 @@ export default async function MerkDashboardPage({
   const data = { considered: own?.considered ?? 0, chosen: own?.chosen ?? 0 };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/brand"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

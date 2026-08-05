@@ -18,6 +18,7 @@
 // samenvattingsTekst() uit lib/excel-validate-messages.ts. Dit bestand schrijft geen enkele
 // zin over het format van het bestand.
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { FIELD_CATALOG } from "@/lib/field-catalog";
 import type { RijWaarschuwing } from "@/lib/excel-validate";
 import {
@@ -64,12 +65,11 @@ const PRIJS_LABEL = veldLabel("list_price_excl_vat");
 type BadgeSoort = "new" | "changed" | "conflict";
 
 const BADGE_STIJL: Record<BadgeSoort, string> = {
-  new: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  changed: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
+  new: "bg-status-green-tint text-status-green-ink",
+  changed: "bg-status-blue-tint text-status-blue-ink",
   // Amber, geen rood: een conflict is geen fout van de lezer maar iets dat een besluit
   // vraagt. Rood zou suggereren dat er iets stuk is.
-  conflict:
-    "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  conflict: "bg-status-amber-tint text-status-amber-ink",
 };
 
 const BADGE_TEKST: Record<BadgeSoort, string> = {
@@ -587,10 +587,17 @@ export function TemplateProposal({
       )}
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          This file changes nothing: everything in it matches what we already
-          have.
-        </p>
+        // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": dit blok staat
+        // los in het formulier op het kale canvas; de <fieldset> en de banners
+        // eromheen zijn geen omhullende kaart.
+        //
+        // Bewuste `action={null}`: "Reject" en "Approve checked changes" staan in de
+        // voettekst van ditzelfde formulier. Een knop in de lege staat zou dezelfde
+        // twee submits een tweede keer aanbieden.
+        <EmptyState
+          title="This file changes nothing: everything in it matches what we already have."
+          action={null}
+        />
       ) : (
         <div className="space-y-3">
           {rows.map((diff) => (

@@ -1,12 +1,27 @@
+"use client";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { XIS_PHASE_LABELS, XIS_PHASE_ORDER } from "./project-status-badge";
 
-// Server-action-form (geen client-JS nodig). Een nieuw project start ALTIJD als
-// status 'concept' (geen statuskeuze hier); alleen de XIS-fase is te kiezen, default
-// 'start'. De veiligheidsstand (fase) wordt serverside afgeleid — default veilig (regel 4).
-// Org is optioneel: leeg = intern Brink-dossier (V1-default); een org koppelen is de
-// externe-uitrol-haak (L-03).
+// Server-action-form (geen client-JS nodig voor het formulier zelf). Een nieuw project
+// start ALTIJD als status 'concept' (geen statuskeuze hier); alleen de XIS-fase is te
+// kiezen, default 'start'. De veiligheidsstand (fase) wordt serverside afgeleid —
+// default veilig (regel 4). Org is optioneel: leeg = intern Brink-dossier (V1-default);
+// een org koppelen is de externe-uitrol-haak (L-03).
+//
+// LET OP — de XIS-fase 'Tender' hier en de veiligheidsstand 'Tender' op de kaart zijn
+// TWEE VERSCHILLENDE VELDEN. De XIS-fase is één van de tien workflowfasen van Brink en
+// staat in dit formulier; de veiligheidsstand wordt serverside uit de status afgeleid en
+// is nooit hier te kiezen. Ze spreken elkaar dus niet tegen — niet "gelijktrekken".
 export function NewDossierForm({
   action,
   organizations = [],
@@ -37,7 +52,7 @@ export function NewDossierForm({
           name="xisPhase"
           required
           defaultValue="start"
-          className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+          className={veldClass}
         >
           {XIS_PHASE_ORDER.map((p) => (
             <option key={p} value={p}>
@@ -55,7 +70,7 @@ export function NewDossierForm({
             id="orgId"
             name="orgId"
             defaultValue=""
-            className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+            className={veldClass}
           >
             <option value="">Internal (Brink)</option>
             {organizations.map((o) => (
@@ -70,5 +85,38 @@ export function NewDossierForm({
         Create project
       </Button>
     </form>
+  );
+}
+
+// ── Het formulier in een dialoog (UX-audit 30 jul) ─────────────────────────────────
+// Het stond als vaste `aside` naast de lijst en claimde permanent een derde van de
+// breedte voor iets wat je een paar keer per week doet; op mobiel viel het ónder álle
+// projectkaarten, dus een project aanmaken begon met langs de hele lijst scrollen.
+//
+// Geen nieuw dialoogmechanisme: exact de vorm van xis-push-dialog.tsx en
+// confirm-action-dialog.tsx — Radix-dialog uit components/ui/dialog.tsx met een
+// <form action={serverAction}> erin. `callAction()` hoort hier NIET: dat is voor een
+// geawait server-action vanuit client-code. Een form-submit is Next' eigen pad, dus de
+// NEXT_REDIRECT van createDossierAction wordt door Next zelf als navigatie afgehandeld
+// en komt nooit als afgewezen promise in onze code terecht.
+export function NewDossierDialog({
+  action,
+  organizations = [],
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  organizations?: { id: string; name: string }[];
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button">New project</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New project</DialogTitle>
+        </DialogHeader>
+        <NewDossierForm action={action} organizations={organizations} />
+      </DialogContent>
+    </Dialog>
   );
 }

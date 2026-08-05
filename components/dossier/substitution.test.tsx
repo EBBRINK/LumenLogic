@@ -5,6 +5,7 @@
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
+import { formatDate } from "@/lib/format";
 import { SubstitutionDoc } from "./substitution-doc";
 import type { SubstitutionDocField } from "./substitution-doc";
 
@@ -31,7 +32,11 @@ const doc = (
       alternative={{ name: "ESPRIT CEIL", brandName: "Kreon", articleCode: "KR-ESP" }}
       fields={fields}
       savingNote="Saving € 50,00 per stuk (referentie € 310,00 → alternatief € 260,00). Prijs is informatief en weegt nooit mee in de rangschikking (F-08)."
-      createdAt="2026-07-07"
+      // REPARATIE 30 jul, bevinding 12: hier stond de kale "2026-07-07". Bug #9 heeft
+      // precies dit weggehaald, dus de enige zichtbare plek van die wijziging stond
+      // vastgepind op een formaat dat productie niet meer maakt. Nu dezelfde formatter als
+      // app/projects/[id]/substitution/[proposalId]/page.tsx erdoorheen.
+      createdAt={formatDate("2026-07-07")}
     />
   </div>
 );
@@ -44,7 +49,17 @@ for (const theme of ["light", "dark"] as const) {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(doc);
-      await expect.element(document.body).toBeInTheDocument();
+      // Anker uit het document zelf, niet uit de wrapper: `expect.element(document.body)`
+      // alleen bleef groen bij een lege render. En niet alléén uit het kopblok: met
+      // `fields = []` (kopblok blijft, de veld-voor-veld-vergelijking verdwijnt) bleven
+      // deze vier tests groen op "ESPRIT CEIL" — gemeten. Het tweede anker is een cel uit
+      // de vergelijkingstabel, het derde het oordeel dat daaruit wordt afgeleid, zodat de
+      // kern van het document meetelt.
+      await expect.element(page.getByText("ESPRIT CEIL").first()).toBeInTheDocument();
+      await expect.element(page.getByText("120 mo").first()).toBeInTheDocument();
+      await expect
+        .element(page.getByText("better", { exact: true }).first())
+        .toBeInTheDocument();
       await page.screenshot({ path: `./substitution.${theme}.${device}.test.png` });
     });
   }
@@ -68,4 +83,19 @@ test("SubstitutionDoc: ontbrekende data blijft eerlijk zichtbaar, niet weggelate
   await expect.element(page.getByText("Origin", { exact: true })).toBeInTheDocument();
   // exact: alleen de tabelcel "geen data" (de voetnoot bevat de frase ook).
   await expect.element(page.getByText("no data", { exact: true })).toBeInTheDocument();
+  // UX-audit 30 jul (item 12): de voetnoot beloofde óók "never silently omitted". Dat is
+  // op dít blad geen beleid maar een herhaling van wat de tabel hierboven laat zien. De
+  // bronvermelding blijft — dat is een feit over dit document.
+  expect(document.body.textContent).not.toContain("silently omitted");
+  await expect.element(page.getByText(/brand-provided/)).toBeInTheDocument();
+});
+
+// De datum is het enige zichtbare spoor van bug #9 op dit blad: één formaat, geschreven
+// maand, met jaartal. De negatieve assert pint dat de ISO-vorm er niet meer staat.
+test("SubstitutionDoc: de datum draagt het app-brede formaat, geen ISO-slice", async () => {
+  await renderServer(doc);
+  await expect
+    .element(page.getByText("Drawn up on 07 Jul 2026"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("2026-07-07");
 });

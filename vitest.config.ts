@@ -36,9 +36,22 @@ export default defineConfig({
   // eigen isRedirectError. Zonder deze regel ontdekt Vite die deep import pas
   // tijdens de run en herlaadt hij de test halverwege ("Vite unexpectedly
   // reloaded a test").
+  // better-auth c.s.: lib/auth-activation.test.ts is de eerste test die Better Auth in de
+  // browser laadt. Zonder deze regels ontdekt Vite die imports pas tijdens de run en
+  // herlaadt hij de test halverwege ("Vite unexpectedly reloaded a test") — zelfde reden
+  // als de redirect-error-regel hieronder.
   optimizeDeps: {
     exclude: ["pdf-lib"],
-    include: ["pako", "next/dist/client/components/redirect-error"],
+    include: [
+      "pako",
+      "next/dist/client/components/redirect-error",
+      "better-auth",
+      "better-auth/crypto",
+      "better-auth/next-js",
+      "better-auth/plugins",
+      "better-auth/adapters/drizzle",
+      "drizzle-orm/neon-http",
+    ],
   },
   test: {
     // .claude/worktrees én .worktrees/ bevatten kopieën van de repo (parallelle

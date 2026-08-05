@@ -13,12 +13,18 @@ import {
   computeEstimate,
   countedLineTotal,
   countsInTotal,
+  dayPriceExpiredNote,
   notableDeviations,
+  pmSummary,
   requestedText,
+  ESTIMATE_DISCLAIMER,
+  PM_STATUSES,
   type EstimateHeader,
   type EstimateLine,
   type EstimateZoneGroup,
+  type PmStatus,
 } from "@/lib/repo/estimate";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PhaseBadge } from "./phase-badge";
 import { StatusBadge } from "./status-badge";
 import { STATUS } from "./status";
@@ -39,25 +45,82 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
 
 const COLS = 8;
 
+// Eén regel per p.m.-status in "Open items & actions" — dezelfde woorden als de PDF
+// (lib/pdf/estimate.ts), want scherm en papier vertellen hetzelfde verhaal. Exhaustief
+// getypeerd: een nieuwe status krijgt hier een zin, of het bouwt niet. Vóór A4 stonden
+// hier alleen blauw en rood — paars én open hadden op het scherm géén bolletje, terwijl
+// hun regeltotaal wel "p.m." zei.
+const PM_ITEM: Record<PmStatus, (line: EstimateLine) => ReactNode> = {
+  blauw: (l) => (
+    <>
+      load brand{" "}
+      <span className="font-medium">{(l.brandText ?? "").trim() || "unknown"}</span>{" "}
+      <span className="text-muted-foreground">(our action)</span>
+    </>
+  ),
+  rood: () => (
+    <>
+      back to customer{" "}
+      <span className="text-muted-foreground">(brand known, this product not)</span>
+    </>
+  ),
+  paars: (l) => (
+    <>
+      outside assortment
+      {requestedText(l) && (
+        <>
+          {" — "}
+          <span className="font-medium">{requestedText(l)}</span>
+        </>
+      )}{" "}
+      <span className="text-muted-foreground">(reported explicitly, p.m.)</span>
+    </>
+  ),
+  open: (l) => (
+    <>
+      not matched yet
+      {requestedText(l) && (
+        <>
+          {" — "}
+          <span className="font-medium">{requestedText(l)}</span>
+        </>
+      )}{" "}
+      <span className="text-muted-foreground">(no product chosen)</span>
+    </>
+  ),
+};
+
 export function QuoteView({
   dossierName,
   phase,
   header,
   lines,
   actions,
+  frozen = false,
+  headerEditable = false,
 }: {
   dossierName: string;
   phase: Phase;
   header: EstimateHeader;
   lines: EstimateLine[];
   actions?: ReactNode;
+  /** I-06: uitgestuurd. Dan is dit stuk het klantdocument — geen poort, geen banner. */
+  frozen?: boolean;
+  /**
+   * Staat "Edit header" op deze pagina? Bepaalt WELKE instructie de banner geeft.
+   * Default false: zonder dat de aanroeper het bevestigt wijzen we niet naar een blok
+   * dat er misschien niet is — dat was precies de val (herstel 2026-07-30).
+   */
+  headerEditable?: boolean;
 }) {
-  const computed = computeEstimate(header, lines);
-  const { totals, pm, blauwLines, roodLines, brandFreq, hasZones, groups } =
-    computed;
+  const computed = computeEstimate(header, lines, { frozen });
+  const { totals, pm, pmLines, pmByStatus, brandFreq, hasZones, groups } = computed;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    // Geen `mx-auto` meer — zelfde reden als in armaturenboek-view.tsx: binnen de
+    // 1280px-dossiercontainer zou centreren het document uit het lood zetten met de
+    // tabbalk erboven. De documentbreedte zelf (896px) verandert niet.
+    <div className="max-w-4xl">
       {actions && (
         <div className="mb-6 flex flex-wrap items-center justify-end gap-2 print:hidden">
           {actions}
@@ -84,13 +147,60 @@ export function QuoteView({
           <Field label="Author" value={header.author ?? "—"} />
           <Field label="Valid until" value={header.validUntil ?? "—"} />
         </dl>
+        {/* UX-audit bug #6: een kop met lege datum/geldigheid mag niet stilzwijgend
+            naar de printer. Bewust NIET op print:hidden — komt het stuk toch op
+            papier (Ctrl+P van de browser), dan hoort deze regel er juist op te staan.
+            Print/PDF/XIS zelf staan uit zolang dit blok er is; dat gebeurt in
+            app/projects/[id]/quote/page.tsx, want daar wonen de knoppen.
+
+            Twee correcties (herstel 2026-07-30):
+             1. Een BEVROREN offerte krijgt nooit deze banner. computed.outputsAllowed
+                staat dan open, dus de knoppen staan er ook — een melding "dit kan niet
+                geprint worden" onder een printknop is een leugen, en het kopblok is
+                toch op slot.
+             2. De instructie noemt "Edit header" alleen als dat blok er echt staat.
+                Anders is de enige echte uitweg "Generate estimate": dát is de stap die
+                datum én geldigheid invult. De oude tekst stuurde de gebruiker naar een
+                control die niet gerenderd was. */}
+        {!computed.outputsAllowed && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg bg-status-amber-tint px-3 py-2 text-sm text-status-amber-ink"
+          >
+            <span className="font-medium">Complete the quote header</span> —{" "}
+            {computed.missingHeaderFields.join(" and ")}{" "}
+            {computed.missingHeaderFields.length === 1 ? "is" : "are"} still
+            empty.{" "}
+            {headerEditable
+              ? "Fill them in under “Edit header”;"
+              : "Use “Generate estimate” to fill them in;"}{" "}
+            until then this estimate cannot be printed, downloaded or sent.
+          </p>
+        )}
       </header>
 
       {lines.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No spec lines yet. Add lines on the Lines tab; they appear here
-          automatically with their status.
-        </p>
+        // Was een kale grijze regel — het dialect dat empty-state.tsx afschaft
+        // (UX-audit 30 jul, A6). De externe tweeling stond al om met dezelfde titel
+        // (quote-view-extern.tsx); alleen de uitleg verschilt, want die lezer heeft
+        // het Lines-tabblad niet.
+        //
+        // "framed", en dat is gemeten en niet aangenomen: dit blok staat direct onder
+        // de </header> hierboven op het kale canvas van de estimate-tab. Er is geen
+        // <Card> of paneel omheen dat het kader al tekent — de enige rand in de buurt
+        // is de `border-b` ONDER de kop, niet een vlak eromheen.
+        //
+        // Bewuste `action={null}`: de uitweg is het Lines-tabblad, en dat staat als
+        // tab in de dossier-tabbalk vlak boven dit document (dossier-tabs.tsx, `base`
+        // = /projects/[id]). QuoteView krijgt geen dossierId binnen — een knop hier
+        // zou een extra prop plus een tweede route-opbouw kosten voor navigatie die
+        // twee centimeter hoger al staat. Zelfde afweging als dossier-list.tsx.
+        <EmptyState
+          variant="framed"
+          title="No spec lines yet."
+          description="Add lines on the Lines tab; they appear here automatically with their status."
+          action={null}
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -128,41 +238,35 @@ export function QuoteView({
               <span>Combined (green + yellow)</span>
               <span className="tabular-nums">{formatEur(totals.samen)}</span>
             </div>
+            {/* Zelfde bron, zelfde zin als de PDF (pmSummary): élke niet-tellende
+                status die er is, inclusief open. */}
             {pm.total > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Shown, not totaled (blue {pm.blauw} · red {pm.rood} · purple{" "}
-                {pm.paars}) — <span className="font-medium">p.m.</span>
+                Shown, not totaled ({pmSummary(pm)}) —{" "}
+                <span className="font-medium">p.m.</span>
               </p>
             )}
           </div>
         </div>
       )}
 
-      {(blauwLines.length > 0 || roodLines.length > 0) && (
+      {/* De poort staat op ÁLLE p.m.-regels: wat als p.m. in de kolom staat, staat hier
+          verantwoord. Volgorde per status (PM_STATUSES), net als op de PDF. */}
+      {pmLines.length > 0 && (
         <section className="mt-8 border-t pt-4">
           <h3 className="mb-2 text-sm font-medium">Open items &amp; actions</h3>
           <ul className="space-y-1.5 text-sm">
-            {blauwLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-2">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.blauw.dot)} aria-hidden />
-                <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — load brand{" "}
-                  <span className="font-medium">
-                    {(l.brandText ?? "").trim() || "unknown"}
-                  </span>{" "}
-                  <span className="text-muted-foreground">(our action)</span>
-                </span>
-              </li>
-            ))}
-            {roodLines.map((l) => (
-              <li key={l.id} className="flex items-start gap-2">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS.rood.dot)} aria-hidden />
-                <span>
-                  <span className="font-medium">{l.fixtureCode}</span> — back to
-                  customer <span className="text-muted-foreground">(brand known, this product not)</span>
-                </span>
-              </li>
-            ))}
+            {PM_STATUSES.flatMap((s) =>
+              pmByStatus[s].map((l) => (
+                <li key={l.id} className="flex items-start gap-2">
+                  <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", STATUS[s].dot)} aria-hidden />
+                  <span>
+                    <span className="font-medium">{l.fixtureCode}</span> —{" "}
+                    {PM_ITEM[s](l)}
+                  </span>
+                </li>
+              )),
+            )}
           </ul>
 
           {brandFreq.length > 0 && (
@@ -182,11 +286,9 @@ export function QuoteView({
         </section>
       )}
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        Gross prices excl. VAT from valid price lists. Only green and yellow count;
-        blue, red and purple are shown as p.m. — displayed, not totaled. Request
-        order is preserved.
-      </p>
+      {/* Letterlijk dezelfde string als in de PDF-voettekst (lib/repo/estimate.ts),
+          opgebouwd uit de afgeleide statuslijsten — dus de uitleg noemt open óók. */}
+      <p className="mt-6 text-xs text-muted-foreground">{ESTIMATE_DISCLAIMER}</p>
     </div>
   );
 }
@@ -238,6 +340,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
 
   // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
   const notable = notableDeviations(line);
+  // A7: verlopen dagprijs → dezelfde subregel, vooraan. Letterlijk dezelfde zin als op
+  // de PDF (lib/repo/estimate.ts), want dit gaat over het bedrag in de kolom ernaast:
+  // die toont dan de catalogusprijs, of "—" als er niets is om op terug te vallen.
+  const expiredNote = dayPriceExpiredNote(line);
+  const hasOtherMarks =
+    notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
 
   return (
     <>
@@ -265,7 +373,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           <StatusBadge status={line.status} />
         </TableCell>
       </TableRow>
-      {(notable.length > 0 || line.autoAccepted || line.manuallyChosen) && (
+      {(hasOtherMarks || expiredNote) && (
         <TableRow className="border-0 hover:bg-transparent">
           <TableCell />
           <TableCell />
@@ -273,6 +381,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
             colSpan={COLS - 2}
             className="pt-0 text-xs text-muted-foreground"
           >
+            {expiredNote && (
+              <span className="text-status-amber-ink">
+                {expiredNote}
+                {hasOtherMarks && " — "}
+              </span>
+            )}
             {notable.length > 0 && (
               <>
                 deviation:{" "}
@@ -282,9 +396,9 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
                     <span
                       className={
                         d.verdict === "rood"
-                          ? "text-rose-600 dark:text-rose-400"
+                          ? "text-status-red-ink"
                           : d.verdict === "geel"
-                            ? "text-amber-600 dark:text-amber-400"
+                            ? "text-status-amber-ink"
                             : ""
                       }
                     >

@@ -539,6 +539,56 @@ test("geen prijsvoorstellen → geen prijslijst-fieldset", async () => {
   expect(page.getByText("New price list").query()).toBeNull();
 });
 
+// Reviewzwerm 2.5a C1: "dit bestand verandert niets" stond op een kale grijze regel — het
+// dialect dat components/ui/empty-state.tsx afschaft. De assertie hangt aan
+// `data-slot="empty-state"` en niet aan de zin hierboven: alleen zo bewijst hij dat het
+// GEDEELDE component rendert en niet dat er toevallig dezelfde woorden staan.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`een voorstel zonder rijen krijgt de gedeelde lege toestand (framed, geen eigen actie) (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <TemplateProposal
+            brandId="b-occhio"
+            uploadId="u-1"
+            filename="leeg.xlsx"
+            rowCount={0}
+            proposal={{ rows: [], counts: { ...proposal.counts, priceLines: 0 } }}
+            waarschuwingen={[]}
+            activePriceList={null}
+            approveAction={noopAction}
+            rejectAction={noopAction}
+          />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText(/This file changes nothing/))
+        .toBeInTheDocument();
+
+      const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+      expect(
+        leeg,
+        "geen [data-slot=empty-state]: terug op de kale grijze regel",
+      ).not.toBeNull();
+      // "framed": het blok staat los in het formulier, niet in een <Card>.
+      expect(leeg!.dataset.variant).toBe("framed");
+      expect(leeg!.className).toContain("border-dashed");
+      // Bewuste `action={null}`: Reject en Approve staan in de voettekst van hetzelfde
+      // formulier; de lege staat biedt ze geen tweede keer aan.
+      expect(leeg!.children.length).toBe(1);
+      await expect
+        .element(page.getByRole("button", { name: "Reject" }))
+        .toBeInTheDocument();
+
+      await page.screenshot({
+        path: `./template-voorstel-leeg.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
+
 // ── De upload-kaart: format-afwijzing ───────────────────────────────────────
 
 /** Werkblad ontbreekt: het merk stuurde zijn eigen Excel terug i.p.v. onze template —

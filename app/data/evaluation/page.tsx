@@ -13,11 +13,11 @@ import {
   listEvaluationLines,
   listEvaluationRuns,
 } from "@/lib/repo/evaluation";
-import { requireSession } from "@/lib/session";
 import { measureAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function EvaluatiePage() {
-  await requireSession();
+  await bewaakRoute("/data/evaluation");
   const [lines, runs] = await Promise.all([
     listEvaluationLines(db),
     listEvaluationRuns(db),
@@ -40,7 +40,7 @@ export default async function EvaluatiePage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

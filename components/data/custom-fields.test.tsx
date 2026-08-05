@@ -111,7 +111,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 // Dezelfde samenstelling als app/data/fields/page.tsx, minus de database.
 const scherm = (
   <Screen>
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Fields</h1>
         <p className="mt-2 text-sm">
@@ -226,6 +226,21 @@ test("tabel: labels, categorie, niveau, aantal producten met waarde en aanmaakda
     .toBeInTheDocument();
 });
 
+// UX-audit 30 jul (item 4): must/wanna/nice is intern jargon en stond ruw op het scherm —
+// als pil in de tabel, in de read-only catalogus en als radiokeuze. De weergave is nu
+// Required/Requested/Optional; de OPGESLAGEN waarde blijft ongewijzigd (dat pint de
+// value-assertie in de formuliertest hieronder vast).
+test("niveaus staan als leesbaar label op het scherm, nooit als ruwe enum", async () => {
+  await renderServer(scherm);
+  await expect.element(page.getByText("Requested").first()).toBeInTheDocument();
+  const tekst = document.body.textContent ?? "";
+  // Woordgrenzen + kleine letter: "Must be unique." in de labelhint is gewoon Engels,
+  // de enum-waarde `must` is dat niet.
+  for (const jargon of ["wanna", "must", "nice"]) {
+    expect(tekst, jargon).not.toMatch(new RegExp(`\\b${jargon}\\b`));
+  }
+});
+
 test("gearchiveerde velden staan er apart bij, met de belofte dat waarden blijven", async () => {
   await renderServer(scherm);
   await expect.element(page.getByText("Archived (1)")).toBeInTheDocument();
@@ -323,7 +338,7 @@ test("formulier: twee verplichte tekstvelden, niveau default 'wanna', 10 categor
   ).not.toContain(INTERNAL_BUCKET_KEY);
 });
 
-test("must-uitleg: zwaarste weging, GEEN bestandsafwijzing", async () => {
+test("Required-uitleg: zwaarste weging, GEEN bestandsafwijzing", async () => {
   await renderServer(
     <Screen>
       <CustomFieldForm
@@ -339,12 +354,22 @@ test("must-uitleg: zwaarste weging, GEEN bestandsafwijzing", async () => {
     .element(page.getByRole("button", { name: "Add field" }))
     .toBeInTheDocument();
   expect(page.getByText(/never rejected because of it/).query()).toBeNull();
-  await page.getByRole("radio", { name: "must" }).click();
+  // Item 4: het radiolabel heet "Required"; de verstuurde waarde blijft `must`.
+  const knop = page.getByRole("radio", { name: "Required" });
+  await knop.click();
+  expect(
+    document.querySelector<HTMLInputElement>('input[name="niveau"]:checked')!
+      .value,
+  ).toBe("must");
   await expect
     .element(page.getByText(/weighs the heaviest in the scorecard/))
     .toBeInTheDocument();
   await expect
     .element(page.getByText(/never rejected because of it/))
+    .toBeInTheDocument();
+  // De uitleg opent met het weergavelabel, niet met de enum.
+  await expect
+    .element(page.getByText(/^Required = weighs the heaviest/))
     .toBeInTheDocument();
 });
 

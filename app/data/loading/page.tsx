@@ -8,11 +8,11 @@ import {
   type QueueRow,
 } from "@/components/data/brand-load-queue";
 import { listBrandLoadQueue } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
-import { markLoadedAction } from "../actions";
+import { dismissBrandLoadAction, markLoadedAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function InladenPage() {
-  await requireSession();
+  await bewaakRoute("/data/loading");
   const queue = await listBrandLoadQueue(db);
   const rows: QueueRow[] = queue.map((q) => ({
     id: q.id,
@@ -23,7 +23,7 @@ export default async function InladenPage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -35,10 +35,16 @@ export default async function InladenPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Brands requested as a data gap (blue) but not yet in the catalog. The
           frequency counts how often they appear across all projects — load the
-          most requested first.
+          most requested first. Something that was never a brand (a zone or room
+          name the import misread) can be taken off the queue with &quot;Not a
+          brand&quot;.
         </p>
       </header>
-      <BrandLoadQueue rows={rows} markLoadedAction={markLoadedAction} />
+      <BrandLoadQueue
+        rows={rows}
+        markLoadedAction={markLoadedAction}
+        dismissAction={dismissBrandLoadAction}
+      />
     </main>
   );
 }

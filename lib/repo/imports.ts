@@ -219,10 +219,16 @@ export async function confirmImportRun(
     ? await addSpecLines(db, run.dossierId, inputs)
     : [];
 
-  for (const line of created) {
-    await runMatcher(db, line.id, actor);
-  }
-
+  // A9 (reviewzwerm 2.5a, bewezen): de run gaat op 'bevestigd' zodra de regels bestáán,
+  // NIET pas na de matcher-lus. De volgorde was andersom, en er is geen transactie om
+  // op terug te vallen — db.transaction() gooit op neon-http (zie price-archive.ts:
+  // "groene tests, kapotte app"). Crashte runMatcher halverwege (reëel: engine.ts
+  // documenteert zelf "invalid input syntax for type integer" en `ORDER BY 0`), dan
+  // stonden de tien regels er al terwijl de run op 'voorstel' bleef staan — en de
+  // gebruiker die nogmaals op Bevestigen klikte kreeg er tien bij. Gemeten: 1 regel na
+  // de crash, 2 na de tweede poging. Verdubbelde aantallen zijn wat de klant betaalt.
+  // De idempotentie-poort hierboven (status !== 'voorstel') is dus alleen iets waard als
+  // de vlag valt op het moment dat de regels onomkeerbaar zijn.
   await db
     .update(importRuns)
     .set({ status: "bevestigd", actor: actor ?? run.actor, updatedAt: new Date() })
@@ -235,6 +241,13 @@ export async function confirmImportRun(
     actor,
     payload: { runId, added: created.length, ofRows: rows.length },
   });
+
+  // Pas hierna matchen. Een matcher-fout laat de aanroeper nog steeds klappen — dat
+  // mag luidruchtig blijven — maar kost geen regels meer: ze staan er één keer, met
+  // status 'open', en zijn opnieuw te matchen vanaf het regel-detail.
+  for (const line of created) {
+    await runMatcher(db, line.id, actor);
+  }
 
   // AI-vangnet (stap 8): zelfde niet-blokkerende trigger als bij de PDF-import.
   await triggerVangnet(db, run.dossierId, actor);

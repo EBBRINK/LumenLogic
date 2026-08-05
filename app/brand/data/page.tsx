@@ -1,34 +1,27 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { brands } from "@/db/schema";
 import { BrandDataView } from "@/components/merk/brand-data-view";
-import { getBrandData } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
+import { getBrandData, resolveBrandFromParam } from "@/lib/repo/brand-portal";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Data-inzien (§3.16): het merk ziet zijn eigen producten + specs, zonder prijs of ranking.
-async function resolveBrandId(brandId?: string) {
-  if (brandId) {
-    const [b] = await db.select({ id: brands.id }).from(brands).where(eq(brands.id, brandId)).limit(1);
-    if (b) return b.id;
-  }
-  const [first] = await db.select({ id: brands.id }).from(brands).orderBy(asc(brands.name)).limit(1);
-  return first?.id ?? null;
-}
+// Welk merk, beslist resolveBrandFromParam — inclusief de uuid-guard op ?brand=. Deze
+// pagina had zijn eigen kopie van die resolver zónder guard, dus /brand/data?brand=nope
+// gaf een 500 terwijl /brand?brand=nope al gerepareerd was (UX-audit 30 jul, bug #1).
 
 export default async function MerkDataPage({
   searchParams,
 }: {
   searchParams: Promise<{ brand?: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/brand/data");
   const { brand: brandParam } = await searchParams;
-  const brandId = await resolveBrandId(brandParam);
-  const data = brandId ? await getBrandData(db, brandId) : null;
+  const brand = await resolveBrandFromParam(db, brandParam);
+  const data = brand ? await getBrandData(db, brand.id) : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/brand"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

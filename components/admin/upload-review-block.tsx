@@ -1,7 +1,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -10,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDate } from "@/lib/format";
 
 export type UploadReviewRow = {
   id: string;
@@ -22,15 +26,8 @@ export type UploadReviewRow = {
 // De merken waaraan een PDL-import gehangen kan worden (voor de stub-import-selectie).
 export type PdlBrandOption = { id: string; name: string };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("nl-NL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+// UX-audit 30 jul (bug #9): hier stond een eigen `toLocaleDateString("nl-NL")` ("1 jul
+// 2026"). Eén datumformatter voor de hele app, in lib/format.ts.
 
 const KIND_LABEL: Record<string, string> = {
   pricelist: "Price list",
@@ -65,9 +62,13 @@ export function UploadReviewBlock({
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {uploads.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No pending uploads.
-          </p>
+          // Zit al in een <Card>: inline. Geen actie — deze wachtrij vult zichzelf
+          // vanuit de merkportalen; de admin start hier niets.
+          <EmptyState
+            variant="inline"
+            title="No pending uploads."
+            action={null}
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -141,7 +142,7 @@ export function UploadReviewBlock({
               id="pdl-brand"
               name="brandId"
               required
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:max-w-xs dark:bg-input/30"
+              className={cn(veldClass, "w-full sm:max-w-xs")}
             >
               <option value="">Choose brand…</option>
               {pdlBrands.map((b) => (
@@ -151,7 +152,9 @@ export function UploadReviewBlock({
               ))}
             </select>
           </div>
-          <Button type="submit" variant="outline" className="self-start">
+          {/* Geen `self-start` meer: de rij staat op `items-end`, en met een veld van
+              44px (O9) hoort de knop op dezelfde onderlijn te staan als het veld. */}
+          <Button type="submit" variant="outline">
             Import as staging
           </Button>
         </form>

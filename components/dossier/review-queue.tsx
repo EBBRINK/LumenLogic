@@ -20,8 +20,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { formatEur } from "@/lib/format";
+import { fieldLabelTitle } from "@/lib/matching/tolerances";
 import { StatusBadge } from "./status-badge";
 import type {
   Deviation,
@@ -78,9 +80,12 @@ function DeviationList({ deviations }: { deviations: Deviation[] }) {
   return (
     <ul className="flex flex-col gap-1 text-sm">
       {deviations.map((d) => (
-        <li key={d.field} className="text-amber-700 dark:text-amber-400">
-          <span className="font-medium">{d.field}</span>: requested {d.requested} →
-          delivered {d.delivered ?? "—"}
+        <li key={d.field} className="text-status-amber-ink">
+          {/* Leesbaar veldlabel, geen code-identifier (UX-audit 30 jul, bug #8). Begin van
+              een lijstitem → de begin-van-de-regel-vorm; midden in een zin gebruikt de
+              app fieldLabel() (reparatie 30 jul, bevinding 3). */}
+          <span className="font-medium">{fieldLabelTitle(d.field)}</span>: requested{" "}
+          {d.requested} → delivered {d.delivered ?? "—"}
         </li>
       ))}
     </ul>
@@ -163,7 +168,7 @@ function CandidateChoice({
             {candidate.articleCode ?? "—"}
           </p>
           {devs.length > 0 && (
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-1 text-xs text-status-amber-ink">
               {devs.map((d) => d.note).join(" · ")}
             </p>
           )}
@@ -255,7 +260,10 @@ function KeuzeCard({
           <input type="hidden" name="dossierId" value={dossierId} />
           <input type="hidden" name="specLineId" value={item.id} />
           <input type="hidden" name="decision" value="accepteer" />
-          <Button type="submit" size="sm" variant="secondary">
+          {/* `outline`: een echte submit hoort niet op het neutrale vlak. Blijft
+              bewust ónder de per-kandidaat "Choose this" hierboven — dát is de
+              primary van deze kaart (DESIGN.md §6). */}
+          <Button type="submit" size="sm" variant="outline">
             <IconCheck /> Accept as proposal
           </Button>
         </form>
@@ -400,20 +408,51 @@ function OcrCard({
   // B6: de échte bron van een OCR-regel is het opgeslagen paginabeeld — toon het
   // paginanummer en link ernaar (nieuw tabblad) zodat de reviewer het boek naast
   // de gelezen waarden kan leggen. Alleen als de regel zijn herkomst draagt.
-  // Leesroute-regels (AI-tekstroute, stap 3 fase B) delen reviewKind 'ocr' maar
-  // hun run heeft GEEN paginabeelden (hasPageImages === false uit de review-
-  // query) — blind naar /ocr-image linken gaf een 404. Dan linkt de kaart naar
-  // het markdown-controlespoor van de importrun, met hetzelfde paginanummer als
-  // tekst. undefined (fixtures/oudere aanroepers) blijft de beeldlink: bestaand
-  // OCR-gedrag ongewijzigd.
+  // hasPageImage komt per PAGINA uit de review-query (UX-audit 30 jul, bug #2):
+  // true = er is een beeld van déze pagina. Alleen dán de beeldlink. Anders — een
+  // leesroute-run (AI-tekstroute, stap 3 fase B, die reviewKind 'ocr' deelt maar
+  // nooit beelden heeft), een OCR-run die maar een deel van zijn pagina's in beeld
+  // kreeg, óf een aanroeper die de vlag niet meestuurt — linkt de kaart naar het
+  // markdown-controlespoor van de importrun, met hetzelfde paginanummer als tekst.
+  // Bewust `=== true` en niet `!== false` (reviewronde 2, 30 jul): de "onbekend →
+  // tóch de beeldlink"-tak was de enige tak die een kale 404 kón opleveren en had
+  // geen enkele aanroeper meer — getReviewQueue levert altijd een echte boolean.
   const hasSource = item.importRunId != null && item.sourcePage != null;
-  const hasImage = item.hasPageImages !== false;
+  const hasImage = item.hasPageImage === true;
   return (
     <>
       <p className="text-sm text-muted-foreground">
         Check the imported line — OCR import can misread characters. Confirm if the
         line is correct, or open it for another match.
       </p>
+      {/* De ruwe tabelregel zoals de import hem las: zonder dit citaat vraagt de
+          kaart om een controle zonder het te controleren materiaal te tonen
+          (UX-audit 30 jul). Compact in rust (twee regels), maar de hele regel is
+          bereikbaar: uitklappen haalt de line-clamp weg. Géén title-tooltip meer
+          (reviewronde 2, 30 jul) — die droeg dezelfde al afgekapte tekst en doet
+          op 375px, waar geen hover bestaat, helemaal niets. De tekst staat precies
+          één keer in de DOM; alleen de clamp klapt open. */}
+      {item.sourceText && (
+        <details className="group/src border-l-2 pl-2.5">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="text-xs font-medium text-foreground">
+              Source text
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {" · "}
+              <span className="underline underline-offset-2 group-open/src:hidden">
+                show all
+              </span>
+              <span className="hidden underline underline-offset-2 group-open/src:inline">
+                show less
+              </span>
+            </span>
+            <span className="mt-0.5 line-clamp-2 font-mono text-xs leading-snug break-words whitespace-pre-wrap text-muted-foreground group-open/src:line-clamp-none">
+              {item.sourceText}
+            </span>
+          </summary>
+        </details>
+      )}
       {hasSource && (
         <p className="text-sm text-muted-foreground">
           Read from page{" "}
@@ -586,7 +625,8 @@ function RedLinkCard({
             className="h-8 w-72 max-w-full text-sm"
             aria-label={`Search comparable product for ${line.fixtureCode}`}
           />
-          <Button type="submit" size="sm" variant="secondary">
+          {/* Submit → `outline`; de primary van deze kaart is "Link this product". */}
+          <Button type="submit" size="sm" variant="outline">
             <IconSearch /> Search
           </Button>
         </form>
@@ -628,10 +668,12 @@ function RedLinkCard({
           </ul>
         )}
         {results && results.length === 0 && line.searchQuery && (
-          <p className="text-sm text-muted-foreground">
-            No visible products found for &ldquo;{line.searchQuery}&rdquo; — try a
-            broader search term.
-          </p>
+          // Zit al in een <Card>: inline, anders een kader binnen een kader.
+          <EmptyState
+            variant="inline"
+            title={`No visible products found for “${line.searchQuery}” — try a broader search term.`}
+            action={null}
+          />
         )}
       </CardContent>
     </Card>
@@ -663,14 +705,13 @@ export function ReviewQueue({
 }) {
   if (pending.length === 0 && done.length === 0 && rood.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">Nothing to review — all lines are unambiguous.</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Lines only appear here when a human verdict is needed: a yellow deviation,
-          a color variant, a confirmation for missing data, an OCR check, or a
-          not-found product that must be linked manually.
-        </p>
-      </div>
+      // Geen actie: de wachtrij vult zichzelf vanuit de matcher — er is hier niets
+      // te starten. Bewuste `action={null}`.
+      <EmptyState
+        title="Nothing to review — all lines are unambiguous."
+        description="Lines only appear here when a human verdict is needed: a yellow deviation, a color variant, a confirmation for missing data, an OCR check, or a not-found product that must be linked manually."
+        action={null}
+      />
     );
   }
 
@@ -699,9 +740,11 @@ export function ReviewQueue({
         </div>
       ) : (
         rood.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No pending items — everything is done.
-          </p>
+          <EmptyState
+            variant="inline"
+            title="No pending items — everything is done."
+            action={null}
+          />
         )
       )}
 
@@ -741,7 +784,7 @@ export function ReviewQueue({
                 key={item.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
               >
-                <IconCheck className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <IconCheck className="shrink-0 text-status-green-ink" />
                 <EntityLine item={item} />
                 <StatusBadge status={item.status} className="ml-auto" />
                 <span className="w-full text-xs text-muted-foreground sm:w-auto">

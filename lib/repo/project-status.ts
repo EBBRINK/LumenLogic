@@ -19,7 +19,7 @@
 // lifecycle-begrip "opgeleverd" (armaturenboek overgedragen) — dat is iets anders dan
 // gunning, en het moment van gunnen staat al in het status_changed-event. De kolom blijft,
 // net als lifecycle, deprecated staan.
-import { asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import {
   projectDossiers,
   quotes,
@@ -28,6 +28,7 @@ import {
 } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
+import { dossierScopeSql, type DossierScope } from "./toegang";
 
 export type Phase = "tender" | "awarded";
 export type { ProjectStatus, XisPhase };
@@ -76,11 +77,20 @@ export function isReadOnly(status: ProjectStatus): boolean {
   return status === "archief";
 }
 
-async function getRow(db: AppDb, dossierId: string) {
+// ⚠️ SPRINT 3.2a — ook het SCHRIJFpad leest eerst. Deze functie is de derde deur op
+// project_dossiers en neemt daarom dezelfde verplichte `DossierScope` als de leesdeuren in
+// dossiers.ts. Buiten de scope is de uitkomst letterlijk dezelfde als "bestaat niet":
+// setStatus/setXisPhase gooien "Project not found", en er wordt niets geschreven.
+async function getRow(db: AppDb, scope: DossierScope, dossierId: string) {
   const [row] = await db
     .select()
     .from(projectDossiers)
-    .where(eq(projectDossiers.id, dossierId))
+    .where(
+      and(
+        eq(projectDossiers.id, dossierId),
+        dossierScopeSql(scope, projectDossiers.orgId),
+      ),
+    )
     .limit(1);
   if (!row) throw new Error("Project not found");
   return row;
@@ -92,12 +102,13 @@ async function getRow(db: AppDb, dossierId: string) {
 // • estimate_gestuurd: bestaande, nog niet bevroren estimate wordt bevroren (I-06) + event.
 export async function setStatus(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
   status: ProjectStatus,
   actor?: string,
   opts?: { reason?: string | null },
 ) {
-  const current = await getRow(db, dossierId);
+  const current = await getRow(db, scope, dossierId);
   if (status === "archief" && !opts?.reason?.trim()) {
     throw new Error("Reason required when archiving");
   }
@@ -163,11 +174,12 @@ export async function setStatus(
 // XIS-fasewijziging: xis_phase + afgeleide phase in ÉÉN update, event erbij (regel 5).
 export async function setXisPhase(
   db: AppDb,
+  scope: DossierScope,
   dossierId: string,
   xisPhase: XisPhase,
   actor?: string,
 ) {
-  const current = await getRow(db, dossierId);
+  const current = await getRow(db, scope, dossierId);
   const phase = derivePhase(current.status, xisPhase);
   await db
     .update(projectDossiers)
@@ -194,16 +206,20 @@ export type StatusFilter = "alle" | ProjectStatus;
 
 export async function listDossiersFiltered(
   db: AppDb,
+  scope: DossierScope,
   filter?: StatusFilter,
 ) {
   const f = filter ?? "alle";
-  const where =
+  const statusWhere =
     f === "alle"
       ? ne(projectDossiers.status, "archief")
       : eq(projectDossiers.status, f);
+  // 3.2a: het statusfilter is wat de gebruiker VROEG, de scope is wat hij MAG. Ze staan
+  // met `and()` naast elkaar en niet in elkaar — een filterwaarde kan de scope zo nooit
+  // verruimen, hoe de UI ook verandert.
   return db
     .select()
     .from(projectDossiers)
-    .where(where)
+    .where(and(statusWhere, dossierScopeSql(scope, projectDossiers.orgId)))
     .orderBy(desc(projectDossiers.updatedAt), asc(projectDossiers.createdAt));
 }

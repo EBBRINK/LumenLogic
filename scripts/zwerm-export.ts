@@ -1,0 +1,443 @@
+// Exporteert een verrijkingsrun naar scherf-bestanden voor de agent-zwerm.
+//
+//   bun --env-file=.env.branch scripts/zwerm-export.ts <runId> [--scherf=40]
+//
+// ── Waarom een BESTAND en niet de prompt ─────────────────────────────────────
+// Een lange JSON-string in een prompt komt als brokstukken aan, en dan leest een half gelezen
+// batch als een volledig beoordeelde batch. Agents krijgen dus een PAD. Ze krijgen ook géén
+// databaseverbinding: schrijft een agent een `sampleVerdict` weg, dan is `assertSampleReviewed`
+// automatisch tevreden en publiceert `publishRun` — dat is de doorgeklikte poort, geautomatiseerd.
+//
+// ── De eenheid is de CEL, en de sleutel is het SPEC-FRAGMENT ─────────────────
+// Een cel is `veld | vorm van het spec-fragment | waarde`, waarbij het fragment de karakters
+// zijn die de waarde voortbrachten (`specSpans()`, parser.ts) plus een venster van ±8 tekens.
+// De agent beoordeelt dat patroon; het aantal producten erachter staat erbij, zodat zichtbaar
+// is hoeveel er aan één oordeel hangt.
+//
+// De sleutel was eerst de HELE productnaam, en dat was te grof: bij Wever & Ducré gaf dat
+// 8.560 cellen (58 scherven) tegen 1.556 op het fragment (11 scherven) — 82 % minder werk voor
+// dezelfde vraag. `kelvin|# led #k b-b #w|2700` voegt `DOMY ON STREX 1.0 LED 2700K B-B` en
+// `SOLID CEILING SURF 1.0 LED 2700K B-B` samen: verschillende families, identieke vraag
+// (betekent `2700K` hier kleurtemperatuur 2700?). Dat samenvoegen ís de winst.
+//
+// ── Waarom de familienaam er NIET in zit, met de meting erbij ────────────────
+// Het tegenargument was: dan belanden `POW.SUPPLY … 96W 48V` en `BELT … 96W 48V` in één cel
+// terwijl ze een ander oordeel verdienen. Gemeten (`scripts/meet-celmenging.ts`) op Flos
+// Architectural — het merk mét losse onderdelen — én mét de door de poort geweerde producten
+// erbij, dus juist de robuustheidstoets voor "wat als het filter iets mist":
+//
+//     cellen met een onderdeel : 57      cellen die onderdeel én armatuur MENGEN : 0
+//
+// Nul, ook bij Wever & Ducré (36 met een onderdeel, 0 gemengd). De botsing waar de familienaam
+// tegen zou beschermen, heeft geen enkele instantie — en hij kostte 12 extra scherven per merk.
+// De vraag "is dit een armatuur?" hoort bovendien in een andere laag: het ankerfilter en de
+// voorstelpoort, waar hij al zit. Daarom draagt de cel de onderdeelvlag als ATTRIBUUT, zodat de
+// agent hem ziet zonder dat de cel erop splitst.
+//
+// ── De vier sloten tegen een leeg antwoord ───────────────────────────────────
+//   1. `oordeel` is een verplichte enum — een ontbrekende cel is `ontbrekend`, niet `goed`.
+//   2. Elke celId uit het manifest moet exact één keer terugkomen, en `manifestHash` moet
+//      kloppen. Ontbreekt er één ⇒ de HELE scherf ongeldig, niet "de rest is goed".
+//   3. Geen `goed` zonder `bewijsNaam`: een letterlijke productnaam uit díé cel. De lezer toetst
+//      dat de string werkelijk in het manifest staat. Een agent die niets las, kan dit niet
+//      verzinnen. Dit is het sterkste slot en het kost niets.
+//   4. Vallen: cellen met een aantoonbaar verkeerde waarde, ingevoegd tussen de echte. Recall
+//      moet 100 % zijn per scherf. Daarmee is "hoeveel heb je gelezen" toetsbaar in plaats van
+//      zelfgerapporteerd.
+
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { assertBranchDb, logGuard } from "./branch-guard";
+import { getRunItems, getEnrichmentRun, nameShape } from "@/lib/repo/enrichment";
+import { parseProductName, specSpans } from "@/lib/enrichment/parser";
+import { verdenkingen } from "@/lib/enrichment/verdenking";
+import { controleerVallen, meng, scheidTweelingen } from "@/lib/enrichment/zwerm-meng";
+
+const [, , runId, ...rest] = process.argv;
+const scherfMaat = Number(rest.find((a) => a.startsWith("--scherf="))?.slice(9) ?? 40);
+// Tegenproef: N producten die de voorstelpoort WEERDE als onderdeel, ononderscheidbaar tussen
+// de echte cellen gemengd. Ze toetsen het FILTER in plaats van alleen wat het doorlaat: noemt
+// een agent er één een echt armatuur, dan is het anker te grof. Het juiste antwoord is
+// `nee-hoort-bij-onderdeel`.
+const tegenproefN = Number(rest.find((a) => a.startsWith("--tegenproef="))?.slice(13) ?? 0);
+// Contextvenster om de spec-span. Monotoon in het aantal cellen — er is geen natuurlijk
+// optimum, dus dit is een ontwerpkeuze: genoeg tekens om de buren te zien die de waarde
+// rechtvaardigen ("CRI 90" versus "C90 W"), niet zoveel dat de familienaam terugkomt.
+const CONTEXT = Number(rest.find((a) => a.startsWith("--context="))?.slice(10) ?? 8);
+// Pad naar het promptbestand dat de agents krijgen. De HASH daarvan gaat in elke scherf, en de
+// verwerker weigert antwoorden waarvan de echo niet klopt.
+//
+// Waarom dit een slot moet zijn en geen discipline: op 30 jul draaide ik scherf 6 opnieuw met
+// een AANGESCHERPTE prompt ("let scherp op een decimale typemaat…", "een losse lamp of
+// LED-module") en het tweede antwoord week precies op die twee punten af. Ik meldde die
+// afwijking als onenigheid tússen agents — als signaal dat er een echte productvraag lag —
+// terwijl ik er zelf aan geduwd had. Dat is het verschil tussen een meting en een bevestiging
+// van je eigen vermoeden, en je ziet die fout niet terwijl je hem maakt.
+const promptPad = rest.find((a) => a.startsWith("--prompt="))?.slice(9) ?? null;
+
+// De vorm van het spec-fragment: de karakters die dit veld voortbrachten, plus context —
+// UITGEBREID TOT WOORDGRENZEN.
+//
+// Waarom die uitbreiding: een venster op een vast aantal tekens knipt midden in een woord, en
+// dan splitst dezelfde vorm in tweeën zodra een buurwoord één teken langer is. Gezien in de
+// uitdraai van de Flos-cri-run: "BON JOUR 145 BLACK LED ARRAY 27K CRI90" gaf `ray #k cri#` en
+// "… ARRAY 3K CRI90" gaf `rray #k cri#`, omdat "27K" één teken langer is dan "3K". Twee cellen
+// voor precies dezelfde vraag. Dat is ruis van de knip, geen verschil in de data — en het
+// verklaarde waarom die run 11 cellen gaf waar de hele naam er 10 gaf.
+function fragmentVorm(naam: string, veld: string): string {
+  const spans = specSpans(naam)
+    .filter((s) => s.field === veld)
+    .sort((a, b) => a.start - b.start);
+  const s = spans[0];
+  if (!s) return nameShape(naam);
+  let van = Math.max(0, s.start - CONTEXT);
+  let tot = Math.min(naam.length, s.end + CONTEXT);
+  // naar buiten tot een spatie (of het begin/eind van de naam)
+  while (van > 0 && !/\s/.test(naam[van - 1])) van--;
+  while (tot < naam.length && !/\s/.test(naam[tot])) tot++;
+  return nameShape(naam.slice(van, tot));
+}
+
+type Cel = {
+  celId: string;
+  veld: string;
+  waarde: string;
+  naamvorm: string;
+  aantalProducten: number;
+  productnamen: string[]; // maximaal 3, letterlijk uit de catalogus
+  vlaggen: string[];
+  val?: true; // alleen in het antwoordmodel van de lezer; staat NIET in het scherfbestand
+  bron?: Cel; // bij een val: de echte cel waarvan hij gekopieerd is. Ook alleen intern.
+};
+
+async function main() {
+  logGuard(await assertBranchDb(process.cwd()));
+  if (!runId) throw new Error("gebruik: zwerm-export.ts <runId> [--scherf=40]");
+  const { db } = await import("@/db/client");
+
+  const run = await getEnrichmentRun(db, runId);
+  if (!run) throw new Error(`run ${runId} niet gevonden`);
+  const items = await getRunItems(db, runId);
+  if (items.length === 0) throw new Error("run heeft geen items");
+
+  // ── cellen bouwen ─────────────────────────────────────────────────────────
+  const perCel = new Map<string, Cel>();
+  for (const it of items) {
+    const vorm = fragmentVorm(it.productName, it.field);
+    const sleutel = `${it.field}|${vorm}|${it.value}`;
+    const bestaand = perCel.get(sleutel);
+    if (bestaand) {
+      bestaand.aantalProducten++;
+      if (bestaand.productnamen.length < 3) bestaand.productnamen.push(it.productName);
+      continue;
+    }
+    perCel.set(sleutel, {
+      celId: `x${String(perCel.size + 1).padStart(4, "0")}`, // voorlopig; hernummerd na het mengen
+      veld: it.field,
+      waarde: it.value,
+      naamvorm: vorm,
+      aantalProducten: 1,
+      productnamen: [it.productName],
+      vlaggen: verdenkingen(it.productName, parseProductName(it.productName))
+        .filter((v) => v.veld === it.field)
+        .map((v) => v.soort),
+    });
+  }
+  const echte = [...perCel.values()];
+
+  // ── tegenproef-cellen: door de poort geweerde onderdelen ──────────────────
+  // Die staan niet in enrichment_items (ze zijn immers geweerd), dus we herberekenen ze uit de
+  // productnamen van dit merk met exact dezelfde functies als de poort gebruikt.
+  const tegenproef: Cel[] = [];
+  if (tegenproefN > 0) {
+    const { products, brands } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { FIELDS } = await import("@/lib/enrichment/parser");
+    const { ONDERDRUKKENDE_VERDENKINGEN } = await import("@/lib/repo/enrichment");
+    const prods = await db
+      .select({ name: products.name })
+      .from(products)
+      .innerJoin(brands, eq(brands.id, products.brandId))
+      .where(eq(brands.name, run.brandName));
+    const veld = items[0].field;
+    const kandidaten: { naam: string; waarde: string }[] = [];
+    for (const p of prods) {
+      const specs = parseProductName(p.name);
+      const v = specs[veld as (typeof FIELDS)[number]];
+      if (v === undefined) continue;
+      const vl = verdenkingen(p.name, specs);
+      const blok = vl.find((x) => x.veld === veld && x.soort === "product-is-onderdeel");
+      if (!blok) continue;
+      kandidaten.push({ naam: p.name, waarde: String(v) });
+    }
+    // Gelijkmatig over de lijst, zodat het niet één productfamilie is.
+    for (let i = 0; i < Math.min(tegenproefN, kandidaten.length); i++) {
+      const k = kandidaten[Math.floor((i * kandidaten.length) / Math.min(tegenproefN, kandidaten.length))];
+      tegenproef.push({
+        celId: `t${String(i + 1).padStart(4, "0")}`, // voorlopig
+        veld,
+        waarde: k.waarde,
+        naamvorm: fragmentVorm(k.naam, veld),
+        aantalProducten: 1,
+        productnamen: [k.naam],
+        vlaggen: [],
+      });
+    }
+  }
+
+  // ── vallen ────────────────────────────────────────────────────────────────
+  // Eén val per 20 echte cellen, minimaal 2. Een val is een ECHTE productnaam gekoppeld aan een
+  // waarde die er aantoonbaar NIET in staat. Het juiste antwoord is dus 'nee-niet-in-naam'.
+  // Bewust geen verzonnen namen: dan zou een agent de val aan de vorm kunnen herkennen.
+  // Minstens één val per scherf, en minstens één per 20 echte cellen — zodat val-recall een
+  // uitspraak is over ÉLKE scherf en niet alleen over de scherven die er toevallig een kregen.
+  // (Gezien in ronde 2: scherf 7 had wel tegenproef-cellen maar geen enkele val.)
+  const nodigPerScherf = Math.ceil(echte.length / scherfMaat);
+  const aantalVallen = Math.max(2, nodigPerScherf, Math.floor(echte.length / 20));
+  const vallen: Cel[] = [];
+  for (let i = 0; i < aantalVallen; i++) {
+    const bron = echte[Math.floor((i * echte.length) / aantalVallen)];
+    const echteWaarde = Number(bron.waarde);
+    // ── De VORM van de vervalsing varieert (30 jul) ─────────────────────────
+    // Eerst was elke val `waarde + 7`. Twee agenten meldden dat ze de vallen herkenden, en
+    // hoewel ze dat aan het celId-voorvoegsel toeschreven, was er een tweede spoor: vier
+    // agenten "verklaarden" de vallen als een parserfout die een 7 aan de kelvin plakt. Een
+    // val met een vaste transformatie is dus aan zijn INHOUD te herkennen, en dan meet de
+    // recall of de agent het patroon doorhad in plaats van of hij de cel las.
+    let nep: string;
+    if (!Number.isFinite(echteWaarde)) {
+      nep = "999";
+    } else if (i % 3 === 0) {
+      nep = String(echteWaarde + 7); // optellen
+    } else if (i % 3 === 1) {
+      // cijfers omdraaien: 2700 → 0072 → 72; bij korte waarden een ander getal uit de reeks
+      const om = String(echteWaarde).split("").reverse().join("").replace(/^0+/, "");
+      nep = om && om !== String(echteWaarde) ? om : String(Math.round(echteWaarde * 1.5));
+    } else {
+      // de waarde van een ANDERE cel met hetzelfde veld — het meest natuurlijke bedrog
+      const zelfdeVeld = echte.filter((c) => c.veld === bron.veld && c.waarde !== bron.waarde);
+      nep = zelfdeVeld.length
+        ? zelfdeVeld[Math.floor((i * zelfdeVeld.length) / aantalVallen) % zelfdeVeld.length].waarde
+        : String(echteWaarde + 3);
+    }
+    if (bron.productnamen.some((n) => n.replace(/\s+/g, "").includes(nep))) nep += "3";
+    vallen.push({
+      ...bron,
+      celId: `v${String(i + 1).padStart(4, "0")}`, // voorlopig
+      waarde: nep,
+      val: true,
+      bron,
+    });
+  }
+
+  // Vallen en tegenproef tussen de echte cellen mengen — deterministisch, maar niet op een
+  // vaste stap (zie `meng()`).
+  const alles: Cel[] = [];
+  // Vallen en tegenproef-cellen AFWISSELEND invoegen. Achter elkaar plakken liet ze clusteren:
+  // in ronde 2 kregen de scherven 1–5 alleen vallen en scherf 7 alleen tegenproef-cellen, en
+  // dan is "val-recall 86/86" een uitspraak over de scherven die er een hadden.
+  // Er zijn veel meer vallen dan tegenproef-cellen, dus simpel afwisselen laat de tegenproef
+  // aan het begin opraken en clustert hem in de eerste scherven. Zet de tegenproef-cellen op
+  // gelijkmatig gespreide posities in de gecombineerde lijst.
+  const extra: Cel[] = [...vallen];
+  tegenproef.forEach((t, i) => {
+    const pos = Math.min(
+      extra.length,
+      Math.round(((i + 0.5) * (vallen.length + tegenproef.length)) / Math.max(1, tegenproef.length)),
+    );
+    extra.splice(pos, 0, t);
+  });
+  // De invoegposities komen uit `meng()` (lib/enrichment/zwerm-meng.ts): hash-gestuurd binnen
+  // gelijke emmers, dus gespreid maar niet op een vaste stap. Los getest.
+  const gemengd = meng(echte, extra, (s) => createHash("sha256").update(s).digest());
+
+  // Past alles in ÉÉN scherf, dan is er geen andere scherf om een val naartoe te ruilen en staat
+  // hij dus per definitie naast zijn tweeling. Bij een merk dat toevallig klein genoeg is zou het
+  // vierde slot dan stilletjes niet werken — precies het soort poort dat formeel dichtstaat en
+  // materieel niets tegenhoudt. Daarom in dat geval altijd minstens twee scherven.
+  // Even grote scherven, geen kleine restscherf. 1.764 cellen bij 250 gaf 7×250 + 1×14, en die
+  // restscherf van 14 trok bij Wever & Ducré 11 van de 83 vallen aan (79 % van zijn cellen).
+  // Door de maat te delen over het AANTAL scherven blijven ze even groot: 8 × 221.
+  const nodig = Math.max(
+    vallen.length > 0 && gemengd.length <= scherfMaat ? 2 : 1,
+    Math.ceil(gemengd.length / scherfMaat),
+  );
+  const maat = Math.ceil(gemengd.length / nodig);
+
+  // ── Vierde slot: de val mag zijn TWEELING niet in dezelfde scherf hebben ───
+  // Een val is een gekopieerde echte cel. Lag het origineel ernaast, dan is de val te vinden
+  // zonder hem te lezen: twee cellen die op één getal na identiek zijn. Bij Lombardo gold dat
+  // voor 186 van de 196 vallen, en vijf agents schreven onafhankelijk op dat ze het zagen
+  // ("gif-cellen", "opzettelijk geplante afwijkers"). `scheidTweelingen` ruilt zulke vallen met
+  // een echte cel uit een andere scherf; zie de toelichting in lib/enrichment/zwerm-meng.ts.
+  const gescheiden = scheidTweelingen(
+    gemengd,
+    maat,
+    (c) => (c.val === true ? "val" : c.celId.startsWith("t") ? "tegenproef" : "echt"),
+    (c) => c.bron ?? null,
+  );
+  alles.push(...gescheiden.rij);
+
+  // ── celId's hernummeren: geen herkenbaar voorvoegsel meer ─────────────────
+  // Twee agenten meldden onafhankelijk dat ze de ingevoegde cellen aan hun `v`- en `t`-prefix
+  // konden zien ("alle 16 zitten in v-cellen, geen enkele c-cel"). Hun oordelen verwezen
+  // inhoudelijk naar de productnaam, dus de uitslag stond er niet door onder druk — maar een
+  // val die je kunt hérkennen is geen val, en dan meet de recall alleen nog of de agent het
+  // patroon doorhad. Doorlopend hernummeren in de gemengde volgorde; de antwoordsleutel houdt
+  // bij wat wat was, en die krijgen de agents niet.
+  const soortVan = new Map<string, "echt" | "val" | "tegenproef">();
+  alles.forEach((c, i) => {
+    soortVan.set(
+      `${i}`,
+      c.val === true ? "val" : c.celId.startsWith("t") ? "tegenproef" : "echt",
+    );
+    c.celId = `c${String(i + 1).padStart(4, "0")}`;
+  });
+
+  // ── scherven schrijven ────────────────────────────────────────────────────
+  const map = `zwerm/${runId}`;
+  await mkdir(map, { recursive: true });
+
+  // ── De hash dekt ALLES wat de agent te horen krijgt ───────────────────────
+  // De promptHash dekte alleen `prompt.md`. Bij de tweede Wever & Ducré-ronde zette ik er in de
+  // agent-opdracht zelf een zin bij ("een naam die begint met LAMP, LED MODULE, DRIVER … is geen
+  // armatuur"). Die zin is een CONCLUSIE uit eerdere rondes, dus ik gaf de agents het antwoord op
+  // precies de vraag die ik aan het meten was — en de hash bleef gelijk, want die kende dat
+  // kanaal niet. Exact de fout waarvoor het slot bestond, via de deur ernaast.
+  //
+  // Daarom schrijft de exporteur nu de VOLLEDIGE opdracht per scherf, inclusief het te schrijven
+  // antwoordformaat, en hasht die. Wie een zwerm inzet geeft de agent één zin: volg dit bestand.
+  // Staat er iets in de agent-opdracht dat hier niet staat, dan is de meting besmet en de
+  // promptHash zegt dat niet — dus staat het er niet.
+  let beoordeling = "";
+  if (promptPad) {
+    const { readFile } = await import("node:fs/promises");
+    beoordeling = await readFile(promptPad, "utf8");
+    await writeFile(`${map}/prompt.md`, beoordeling);
+  }
+  const opdracht = (scherfNaam: string) =>
+    [
+      `Je beoordeelt scherf \`${scherfNaam}\` van een zwerm-controle.`,
+      "",
+      `1. Lees \`zwerm/${runId}/${scherfNaam}.json\` VOLLEDIG. Gebruik geen database.`,
+      "   Bewerk geen enkel bestand behalve je eigen antwoord.",
+      "2. Beoordeel ELKE cel uit `cellen`. Precies één oordeel per celId, alle celIds, geen dubbele.",
+      `3. Schrijf \`zwerm/${runId}/${scherfNaam}.antwoord.json\`:`,
+      "",
+      '   {"manifestHash":"<letterlijk uit meta>","promptHash":"<letterlijk uit meta>",',
+      '    "gelezenCellen":<aantal dat je werkelijk gelezen hebt>,',
+      '    "oordelen":[{"celId":"c0001","oordeel":"goed","bewijsNaam":"<letterlijke productnaam uit DEZE cel>","reden":"<kort>"}]}',
+      "",
+      "`oordeel` is exact één van: goed / nee-niet-in-naam / nee-hoort-bij-onderdeel / onzeker.",
+      "Bij `goed` is `bewijsNaam` verplicht en moet de string LETTERLIJK in `productnamen` van díé",
+      "cel staan — kopieer hem, typ hem niet over (de brondata bevat harde spaties U+00A0).",
+      "",
+      "Meld in je eindantwoord: hoeveel cellen je werkelijk gelezen hebt, de telling per oordeel,",
+      "en elk patroon dat je opviel — ook over de opzet van de scherf zelf.",
+      "",
+      "── DE BEOORDELINGSVRAAG ─────────────────────────────────────────────────",
+      beoordeling,
+    ].join("\n");
+  // De hash dekt het sjabloon én de beoordelingsvraag; het scherfnummer valt er bewust buiten,
+  // zodat scherven van dezelfde run dezelfde promptHash dragen.
+  const promptHash = createHash("sha256")
+    .update(opdracht("scherf-NN"))
+    .digest("hex")
+    .slice(0, 16);
+  const scherven: string[] = [];
+  const antwoordsleutel: Record<string, { val: boolean; tegenproef: boolean; namen: string[] }> = {};
+
+  const scherfCellen: Cel[][] = [];
+  for (let s = 0; s * maat < alles.length; s++) {
+    const deel = alles.slice(s * maat, (s + 1) * maat);
+    scherfCellen.push(deel);
+    // Het scherfbestand draagt GEEN val-markering — anders is de val geen val.
+    const cellen = deel.map(({ val: _val, bron: _bron, ...c }) => c);
+    const hash = createHash("sha256")
+      .update(cellen.map((c) => `${c.celId}:${c.veld}:${c.waarde}`).join("|"))
+      .digest("hex")
+      .slice(0, 16);
+    const naam = `scherf-${String(s + 1).padStart(2, "0")}`;
+    const pad = `${map}/${naam}.json`;
+    await writeFile(
+      pad,
+      JSON.stringify(
+        {
+          meta: {
+            runId,
+            merk: run.brandName,
+            scherf: s + 1,
+            aantalCellen: cellen.length,
+            manifestHash: hash,
+            // Neem deze letterlijk over in je antwoord. Wijkt hij af, dan is je antwoord onder
+            // een andere vraagstelling tot stand gekomen en telt het niet mee.
+            promptHash,
+            vraag:
+              "Beschrijft deze waarde het ARMATUUR, en staat hij letterlijk in de productnaam? " +
+              "Let op driver, converter, lamp, optiek, accessoire en bereiken.",
+          },
+          cellen,
+        },
+        null,
+        2,
+      ),
+    );
+    scherven.push(pad);
+    await writeFile(`${map}/${naam}.opdracht.md`, opdracht(naam));
+    deel.forEach((c, j) => {
+      const soort = soortVan.get(`${s * maat + j}`);
+      antwoordsleutel[c.celId] = {
+        val: soort === "val",
+        tegenproef: soort === "tegenproef",
+        namen: c.productnamen,
+      };
+    });
+  }
+
+  // ── De sleutel ligt NIET in de scherfmap ──────────────────────────────────
+  // Hij lag er wel, naast de scherven die de agents lezen. Eén agent meldde het uit zichzelf:
+  // *"ik zag wel dat er een antwoordsleutel.json in dezelfde map staat — die heb ik bewust niet
+  // geopend, dat zou de controle zinloos maken."* Dat hij dat deed is netjes; dat hij het kón is
+  // het probleem. Een slot dat afhangt van de terughoudendheid van degene die je controleert,
+  // is geen slot. De sleutel gaat naar `zwerm/sleutels/` — de agents krijgen alleen een pad naar
+  // hun eigen scherf, dus die map staat buiten hun blikveld.
+  await mkdir("zwerm/sleutels", { recursive: true });
+  await writeFile(`zwerm/sleutels/${runId}.json`, JSON.stringify(antwoordsleutel, null, 2));
+
+  console.log(`\nrun ${runId} — ${run.brandName}`);
+  console.log(`  voorstellen : ${items.length}`);
+  console.log(`  cellen      : ${echte.length} echt + ${vallen.length} vallen + ${tegenproef.length} tegenproef = ${alles.length}`);
+  console.log(
+    `  scherven    : ${scherven.length} (max ${maat} cellen elk` +
+      (maat !== scherfMaat ? `, opgesplitst omdat één scherf de vallen naast hun tweeling zet` : "") +
+      `)`,
+  );
+  // Zelfcontrole vóór er ook maar één agent leest — zie `controleerVallen` in zwerm-meng.ts.
+  const klachten = controleerVallen(
+    scherfCellen,
+    (_c, i, j) => soortVan.get(`${i * maat + j}`) === "val",
+    (c) => `${c.veld}|${c.naamvorm}|${c.productnamen.join("\u241f")}`,
+  );
+  console.log(
+    klachten.length === 0
+      ? `  valcontrole : ✓ gespreid, geen vaste stap, geen tweeling in dezelfde scherf`
+      : `  valcontrole : ✗ ${klachten.length} bezwaar(en) — deze scherven meten patroonherkenning, niet zorgvuldigheid`,
+  );
+  for (const k of klachten) console.log(`      ${k}`);
+
+  console.log(
+    `  tweelingen  : ${gescheiden.geruild} val(len) naar een andere scherf geruild` +
+      (gescheiden.rest > 0
+        ? `  ⚠ ${gescheiden.rest} kon niet — te weinig scherven, die val is herkenbaar naast zijn bron`
+        : ""),
+  );
+  console.log(`  map         : ${map}/`);
+  console.log(`\nde antwoordsleutel is voor de LEZER, niet voor de agents — buiten de scherfmap:`);
+  console.log(`  zwerm/sleutels/${runId}.json`);
+  for (const p of scherven) console.log(`  ${p}`);
+}
+
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+});

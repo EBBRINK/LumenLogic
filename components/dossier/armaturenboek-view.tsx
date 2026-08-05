@@ -52,7 +52,12 @@ export function ArmaturenboekView({
   rows: ArmatuurRow[];
 }) {
   return (
-    <div className="mx-auto max-w-4xl">
+    // `mx-auto` is er bewust AF (containersweep, DESIGN.md §5). max-w-4xl blijft: dit
+    // is een document en 896px is de leesbare documentbreedte. Maar centreren binnen de
+    // 1280px-dossiercontainer zette het document ~150px rechts van de tabbalk en de
+    // dossierkop er pal boven — gemeten, een zichtbare knik in de linkerrand. Als
+    // linkerrand-limiet (i.p.v. centrering) loopt het document met de rest mee.
+    <div className="max-w-4xl">
       <header className="mb-6 border-b pb-4">
         <p className="text-sm text-muted-foreground">Luminaire schedule</p>
         <h1 className="text-2xl font-semibold tracking-tight">{dossierName}</h1>

@@ -2,6 +2,7 @@
 // runs, en het steekproef-controlescherm (item per item goed/fout + publiceren/verwerpen).
 // Alles presentational + fixture-testbaar: data en form-actions komen als props binnen.
 import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
 import {
   Table,
   TableBody,
@@ -11,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { IconCheck } from "@/components/dossier/icons";
+import { formatDate, formatInt } from "@/lib/format";
 import { RunStatusBadge, type RunStatus } from "./enrichment-status";
 
 type FormAction = (formData: FormData) => void | Promise<void>;
@@ -43,13 +45,13 @@ export function BrandPicker({
         <span className="text-muted-foreground">Brand</span>
         <select
           name="brandId"
-          className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+          className={veldClass}
           defaultValue={brands[0]?.id}
         >
           {brands.map((b) => (
             <option key={b.id} value={b.id} disabled={b.productCount === 0}>
-              {b.name} — {b.productCount} prod.
-              {b.enriched > 0 ? ` (${b.enriched} enriched)` : ""}
+              {b.name} — {formatInt(b.productCount)} prod.
+              {b.enriched > 0 ? ` (${formatInt(b.enriched)} enriched)` : ""}
             </option>
           ))}
         </select>
@@ -70,14 +72,8 @@ export type EnrichRunRow = {
   createdAt: string | Date;
 };
 
-function fmtDate(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("nl-NL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
+// UX-audit 30 jul (bug #9): hier stond een eigen `toLocaleDateString("nl-NL")` (09-07-2026).
+// Eén datumformatter voor de hele app, in lib/format.ts.
 
 export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
   if (runs.length === 0) {
@@ -111,13 +107,13 @@ export function EnrichmentRunsTable({ runs }: { runs: EnrichRunRow[] }) {
             <TableRow key={r.id}>
               <TableCell className="font-medium">{r.brandName}</TableCell>
               <TableCell className="text-muted-foreground tabular-nums">
-                {fmtDate(r.createdAt)}
+                {formatDate(r.createdAt)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {c.geparsed ?? 0}
+                {formatInt(c.geparsed ?? 0)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {c.steekproef ?? 0}
+                {formatInt(c.steekproef ?? 0)}
               </TableCell>
               <TableCell className="text-right tabular-nums text-muted-foreground">
                 {err}
@@ -168,6 +164,11 @@ export function SampleReview({
   // De steekproefpoort (publishRun weigert bij een onbeoordeelde rij): laat het hier zien
   // in plaats van de gebruiker tegen een servererror aan te laten lopen.
   const openCount = items.filter((i) => i.sampleVerdict == null).length;
+  // Sinds de drempel (30 jul) blokkeert ÉÉN 'fout' de hele run, niet alleen dat item.
+  // Reden: de steekproef dekt 100 van soms honderdduizenden rijen, dus één fout betekent dat
+  // alle producten met dezelfde naamvorm die fout óók krijgen. Deze knop hoort dat te tonen —
+  // anders belooft het scherm iets wat publishRun weigert.
+  const geblokkeerd = openCount > 0 || foutCount > 0;
   return (
     <div className="space-y-4">
       {items.length === 0 ? (
@@ -253,7 +254,7 @@ export function SampleReview({
             {openCount > 0
               ? `${openCount} sample row(s) still need a verdict before you can publish.`
               : foutCount > 0
-                ? `${foutCount} item(s) marked incorrect — they won't be applied.`
+                ? `${foutCount} item(s) marked incorrect — this run can no longer be published. One error in the sample means the other proposals likely carry it too; reject the run and investigate.`
                 : "Publishing fills the empty match fields and re-matches this brand's blue lines."}
           </p>
           <div className="flex items-center gap-2">
@@ -265,7 +266,7 @@ export function SampleReview({
             </form>
             <form action={publishAction}>
               <input type="hidden" name="runId" value={runId} />
-              <Button type="submit" size="sm" disabled={openCount > 0}>
+              <Button type="submit" size="sm" disabled={geblokkeerd}>
                 Publish
               </Button>
             </form>

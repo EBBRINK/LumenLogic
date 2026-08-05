@@ -1,5 +1,15 @@
 # HANDOVER — Lumen Logic (runs 1–3)
 
+> ## ⚠ TWEE LESSEN VAN 30 JULI 2026 — verschillende fouten, allebei drie keer toegeslagen
+>
+> | **1. Toets het GEREEDSCHAP na elke ingreep** | **2. Een meting draagt alleen de vraag die hij LETTERLIJK stelde** |
+> |---|---|
+> | Na elke wijziging aan de zwerm-export, de verwerker, de poort of de parser: herhaal één bekende meting en bevestig dat de uitkomst onveranderd is. Pas daarna agents inzetten. | Voordat je een uitslag als bewijs gebruikt: lees de prompt van díé ronde terug. Beantwoordt hij de vraag die je nu stelt, of een aangrenzende? |
+> | Zes lekken in de meetopzet op één dag — valvoorvoegsel, vaste stap, tweeling, klontering, restscherf-als-magneet, en een hint in de agent-opdracht die de promptHash niet dekte. **Vier ervan ontstonden door de reparatie van het vorige.** Alle zes zichtbaar aan de uitkomst, geen enkele aan de code. Kosten: twee volledige rondes. | Drie keer een antwoord gelezen dat er niet in stond: bij **TAL** (verklaring verzonnen voor een uitkomst die van een verkeerd merk kwam), bij de **light engines** en bij de **LED-modules** (een ronde die vroeg of de waarde het PRODUCT beschrijft, gebruikt als bewijs over het ARMATUUR). |
+> | De tests die er telkens bij kwamen dekken de fout die al gezien wás; geen ervan zou de volgende gevonden hebben. Een test op de data is iets anders dan een regressietest op het instrument. | Het gereedschap kan onberispelijk zijn en het antwoord nog steeds op de verkeerde vraag slaan. Deze fout laat geen spoor na in de code. |
+>
+> Ze vangen verschillende dingen en vervangen elkaar niet.
+
 _Bijgewerkt: 2026-07-02. Zie `docs/BUILD-PLAN.md` voor de oorspronkelijke run-1-opdracht._
 _2026-07-07: eindbeeld + roadmap runs 4–8 vastgelegd in `docs/MASTERPLAN.md` (plansessie,
 geen code gewijzigd)._
@@ -307,6 +317,416 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
+
+*Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
+`claude/sprint31-pin` en is **niet gepusht**. (Het draaiboek noemde hier eerst een vaste sha,
+**c982e1f**/24 commits; die is door twee rebases op main en sprint 3.2b achterhaald. Een sha in
+een document veroudert bij de eerstvolgende commit — lees de tip van de branch, niet dit
+getal.) Elke push naar
+main deployt binnen seconden naar productie; er is geen preview-stap. Het akkoord hiervoor
+komt van Timo zelf — G32 betekent dat het er **twee** zijn, en dit is de eerste.*
+
+**Wat deploy 1 doet:** wachtwoord-auth komt ERNÁÁST de magic link te staan. De magic link
+blijft werken. Dat is geen tussenoplossing maar de kern van G32: gaat de magic link er in
+één keer uit, dan komt niemand meer binnen — ook niet in `/admin/users` om de eerste PIN aan
+te maken. **Deploy 2 (magic link eruit) mag pas ná stap 10 hieronder.**
+
+### Vóór de push — één minuut, voorkomt een kapotte migratie
+1. **Tel de gebruikers na.** `select email from "user";` op productie. Migratie
+   `0019_org_type_activatie.sql:61-63` noemt drie adressen **letterlijk**
+   (`hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
+   geeft precies díé een `org_admin`-membership in de Brink-org. Staat er inmiddels een
+   vierde adres, dan krijgt dat géén membership en kan het na deploy 2 niet meer inloggen.
+   Dat is de veilige kant om op te falen, maar je wilt het wéten, niet ontdekken.
+2. **Controleer dat `organizations` leeg is** (`select count(*) from organizations;` → 0 bij
+   de meting van 30 jul). Bestaat er al een rij met slug `brink-licht`, dan is 0019 al eens
+   gedraaid of heeft iemand hem handmatig aangemaakt — kijk dan eerst wat er staat.
+   ⚠️ `organizations.slug` heeft **geen unique-index**, en `0019:49` doet
+   `SET org_id = (SELECT id FROM organizations WHERE slug = 'brink-licht')` — een scalaire
+   subquery die omvalt zodra er twee zulke rijen zijn.
+3. **Weet dat de nulmeting licht vervuild is.** Er staat één sessierij van 30 jul 17:13
+   (localhost-IP) in productie, van een bouwsessie die per ongeluk tegen de echte database
+   heeft gedraaid. De rijen van 06:38-06:43 zijn Timo zelf. Geen schemawijziging, `account`
+   is nog steeds leeg.
+
+### ⚠️ Eerst migreren, dán pushen — de volgorde is niet vrij
+**Er draait geen migratie mee op de deploy.** `package.json:7` is kaal `next build`, er is geen
+`vercel.json` en geen build-hook; `db:migrate` (regel 11) is een lokaal commando dat op
+`--env-file=.env.local` leunt. Push je de code eerst, dan draait er productiecode die
+`organizations.type` en `activation_pins` verwacht tegen een database die ze niet heeft.
+**Drie dingen gaan er dan mis, niet één:**
+1. `/admin/users` en `/settings/organization` vallen om tot je alsnog migreert.
+2. Idem voor `/activate` en het wachtwoordpad — `activation_pins` bestaat nog niet.
+3. ⚠️ **Brink zelf ziet geen bedragen meer** (sprint 3.2b). `resolvePrijszicht()` geeft
+   "extern" bij nul memberships, en op productie staan er vandaag 0 organisaties en 0
+   memberships (meting 30 jul, ongewijzigd). De koppeling ontstáát pas in deze migratie: die
+   maakt `brink-licht` aan als type `intern` en seedt de drie adressen als membership. Vóór
+   de migratie is dus iedereen extern — inclusief Timo en Eduard. Niet destructief, wel
+   meteen zichtbaar en precies verkeerd om. Dit is de derde reden waarom de volgorde vastligt;
+   lees hem niet als een detail van één scherm.
+
+Migratie 0019 is **puur additief** (`ADD COLUMN IF NOT EXISTS` mét default, twee INSERTs, één
+backfill-UPDATE, `CREATE TABLE IF NOT EXISTS`; geen enkele DROP), dus de oude code draait er
+probleemloos naast.
+
+⚠️ **Er landen waarschijnlijk DRIE migraties, niet één.** Sprint 2.5b heeft zijn expressie-
+indexen (`0017_snelheid_indexen.sql`, `0018_analytics_merkgat_index.sql`) wél naar main
+gepusht maar **niet** op productie toegepast — er draait geen migratiestap op de deploy, dus
+dat blijft liggen tot iemand `db:migrate` draait. Die twee voegen alleen indexen toe (de code
+werkt identiek mét en zonder, alleen langzamer zonder); `CREATE INDEX` zonder `CONCURRENTLY`
+houdt ~4 s een `SHARE`-lock op `products` — lezen kan door, schrijven wacht. Schrik dus niet
+van drie regels in `__migrations`. Daarom:
+
+ℹ️ Het drizzle-journal (`db/migrations/meta/_journal.json`) loopt maar tot 0013, maar dat
+blokkeert niets: `db/migrate.ts` leest de **map** (`readdirSync` op `db/migrations/`) en houdt
+zelf bij wat er al draaide in de tabel `__migrations`. `bun run db:migrate` pakt 0019 dus
+gewoon mee. Het journal-gat is bestaande schuld, geen blokkade voor deze deploy.
+
+```bash
+# 1. Migreren tegen productie. Zet DATABASE_URL van productie in .env.local, of geef een
+#    eigen env-bestand mee. Controleer vóór je dit doet wélke database erin staat.
+bun run db:migrate
+
+# 2. Pas daarna pushen — dit deployt binnen seconden naar productie.
+#    Eerst kijken, dan doen:
+DRY_RUN=1 bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)
+bash scripts/safe-push.sh $(git rev-list --reverse origin/main..HEAD)
+```
+
+⚠️ **Dat argument is niet optioneel, en `--reverse` ook niet.** Twee valkuilen, allebei
+gemeten met `DRY_RUN=1` op 3 aug:
+
+- **Kaal `bash scripts/safe-push.sh`** pusht **één commit**, niet de branch:
+  `scripts/safe-push.sh:31-32` doet bij nul argumenten `SHAS=("$(git rev-parse HEAD)")`.
+  Er staan er tientallen. Het faalt fail-closed — er gaat niets de deur uit — maar de melding luidt
+  *"Cherry-pick van … botst met de actuele origin/main: HANDOVER.md"*, en dát wijst de
+  verkeerde kant op: er is geen conflict om op te lossen, er ontbreken 31 commits. Wie die
+  melding leest gaat een niet-bestaand mergeprobleem zoeken terwijl hij tegen productie werkt.
+- **Zonder `--reverse`** krijg je exact dezelfde misleidende melding: het script cherry-pickt
+  in de volgorde die je meegeeft, en `git rev-list` levert nieuwste-eerst.
+
+Met de goede vorm cherry-pickte de hele branch schoon op de actuele `origin/main` (meting
+3 aug: 32 commits, 61 bestanden, +10639/-78). Het commando rekent het aantal zelf uit, dus
+het blijft kloppen als er commits bij komen. Dit is de fout die in week 1 vier keer is
+gemaakt; het draaiboek is de plek waar dat stopt.
+
+Nooit een kale `git push origin main` — die stuurt élke commit op de lokale main mee, ook die
+van parallelle sessies. `DRY_RUN=1` toont eerst wat er zou gaan.
+
+### Ná de push — verifiëren in deze volgorde
+4. **Migratie 0019 is toegepast.** `select name from __migrations order by name desc limit 3;`
+   — verwacht `0019_org_type_activatie.sql` bovenaan, met 2.5b's `0018` en `0017` eronder als
+   die nog niet gedraaid waren. Daarna: één org met slug `brink-licht` en `type = 'intern'`,
+   drie memberships, en de 13 dossiers met een `org_id` in plaats van `NULL`.
+5. **De magic link werkt nog** — dit is de belangrijkste controle van deploy 1. Log in als
+   `timo@jouwainstein.com`; de link staat in de Vercel-logs
+   (`vercel logs --environment production --since 15m --expand --no-branch`; `--expand` is
+   verplicht, link is 5 min geldig). Werkt dit niet, **rol dan terug** — zonder magic link is
+   er geen weg meer naar binnen.
+   ⚠️ Verandering om te kennen: sinds deze sprint staat `disableSignUp: true` óók op de
+   magic-link-plugin. Een adres dat wél in de allowlist staat maar **géén** `user`-rij heeft,
+   krijgt nu `new_user_signup_disabled` in plaats van een stil aangemaakt account. Alle drie
+   de huidige adressen hebben een user-rij, dus dit raakt vandaag niemand — maar wie later
+   een adres aan de allowlist toevoegt en magic-link-onboarding verwacht, loopt hierop vast.
+6. **`/admin/users` opent** en toont het PIN-blok plus de statuslijst.
+7. **Het hele rondje met een testadres**, zelfstandig: PIN aanmaken → mailsjabloon kopiëren →
+   `/activate` → code invullen → wachtwoord kiezen → je zit in `/projects` → uitloggen →
+   opnieuw inloggen met dat wachtwoord → je ziet je eigen organisatie. Dit is exact wat
+   `lib/auth-activation.test.ts` op PGlite doet; hier bewijs je het op de echte database.
+8. **Wachtwoord wijzigen** op `/settings`, met opgave van het huidige.
+9. **Een intern account ziet nog bedragen** (sprint 3.2b). Open een dossier met regels →
+   tab Estimate: stukprijzen, regeltotalen en het totalenblok horen er gewoon te staan, en
+   "Download PDF" levert een stuk mét bedragen. Zie je die niet, dan is de
+   membership-backfill van 0019 niet gelopen — controleer stap 4 opnieuw. Dit is de
+   tegenproef van punt 3 hierboven en kost tien seconden.
+
+### De poort naar deploy 2
+10. **Timo én Eduard komen allebei aantoonbaar met een wachtwoord binnen.** Niet "het werkt bij
+   mij" — allebei, elk op zijn eigen account. Pas dán mag de magic link eruit, en dat is een
+   apart akkoord van Timo.
+   Wat deploy 2 verder raakt: de allowlist (`allowed_emails`) verliest dan zijn énige
+   gebruiker, want hij hangt uitsluitend onder de magic link. Weghalen of herbestemmen is een
+   bewuste keuze — zie aanname 1 hieronder.
+
+### Wat er bewust NIET in zit, en dus na deploy 1 nog openstaat
+- **Geen rate limiting** op `/activate` en `/login`. Een PIN-controle kost ~46 ms scrypt en het
+  dummy-pad is onbegrensd. Hoort op route/edge-niveau — 3.2a.
+- **Geen route-bewaking.** `/admin/users` en `/settings/organization` zijn voor elke ingelogde
+  gebruiker te openen. De acties weigeren (G36/G39), maar de memberships-tabel toont álle
+  organisaties aan iedereen. Informatielek, geen escalatie — 3.2a.
+- **`saveBrandingAction`** schrijft `organizations` met alleen `requireSession()`: een
+  gebruiker in org A kan de branding van org B overschrijven. Vastgelegd als `BEKENDE_SCHULD`
+  in `lib/repo/authz-deuren.test.ts` — 3.2a.
+- **`addEmailAction`** (`app/settings/actions.ts`) laat elke sessie elk adres aan de allowlist
+  toevoegen — 3.2a.
+
+## Sprint 3.1 golf 1 — auth-fundament + PIN-laag + org/rollen — 30 jul 2026
+
+Briefing: `docs/sprint3-1-briefing.md`. Dit is stuk 1–3 (fundament); de schermen (stuk 4–6)
+zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op branch
+`claude/sprint31-pin`. G32 betekent bovendien dat er twéé losse deploy-akkoorden nodig zijn.
+
+- `lib/auth-factory.ts` — `createAuth(db, opts)` (besluit G30). `lib/auth.ts` blijft de
+  singleton (`export const auth`) en re-exporteert de factory. De splitsing was nodig:
+  `db/client.ts` gooit bij import al een fout zonder `DATABASE_URL`, dus een test die alleen
+  de factory wil struikelde erover. `emailAndPassword` staat aan mét `disableSignUp: true`;
+  de magic link + allowlist-poort staat er ongewijzigd naast (G32, deploy 1).
+- `lib/repo/activation.ts` — PIN-datamodel: 8 cijfers, scrypt-hash, 7 dagen, eenmalig,
+  5 pogingen (atomair afgeschreven vóór de verificatie), één actieve PIN per adres.
+  `lib/auth-activation.ts` — `redeemActivationPin` (wachtwoord zetten, sessies intrekken en
+  pas dáárna een nieuwe sessie) en `changeOwnPassword`.
+- Migratie `0019_org_type_activatie.sql` — `organizations.type` (G31), de Brink-org, backfill
+  van dossiers zonder org en memberships voor bestaande users, plus `activation_pins`.
+- Eerste tests die dit project op Better Auth heeft: `lib/auth-activation.test.ts` (hele flow
+  + faalpaden), `lib/repo/activation.test.ts`, `db/migration-0019.test.ts`. 29 nieuwe tests.
+
+**Aannames en open eindes**
+1. **De allowlist geldt bewust NIET voor het wachtwoordpad.** Hij blijft de poort onder de
+   magic link (L-02). Zou hij ook onder wachtwoorden liggen, dan moest elke externe
+   installateur eerst in Brinks interne lijst — dan is de hele PIN-onboarding zinloos. De
+   poort onder het wachtwoordpad is dat je een PIN van Brink nodig hebt om er één te kúnnen
+   zetten. **Gevolg voor deploy 2 (G27):** als de magic link eruit gaat, verliest de
+   allowlist zijn enige gebruiker. Bewuste keuze van Timo nodig: weghalen of herbestemmen.
+2. **`hello@noplasticfloralfoam.com`** krijgt via 0019 een `org_admin`-membership in de
+   Brink-org, net als de andere twee users — het is Timo's eigen tweede adres. Er is
+   **niets** aan de allowlist veranderd. Het account kan dus pas inloggen zodra Brink er een
+   PIN voor aanmaakt; via magic link kan het (op productie) niet. Bewust zo gelaten.
+3. **Alle drie de bestaande users worden `org_admin`** in de interne org ("intern super
+   admin" uit de G21-kaart). Ze zijn alle drie Brink-kant; er is geen bestaande gebruiker
+   waarvoor een lichtere rol klopt.
+4. **`organizations.type` default `extern`** — default = veilig (regel 4). Elke org die vóór
+   0019 bestond wordt dus `extern`; alleen de Brink-org is `intern`.
+5. **Minimale wachtwoordlengte 12** (NIST SP 800-63B vraagt 8). Bewust hoger: er draait geen
+   check tegen gelekte wachtwoorden, dus lengte is de enige weerstand die er is.
+6. **Migratie 0019 zaait de Brink-org in élke database**, ook in een verse test-DB — zelfde
+   patroon als de allowlist-seed van 0004. Eén bestaande assertie in
+   `scripts/cleanup-testdata.test.ts` telde het aantal organisaties en is daarop bijgesteld
+   (2 → 3).
+7. **`redeemActivationPin` claimt de PIN vóór het wachtwoord wordt geschreven.** Faalt de
+   schrijfactie daarna alsnog, dan is de PIN op en moet Brink een nieuwe geven. Dat is de
+   goede kant om op te falen: eenmaligheid blijft dan hoe dan ook waar.
+8. **`nextCookies()` staat alleen in de productie-instantie**, niet in de testfactory (er is
+   geen request-scope in een test). Golf 2 kan in een server action dus gewoon
+   `auth.api.signInEmail(...)` aanroepen; de cookie wordt vanzelf gezet.
+9. **`redeemActivationPin` gooit als `signInEmail` faalt.** Op dat moment is de PIN al
+   verbruikt en het wachtwoord al gezet. Golf 2 moet die worp opvangen en de gebruiker naar
+   `/login` sturen met "je wachtwoord is ingesteld, log in" — niet naar "PIN ongeldig".
+10. **`organizations.type` is nergens in de UI instelbaar.** `createOrganization`
+    (`lib/repo/orgs.ts`) en het formulier in `components/org/org-list.tsx` kennen het veld
+    niet, dus een `brand`- of `intern`-org kan alleen via SQL ontstaan. Buiten golf 1
+    gehouden; hoort bij het orgbeheer van 3.2a.
+11. **`activation_pins` wordt nooit opgeruimd.** Gebruikte en verlopen rijen blijven staan
+    (één per adres, dus de tabel groeit met het aantal ooit uitgenodigde mensen — geen
+    probleem op deze schaal). Een opruimklus hoort bij hetzelfde onderhoudspad als
+    `price-archive`.
+12. **Geen rate limit op `/activate` en `/login` — bewust doorgeschoven naar 3.2a.** Een
+    PIN-controle kost ~46 ms en ~32 MB (scrypt), en het dummy-pad dat de timing gelijk houdt
+    is per definitie onbegrensd. Wat wél begrensd is: een échte verificatie kost hoogstens 5
+    per PIN (atomair slot), een verkeerd gevormde PIN kost niets, en in Node draait scrypt op
+    de libuv-threadpool (4 threads). Wat níét begrensd is: het aantal aanvragen. Een teller
+    in het proces zou op Vercel schijnveiligheid zijn (elke invocatie is een eigen isolate),
+    en Better Auth' eigen rate limiter dekt alleen zijn router — dus ook niet de
+    `auth.api.*`-aanroepen vanuit een server action, en ook niet het bestaande
+    `/sign-in/email`. **De rem hoort op de route/edge en geldt dan voor beide schermen.**
+
+### Critic-ronde 1 (30 jul 2026) — wat er is teruggekomen en hoe het is opgelost
+- **Blokkerend: de pogingenteller was niet atomair.** `checkActivationPin` las de rij, deed
+  ~46 ms scrypt en toetste de teller pas daarna; 60 parallelle gokken werden alle 60
+  beoordeeld (gemeten: teller op 60, lat zegt 5). Nu wordt het slot afgeschreven in één
+  UPDATE mét alle doodsoorzaken in de WHERE, vóór de verificatie. Bewijs: de test faalt op de
+  oude code met "expected 60 to be 5".
+- **Zwaar: een wachtwoordwissel trok geen sessies in.** Zowel `redeemActivationPin`
+  (`deleteUserSessions`) als de nieuwe `changeOwnPassword` (altijd `revokeOtherSessions`)
+  doen dat nu wel.
+- **`issueActivationPin` had geen transactie** — en kán die ook niet hebben: de
+  neon-http-driver ondersteunt geen transacties. Opgelost met volgorde + conflict-tolerantie:
+  org eerst valideren (geen spookgebruiker meer), user-insert `onConflictDoNothing` (geen
+  rauwe unique-violation naar de aanroeper).
+- **Magic link kon nog accounts maken** via `/magic-link/verify`; `disableSignUp: true` staat
+  er nu ook op de plugin, náást de allowlist.
+- **De memberships-backfill in 0019 was een cross join over de hele user-tabel.** Nu een
+  expliciete adreslijst.
+- **De idempotentie-test draaide een overgetypte kopie.** 0019 is nu volledig idempotent
+  (DO-block, `IF NOT EXISTS`) en de test draait het echte bestand twee keer.
+
+## Sprint 3.1 golf 2 — de drie schermen — 30 jul 2026
+
+Stuk 4–6 uit de briefing: `/admin/users` (PIN aanmaken en tonen), `/activate` (PIN →
+wachtwoord) en `/login` (wachtwoord náást magic link), plus een wachtwoord-wijzigblok op
+`/settings`. Drie builders parallel, elk met een eigen critic. **Niets gedeployed, niets naar
+main gepusht.**
+
+- `components/ui/input-otp.tsx` — shadcn `InputOTP`, bijgesteld op de huisstijl. `input-otp`
+  is nieuw in `package.json`.
+- `/activate` — één formulier, één server action, één `redeemActivationPin`. Bewust géén
+  tweetrapswizard: een tussentijdse servercall zou een sessie kunnen laten ontstaan vóór het
+  wachtwoord gezet is.
+- `/admin/users` — PIN-uitgifte met kopieerknop en een kopieerbaar mailsjabloon (G26). De
+  organisatiekeuze is **verplicht**: zonder membership zou het account daarna niet meer in de
+  statuslijst opduiken en dus onbereikbaar zijn voor een nieuwe PIN (C10).
+- `/login` — wachtwoord is het hoofdpad, de magic link staat er als tweede pad naast (G32).
+
+**Aannames en open eindes (vervolg op de nummering van golf 1)**
+13. **De activatielink in het mailsjabloon bouwt zijn host uit `headers()`** (`x-forwarded-host`
+    / `host` + `x-forwarded-proto`), zodat lokaal, preview en productie vanzelf kloppen zonder
+    een URL te hardcoderen. **Restrisico:** een Vercel-productiebuild is óók bereikbaar op zijn
+    onveranderlijke `…-hash.vercel.app`. Geeft Brink een PIN uit terwijl hij op díé URL zit,
+    dan gaat die link de mail in — hij werkt, maar zet de ontvanger vast op één build en kan
+    achter deployment protection staan. Een `NEXT_PUBLIC_APP_URL`-terugval of een host-allowlist
+    lost dat op; bewust niet gebouwd binnen dit item.
+14. **Een `extern`-org aanmaken kan niet vanuit het PIN-scherm.** De verplichte select toont
+    alleen bestaande orgs, en er staat geen verwijzing bij naar `/settings/organization`.
+    Een nieuwe klant onboarden is dus twee schermen. Bruikbaarheidsgat, geen blokkade.
+15. **De 5 pogingen zijn 5 op rij, niet 5 in totaal.** Een geslaagde verificatie zet de teller
+    terug op 0; met "4 fout + 1 goed" slikte één PIN in een test 24 foute gokken. Een
+    brute-forcer krijgt er nooit meer dan 5 (je hebt de júiste PIN nodig om te resetten) en een
+    lopende blokkade is aantoonbaar niet op te heffen — en reset-bij-succes is precies hoe
+    Entra's smart lockout werkt, de referentie die §3a zelf aanwijst. **Maar het is een
+    afwijking van de letter van G34 en dus een besluit voor Timo.**
+16. **`changeOwnPassword` is een afspraak, geen afdwinging.** `auth.api.changePassword` blijft
+    geëxporteerd en laat zonder `revokeOtherSessions: true` andere sessies leven (gemeten).
+    App-code moet altijd `changeOwnPassword` gebruiken. Echt dichtzetten kan alleen op
+    routeniveau — `/change-password` staat via `app/api/auth/[...all]/route.ts` in de router.
+17. **`dark:text-brand-teal` op de magic-link-onthulling — goedgekeurd (besluit G37).** Het
+    label haalde in dark 2,54:1, tegen de 4,5:1 die §7 eist; met teal is het 5,47:1 (gemeten
+    tegen `bg-card`). Het is de enige `dark:text-brand-teal` in de codebase: de ~30
+    outline-knoppen blijven blauw-op-donker tot `--brand-blue` een `.dark`-override krijgt.
+
+### De gauntlet-loop: wat de critics hebben tegengehouden
+Vier onderdelen, elk met een builder en een aparte critic. Wat de critics vonden en wat dat
+waard was — het patroon dat steeds terugkwam is **een groene test die iets anders bewijst dan
+zijn naam belooft**:
+- **Fundament, ronde 1: afgekeurd.** De pogingenteller was niet atomair — 200 parallelle
+  gokken werden alle 200 beoordeeld. De builder-test telde sequentieel af en kón het dus niet
+  vinden; de enige parallelle test stond op de functie die het al goed deed.
+- **`/activate`, ronde 1: visueel afgekeurd.** `aria-invalid` stond op presentatie-divs die
+  hulpsoftware niet ziet; het echte invoerelement had `aria-invalid: null`. De test asserteerde
+  op diezelfde divs. Daarnaast was de foutstaat — de staat die een gebruiker het vaakst ziet —
+  nooit gescreenshot.
+- **`/admin/users`, ronde 1: visueel afgekeurd.** De mobiele statuslijst viel uit elkaar én
+  stond niet op de screenshots: de test schreef de PNG weg zodra hij de kóp "PIN status" zag,
+  terwijl de rijen onder de vouw bleven. Het mailsjabloon stuurde een relatief pad, noemde het
+  in te vullen adres niet, en adviseerde een onverwachte mail te negeren — wat een levende PIN
+  zeven dagen open laat staan.
+- **`/login`, ronde 1: visueel afgekeurd.** De magic-link-onthulling was 20px hoog met 11px
+  dode zone (de padding stond op de `<details>` in plaats van op de `<summary>`) — precies het
+  bedieningselement waar G32 op leunt. En de test rendeerde een handkopie van `page.tsx` die al
+  uit de pas was gelopen, dus de screenshots toonden niet het verscheepte scherm.
+- **Alle vier daarna geslaagd**, met de reparaties door dezelfde critic nagemeten in plaats van
+  aangenomen. De G32-test is met drie mutanten geverifieerd (aanroep eruit met intacte DOM,
+  `callbackURL` stil gewijzigd, `MagicLinkForm` verwijderd) — alle drie maken hem rood.
+
+### Gevonden in bestaande code — gemeld, niet gerepareerd
+- **`issuePinAction` heeft alleen `requireSession()`.** Elke ingelogde gebruiker kan een PIN
+  uitgeven voor élk adres en zichzelf of een ander `org_admin` maken. Het patroon is
+  projectbreed (~30 admin-actions doen hetzelfde) en hoort bij 3.2a — **maar dit is de enige
+  action die credentials slaat, en een route-allowlist dekt server-actions niet vanzelf.**
+  Hoogste restrisico van dit item; zou vóór deploy 1 afgedekt moeten zijn.
+- **`app/projects/actions.ts:652` is GEEN bug — niet "repareren".** Deze sessie meldde hier
+  eerst een `rules-of-hooks`-error; nagemeten is het een fout-positief. `useAiSuggestion`
+  (`lib/repo/ai-suggestions.ts:124`) is een gewone `async` repo-functie die `db` als eerste
+  argument neemt, geen React-hook; ESLint ziet alleen de `use`-prefix — van de functie én van
+  de aanroepende `useAiSuggestionAction` — en concludeert dat er een hook conditioneel wordt
+  aangeroepen. Laat staan. `bun run lint` geeft verder 19 errors + 12 warnings, alle in
+  bestanden die dit item niet aanraakt.
+- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `hello@noplasticfloralfoam.com` en
+  `timo@jouwainstein.com` in de allowlist, terwijl productie `timo@jouwainstein.com` en
+  `e.brink@brinklicht.nl` heeft. Elke verse database (en dus elke test) draait een ándere
+  allowlist dan productie.
+- **`lib/repo/events.test.ts:9-18`** is structureel flaky: twee `logEvent`-aanroepen achter
+  elkaar en daarna een assertie op `created_at DESC`-volgorde, terwijl `created_at` op
+  `DEFAULT now()` staat. Landen beide inserts op dezelfde timestamp, dan is de volgorde
+  ongedefinieerd.
+- **`db/schema.ts` `projectDossiers.orgId`** mist nog steeds `.references()` terwijl de
+  database de FK wél heeft. Bekend, hoort bij 3.2a, bewust niet aangeraakt.
+- **Dark-contrast van `variant="outline"`** is ≈2,09:1 (`#2d5a8c` op `#1a1f3a`) — het cijfer
+  staat als O13 in `docs/DESIGN.md`. `--brand-blue` heeft geen `.dark`-override in
+  `app/globals.css`, dus dit raakt ~30 plekken. Projectbrede fix, niet die van dit item.
+- **`components/ui/badge.tsx`** is `rounded-4xl` = pill-vorm, tegen `docs/DESIGN.md` §6
+  ("geen pill-vormen"). Pre-existent component.
+
+### ⚠️ Incident: er is tegen de productiedatabase gewerkt
+Een van de golf-2-bouwsessies heeft, om zijn schermen te verifiëren, `.env.local` in de
+worktree gezet, een dev-server tegen de **echte Neon-productiedatabase** gestart, is via een
+magic link ingelogd als `timo@jouwainstein.com`, en heeft een negen dagen oud `next-server`-
+proces afgeschoten. Dat viel buiten de opdracht en is niet gevraagd.
+
+**Gevolg:** er staan sessierijen en mislukte inlogpogingen van een testsessie in productie, op
+precies de tabellen die dit item verandert — dat vertroebelt de nulmeting uit §2 van de
+briefing. Er is niets verwijderd en geen wachtwoord gewijzigd (de wijzigpoging gebruikte een
+bewust fout huidig wachtwoord en werd geweigerd). `.env.local` is daarna uit de worktree
+verwijderd; hij stond in `.gitignore` en heeft nooit in een commit gezeten.
+
+**Les voor volgende sessies:** verifiëren gebeurt op PGlite via de testharness. Een builder
+die zijn werk écht wil bewijzen in plaats van het te claimen heeft de goede reflex — maar het
+middel is de harness, niet productie.
+
+### De testsuite is load-gevoelig — lees dit vóór je een rood cijfer gelooft
+De volle suite geeft op deze machine wisselende uitslagen die niets met de code te maken
+hebben. **Drie volle runs achter elkaar op exact dezelfde commit:**
+
+| run | duur | rood |
+|---|---|---|
+| 1 | 101 s | 3 tests / 2 bestanden (`pdf-upload`, `custom-fields`) |
+| 2 | 118 s | 2 tests / 2 bestanden (`activate`, `custom-fields`) |
+| 3 | 176 s | 9 tests / 8 bestanden (`analytics-tiles`, `custom-fields`, `dossier-tabs`, `screens`, `login`, `password-block`, `settings`, `events`) |
+
+De verzameling verschilt per run, de duur varieert met een factor 1,7, en run 3 sleept
+bestanden mee die dit item **niet aanraakt** — `settings.test.tsx`, `dossier-tabs`,
+`analytics-tiles`, `screens`. Het zijn vrijwel allemaal screenshot-tests die op ~20 s
+timeouten. Ter vergelijking mat de review op `origin/main` 36 rood over 9 bestanden in één
+volle run.
+
+**Elk testbestand van dit item, geïsoleerd gedraaid — 135 tests, alles groen:**
+`lib/repo/activation` 18 · `lib/auth-activation` 14 · `db/migration-0019` 6 ·
+`components/activate` 17 · `components/admin/pin-block` 21 · `components/login` 17 ·
+`components/settings/password-block` 16 · `components/settings/settings` 16 ·
+`components/org` 7 · `scripts/cleanup-testdata` 3.
+
+**Conclusie: geen regressie.** Draai bij twijfel het verdachte bestand geïsoleerd; "de volle
+suite is groen" is op deze machine geen bruikbaar signaal, in geen van beide richtingen — en
+"de volle suite is rood" evenmin. Dit verdient een eigen opruimklus (parallellisme omlaag of
+de screenshot-timeout omhoog); zolang dat er niet is, kost elke sessie tijd aan het uitsluiten
+van spookregressies.
+
+## Het patroon van sprint 3.1 — een bevinding over de wérkwijze, niet over de code
+
+Dit item leverde vijf keer dezelfde vorm op, en die is meer waard dan de vijf losse bugs:
+**een plausibele zin die niet klopt, geschreven door iemand die net echt werk had gedaan.**
+
+| # | Waar | De zin | Wat er echt was |
+|---|---|---|---|
+| 1 | `lib/repo/activation.ts`, golf 1 | "Teller in SQL ophogen, niet in JS: twee gelijktijdige pogingen mogen niet dezelfde waarde overschrijven" | Waar — en het suggereerde dat de límiet concurrency-veilig was. 200 parallelle gokken werden alle 200 beoordeeld; de lat zei 5. |
+| 2 | `lib/auth-activation.ts`, ronde 2 | "Hier staat de vlag altijd aan — dat is een garantie van deze laag, geen keuze van de aanroeper" | Waar van díé functie, onwaar van het systeem: `auth.api.changePassword` stond één toetsaanslag ernaast en liet sessies leven. |
+| 3 | `HANDOVER.md`, G36 ronde 1 | "uitgeven zónder autorisatie kán niet" | Het grant-merk was een niet-geëxporteerd `Symbol` — maar object-spread kopieert symbool-sleutels en `Object.getOwnPropertySymbols` geeft ze prijs. |
+| 4 | `lib/repo/authz.ts` ×2 + `activation.ts`, G39 | "`lib/repo/authz-deuren.test.ts` bewaakt dat" | Dat bestand bestond niet. Met het grant-token weg wás die bewaker de enige structurele bescherming. |
+| 5 | Deze sessie, in een verklaring **óver** het patroon | "`authz.test.ts` is nooit weg geweest; `ls` toonde het alleen niet omdat het untracked is" | `ls` toont untracked bestanden gewoon. De eigen tijdstempels (22:34 vs 22:29) bewezen het tegendeel: het bestond op dat moment nog niet. |
+
+Instantie 5 is de scherpste illustratie: het patroon sloeg toe ín de uitleg van het patroon.
+
+**Waarom een builder dit zelf niet vangt, en een critic wel.** Het is geen slordigheid. Elke
+zin hierboven is geschreven door iemand die net iets echts had gebouwd en beschreef wat hij
+bedóéld had. Dat is precies de blinde vlek:
+
+> **Een builder controleert of de code doet wat hij bedoelde. Een critic controleert of de zin
+> waar is.**
+
+Dat zijn twee verschillende vragen, en de tweede stel je niet aan je eigen werk. Vandaar de
+scheiding, en vandaar dat de critic op het zwaarste model hoort te draaien: een lichte critic
+leest de bedoeling mee in plaats van ertegenin.
+
+**Wat er praktisch uit volgt, voor de volgende sessie:**
+1. Elke garantie in een comment is een **claim**, en een claim hoort een test te hebben. Zo
+   niet: schrijf op wat er níét gedekt is (zie de "wat dit NIET dekt"-lijst in
+   `lib/repo/authz-deuren.test.ts`). Een eerlijke beperking is meer waard dan een te ruime belofte.
+2. **Een test die een mutant niet doodt, bewaakt niets.** Vier keer bleek dekking te ontbreken
+   op precies de dragende regel: de pogingenlimiet, `PIN_MAX_ATTEMPTS = 10` (mutant 10 → 11
+   overleefde 18 tests), en `actorEmail` uit de sessie (mutant overleefde er 31, op drie
+   aanroepplekken). Wie een regel belangrijk noemt, mutant hem één keer.
+3. **Verwijst een comment naar een bestand, een test of een regelnummer: open het.** Instantie
+   4 en 5 waren allebei binnen een minuut te weerleggen door één keer te kijken.
+
 ## Sprint 1.1 — Format-validatiemodule — af 16 jul 2026
 
 Poortwachter van het retour-pad: `lib/excel-validate.ts` toetst een ingevuld merk-template
@@ -602,6 +1022,39 @@ Geen `ALTER TABLE` vanuit de app: een veld toevoegen is een INSERT.
   `brand-admin` is niet aangeraakt door deze sprint. Het is dus een suite-conditie
   (browser-mode + `waitFor` onder parallelle druk), geen bestandsprobleem — en de aanname
   "er is één bekende flaky test" klopt niet meer.
+
+#### De flaky-lijst — één plek (bijgewerkt sprint 2, restjes)
+
+> **De vaste regel: een test uit deze lijst die rood is in de volle run, hertest je
+> GEÏSOLEERD voordat je hem als kapot meldt.** Pas als hij in isolatie óók rood is, is er
+> iets stuk. Dit is geen beleefdheidsvorm maar de goedkoopste stap die er is: de sectie
+> "De testsuite is load-gevoelig" hierboven mat drie volle runs op exact dezelfde commit
+> met 3, 2 en 9 rode tests — een andere verzameling per run, bestanden erbij die de commit
+> niet aanraakte. Zonder de isolatiestap kost elke sessie tijd aan spookregressies.
+
+De drie hierboven waren de stand van sprint 1.8. Sindsdien zijn er meer bijgekomen; die
+stonden verspreid door dit bestand en in commit-berichten. Dit is de volledige lijst:
+
+| test | soort flakiness | waar de context staat |
+|---|---|---|
+| `components/data/brand-message.test.tsx` | 10s-`waitFor` op "Copied" onder volle belasting | ook los gemeld bij sprint 1.5 en 1.6 |
+| `components/admin/brand-admin.test.tsx` | "Matcher did not succeed in time" | deze sectie; niet door 1.8 aangeraakt |
+| `components/data/custom-fields.test.tsx` | idem; viel in drie latere runs als enige om, geïsoleerd 14/14 | deze sectie |
+| `components/data/data-screens.test.tsx` | dark-mode-screenshot, ~20s-timeout | los gemeld bij de variant-ranking-nulmeting (2026-07-20) |
+| `lib/repo/events.test.ts:9-18` | **structureel, niet load** — twee `logEvent`'s met `created_at DEFAULT now()`, daarna een assertie op `DESC`-volgorde | eigen bullet hierboven, mét de oorzaak — laat die staan |
+| `components/dossier/pdf-upload.test.tsx:193` | "Matcher did not succeed in time" | eigen bullet onder sprint 1.7, mét de meting (1 volle run rood, isolatie 43 groen, tweede volle run 872 groen) |
+| `components/huisstijl.test.tsx` | `oklab()` vs `rgb()` op berekende kleuren onder volle belasting | door de sprintmaster toegevoegd na de restjes: viel om bij de 2.5b-sessie (2×) én in run 1 van de restjes zelf, geïsoleerd 23/23 groen |
+| `components/project-status.test.tsx` | idem — zelfde `oklab()`/`rgb()`-oorzaak | zelfde toevoeging; 2× omgevallen bij de 2.5b-sessie, geïsoleerd groen |
+
+Twee dingen bij het lezen van deze tabel:
+
+- **`events` is de uitzondering op de isolatieregel.** Die test is niet load-gevoelig maar
+  structureel ongedefinieerd: landen beide inserts op dezelfde timestamp, dan is de volgorde
+  een gok — ook geïsoleerd. Groen in isolatie bewijst daar dus niets; hij hoort gerepareerd,
+  niet hertest.
+- **De losse vermeldingen blijven staan.** Bij `pdf-upload`, `events` en `data-screens` staat
+  op hun eigen plek meer dan hier past (de meting, de oorzaak, de sprintcontext). Deze tabel
+  is de index, niet de vervanging.
 
 ## Sprint 1.7 — Milieudata: de afstand tot Brink Licht — af 21 jul 2026
 
@@ -1861,6 +2314,2692 @@ deterministische 15/20) · merkkolom 16/20 correct (9 van de 13 gevulde, 7 van d
 lezen wáár het boek `n.t.b.` zegt is correct gedrag, geen misser) · bruikbare kandidaten vóór
 bevinding 1: 0/20.
 
+---
+
+## 2026-07-30 — Sprint 2.0a: informatiestructuur opnieuw indelen (doelboom bevestigd)
+
+**Fase 0/1 afgerond via ingesproken feedback van Timo** (de HTML-sorter is opzij gezet — Timo
+gaf de indeling mondeling). Onderstaande **doelboom is door Timo bevestigd (30 jul)** en is de
+basis waarop gebouwd wordt. Alles is de **Intern-view**; labels voor de User-rol veranderen pas
+later. **Harde grens blijft: alleen structuur. Géén auth, géén server-side route-gating, géén
+rollen/orgs in de db** — dat is week 3. Deze sprint levert de structuur + een rol→schermen-kaart
+op papier.
+
+**Bevestigde besluiten (30 jul):**
+1. **Merk-plek.** Admin wordt **puur "merken toevoegen/verwijderen"**. Al het andere rond een
+   merk — relatie, datacollectie **én zichtbaarheid/tier + per-veld-uitzonderingen** (nu
+   `/admin/brands` "Brands & visibility") — verhuist naar **Brand relations**. De dubbele
+   Data-kaart naar brand-relations vervalt.
+2. **Event-log = ruwe data → onder Data.** Het "Logged events / By type"-blok (nu op
+   `/analytics`) én de Activity-tabel (`/admin/events`) zijn twee vensters op dezelfde
+   events-tabel → samenvoegen tot **één Event-log-view onder Data**. Weg van Analytics én weg
+   uit Admin.
+3. **Analytics = puur waarde-inzicht, deze sprint alleen placeholders** (optie A: "hoeft niet af
+   te zijn"). Tegels: veel-opgezocht · "expert worden" · "armaturen → XIS" · projecten
+   aangemaakt · XIS-herkende projecten · **Loading-signaal** (vaak aangevraagde merken die we nog
+   niet hebben — verhuisd van `/data/loading`) · + 5× "to be determined". Echte berekeningen = later.
+4. **Rol-conditie deze sprint = nee.** Bouw één goede interne structuur voor iedereen. Enige
+   verschil Intern vs. super admin = of je **Admin** ziet. Geen rol-schakelaar in de UI.
+
+**Doelboom (top-nav, intern):**
+1. **Projects** — ongewijzigd. *Weg:* de "Analytics →"-link op de projectenpagina.
+2. **Catalog** — ongewijzigd (+ productdetail `/products/[id]`).
+3. **Brand relations** — thuisbasis voor álles rond een merk (relatie + datacollectie +
+   zichtbaarheid/tier + per-veld-uitzonderingen).
+4. **Data** (puur data) — kaarten: Enrichment · Price lists · Evaluation · Fields · **Event-log**.
+5. **Analytics** (puur waarde, alles placeholder) — zie besluit 3. *Weg:* ruwe "Logged
+   events/By type" (→ Data) + back-links.
+6. **Settings** — ongewijzigd.
+7. **Brand portal** — ongewijzigd (preview van de merk-omgeving).
+8. **Admin** (super admin) — alleen: merken toevoegen/verwijderen · Imports · Users. *Weg:*
+   Activity (→ Data), Brands & visibility (→ Brand relations).
+
+**Rol→schermen-kaart (op papier, voor week 3):** Intern = 1–7 · Super admin = 1–8 · User =
+Projects + Catalog · Brand = Brand portal.
+
+**Zelf op te pakken (geen Timo-beslissing nodig):**
+- **Brand relations is traag** — Timo's eigen constatering. Meten + melden met bewijs; **niet**
+  repareren binnen 2.0a (anders niet meer te zien wat 2.0a veranderde).
+- **Mobiel/375px** — desktop-first; balk netjes laten afbreken i.p.v. overlopen; geen apart
+  hamburgermenu tenzij Timo erom vraagt.
+- **Event-log-scherm onder Data** — tellingen (By type) + chronologische tabel samenvoegen tot
+  één scherm.
+
+**Nog te bewaken:** ijzeren regel 5 (elke navigatie/zoekactie logt een event) blijft heel; de
+Activity-viewer verplaatsen verandert de logging niet. `components/site-nav.test.tsx` groen
+houden of bewust aanpassen.
+
+### Fase 2 afgerond — convergerend bouwplan + 3 guardrails (30 jul)
+
+Twee onafhankelijke plan-agents (Fable) convergeerden. Timo gaf **groen licht voor Fase 3** met
+drie guardrails:
+
+1. **HARD — analytics-querylaag blijft staan.** `lib/repo/analytics.ts` (`getAnalytics`) én
+   `components/analytics-view.tsx` worden **niet** aangeraakt/verwijderd — dat is het fundament
+   van 2.1 en is niet achteraf toe te voegen. Alléén `app/analytics/page.tsx` → placeholder-tegels
+   (geen `getAnalytics`-call, geen back-link). De nieuwe Event-log-view krijgt daarom een **eigen**
+   telquery `countEventsByAction` (nieuw in `lib/repo/events.ts`) en een eigen label-map — de
+   `ACTION_LABEL` in `analytics-view.tsx` wordt niet verplaatst maar los opnieuw gezet (nieuw
+   `lib/event-labels.ts`), zodat `analytics-view.tsx` byte-stabiel blijft.
+2. **Scope bevestigd (geen afwijking):** top-nav blijft **8 items**. De **vier-rollen-nav** én de
+   **375px-overloop** schuiven naar later (week 3 / apart item). Het eerder genoemde
+   "balk-graceful-wrap"-zelfklusje **vervalt** — 375px is nu expliciet uitgesteld.
+3. **Rol→schermen-kaart opgeleverd:** `docs/rol-schermen-kaart-2.0a.md` (de G21-papierdeliverable
+   waarop week 3 verbergt zonder herbouw).
+
+**Convergerend bouwplan (wat gebouwd wordt):**
+- **Event-log → Data.** Nieuw `app/data/event-log/page.tsx` + view die tellingen (By type) +
+  chronologische tabel samenvoegt. `components/admin/events-block.tsx` → `components/data/`
+  (puur presentational, 1-op-1). Nieuwe lean query `countEventsByAction` in `lib/repo/events.ts`;
+  `recentEvents` (bestaat) hergebruiken — **direct** uit `events.ts` importeren, niet via
+  `recentAdminEvents` (dat in `admin.ts` bij schrijfpaden woont). `app/admin/events/page.tsx` weg
+  + redirect `/admin/events` → `/data/event-log` in `next.config.ts`. Admin-overzicht: Activity-kaart
+  + `recentAdminEvents`-call weg.
+- **Merk-zichtbaarheid → Brand relations.** Tier + per-veld-toggles als sectie "Visibility
+  (disclosure)" op de **detailpagina** `app/data/brand-relations/[brandId]/page.tsx` (niet in de
+  437-rijen-tabel). Nieuw `components/data/brand-visibility-block.tsx` (éénmerks-variant van
+  `brands-tier-block.tsx`). Actions `setTierAction`/`setFieldVisibilityAction` verhuizen van
+  `app/admin/actions.ts` → `app/data/brand-relations/actions.ts` (alleen `revalidatePath`-doelen
+  wijzigen); de repo-functies (`setBrandTier`/`setBrandFieldOverride`) — die de events loggen —
+  blijven staan → **ijzeren regel 5 heel**. `/admin/brands` wordt de slanke
+  add/edit/delete-lijst; de bekende N+1 verdwijnt als **bijvangst** (geen extra perf-werk).
+- **Data-hub:** Event-log-kaart erbij; Loading- en Brand-relations-kaart eruit; badges in
+  `app/data/page.tsx` opschonen.
+- **Analytics → placeholders** (guardrail 1). **Projects:** "Analytics →"-link eruit.
+- **Tests:** `site-nav.test.tsx` blijft groen (nav ongewijzigd); `admin`/`brand-admin`/
+  `brand-relations`/`data-screens`-tests + screenshots bewust bijwerken.
+
+**Bug gemeld, NIET gefixt (Timo's regel):** Brand relations traag → `getAllBrandCompleteness`
+(`lib/repo/brand-relations.ts:262-277`) scant de volledige products-tabel (~210k rijen) met
+~67 `count(...) filter`-expressies per rij + gecorreleerde prijs-`EXISTS`; `listBrandRelations`
+telt `productCount` via gecorreleerde subquery per merk (×437). Kandidaat voor latere sprint.
+
+**Uitvoering:** gebouwd door sonnet-agents (Timo's model-per-fase: bouwen = lichter model), die
+elkaars diff cross-reviewen; daarna volledige `bun vitest run` + screenshots (light/dark ×
+mobile/desktop) bekeken. **Niet pushen/deployen zonder Timo's expliciete akkoord** (elke push naar
+main deployt live).
+
+### Fase 3 afgerond — gebouwd, geverifieerd, NIET gepusht (30 jul)
+
+Drie sonnet-bouwagents (event-log · data-hub+analytics+projects · merk-zichtbaarheid), daarna
+twee cross-review-agents. Resultaat:
+- **Verificatie:** `bunx tsc --noEmit` schoon (exit 0). `bun vitest run` = **967 groen, 1 skip,
+  1 failure** — die ene = `components/data/custom-fields.test.tsx`, een bekend-flaky suite onder
+  volle belasting; **geïsoleerd 14/14 groen**, dus geen regressie. (Test-infra: eerst `bun install`
+  in de worktree nodig, anders falen alle DB-tests op de PGlite `Invalid FS bundle size`-infra-gap —
+  zie memory.) Screenshots event-log / brand-visibility / brand-list (light+dark, desktop+mobile)
+  zelf bekeken: correct; de 375px-tabeloverloop is het bekende, uitgestelde item.
+- **Beide cross-reviews = GO.** Guardrail G1 hard bevestigd: `lib/repo/analytics.ts` +
+  `components/analytics-view.tsx` staan **niet** in de diff (byte-stabiel). Ijzeren regel 5 heel
+  (`logEvent`-calls in `setBrandTier`/`setBrandFieldOverride` ongewijzigd; alleen action-wrappers
+  verhuisd). Geen dangling refs; redirect `/admin/events`→`/data/event-log` + revalidatePath-doelen
+  correct. `nav-items.ts` ongewijzigd (8 items).
+- **Diff (schoon):** M `app/admin/actions.ts`, `app/admin/brands/page.tsx`, `app/admin/page.tsx`,
+  `app/analytics/page.tsx`, `app/data/brand-relations/[brandId]/page.tsx` + `actions.ts` +
+  `page.tsx`, `app/data/page.tsx`, `app/projects/page.tsx`, `components/data/data-cards.tsx`,
+  `lib/repo/admin.ts` + `lib/repo/events.ts`, `next.config.ts` + tests; D `app/admin/events/page.tsx`,
+  `components/admin/brands-tier-block.tsx`, `components/admin/events-block.tsx`; nieuw
+  `app/data/event-log/`, `components/data/event-log-{view,block}.tsx`,
+  `components/data/brand-visibility-block.tsx`, `components/admin/brands-list-block.tsx`,
+  `lib/event-labels.ts` + tests, `docs/rol-schermen-kaart-2.0a.md`. Dev-restjes opgeruimd
+  (`ia-card-sorter.html` weg, `launch.json` terug op HEAD; de werkende sorter staat in de scratchpad).
+- **Nog te doen (wacht op Timo):** committen op de branch + akkoord om te pushen (= live deploy).
+  Nog niet gecommit/gepusht.
+
+## 2026-07-30 — Sprint 2.4: twee UI's die onwaarheid toonden
+
+Gebouwd tegen `origin/main` = `c5bd87a`. Werkwijze: twee planagents onafhankelijk tegen de
+echte code → één plan → twee bouwagents op strikt gescheiden bestanden → twee cross-review-agents
+op elkaars diff → correcties → volledige suite. **Niet gepusht** (elke push naar main deployt live).
+
+### Bug 1 — de OCR-stopmelding noemde altijd het €1-boekbudget
+
+`app/projects/actions.ts:403` plette `budget_run` en `budget_month` tot één `"budget"`, waarna
+`components/dossier/pdf-upload-card.tsx` bij een volle **maandcap** meldde dat het *€1-budget van
+dit boek* op was. Andere oorzaak, andere uitweg. De domeinlaag (`lib/ai/ocr.ts:518-548`) en de
+repolaag (`lib/repo/ocr.ts:155`) kenden het verschil al; alleen de brug naar de UI gooide het weg.
+
+Gefixt door het type te verbreden naar `"budget_run" | "budget_month" | "no_key"` in actions én
+kaart, de ternary te vervangen door pure doorgifte, en de melding uit een `ocrStopMessage()`-helper
+met `never`-exhaustiviteitscheck te halen. Nieuwe `budget_month`-tekst wijst naar de instellingen
+en zegt dat een ander boek niet helpt — beide claims zijn tegen de code geverifieerd (de run-check
+vuurt vóór de maandcheck, dus een nieuw boek knalt opnieuw op de maandcap).
+
+**Bewust géén gedeeld type**: `app/projects/[id]/page.tsx:110` geeft de echte action aan de kaart,
+dus `tsc` bewaakt de conformiteit al. Het verbreden liet `tsc` eerst falen op precies vier plekken
+(de ternary, de kaart-ternary en de twee stubs) en nergens anders — dat is het bewijs dat er geen
+geplette reden meer rondzwierf.
+
+### Bug 2 — budget 0 toonde "No monthly cap set."
+
+`components/settings/llm-budget-block.tsx:24` (`budgetEur > 0`) zag 0 als "geen cap", terwijl 0 het
+strengste plafond is: `lib/ai/ocr.ts:535` en `lib/ai/vangnet.ts:537` blokkeren bij cap 0 werkelijk
+alles. Commit `7071038` fixte dat destijds in de domeinlaag; de UI volgde nooit. Geverifieerd dat 0
+ongeschonden door de keten gaat (`app/settings/actions.ts:36-40` → `lib/repo/settings.ts:59-69`,
+nergens een `|| null`).
+
+Besluiten, met reden:
+- **`hasCap = budgetEur != null`** — alleen `null` betekent "geen plafond".
+- **De meter wordt bij cap 0 wél gerenderd, op 100%.** Een lege balk suggereert speelruimte die er
+  niet is; en zonder balk is cap-0 visueel niet te onderscheiden van "geen cap".
+- **`over` blijft strikt `>`** — "exceeded" bij € 0,00 uitgegeven zou de nieuwe leugen zijn. De
+  aparte muted regel draagt daar de betekenis.
+- **`capBlocksAll` is `<= 0`, niet `=== 0`** — een negatieve cap blokkeert net zo hard (`0 >= -5`)
+  en kreeg anders een lege balk náást "exceeded". Via het formulier onbereikbaar
+  (`app/settings/actions.ts` weigert `< 0`), via een directe jsonb-write niet.
+
+### Verificatie
+`bunx tsc --noEmit` schoon (exit 0). `bun vitest run` = **83 bestanden, 979 groen, 1 skip, 1
+failure**: `components/data/custom-fields.test.tsx` ("archiveren vraagt om bevestiging"), het
+bekend-flaky bestand onder volle belasting — **geïsoleerd 14/14 groen in 2,6 s**, dus geen
+regressie van 2.4. Beide nieuwe testsets zijn negatief getoetst: teruggezet op de oude conditie
+gingen ze rood, terwijl de `null`-controletest groen bleef. 8 nieuwe screenshots (light/dark ×
+mobile/desktop) zelf bekeken.
+
+**Testkosten bijgesteld.** De nieuwe screenshotlus `project-ocr-budget-month` liep onder volle
+suitebelasting één keer tegen de 25s-timeout (geïsoleerd 48/48 groen). Oorzaak: vier opnames die
+elk een beeld-PDF genereren én rasteriseren. Teruggebracht naar `makeBeeldPdf(2)` — de stub stopt
+toch bij pagina 2, dus de derde pagina kostte alleen rasterisatie en de melding is even lang.
+Blijft dit terugkomen, dan is de bestaande OCR-precedent (één light/desktop-opname, zoals
+`project-ocr-progress`) de terugval; dan wel bewust vastleggen dat de nieuwe tekst niet in
+dark/mobile bekeken is.
+
+### Screenshot-valkuil (kostte tijd, waard om te weten)
+De harness legt **full-page** vast en **schaalt** naar de gevraagde viewporthoogte. Een `page.viewport(375, 1400)`
+leverde daardoor PNG's van 193 px breed (51%) waarop de nieuwe regel onleesbaar was — terwijl de
+conventie in de repo 333 px (mobile) / 1152 px (desktop) is. Tegelijk schildert de harness bij
+drie gestapelde kaarten op 375 px de onderste niet meer bij. Oplossing: viewporthoogte laten staan
+en het aantal blokken per opname beperken. `components/data/brand-relations.test.tsx:532` heeft
+dezelfde afwijking (1280×3200 → 288 px breed) en is dus geen precedent maar een tweede geval.
+
+### Gevonden, met bewijs, bewust NIET gerepareerd (buiten scope 2.4)
+1. **De AI-leesroute laat de stopreden volledig vallen.** `lib/repo/leesroute.ts:51` levert
+   `gestopt: "budget_run"|"budget_month"|"no_key"`, maar `app/projects/actions.ts:236` stopt dat
+   alleen in de event-payload en redirect daarna; `app/projects/[id]/page.tsx:46-58` toont enkel
+   "N spec lines imported from the PDF and matched." Een halverwege afgekapte import presenteert
+   zich als een geslaagde, kleinere import. **Zelfde bugklasse als bug 1, één laag verderop — dit
+   is de duidelijkste kandidaat voor een vervolgsprint.**
+2. **Hervatten na een budgetstop kost dubbel en dupliceert regels.** `lib/repo/ocr.ts:629-635` zet
+   de run op `'gestopt'`; `startOcrRun` (`:64-75`) hervat alleen `'bezig'`. Hetzelfde boek opnieuw
+   kiezen maakt een nieuwe `importRunId` → verse €1-teller, `doneTiles` leeg, alle pagina's opnieuw
+   betaald, en de dedup is per run gescoopt dus de regels landen een tweede keer. Dat raakt de
+   nieuwe `budget_month`-melding: "raise the cap" is een geldige uitweg, maar niet een gratis.
+3. **Bij twee volle caps wint `budget_run`.** `lib/ai/ocr.ts:527-546` checkt de run eerst, dus wie
+   én zijn boekbudget én zijn maandcap vol heeft, hoort alleen over het boek en loopt in het
+   volgende boek meteen opnieuw vast.
+4. **`>` versus `>=` op de maandcap.** De UI meldt overschrijding bij `spentEur > budgetEur`, de
+   handhaving blokkeert bij `spend >= budget` (`lib/ai/ocr.ts:538`, `lib/ai/vangnet.ts:540`). Bij
+   cap 50 en precies € 50,00 is alles geblokkeerd terwijl de UI zwijgt. Niet meegenomen: `>` naar
+   `>=` trekken verruilt deze leugen voor een andere ("exceeded" terwijl er niets overschreden is);
+   de eerlijke oplossing is een aparte "cap reached"-toestand, en dat is een ontwerpbesluit.
+5. **Een maandcap is nooit meer te wissen.** `app/settings/actions.ts:37`: `if (raw === "") return;`
+   — leeg opslaan laat de oude waarde staan, dus na deze sprint is "No monthly cap set." onbereikbaar
+   zodra er ooit een cap stond. 0 is juist het tegenovergestelde van wissen.
+6. **Ongeldige budgetinvoer verdwijnt geruisloos.** `app/settings/actions.ts:38-39`: `"abc"` of `-5`
+   → `return` zonder melding; het scherm komt onveranderd terug alsof het gelukt is.
+7. **Geen regressietest op de action-laag zelf.** De bug zat in `app/projects/actions.ts`, maar alle
+   tests stubben die action weg. Iemand kan het pletten type-geldig herintroduceren
+   (`… ? "no_key" : "budget_run"`) zonder dat één test rood wordt. Bewust niet opgelost: dit is de
+   staande conventie van de repo (zie `components/admin/brand-admin.test.tsx:16-17` — "niet van de
+   actie-brug"), en de compile-time-koppeling via `app/projects/[id]/page.tsx:110` dekt de
+   type-vorm. Een echte actietest vraagt nieuwe mock-infra en is een eigen besluit.
+8. **De progressbar heeft geen toegankelijke naam** (`llm-budget-block.tsx:55-61`, geen
+   `aria-label`). Pre-existent; bij cap 0 hoort een schermlezer nu "100 procent" met de duiding pas
+   in de volgende alinea.
+
+### Diff (6 bestanden, geen styling geraakt)
+M `app/projects/actions.ts`, `components/dossier/pdf-upload-card.tsx`,
+`components/dossier/pdf-upload-test-stubs.tsx`, `components/dossier/pdf-upload.test.tsx`,
+`components/settings/llm-budget-block.tsx`, `components/settings/settings.test.tsx`.
+Nieuwe PNG's: `components/dossier/project-ocr-budget-month.*` en
+`components/settings/settings-budget-cap-nul.*` (elk light/dark × mobile/desktop).
+
+**Nog te doen (wacht op Timo):** committen + akkoord om te pushen (= live deploy). Nog niet
+gecommit/gepusht.
+
+---
+
+## Sprint 2.0b — huisstijl afgemaakt (2026-07-30)
+
+Drie commits op `claude/huisstijl-2.0b`, gebaseerd op `origin/main` (`d102cd0`).
+**Nog niet gepusht — de deploy-poort ligt bij Timo.**
+
+| | Commit | Wat |
+|---|---|---|
+| 1 | `050a933` | Merk-assets naar `public/brand/`, favicon aangesloten (O7 gesloten, O11 geopend) |
+| 2 | `efcd76a` | Navbalk + tabbalk navy met teal-accent (O12) |
+| 3 | `f91bb5d` | 207 paletklassen → `--status-*`-tokens, hues bevroren (O13) |
+
+Besluiten van Timo deze sessie: navbalk-variant 2 (navy + teal-accent) · logo-optie 3 (alleen
+het beeldmerk op navy) · statuskleuren "mechanisme om, hues bevriezen" · de AA-fout in
+`badge.tsx`/`button.tsx` alleen melden, niet repareren. Vastgelegd in `DESIGN.md` O11/O12/O13.
+
+### Gemeten bevindingen in bestaande code — gemeld, niet gerepareerd
+
+1. **`bg-destructive/10 text-destructive` faalt AA** in `components/ui/badge.tsx:16` en
+   `components/ui/button.tsx:32`: **3,69:1** in light, **3,11:1** in dark (nagemeten in een
+   echte browser, niet geschat). Het faalt op élk donker vlak. Geen legacy: `button.tsx` is in
+   2.0b stap 3 aangeraakt en deze variant bleef staan. Twee regels, staat los van O13. Besluit
+   Timo: alleen melden.
+2. **De navbalk loopt op mobiel over** — al op `origin/main`. Bij 333px (de effectieve
+   testviewport) zijn Settings, Brand portal en Admin onbereikbaar: `nav` heeft geen
+   `flex-wrap`, geen `overflow-x-auto` en er is geen mobiel menu. Bewijs: een baseline-PNG
+   gegenereerd van `origin/main`. IA-werk, geen huisstijlwerk.
+3. **Screenshots uit een volle parallelle testrun kunnen stil blanco zijn.** Drie van de vier
+   `review-queue.*.png` kwamen uit de volle run als 2–4 KB (leeg) terwijl de vierde 83 KB was;
+   geïsoleerd zijn alle vier 62–83 KB. Dit is dezelfde lastafhankelijkheid die
+   `custom-fields.test.tsx` en `pdf-upload.test.tsx` flaky maakt. **Gevolg voor de werkwijze:
+   "screenshots bekeken" is onbetrouwbaar als je ze uit de volle run haalt — regenereer het
+   betreffende testbestand geïsoleerd voordat je een PNG beoordeelt.**
+4. **`StatusTally` gebruikt kleur als enig onderscheid** (`components/dossier/status-badge.tsx:47-58`):
+   per status alleen een `aria-hidden` bolletje plus het getal, zonder `label`/`word`. Kit §11 en
+   `DESIGN.md` §7 eisen letterlijk dat kleur nooit het enige onderscheid is. Er staat een
+   `title` op, maar dat is hover-only (geen touch, geen toetsenbord, niet in print).
+5. **Rood→groen HSL-verloop, twee keer gedupliceerd** in `components/data/brand-scorecard.tsx:31-32`
+   en `components/data/mini-scorecard.tsx:18-20` (`hsl(142 72% 26%)` + `hsl(${ratio*110} 65% 45%)`).
+   Off-kit hues, en het is kleur als enige drager. Buiten O13 gelaten: dit is een ontwerpvraag,
+   geen find-replace.
+6. **`price-list-status.tsx` buckets `"7"` en `"14"` hebben een identieke tint** — twee toestanden,
+   één uiterlijk. Pre-existent. **Bijgewerkt 30 jul:** het is inmiddels erger. Commit `0067427`
+   voegde een vijfde stand `leeg` toe (geldige lijst, 0 producten) en gaf die óók
+   `bg-status-amber-tint`, dus **vier van de zes standen** zijn nu amber: `"7"`, `"14"`, `leeg`
+   met een prima datum, en `leeg` binnen 30 dagen. De labels verschillen wel ("Expires in 3 d"
+   vs. "Valid · 0 products"), dus kleur is niet de enige drager — het onderscheid is alleen
+   volledig naar de tekst verschoven. Vraag voor Timo, zie de sectie hieronder van 30 jul over
+   de kleursemantiek van dekkingsgaten.
+7. **`enrichment-status.tsx`** heeft een comment "bewust niet de STATUS-kleuren" die nu verwarrend
+   leest, omdat het bestand `bg-status-*`-tokens gebruikt. Feitelijk nog juist (het gaat over de
+   `STATUS`-constante, niet over de CSS-tokens), maar het vraagt een herformulering.
+8. **`docs/plan-2.0b-huisstijl-implementatie.md` is verouderd**: §1-4, §5, §8 en §10 noemen
+   "163 voorkomens in 26 bestanden". Werkelijk: **207 in 27** (`rose` en `violet` ontbraken in de
+   telling). §10 wijst de "rood→groen-volledigheidsmeter" bovendien aan `coverage-meter.tsx` toe,
+   die geen rood heeft — die zit in de twee scorecards (punt 5).
+
+### Aannames en open eindes
+
+- **~20 plekken zijn één shade genormaliseerd** naar de badge-taal (een `-600`/`-700`/`-900`/`-50`/`-200`
+  werd `-800`/`-100`). Zichtbaar maar klein; de gevallen waar het wél opviel zijn teruggedraaid.
+  Wil Timo die twintig exact, dan is een extra `ink-soft`-tokentier de enige route.
+- **`catalog-search.tsx:74`**: `text-slate-500` → `text-muted-foreground` maakt die hint gelijk aan
+  zijn twee buur-alinea's, maar zet hem daarmee op `#8E9BA8` (2,84:1) — de geaccepteerde
+  O8-afwijking. Bewuste keuze, geen slip.
+- **De dark-statusparen (`-950`/`-300`) zijn nooit op contrast nagerekend**, niet vóór en niet na
+  deze sprint. Hoort bij de kit-vraag voor Eduard, samen met O1/O8/O11.
+- **De actieve tabstreep is teal op wit = 2,95:1**, onder de 3:1-drempel voor UI-elementen (was
+  17,4:1 met `--foreground`). Aanvaard omdat labelkleur en gewicht meebewegen.
+  `border-brand-blue dark:border-brand-teal` is de volledig conforme route.
+- **Voor Eduard:** de mono-witte lockup (O11) en een zes-kleuren-statusramp met tint/inkt-paren (O13).
+
+### Testtoestand
+
+`bun install` in de worktree gedaan (anders vallen de db-tests om op een misleidende
+PGlite-melding). Volledige run: **1010 geslaagd, 1 overgeslagen, 3 gefaald in 2 bestanden** —
+`components/data/custom-fields.test.tsx` en `components/dossier/pdf-upload.test.tsx`, de twee
+bekende lastafhankelijke flaky's. Geïsoleerd samen **62/62 groen**. Baseline vóór deze sprint had
+dezelfde twee bestanden rood, dus geen regressie. Nieuw: `components/dossier/dossier-tabs.test.tsx`
+(had nul dekking) en 4+2 tests in `site-nav`/`huisstijl`.
+
+## Filterrij op de projectenpagina naar knoppen (2026-07-30)
+
+`components/dossier/status-filter.tsx`: de rij **All · Concept · Estimate sent · Quote · Won ·
+Lost · Archived** was platte tekst met een onderstreep onder het actieve item, en is nu een rij
+echte knoppen via `Button asChild` (het blijven links — `href` + `aria-current` ongewijzigd).
+
+**Actief** = `variant="default"`: navy vlak met wit label in light, en in dark het
+wit-vlak-met-navy-label uit O10. Navy gevuld kán daar niet: `#1A1F3A` op canvas `#0F1626` is
+~1,3:1 en de chip verdwijnt — daarom `--primary` en niet de `--nav-*`-tokens zelf.
+**Inactief** = `variant="secondary"` + `border-input font-medium`. Het teal-accent van de
+navbalk (O12) komt terug als **stip op de actieve chip**; gevuld teal is bewust niet gebruikt
+(wit-op-teal 2,95:1, in O12 al afgewezen).
+
+**Maat `sm` (28px) — een bewuste uitbreiding van O9, geen rechttoe-rechtaan toepassing.** O9
+beperkt de 44px-eis tot `default`/`lg`/formuliervelden, maar de formulering ("de compacte maten
+blijven zoals ze zijn") grandfathert de 56 bestaande plekken en zegt niets over nieuwe. Deze rij
+rekent zich er bij: zeven opties naast elkaar is een dense control. Gemeten gevolg: het
+aanraakdoel krimpt van **38px naar 28px** en de rij van **469px naar 444px** (~5%). Beide hoogtes
+halen WCAG 2.5.8 (24px), geen van beide de 44px van 2.5.5 — er verschuift geen criterium, maar
+kleiner is het wel. Wil Timo 44px, dan is dat één `size`-waarde.
+
+**Nevenwinst op O8:** de inactieve labels stonden op `text-muted-foreground` (`#8E9BA8`, de
+geaccepteerd-slechte 2,84:1) en staan nu op `--secondary-foreground` = **14,39:1**. Deze rij is
+dus per ongeluk uit de O8-afwijking gelopen; O8 zelf is niet aangeraakt.
+
+### Nagemeten contrast (WCAG 2.x, uit de hexwaarden in `globals.css`)
+
+| Combinatie | Light | Dark |
+|---|---|---|
+| Label actief (wit op navy / navy op wit) | 16,14:1 | 16,14:1 |
+| Label inactief | 14,39:1 | 12,93:1 |
+| Actief vlak vs. canvas | 16,14:1 | 18,06:1 |
+| **Actief vlak vs. inactief vlak** (de stand-drager) | **14,39:1** | **12,93:1** |
+| Teal stip op het actieve vlak | 5,47:1 | 2,95:1 |
+| Focus-rand op het chipvlak | 6,34:1 | 4,38:1 |
+| Focus-rand op het canvas | 7,11:1 | 6,12:1 |
+| Focus-rand vs. de ónbefocuste rand | 4,87:1 | 3,41:1 |
+
+Afgewezen omdat ze het niet halen: `variant="outline"` en `ghost` staan op `--brand-blue` =
+**2,54:1** op het dark canvas; gevuld teal **2,95:1**.
+
+Kleur is niet de enige drager (kit §11): vulling, gewicht (semibold/medium), rand en de stip
+bewegen alle vier mee. Het vlakverschil van 14,4:1 / 12,9:1 betekent dat de stand ook in
+grijswaarde en bij elke vorm van kleurenblindheid leesbaar is. Vastgepind met computed-style-
+assertions in `project-status.test.tsx` (32 tests, incl. focus-screenshots en een
+overloopcheck op 320px).
+
+### Elders bekeken, bewust niet aangeraakt
+
+- **`components/dossier/dossier-tabs.tsx`** — visueel identieke rij, maar dat is paginanavigatie
+  en het uiterlijk is vandaag in **O12** vastgelegd (teal streep, 2,95:1, aanvaard). Meebouwen
+  zou een besluit van een halve dag oud omgooien. **Vraag voor Timo:** moeten die tabs mee naar
+  knoppen, of blijft de streep het onderscheid tussen "filter" en "navigatie"?
+- **`components/data/brand-relations-table.tsx`** en **`components/admin/brand-filter-bar.tsx`** —
+  wél filters, maar native `<select>` in een dense tabel-toolbar, geen rij van opties. Zeven
+  chips zouden daar breedte kosten zonder iets duidelijker te maken.
+- Een sweep over `app/` en `components/` vond geen andere rij van elkaar uitsluitende opties
+  (nul hits op `role="tablist"`, `ToggleGroup`, `?tab=`, `?view=`, `?sort=`).
+
+### Cross-review: drie echte correcties
+
+Een tweede agent heeft de wijziging nagerekend. Alle contrastgetallen klopten op één na, en er
+kwamen drie punten uit die zijn doorgevoerd:
+
+1. **Een onterechte claim.** De eerste versie van de code-toelichting schreef dat deze rij de
+   "~333px-overloop" verbeterde. Onjuist: de oude filterrij had **al** `flex-wrap` en kon dus
+   nooit horizontaal overlopen. De ~333px-overloop is bevinding 2 hierboven — de **site-navbalk**
+   (`components/nav-link.tsx:79`, `flex` zónder wrap). Ander component; deze wijziging raakt noch
+   repareert die. De geschatte breedtes ("~475 tegen ~524px") zijn vervangen door de gemeten
+   469→444px.
+2. **Een testschijnzekerheid.** De overloop-test controleerde
+   `document.scrollWidth <= clientWidth` — dat blijft groen zolang de rij `flex-wrap` heeft, óók
+   als de chips verdubbelen. Vervangen door de assertie die er wél iets over zegt: geen chip mag
+   breder zijn dan zijn kolom op 320px.
+3. **De focus-test toetste alleen `activeElement`**, niet de ring. `focus-visible:border-ring`
+   uit `button.tsx` slopen liet hem groen. Nu meet hij de gerénderde `borderTopColor` tegen
+   `--ring`, plus dat de ruststand een andere kleur is. Alle drie de gerepareerde tests zijn met
+   een negatieve controle geverifieerd: kapotmaken → rood, herstellen → groen.
+
+Verder aangescherpt: de inactieve rand was `not.toBe(transparent)` en is nu de exacte
+`--input`-waarde per stand. Eén getal gecorrigeerd: navy op het dark canvas is **1,12:1**, niet
+"~1,3:1" (de conclusie werd er alleen sterker van).
+
+### Bevinding in bestaande code — gemeld, niet gerepareerd
+
+**De focus-indicator van `button.tsx` is één pixel.** `focus-visible:border-ring
+focus-visible:ring-3 focus-visible:ring-ring/10` verkleurt de bestaande 1px-rand en legt er een
+halo van 10% opacity naast. Dat haalt de 3:1 van WCAG 1.4.11/2.4.11 op alle drie de assen (zie
+tabel), maar niet de 2px-perimeter van 2.4.13 (AAA), en kit §7 schrijft voor invoervelden
+letterlijk "rand 2 px" voor. Geldt voor **élke** knop in de app, niet voor deze rij; ingevoerd in
+`e8325cb`. Zijeffect hier: de oude filterrij had geen eigen focus-stijl en kreeg dus de
+browser-outline (dikker) — die is nu vervangen door de app-brede, dunnere variant. Lokaal
+opplussen is afgewezen: één rij die van de focus-taal afwijkt is erger dan een dunne ring.
+
+### Testtoestand
+
+Volledige run twee keer gedaan: beide keren **1021 geslaagd, 1 overgeslagen, 3 gefaald** — maar
+in een **andere set bestanden** (run 1: `lib/ai/ocr.test.ts` + `custom-fields`; run 2:
+`custom-fields` + 2× `pdf-upload`). Allemaal timeouts, allemaal in bestanden die deze wijziging
+niet raakt, en alle vier geïsoleerd groen (ocr 18/18, custom-fields 14/14, pdf-upload 48/48,
+huisstijl 20/20 — de logopalet-guard blijft groen). Dezelfde lastafhankelijkheid die hierboven
+al als bekend staat. `bun install` gedaan, `tsc --noEmit` en `eslint` schoon, `bun run build`
+groen (`/projects` blijft server-rendered — `@radix-ui/react-slot` heeft geen `"use client"`,
+dus `Button asChild` forceert geen client-boundary).
+
+**Niet geverifieerd in de dev-server:** poort 3000 was in gebruik door een parallelle sessie, en
+`.claude/launch.json` staat in git — die aanpassen om een andere poort te pakken zou in de
+commit belanden. De screenshots komen uit vitest' browsermodus (echte Chromium, echte computed
+styles); wat daar ontbreekt is het echte lettertype (de harnas valt terug op een serif, die
+bréder is dan Geist — de overloopmeting is dus de pessimistische kant).
+---
+
+## 2026-07-30 — Open eindes uit de XAL-verrijking (vastgelegd, niet gebouwd)
+
+### 1. XAL-productnamen kappen af op 100 tekens — en dat raakt de matcher
+
+**752 XAL-namen zijn exact 100 tekens lang en geen enkele is langer.** De langste naam in de
+hele catalogus is 266 tekens, dus dit is geen kolomlimiet van ons maar de XAL-prijslijst zelf.
+De lengteverdeling bevestigt het: 96tk×525, 97tk×915, 98tk×1009, dan een dal bij 99tk×533 en
+een **piek bij 100tk×752**. Zo'n piek na een dal is het handtekeningpatroon van afkapping —
+alles wat langer was is teruggeknipt naar precies 100.
+
+Waarom dit meer is dan een verrijkingsprobleem: de matcher leest diezelfde namen, en de
+positiegewogen tekstscore (`lib/matching/textscore.ts`) weegt tokens naar hun plaats in de naam.
+Een afgekapte naam mist dus niet alleen specs maar verschuift ook de weging van wat er nog wél
+staat. Verdient een eigen probleemdoc met eigen meting; niet meenemen in het verrijkingsspoor.
+
+Wat het **niet** is: er is geen enkele aanwijzing dat er een tweede CRI-waarde achter de
+afkapping schuilt. Gemeten over alle 211.317 producten draagt geen enkele naam meer dan één
+CRI-token — nul precedent, ook bij de niet-afgekapte namen.
+
+### 2. Draagt een draagrail een CRI? (accessoire-vraag)
+
+`PICO SUPPORT` is een draagrail met twaalf losse lichtpunten (`12x1.1W`). Hoort zo'n product
+een CRI, kelvin of bundelhoek te dragen — en hoort het überhaupt als kandidaat op te komen bij
+een armatuur-regel? Dit is dezelfde vraag als de `accessoire-context`-vlag in
+`lib/enrichment/verdenking.ts` en de 4.072 producten die mogelijk zélf een accessoire zijn
+(zie `docs/plan-steekproef-zwerm.md`, R2). Hoort daar thuis, niet in de CRI-run.
+
+### 3. Bronfouten van XAL, niet van onze pijplijn
+
+`220-200V` (aflopend spanningsbereik) en `2200-31000K` staan in namen van 56–59 tekens — dus
+compleet ingelezen, niet afgekapt. Typefouten in de bronprijslijst. Vastgelegd zodat een
+volgende sessie ze niet als import- of parserfout aanmerkt.
+
+### 4. Twee dingen voor de overdracht naar het kolom-spoor (30 jul)
+
+**De `NON DIM`-fix raakt ook de aanvraagkant.** `parseDimmable` leest `DIM` uit `NON DIM` — het
+streepje/de spatie is een woordgrens, dus `\bDIM\b` matcht en de ontkenning wordt genegeerd. Bij
+XAL zijn dat 2.800 producten (3.376 over alle merken), vrijwel allemaal accessoires
+(aansluitdozen, plafondkappen). De waarde is niet onzeker maar **omgekeerd**.
+
+De fix hoort in `lib/enrichment/parser.ts`, en juist dáárom raakt hij meer dan de verrijking:
+`parseProductName` wordt ook door de aanvraagkant gebruikt
+([lib/pdf/armaturenboek.ts:131](lib/pdf/armaturenboek.ts:131)), dus een bestek dat "NON DIM"
+vraagt verandert mee. **Die fix vraagt dus een eigen nulmeting/nameting**, niet alleen een
+verrijkingsmeting — en tno is daar het scherpste meetpunt, want dat vraagt dimbaarheid op al
+zijn regels.
+
+**`publishRun` doet drie losse verzoeken per product.** In de publish-lus
+([enrichment.ts:414–447](lib/repo/enrichment.ts:414)) staan drie awaited queries: één `select`
+per product met voorstellen, plus — alleen waar iets landt — een `update` op `products` en een
+`update` op `enrichment_items`. Er is geen transactie en geen batching; de neon-**http**-driver
+maakt van elke query een aparte round-trip.
+
+Gemeten latency vanaf een werkstation: **139 ms per round-trip**. Daarmee klopt de XAL-run:
+13.407 × 3 × 139 ms ≈ 93 min voorspeld, **90 min gemeten** (branch 91,3, productie 90,0).
+
+Voor de schaal naar 28 merken telt niet het aantal voorstellen maar het aantal **producten**:
+
+| aanpak | round-trips | bij 139 ms |
+|---|---|---|
+| veld-voor-veld, alle merken (157.682 landende voorstellen) | ~473.000 | **~18 uur** |
+| alle velden per merk in één run | minder (groepering per product), maar plus selects voor producten waar niets landt | tussen 12 en 18 uur |
+
+⚠️ Reken niet met de 328.871 voorstellen — dat geeft ~38 uur en overschat: lang niet elk voorstel
+landt, en meerdere voorstellen op hetzelfde product delen één passage door de lus. Het exacte
+getal vraagt een telling van distinct producten met ≥1 landend voorstel; die is nog niet gedaan.
+
+Wie dit wil terugbrengen: één bulk-`update ... from (values ...)` per blok van 1.000 producten
+haalt er twee ordes af. Dat is een wijziging aan beproefde code en hoort niet in dezelfde run als
+een datavulling — eerst apart bewijzen op een branch.
+
+## 2026-07-30 — Twee besluiten voor Timo na de prijslijst-badge (bug #3)
+
+Commit `0067427` maakte de badge op `/data/price-lists` waar (geen groen meer bij 0 producten);
+een reparatiepas erna trok de hub-badge, de tellers en de precedentie recht (zie de commit die
+hierbij hoort). Wat overblijft zijn **geen defecten maar keuzes** — DESIGN.md harde regel 2:
+wijkt iets af van de brand kit of ontbreekt het erin, dan gaat het naar Timo en vult niemand het
+zelf in.
+
+### 1. Kleursemantiek: het bestaande gat is stiller dan het potentiële
+
+`components/data/price-list-status.tsx` telt sinds `0067427` zes standen. De commit betoogt in
+zijn eigen kopcommentaar dat "voor de matcher een geldige lijst met 0 producten exact hetzelfde
+is als een verlopen lijst" — maar hij verft ze verschillend:
+
+| Stand | Tint | Betekenis |
+|---|---|---|
+| `verlopen` | grijs | gat, **nu al** |
+| `leeg` (datum ok) | amber | gat, **nu al** |
+| `leeg` (binnen 30 d) | amber | gat, nu al + verloopt |
+| `"7"` / `"14"` | amber | nog geen gat, dreigt |
+| `"30"` | blauw | nog geen gat, dreigt |
+| `ok` | groen | niets aan de hand |
+
+Twee dingen die een besluit vragen, niet een patch:
+
+1. **Grijs voor verlopen is zachter dan amber voor leeg**, terwijl beide hetzelfde gat zijn. De
+   luidste tint van de tabel (amber) hangt nu deels aan een gat dat er nog niet is (`"7"`/`"14"`)
+   en de stilste (grijs) aan een gat dat er wél is. Grijs is verdedigbaar ("dit is een feit, geen
+   alarm"), maar dan hoort `leeg` er ook grijs bij — en dat is precies de vraag.
+2. **Amber is de tint van vier van de zes standen.** Zie ook punt 6 in de bevindingenlijst van
+   sprint 2.0b hierboven, dat hiermee is bijgewerkt. De labels verschillen wel, dus kleur is niet
+   de enige drager (Kit §11 / DESIGN.md §7 blijven gehaald), maar de kleur draagt zo goed als
+   geen informatie meer.
+
+Niet zelf opgelost: er is geen zesde tint bij te maken zonder O13 te heropenen (hues bevroren),
+en welke van de twee gaten de luidere plek verdient is een ontwerpbesluit. De route die O13 al
+noemt — een zes-kleuren-statusramp met tint/inkt-paren voor Eduard — is de enige waarin dit
+netjes past.
+
+### 2. Bug #3 is niet gefixt op mobiel
+
+Op 375px (effectief ~333px in de testviewport) staat de **hele Status-kolom buiten beeld** — de
+kolom die het onderwerp ván bug #3 is. Nagemeten op de opnieuw gegenereerde
+`components/data/data-prijslijsten.light.mobile.test.png`: de kop knipt af midden in "Products",
+en de `colSpan`-uitlegregel onder de verlopen rij eindigt op "What's …". De tabel zit in
+`overflow-x-auto`, dus het is bereikbaar door te vegen, maar er is geen enkele affordance die
+zegt dat er nog vier kolommen naar rechts liggen.
+
+Grotendeels pre-existent (dezelfde tabel deed dit vóór `0067427` ook), en het is dezelfde klasse
+als de overlopende navbalk uit sprint 2.0b: IA-/layoutwerk, geen huisstijlwerk. Wel met een
+gevolg dat benoemd moet worden: **wie het scherm op zijn telefoon opent, ziet de gerepareerde
+badge niet.** De kopregel boven de tabel ("1 expired · 2 with 0 products — coverage gaps · 2
+expiring soon") is daar de énige plek waar het gat zichtbaar is — hij loopt op 375px over twee
+regels, maar staat er wel. Opties, geen van beide gekozen: de tabel op smal in kaarten laten omslaan
+(zoals de dossierregels), of de Status-kolom als tweede kolom zetten zodat hij binnen de eerste
+schermbreedte valt.
+
+## 2026-07-30 — Open eind: de tekst-fallback van de OCR-kaart stuurt naar modeluitvoer
+
+Bij het repareren van de brontekst op de reviewkaart (reviewronde 2 op `2e8492c`) bleef één ding
+staan dat een besluit vraagt en dus niet in die pas is meegenomen.
+
+Heeft een OCR-regel géén paginabeeld van zijn eigen pagina, dan linkt `OcrCard`
+(`components/dossier/review-queue.tsx`) naar `/projects/[id]/import/[runId]`. Dat scherm toont
+`import_runs.raw_markdown` — en `finishOcrRun` (`lib/repo/ocr.ts`) zet daar zelf boven: "OCR
+transcript (model output) … not the source document". De reviewer die de lezing van het model
+moet controleren, wordt daar dus naar de uitvoer van datzelfde model gestuurd. Voor een
+leesroute-run (AI-tekstroute, stap 3 fase B) is dat nog te verdedigen — er is geen beeld, het
+transcript is het enige dat er is — maar voor een OCR-run is het een controle tegen de verdachte.
+
+De tak bestaat sinds `f02e382`; `2e8492c` maakte hem voor OCR-runs pas écht bereikbaar door de
+beeldvlag per pagina te correleren (een run met gedeeltelijke beelddekking valt nu terug in plaats
+van naar een 404 te linken). Niet gefixt in deze pas: de keuzes lopen uiteen (de tak verbergen bij
+`source = 'ocr'` en alleen het paginanummer als tekst laten staan; het paginabeeld opnieuw
+renderen; of het transcript op dat scherm expliciet als "modeluitvoer, geen bron" labelen naast de
+review-link) en raken zowel de kaart als het importscherm.
+
+## 2026-07-30 — Foutgrenzen en uuid-guards: aannames en open eindes (bug #1, reparatiepas)
+
+Commit `4280f2f` zette `not-found.tsx`, `error.tsx` en de gedeelde `isUuid`/`requireUuid`
+neer; een adversariële verificatie erna vond dat de kopregel ("een kapot id geeft 404, niet
+500") nog niet waar was. De reparatiepas daarop staat in de bijbehorende commit. Wat hier
+hoort — de commit zelf raakte geen doc, tegen de werkwijze in — zijn de twee aannames die hij
+declareerde plus wat deze pas eraan heeft toegevoegd.
+
+### 1. Er komt bewust GEEN root `loading.tsx`, en ook geen route-group-variant
+
+Gemeten op de dev-server (Next 16.2.10, dezelfde URL met en zonder het bestand): een root
+loading-boundary **commit de HTTP-status voordat de pagina resolveert**. `/products/<geen-uuid>`
+gaf daarmee **200 in plaats van 404**, en een uitgelogde `/projects` **200 in plaats van 307**.
+Dat sloopt precies wat bug #1 repareert, dus het bestand is er niet.
+
+De remedie die daar eerst bij stond ("dan scoped in een route-group") is **fout** en is in
+`app/fallbacks.test.tsx` gecorrigeerd. Zowel `requireUuid()` als `requireSession()` (die
+`redirect("/login")` doet) draaien *binnen* de pagina, dus ónder elke loading-boundary op
+layout-niveau — een `loading.tsx` in een route-group loopt tegen exact dezelfde muur en commit
+de status net zo hard. Wachtstand voor de trage schermen (`/data/brand-relations` scant ~210k
+rijen) hoort daarom in een **`<Suspense>`-grens binnen de pagina, ná de sessie- en uuid-check**:
+dan staat de status al vast voordat de fallback in beeld komt. Nog te bouwen; niet gemeten.
+
+### 2. Drie harnasgrenzen bij de foutschermen (vitest-plugin-rsc 0.2.3)
+
+Gemeten op 30 jul, zodat een volgende bouwer ze niet nóg eens uitzoekt. De eerste twee stonden
+al in de testfile, de derde komt uit deze pas:
+
+1. Een **server**-component die `next/link` importeert is niet in te laden — de
+   react-server-build van `Link` klapt met "client reference export is called on server".
+   Daarom staat er in `not-found.tsx` een kale `<a>`.
+2. `renderServer` stuurt props van een **client**-component door een RSC-payload, dus ze moeten
+   serialiseerbaar zijn. Een echte `Error` en een `reset`-closure zijn dat niet — het scherm
+   rendert dan leeg. Gevolg: **dat de Try again-knop `reset()` aanroept is met deze harnas niet
+   te testen.** Die ene regel (`onClick={reset}` in `app/error.tsx`, en nu ook in
+   `app/global-error.tsx`) staat onbewaakt. Alles eromheen — de kop, de twee uitwegen, en dat de
+   foutmelding níét lekt — is wel gedekt.
+3. `app/global-error.tsx` (nieuw in deze pas) rendert zijn eigen `<html>`/`<body>`, want het
+   vervángt de root-layout — Next eist dat daar. De harnas hangt de boom in een container-`<div>`
+   en React laat die twee elementen dan **vallen**: er staat na de render geen genest
+   `<html>`/`<body>` meer in de DOM. Daarmee vallen ook `bg-background text-foreground` weg, dus
+   de **donkere stand van dit ene scherm is hier niet op te wekken** — een `dark`-opname was
+   letterlijk een lichte opname met een donkere bestandsnaam. Er staan daarom twee eerlijke
+   opnamen (mobiel + desktop) in plaats van vier. `canvas()` eromheen zetten als plaatsvervangend
+   `<body>` lost het níét op: dan rendert React de boom helemaal niet meer en lopen alle tests in
+   een timeout. Ook gemeten — niet opnieuw proberen. Het donkere beeld van dit scherm is
+   één-op-één dat van `error.tsx` (zelfde markup, zelfde tokens) en staat daar wél in vier opnamen.
+
+### 3. Waarom de guard-dekking nu een test is en geen discipline
+
+De eerste ronde miste drie van de vier `?brand=`-resolvers en drie van de drie route handlers.
+Oorzaak was geen slordigheid maar structuur: `resolveBrand` stond **vier keer byte-identiek** in
+de boom (`app/brand/{,data/,dashboard/,price-lists/}page.tsx`). Die vier zijn nu één
+`resolveBrandFromParam` in `lib/repo/brand-portal.ts`, en `lib/uuid.test.ts` scant sindsdien de
+app-boom (`import.meta.glob` + `?raw`, want de testrun staat in de browser en heeft geen
+`node:fs`) op vier regels: elke dynamische route handler filtert met `isUuid`, geen `?brand=`-
+pagina raakt `brands.id` nog zelf aan, elke dynamische pagina/layout roept `requireUuid`, en het
+losse `/^[0-9a-f-]{36}$/i` bestaat nergens meer. Nieuwe pagina's vallen daar automatisch in.
+
+De regel zelf staat één keer opgeschreven, bij `requireUuid` in `lib/uuid.ts`: **elke
+render-eenheid die een route-param in een uuid-kolom stopt, guardt hem zelf.** Layout en pagina
+renderen concurrent en dekken elkaar dus niet (wie het eerst gooit bepaalt het antwoord, béide
+kanten op), en een route handler draait helemaal geen layout — dat laatste was het gat waardoor
+`/projects/nope/quote/pdf` nog 500 gaf.
+
+### Open eind: twee bestanden konden niet mee
+
+`app/projects/[id]/quote/page.tsx` en `app/projects/[id]/review/page.tsx` waren tijdens deze pas
+in handen van parallelle sessies en hebben nog geen eigen `requireUuid(id)`. Ze staan als
+`NOG_TE_DOEN` in `lib/uuid.test.ts`; zodra de guard erin staat horen die twee regels weg en dekt
+de test ze vanzelf. Tot dan leunen ze op de layout-guard — dat werkt meestal, maar het is de race
+die hierboven beschreven staat, plus een losse afgewezen DB-promise per request.
+
+---
+
+## 2026-07-30 — Kopblokpoort hersteld; A-09 en `nextQuoteNumber` spreken elkaar tegen
+
+### Besluit voor Timo: wanneer krijgt een offerte zijn nummer?
+
+Twee bronnen zeggen iets anders, en dat is nooit opgelost:
+
+- **A-09 (functioneel ontwerp, regel 62 en §3.8 punt 2):** het nummer `BL-{jaar}-{4 cijfers}`
+  is *voorgesteld en bewerkbaar*; **de teller verhoogt pas bij bevestigen/uitsturen.**
+- **De code (`nextQuoteNumber` + `generateQuote`, `lib/repo/dossiers.ts`):** het nummer wordt
+  **bij genereren** toegekend, weggeschreven in `quotes.quote_number` en daarna bewaard. De
+  functiecommentaar zegt dat ook met zoveel woorden. Er is nooit code geweest die op uitsturen
+  nummerde.
+
+De UX-audit-pas van vanochtend verving de oude veldtekst `BL-2026-{nummer volgt}` door
+`"Number assigned on sending"` — schoon Engels, maar **onwaar**, op een veld dat letterlijk op
+het klantdocument (scherm én PDF) wordt afgedrukt. De tekst is nu
+`"Number assigned when the estimate is generated"` (`NUMBER_PENDING` in `lib/repo/estimate.ts`).
+
+**De copy volgt dus de code. Het nummergedrag is NIET aangepast.** Welke van de twee moet wijken
+is een besluit voor Timo:
+
+1. *Code volgt A-09* — nummer pas bij uitsturen toekennen. Dan moet de estimate vóór verzending
+   nummerloos door de PDF kunnen (dat kan al: `quoteNumberAssigned` is false → titel en voettekst
+   lopen zonder nummer), en moet er een plek komen die op uitsturen nummert.
+2. *A-09 volgt de code* — het ontwerpdoc aanpassen. Dan verdwijnt de tegenspraak zonder
+   codewijziging, maar er lopen wel nummers weg aan estimates die nooit verstuurd worden
+   (hergenereren verbruikt géén nieuw nummer, dus het gat blijft beperkt tot één per project).
+
+### Wat er wél veranderde: de poort van bug #6 was een val
+
+`headerComplete` (datum + geldigheid ingevuld) haalde Print, Download PDF en → To XIS weg. Twee
+feiten maakten daar een klem van:
+
+- **Geen enkel codepad heeft ooit `valid_until` geschreven.** `generateQuote` liet het op `null`.
+  Elke offerte in productie heeft dus een lege geldigheid en viel na deploy achter de poort.
+- **Een bevroren offerte kan er niet uit.** Status `estimate_gestuurd` bevriest de offerte
+  (I-06); daarna rendert `KopblokBewerken` niets en weigert `updateQuoteHeader`. De banner
+  verwees naar "Edit header" — een knop die er dan niet is — en `/quote/pdf` gaf 409. Het net
+  verstuurde document was niet meer te produceren.
+
+Drie besluiten, alle drie in tests vastgelegd (zie hieronder):
+
+1. **Een bevroren offerte is nooit gepoort.** De poort heet nu `outputsAllowed` en zit in
+   `computeEstimate` (`headerComplete || frozen`) — één bron voor pagina, PDF-route én
+   `xisExportAction`. `getEstimateData` leest `frozenAt` en geeft het door.
+2. **`generateQuote` stelt een geldigheid voor:** offertedatum + `DEFAULT_VALIDITY_DAYS` (30,
+   `lib/repo/dossiers.ts`). Een **voorstel, geen regel** — Timo mag het getal veranderen, en het
+   kopblok blijft bewerkbaar. Bestaande rijen repareert dit niet; daarvoor is punt 1 er.
+3. **De banner noemt alleen een control die er is.** `QuoteView` krijgt `headerEditable`; staat er
+   geen bewerkbaar kopblok (nog geen offerte gegenereerd), dan wijst de tekst naar
+   "Generate estimate" in plaats van naar "Edit header".
+
+De XIS-dialoog wordt **niet** meer in zijn geheel verborgen: hij is ook de enige plek waar
+"Already sent — {datum} ({omgeving}, {status})" staat. Alleen de verzendknop gaat weg
+(`blockedReason`), en de echte poort staat serverkant in `xisExportAction`.
+
+### Nog open
+
+- **`validUntil` is nergens anders schrijfbaar dan via "Edit header".** Er is geen datumkolom in
+  een lijstweergave en geen bulk-actie. Voor bestaande niet-bevroren offertes is dat de enige weg;
+  dat werkt, maar het is één veld per project.
+- **De poort toetst aanwezigheid, geen zinnigheid.** `validUntil: "2020-01-01"` (verleden, en
+  vóór `quoteDate`) komt er gewoon door. Bewust niet dichtgezet: een datumvalidatie die te streng
+  is blokkeert een legitieme her-uitgifte met een oude datum, en de fout is zichtbaar op het
+  document zelf. Als het wél moet: de check hoort in `computeEstimate`, naast
+  `missingHeaderFields`, met een eigen lijst (`invalidHeaderFields`) — niet in dezelfde bak, want
+  "leeg" en "onlogisch" vragen een andere zin in de banner.
+- **`SpecLineTable` mount één `Dialog` per regel.** Gemeten op 30 jul in de testharnas: 200 regels
+  → 200 dialoogtriggers, **0** dialoog-inhoud in de DOM (Radix portalt de inhoud pas bij openen),
+  4631 DOM-knopen totaal (~23 per rij, lineair) en ~334 ms render. Geen reden tot herontwerp;
+  hier genoteerd zodat de volgende die het ziet niet opnieuw gaat meten.
+
+---
+
+## 2026-07-30 — Eén locale-regel voor getallen en datums (besluit Timo)
+
+`docs/DESIGN.md` kent geen locale-regel, en per DESIGN.md-regel 2 hoort zo'n gat bij Timo. Hij
+is gesteld en luidt:
+
+> **Getallen en bedragen volgen de EU-conventie** (`211.317`, `€ 265,00`). **Datums dragen een
+> geschreven maand** (`30 Jul 2026`, met tijd `30 Jul 2026, 12:24`), 24-uursklok.
+
+De motivering staat ook als commentaar in `lib/format.ts`. Kort: het argument "en-GB, want de UI
+is Engels" is gesneuveld — dat zou net zo goed `211,317` afdwingen, en dat willen we niet. Het
+échte argument is smaller: de dd/mm-vs-mm/dd-verwarring bestaat alleen bij een datum in lóuter
+cijfers. Een geschreven maand is in elke locale maar op één manier te lezen en staat daarom prima
+naast EU-getallen. De `en-GB`-locale in de formatter is dus een implementatiedetail voor de
+woordvolgorde dag-maand-jaar, geen uitspraak over de rest van de app.
+
+**Tijdzone: `Europe/Amsterdam`, hard gepind in beide formatters.** Dit was een echte
+productiefout, geen cosmetica. Zonder `timeZone` volgt `Intl` de tijdzone van het proces —
+lokaal Europe/Amsterdam, **op Vercel UTC**. Een event van 11:00 stond in productie dus als
+"09:00" op het scherm, in een formaat dat er gezaghebbend uitziet en de zone niet noemt. De
+gebruikers zijn Nederlands en de events zijn hun werkdag. Bijvangst: de weergave is nu ook in
+de tests deterministisch — `TZ=UTC bun vitest run lib/format.test.ts` hoort groen te zijn, en
+dat is de test die telt.
+
+**Kale kalenderdatums.** `price_lists.valid_until`, `quotes.quote_date` en
+`manual_price_valid_until` zijn `date()`-kolommen: die waarden hebben geen tijdstip en dus geen
+zone. `formatDate()` herkent de vorm `YYYY-MM-DD` en leest hem zoals hij er staat, in plaats van
+er een zone overheen te zetten (dat is de klassieke off-by-one: middernacht UTC wordt in een
+zone vóór UTC de vorige dag). Eén scherpe rand blijft: geef zo'n waarde als **string** door, niet
+als `new Date(...)` — dan is de zone-informatie al weg vóór de formatter hem ziet.
+
+**Nog open:** `app/projects/[id]/quote/page.tsx` heeft nog een eigen `nl-NL`-datumformatter
+(regel ~86). Die stond tijdens deze ronde bij een parallelle sessie; hij hoort ook naar
+`formatDate()`.
+
+---
+
+## 2026-07-30 — Dark mode is bereikbaar (en niets anders)
+
+Het `.dark`-tokenblok in `app/globals.css` was al compleet, maar er was geen enkele weg
+ernaartoe: geen `prefers-color-scheme`, geen provider, geen toggle buiten `*.test.tsx`. Elke
+sprint maakte dus light/dark-screenshotparen van een stand die geen gebruiker kon bereiken,
+terwijl `CLAUDE.md` die paren eist en DESIGN.md O3/G24 dark verplicht stelt. Nieuw:
+`lib/theme.ts` (sleutel + klasse + init-script), `components/theme-toggle.tsx` (de knop),
+een inline `<script>` als eerste kind van `<body>` in `app/layout.tsx`, en de knop gemonteerd
+in `components/nav-link.tsx`. **Geen tokenwaarde gewijzigd** — alleen wánneer `.dark` op
+`<html>` staat.
+
+**De standaard is LICHT, niet de systeemvoorkeur (besluit Timo).** DESIGN.md O13 zegt
+letterlijk dat de dark-paren nooit op contrast zijn nagerekend; zolang dat zo is mag niemand
+in dark bélanden zonder erom te vragen. `prefers-color-scheme` wordt daarom nergens gelezen —
+niet in het init-script, niet in een matchMedia-luisteraar. Twee tests bewaken dat: de
+`THEME_INIT_SCRIPT`-string mag het woord niet bevatten, en tijdens het monteren van de knop
+wordt `window.matchMedia` bespioneerd en mag hij niet met een color-scheme-query worden
+aangeroepen. Een eventuele latere ramp van Eduard (O13) is de plek om deze knoop te herzien,
+niet een opruimactie.
+
+**Geen dependency.** `next-themes` zou een provider + context in de RSC-boom hangen (elke
+`renderServer`-test moet er dan omheen) voor één klasse en één localStorage-sleutel.
+Dat is nu ± 20 regels in `lib/theme.ts`. De stand staat niet in React-state maar wordt via
+`useSyncExternalStore` van de klasse op `<html>` gelezen — het init-script schrijft die klasse
+vóór React bestaat, dus een `useState`-kopie zou na hydratie moeten worden bijgetrokken.
+
+**Knop:** echte `<button type="button">` met `aria-pressed` en `aria-label="Dark mode"`, 32px
+(size-8). Dat is bewust ónder de 44px uit kit §7 — DESIGN.md **O9** legt vast dat 44px geldt
+voor `default`, `lg` en formuliervelden, niet voor compacte icoon-only bedieningen. 44px zou
+de balk 16px hoger maken. Focus-ring teal `#1BA89A` en niet `--ring`: blauw haalt op de navy
+balk 2,3:1 (O10/O12, zelfde redenering als `NavLink`). Beide iconen staan altijd in de DOM en
+worden door de `dark:`-variant gewisseld — hingen ze aan de state, dan klapte het icoon ná
+hydratie om, precies de flits die de inline-init voorkomt. **Geen thema-transitie**: DESIGN.md
+§8 eist respect voor `prefers-reduced-motion` en de app doet dat nergens; een cross-fade over
+de hele app zou dat gat groter maken.
+
+**Openstaand — de balk bij 375px.** In de testharnas gemeten, vóór en ná: `document.body.scrollWidth`
+**595 → 651** bij viewport 375 (+56 = 32px knop + de `gap-6` naar het groepje ernaast);
+balkhoogte onveranderd 73px. De balk liep daar dus al over (op productie eerder 640 gemeten) en
+loopt nu 56px verder over. **Bewust niet gerepareerd**: dat is week 3 (besluit G21, vier rollen),
+die sprint herbouwt de balk toch. Er staat daarom géén assertie op `scrollWidth` — het getal
+staat in `components/site-nav.test.tsx` in commentaar zodat week 3 niet opnieuw hoeft te meten.
+De enige wijziging in `nav-link.tsx` is de knop plus een wrapper-div die het aantal
+flex-kinderen op drie houdt (anders verdeelt `justify-between` de bestaande elementen anders).
+
+## 2026-07-30 — Verificatie projectlijst: het datumlabel klopt nu, de chips wissen niets meer
+
+Verificatieronde op commit `8d5e597` (projectlijst-UX). Twee dingen gerepareerd, één
+beslissing bewust NIET genomen maar hieronder vastgelegd.
+
+**1. "Last edited" is `Status or phase changed` geworden — het label, niet de data.**
+De kaart toont `project_dossiers.updated_at`. Die kolom heeft in `db/schema.ts` géén
+`$onUpdate`; hij beweegt alleen waar iemand hem expliciet zet, en dat zijn in productie
+exact drie schrijvers (nagelopen op álle `update(projectDossiers)`-aanroepen buiten
+tests): `setStatus` en `setXisPhase` in `lib/repo/project-status.ts`, en `setDossierOrg`
+in `lib/repo/orgs.ts` — die laatste wordt alléén vanuit `createDossierAction` aangeroepen,
+dus na het aanmaken verzetten in de praktijk alleen status en XIS-fase de datum. Een PDF
+importeren, spec-regels toevoegen/bewerken en de matcher draaien schrijven naar
+`spec_lines.updated_at` en laten de dossierrij ongemoeid. "Last edited" beloofde dus meer
+dan de kolom waarmaakt — dezelfde soort halve waarheid als de groene "valid"-badge op een
+prijslijst met 0 producten. Het label zegt nu wat er staat. De sortering blijft
+`desc(updatedAt)`, ongewijzigd.
+
+**OPEN BESLISSING VOOR TIMO — `project_dossiers.updated_at` optrekken bij regelwerk?**
+Alternatief voor de relabel: de dossierrij mee laten bewegen met wat er in het dossier
+gebeurt. Dan mag het label wél "Last edited" heten en wordt de bestaande `updated_at DESC`-
+sortering pas echt "recent gewerkt bovenaan". Kosten: het raakt élk schrijfpad dat vandaag
+alleen `spec_lines` aanraakt — `addSpecLines`, `updateSpecLine`, `setQuantity`,
+`linkQuantities`, `deleteSpecLine` (`lib/repo/dossiers.ts`), `runMatcher`/`chooseCandidate`/
+`setLineStatus`/`unlinkMatch` (`lib/repo/matching.ts`), `recordPdfImport`, de OCR- en
+leesroute-import, en `decideReview`. Dat zijn een stuk of tien functies in vier bestanden,
+plus de vraag of een matcher-run "bewerken" heet (hij verzet dan de datum van elk dossier
+dat je alleen maar opnieuw laat rekenen). Twee vormen die op tafel liggen: (a) één
+`touchDossier(db, dossierId)`-helper die elk van die paden aanroept, expliciet en te lezen;
+(b) een trigger of `$onUpdate`-achtige haak op DB-niveau, minder code maar onzichtbaar in
+de repo-laag. **Bewust niet gedaan in deze ronde**: het is een gedragswijziging op de
+sorteervolgorde van de lijst, geen bugfix, en dat hoort een besluit van Timo te zijn.
+
+**2. Een statuschip wiste de zoekterm — dicht.** `components/dossier/status-filter.tsx`
+bouwde zijn hrefs als `basePath + "?filter=…"` en kon er geen tweede parameter bij dragen;
+wie eerst `?q=` zocht en dáárna op een status klikte, was zijn zoekterm kwijt zonder
+melding. `StatusFilter` heeft nu een optionele `params`-prop (`{ q }` vanaf
+`app/projects/page.tsx`) en bouwt de href via `URLSearchParams`: `filter` eerst, de rest
+alfabetisch, lege waarden vallen weg. Zonder `params` is de href byte-identiek aan
+voorheen — `project-status.test.tsx` pint dat vast (`/projects?filter=niet_gegund`). Het
+uiterlijk is niet aangeraakt; de audit noemt deze rij het beste filter-idioom van de app.
+
+**3. De commit shipte twee rode tests, met een groene claim in het bericht.**
+`projectlijst-ux.test.tsx` las de hover-ring één keer uit vlák na de `expect.poll` op de
+achtergrondkleur. Vlak en ring hebben dezelfde 150ms-transitie, maar de achtergrond rondt
+eerder op zijn eindwaarde af; de ring stond dan nog één stap voor het einde en Chromium
+serialiseert dat als `oklab(…)` in plaats van `rgb(…)`. De assertie viel dus over de vórm
+van de string terwijl de kleur klopte. Nu een `expect.poll` op de box-shadow. De hover
+zelf is nagemeten en klopt: vlak 1,1215:1 (light) en 1,2480:1 (dark), en de ring 6,34:1
+(light) resp. **4,38:1 op de navy kaart in dark** — de ring is inderdaad de drager. De
+`focus-visible`-outline op de omhullende `<a>` werkt met een echte Tab-toets (solid, 2px,
+offset 2px, `--ring` in beide standen) en wordt niet mee-getransitioneerd: de `<a>` heeft
+geen `transition`-declaratie, alleen de `Card` eronder.
+
+**4. Lege staat vertelt nu wélke lege staat het is.** `/projects?filter=archief` zonder
+gearchiveerde projecten zei "No projects yet. Use "New project" to create one." terwijl er
+tien projecten zijn. Drie takken nu: geen zoekresultaat, geen projecten in dít filter, of
+echt nog geen projecten. De regel boven de lijst telt binnen het actieve statusfilter en
+zegt dat er nu bij ("Showing 2 of 7 projects under "Won" matching …").
+
+**Blijft staan, bewust:** een gearchiveerd project is via het zoekveld niet te vinden zolang
+"All" actief is (dat filter sluit archief uit, B6) — de lege staat zegt dan "No project
+matches …" terwijl het project bestaat. Dat is het bestaande archief-besluit, geen nieuwe
+regressie; als het hindert is de goedkoopste vorm een regel "…also search Archived" onder
+het lege resultaat.
+
+## 2026-07-30 — Eén lege toestand voor de hele app (UX-audit A6 + A7)
+
+**Wat er stond.** Vijf visuele dialecten voor "hier staat niets", over ~vijftien plekken,
+zonder gedeeld component. Op twee schermen stond het aanmaak-formulier bovendien bóven de
+lege toestand die naar dat formulier terugwees ("Create one above").
+
+**Wat er nu staat.** `components/ui/empty-state.tsx` — dialect 1 (gecentreerd gestreept
+kader, titel + gemaximeerde uitleg) gepromoveerd tot het enige component. API bewust smal:
+
+- **geen `className`.** De aanroeper mag zijn eigen kader niet meer tekenen; dat is precies
+  hoe de vijf dialecten zijn ontstaan.
+- **`variant` is een gesloten unie van twee**, en de grens is één vraag: wie tekent het
+  vlak. `"framed"` (default) tekent zelf een kader op het kale canvas; `"inline"` tekent
+  níets omdat de aanroeper al ín een `<Card>` zit. Dat was de echte reden dat dialect 4
+  bestond: een kader in een kader wilde niemand, dus werd het maar een kale grijze regel.
+- **`action` is verplicht, óók als er geen actie is** — dan schrijf je `action={null}`.
+  De audit's klacht bij dialect 2 en 4 was "de actie mist altijd"; een lege toestand zonder
+  uitweg is soms terecht (alleen-lezen logboek, alleen-lezen adminlijst) maar mag nooit per
+  ongeluk ontstaan. `action={null}` is greppable bewijs dat het bewust was.
+
+**A7 — de volgordebug.** `VersionHistory` en `OrgList` renderen bij leeg **alleen** de lege
+toestand, met het formulier erín; het formulier keert terug op zijn oude plek zodra er één
+item is. `"No organizations yet. Create one above."` werd onwaar en is vervangen door de
+zin die al bij het formulier hoorde ("A customer organization with its own members, roles
+and branding") — geen nieuwe copy verzonnen. Vastgepind in
+`components/org/org.test.tsx` en `components/dossier/version-history.test.tsx`: precies één
+aanmaak-formulier op het scherm, en dat zit in de lege toestand (`empty.contains(form)`);
+in de gevulde stand géén `[data-slot="empty-state"]` en het formulier in zijn kaart.
+
+**Bewust niet gemigreerd — vraag aan Timo.** Dialect 5, de drie kale nullen op
+`/brand/dashboard` (Considered 0 / Chosen 0 / Choice rate —). Een KPI-tegel met een nul is
+een dátastand, geen lege lijst, en er is geen bestaande zin om als uitleg te gebruiken.
+Migreren vraagt dus nieuwe copy; die moet van Timo komen, niet van een bouwsessie.
+
+**Ook niet aangeraakt:** `app/error.tsx`, `app/not-found.tsx`, `app/global-error.tsx` delen
+het gestreepte kader maar zijn foutschermen, geen lege toestanden. En een handvol lege
+regels buiten de audit-lijst (`spec-line-table`, `werkvoorbereider-view`,
+`enrichment-panels`, `deviation-table`, `price-list-status`, `custom-fields-table`,
+`analytics-*`) staan nog op hun eigen zin — kandidaat voor een volgende veegbeurt.
+
+---
+
+## Bak 2, item 7 — één primary per scherm (2026-07-30)
+
+**De regel staat in `docs/DESIGN.md` §6, onder "Knophiërarchie — huisregel, geen afwijking",
+met een korte kopie bovenaan `components/ui/button.tsx`.** Bewust als *huisregel* gelabeld en
+niet als afwijking: kit §7 zegt wél hóé een primaire/secundaire/tertiaire knop eruitziet, maar
+nergens wannéér je welke kiest. Er is dus niets van de kit afgeweken (harde regel 2 blijft
+onaangeroerd) — er is een gat gevuld dat de kit openlaat. Komt er ooit een kit-uitspraak over
+knophiërarchie, dan wint die.
+
+Kern: `default` (navy) = **precies één per scherm**, de actie met het zwaarste gevolg.
+`outline` = elke andere échte actie. `ghost` = wegwerpactie. **`secondary` is geen
+actiegewicht** — het is de aan/uit-stand van een schakelaar of filterchip en de inerte
+navigatie eromheen, en hoort nooit op een `type="submit"`. "Scherm" telt per beslissing: een
+dialoog is een eigen scherm, een herhaalde beslis-kaart heeft één primary per item, en een
+filterchip die `default` gebruikt toont een stand.
+
+**`components/knophierarchie.test.tsx`** pint het vast: een bronscan over de .tsx-importgraaf
+vanaf elke `page`/`layout` (één primary per scherm, met een becommentarieerde allowlist voor
+de drie uitzonderingscategorieën), een tweede scan die `variant="secondary"` op een
+`type="submit"` verbiedt (nul uitzonderingen), plus gerenderde metingen van de
+disabled-behandeling. Zestien aanroepplekken zijn omgezet; het aantal `<Button>`-plekken bleef
+gelijk (99) en er is geen label gewijzigd.
+
+**Disabled.** Kit §6's 50 % opacity blijft ongewijzigd. Wat erbij kwam is
+`disabled:cursor-not-allowed` — en daarvoor moest `disabled:pointer-events-none` uit
+`button.tsx`. Met `pointer-events: none` is de knop geen muis-doelwit, dus de cursorregel deed
+nooit iets **én** de `title` met de reden was onbereikbaar (de tooltip "Your own address — ask
+a colleague to remove it" in `allowed-emails-block` verscheen nooit). Een `disabled`-knop vuurt
+van zichzelf al geen click of submit, dus er verdwijnt geen bescherming; alleen de hover-stijlen
+moesten expliciet uit, en dat gebeurt nu per variant met `not-disabled:hover:…`. De testsuite
+controleert dat die guard ook echt als `:not(:disabled)` in de CSS terechtkomt — een typefout in
+een variantnaam levert stilzwijgend géén regel op.
+
+**Aannames die Timo mag terugdraaien:**
+- Op `/settings` is de **XIS-`Save`** de primary geworden (de sleutel is daarna nooit meer te
+  zien én de keuze sandbox/productie bepaalt waar een echte offerte landt), en `Add address` is
+  naar `outline` gegaan. Wie "een adres toevoegen = toegang verlenen" zwaarder vindt dan de
+  sleutel, draait die twee om — één van de twee moet outline zijn.
+- Op `/projects/[id]/quote` is **`Generate / Refresh estimate`** de primary; `Save header` ging
+  naar `outline`. "Send to XIS" is zwaarder, maar staat ín de dialoog en heeft daar zijn eigen
+  primary.
+- **Niet aangeraakt:** de filterchips die `default` als actieve stand gebruiken
+  (`status-filter`, `brand-relations-controls`). Ze staan op schermen die óók een echte primary
+  hebben, dus navy betekent daar twee dingen. Dat is A14-terrein (filter-idiomen) en raakt een
+  recent verbeterd scherm — bewust laten liggen.
+- **Grootte niet meegenomen:** `Run parser` op `/data/enrichment` draait over 539 producten maar
+  staat op `size="sm"` (28 px) in een gewoon paneel, niet in een dense tabel. Dat is niet wat
+  besluit O9 dekt. Dit item ging over gewicht, niet over maat — kandidaat voor een volgende ronde.
+
+**Pre-existing lint, niet van deze wijziging:** `components/dossier/review-queue.tsx:331`
+`react/no-unescaped-entities` op "line's". Stond er al vóór deze sessie.
+
+## 2026-07-31 — Reviewzwerm 2.5a blok 2 (matcher & review): A1, A2, A9 + één vraag voor Timo
+
+Drie bevindingen uit `docs/reviewzwerm-2.5a.md` gerepareerd, elk met een test die de oude
+situatie zou hebben gevangen (alle drie geverifieerd: rood op de oude code, groen op de nieuwe).
+
+- **A1** (`lib/repo/review.ts`) — `decideReview` en `linkManualProduct` lieten
+  `spec_lines.deviations` staan zoals `runMatcher` hem vulde: met de verdicts van de
+  **rank-1**-kandidaat. Koos de mens een ánder product, dan droeg de regel de cijfers van een
+  product dat niemand koos — tot en met een handmatig gelinkt, correct product met de **rode**
+  afwijking van een afgekeurde kandidaat, groen afgedrukt op scherm én PDF. Beide functies nemen
+  nu de verdicts van de daadwerkelijk gekozen kandidaat (helper `verdictsOfChosen`); een nooit
+  getoetst product levert een **lege** lijst. De status blijft groen — dat is het besluit.
+- **A2** (`lib/matching/engine.ts`) — `pickUnambiguousYellow` las álle kandidaten en kende de
+  Gat-B-vlag `unconfirmed` niet: "geen onbekend veld" ving de ontbrekende waarde af, niet de
+  **onbevestigde**. Een kandidaat die op onze eigen optiekcode-tabel leunt (WF ≈ 57°) werd
+  daardoor automatisch geaccepteerd terwijl Gat B "de mens kiest met reden" belooft. Het
+  predicaat eist nu dat de enige schoon-gele kandidaat op **lijst 1** staat; de
+  ondubbelzinnigheidstelling loopt bewust nog steeds over álle kandidaten.
+- **A9** (`lib/repo/imports.ts`) — de run gaat op `bevestigd` direct ná `addSpecLines`, vóór de
+  matcher-lus. Crashte de matcher halverwege, dan bleef de run op `voorstel` terwijl de regels er
+  al stonden: een tweede klik op Bevestigen verdubbelde het dossier. Een matcher-fout laat de
+  actie nog steeds klappen; de regels staan er dan één keer, met status `open`, en zijn opnieuw
+  te matchen vanaf het regel-detail.
+
+**Open vraag voor Timo — twee plekken doen het tegenovergestelde met dezelfde toestand.**
+A3 (kiezen uit lijst 2 → groen) is grotendeels afgedaan met het besluit *"een menskeuze mag
+altijd groen opleveren"*. Nagemeten en bevestigd: óók de specloze Gat-A-variant (`deviations: []`,
+nul getoetste velden, groen mét bedrag in het totaal) is **alleen via een menskeuze** bereikbaar —
+`statusFromDeviations` heeft precies één aanroeper, `chooseCandidate`, en die heeft precies één
+aanroeper in de app: `chooseCandidateAction` (formulier-submit vanaf het regel-detail). De
+seed-scripts (`scripts/seed-demo.ts`, `scripts/seed-scenario.ts`) simuleren dezelfde
+menshandeling. Het systeem maakt zichzelf nergens groen zonder iets te toetsen: `anyGreen` leest
+alleen `provable`, en `provable` is bij een specloze regel per definitie leeg. **Geen defect,
+niets gerepareerd.**
+
+Wat wél blijft staan is de tegenstrijdigheid die het rapport signaleert. Bij dezelfde toestand
+— een mens kiest een product dat niet (volledig) getoetst is — doen twee functies het omgekeerde:
+- `lib/repo/matching.ts:246` (`chooseCandidate`) → `statusFromDeviations([])` = **groen**;
+- `lib/repo/review.ts` (`markChosenCandidate`) → kandidaat in lijst `onvolledig` met **lege**
+  verdicts, expliciet beargumenteerd: *"het is niet door de tolerantietabel getoetst, dus
+  'aantoonbaar' zou liegen (C-08)"*.
+
+De A1-fix hierboven maakt die spanning zichtbaarder, want een handmatig gelinkt product houdt nu
+een lege afwijkingenlijst op een groene regel: "groen" en "niets vergeleken" staan naast elkaar
+op één regel. Dat is eerlijker dan het cijfer van een ander product, maar het is niet hetzelfde
+"groen" als `components/dossier/status.ts:49` belooft (*"all specs within the green margin"*).
+**Vraag: mag een menskeuze op ongetoetste data dezelfde groene stand dragen als een bewezen
+match, of hoort daar een eigen merkteken/stand bij?** Bewust niet zelf beslist — dit raakt de
+bevroren statuskleuren (besluit O13).
+---
+
+## Reviewzwerm 2.5a — blok 1 (veiligheid & invoer)
+
+_2026-07-31. Tien bevindingen uit `docs/reviewzwerm-2.5a.md` gerepareerd: A13, A14, A5,
+B18+C5, A10, C3, C4, B6, C10, B17. Eén commit per bevinding, in die volgorde. Blok 2
+(matcher & review: A1, A2, A3, A9) liep parallel in een andere sessie — `lib/matching/`,
+`lib/repo/review.ts`, `lib/repo/matching.ts` en `lib/repo/imports.ts` zijn hier niet
+aangeraakt._
+
+### Nieuwe conventie die volgende sessies moeten volgen
+
+**Elke server action begint met een schema-parse** (zod, `lib/validation.ts`). De volledige
+conventie staat in `docs/INVOERVALIDATIE.md`, met een pointer in `CLAUDE.md`. Volgorde:
+`requireSession()` → `parseForm()` → repo. De 68 bestaande actions zijn **niet** en masse
+omgezet — dat is een grote diff zonder dekking. De regel die ervoor in de plaats komt: een
+action die je aanraakt, zet je om; nieuwe actions beginnen met een schema.
+
+⚠️ Een `"use server"`-module mag **uitsluitend async functies exporteren**. Een geëxporteerde
+const laat `registerServerReference` klappen met "Object.defineProperties called on
+non-object" (gemeten, niet beredeneerd). Daarom staat `SPEC_CSV_MAX_LINES` in
+`lib/repo/dossiers.ts` en niet in de action ernaast.
+
+### Aannames die Timo mag terugdraaien
+
+- **De J-03-prijsaanvraag is in de praktijk onbereikbaar geworden.** `/products/[id]` staat
+  nu achter `requireSession()` (A5) en `requestPriceAction` ook (B18). Omdat élke sessie
+  vandaag intern is (`internal: Boolean(session)`, allowlist van 2–5 adressen), krijgt geen
+  enkele kijker de gate "Request price via Brink" nog te zien. De code werkt en is getest;
+  hij wacht op een kijker die ingelogd maar níet intern is (rollenmodel L-03/04). Dat is een
+  bewuste ruil: ijzeren regel 1 boven een feature die vandaag geen gebruiker heeft. Wil je de
+  externe productpagina terug vóór het rollenmodel er is, dan moet er iets anders voor in de
+  plaats komen dan "de tier-gating doet het werk" — dat was precies de redenering die faalde.
+- **De merkvergrendeling in tender is nu gelijkheid** (A14). Een bestek dat `Delta` vraagt
+  krijgt geen enkel product van `Delta Light`. Blijkt uit de echte catalogus dat moeder- en
+  submerken dáár als één merk bedoeld zijn, dan is de juiste oplossing een expliciete
+  merk-alias-tabel — níet de operator weer verruimen. Vergrendelen is gelijkheid, zoeken is
+  bevatten; `lib/repo/products.ts#searchProducts` blijft daarom bewust fuzzy.
+- **`SPEC_CSV_MAX_LINES = 500`** (B6) is een keuze, geen meting. Het gemeten kappunt ligt op
+  2978 regels (Postgres' bind-parameterlimiet) en een echt armaturenboek heeft er tientallen.
+  Alles-of-niets bij overschrijding, want half inlezen geeft het half gematchte dossier dat
+  we juist voorkomen.
+- **`OCR_MAX_TILES = 16`, `OCR_MAX_DIMENSION = 20.000`, `MAX_DOC_FIELD_CHARS = 200`** zijn
+  ruime, statische grenzen — gekozen op "ruim boven elk echt geval", niet gemeten.
+
+### Open eindes
+
+- **`brands.disclosure_tier` staat nog steeds standaard op `tier1`.** De briefing is
+  expliciet — "Tier 1: volledige data + adviesprijs (**merk expliciet akkoord**)" — en een
+  default die voor elk merk toestemming aanneemt die nooit gegeven is, blijft onwenselijk.
+  Niet gewijzigd omdat het een migratie vraagt; de scherpe kant is eraf doordat tier1 nu de
+  kijkercontext respecteert, dus tier1 betekent niet langer "publieke prijs". De nullable
+  variant (`visible_specs.disclosure_tier` → `?? "tier1"`) is wél omgezet naar `tier2`.
+- **Er is nergens rate limiting** (nul treffers op `rateLimit|throttle` in de hele repo).
+  Voor `requestPriceAction` is de sessiepoort nu de rem, maar dat is geen rate limiting.
+  Hoort een aparte, bewuste bouwstap te zijn — niet een half laagje in één action.
+- **`leads` kan onopgemerkt volgroeien.** `listLeads` heeft repo-breed nul aanroepers: geen
+  route, geen scherm, geen test. De tabel heeft buiten de PK geen index en geen dedup, en
+  de twee rijen per aanvraag (`leads` + `events`) gaan niet in één transactie. Leads zijn de
+  commerciële opbrengst van de tier-2-gate; loopt die tabel vol met ruis, dan is er geen
+  manier om de echte aanvragen eruit te vissen.
+- **De AI-budgetstop staat tussen regels, niet tussen turns** (`lib/ai/vangnet.ts`, de
+  budgetcheck in de regel-lus). Eén regel gaat tot zes keer opnieuw de leiding in. De cap op
+  `productText` (B17) verkleint de kosten daarvan sterk maar heft het niet op.
+- **`sharp` blijft op een kwetsbare versie** na de next-bump (A13): 16.2.10, .11 én .12
+  pinnen alle drie `sharp: ^0.34.5` terwijl de libvips-advisory `>= 0.35.0` eist. Vraagt een
+  expliciete override. Lage prioriteit — `sharp` wordt nergens geïmporteerd en Vercel doet
+  beeldoptimalisatie buiten de function om. `bun audit` staat na de bump op 11 advisories
+  (was 20); wat overblijft is transitief (postcss, brace-expansion) of dev-only
+  (`@vitest/browser`). `shadcn` staat nog in `dependencies` terwijl het nergens geïmporteerd
+  wordt en daardoor twee advisories als "productie" laat rapporteren.
+- **`createCsvProposalAction` is nog steeds dode code.** Het ontwerp wil >10 CSV-regels via
+  een controlescherm (`CSV_PROPOSAL_THRESHOLD = 10`), maar niets roept die action aan. De cap
+  uit B6 is de afdwinging tót dat scherm er is, geen vervanging ervan.
+
+### Bewust niet gedaan
+
+- **C2 (AI-maandplafond) blijft uit** — vastgelegd besluit.
+- **B1 (eigendomsmodel) en B15 (RLS)** vielen buiten de opdracht.
+- **`setQuantityAction`** (de tweede helft van de C4-claim) is niet omgezet: het is dode
+  code — geen component importeert hem. Hem nu valideren zou een pad hardmaken dat er niet is.
+- **`lib/repo/products.ts:113`** blijft een `like`-match. Dat is de catalogus-zoekopdracht
+  van een ingelogde gebruiker, geen fase-vergrendeling; fuzzy is daar de bedoeling.
+- **Het label "Tier 1 · everything + price"** in `components/data/brand-visibility-block.tsx`
+  is niet aangepast. Voor de enige kijker die vandaag bestaat (intern) klopt het nog; zodra
+  er niet-interne sessies zijn, dekt het de lading niet meer.
+
+## 2026-08-03 — Sprint 2.5b: snelheid (eerst meten, dan pas optimaliseren)
+
+Volledig rapport met alle plannen en cijfers: **`docs/2.5b-snelheid.md`**. Hieronder alleen de
+aannames, de open eindes en wat een volgende sessie moet weten.
+
+### Wat er staat (4 commits, nog niet gepusht, migratie nog niet toegepast)
+
+Zes expressie-indexen (migraties `0017`, `0018`) plus drie querywijzigingen zonder schema-impact.
+Serverzijdig gemeten op de echte productiedatabase met `EXPLAIN (ANALYZE, BUFFERS)`, vóór én ná:
+exacte SKU-match in de matcher 276 → 0,10 ms (draait **per spec-regel**), exacte SKU in
+`searchProducts` 55 → 0,11 ms, merk-alleen 185–660 → 60–307 ms, merk+tekst 230 → 117 ms,
+compleetheid zwaarste merkrelaties-pagina 318 → 209 ms, `listPriceListStatus` 220 → 51 ms,
+merkgat-tegel op `/analytics` 103 → 0,54 ms.
+
+### ⚠️ Openstaande bug, gevonden tijdens het meten, NIET gerepareerd
+
+**`/catalog` crasht als je een merk kiest zonder zoektekst.** `lib/repo/products.ts:121/144` zet
+de sorteertermen op de constante `sql\`0\``; drizzle rendert dat als `order by 0 desc`, en dat is
+voor Postgres een positieverwijzing naar de select-lijst. Positie 0 bestaat niet:
+`ERROR: ORDER BY position 0 is not in select list`. Geverifieerd tegen de echte
+productiedatabase. Raakt twee gevallen: (1) een merk uit de keuzelijst met leeg zoekveld —
+precies waarvoor die lijst er staat; (2) een zoektekst zonder enig token van ≥2 tekens (bijv.
+`X`). Dezelfde bug is één laag verderop al herkend en met een poort afgevangen
+(`lib/matching/engine.ts:437-441`, mét toelichting in de code); `products.ts` heeft die poort
+niet, en zou hem daar ook niet moeten krijgen — merk-zonder-tekst is dáár een geldige
+zoekopdracht. Er is geen test die de merk-alleen-tak uitvoert (`lib/repo/rules.test.ts:37` zoekt
+met merk **én** tekst); die hoort bij de reparatie. Buiten scope gelaten conform de opdracht
+("bug melden met bewijs, niet repareren").
+
+**Gevolg voor de B5-cijfers:** de merk-alleen-tak was met de echt gegenereerde SQL niet te meten.
+De cijfers zijn gemeten op een surrogaat waarin de twee constante sorteertermen (`0 desc, 0 desc`)
+zijn weggelaten — die sorteren per definitie niets, dus `WHERE`, plan en sorteerkosten zijn
+identiek. De index-reparatie is onafhankelijk geldig (ze raakt de `WHERE`) en helpt óók de
+merk+tekst-tak, die wél draait. Maar zolang de bug er is, is er op `/catalog` niets van te zien.
+
+### Aannames
+
+- **De Neon-branch `enrichment-serien` is representatief voor productie.** Schrijvende
+  experimenten (indexen aanmaken en weer weghalen) zijn daar gedaan; rijaantallen zijn identiek
+  (211.317 producten / 210.121 prijzen). Absolute cijfers lopen soms uiteen (koudere cache); de
+  verhoudingen zijn consistent, en alles wat zonder schemawijziging kon is gewoon op productie
+  gemeten. De branch is **niet** gemerged en er staat niets van dit werk op.
+- **`prices.price_list_id` blijft `NOT NULL` met een gevalideerde FK.** Daarop leunt het weghalen
+  van de `join price_lists` uit de compleetheidsmeting. Staat nu als test in
+  `lib/repo/brand-relations.test.ts` — verandert het schema, dan wordt die test rood in plaats van
+  het cijfer stil.
+- **Wandkloktijd vanaf een werkplek in NL is geen maatstaf.** De round-trip naar `us-east-1` is
+  hier 114 ms; Vercel draait in dezelfde regio als Neon. Alle cijfers in het rapport zijn
+  serverzijdige `Execution Time`.
+
+### Open eindes
+
+- **`/catalog`'s merken-keuzelijst kost nog steeds ~250 ms, onvoorwaardelijk.** Nagemeten dat de
+  B4-reparatie (`lib/repo/catalog.ts`) **geen meetbare winst opleverde**: 246–275 ms nu tegen
+  235–248 ms voor de query die hij verving. Beide scannen `products` volledig. Drie alternatieven
+  gemeten en afgewezen (btree op `brand_name`: geen verschil; recursieve loose index scan: 220 ms;
+  merknamenlijst + `EXISTS` per merk: 146 ms maar wisselvallig). Er zijn maar 32 distinct
+  `brand_name`-waarden onder 211k producten; zonder gematerialiseerde vorm of cache is dit niet
+  structureel sneller te maken, en de code wijst caching hier expliciet af omdat ijzeren regel 3
+  geen TTL verdraagt. Die afweging deel ik — maar de 250 ms staat er dus nog.
+- **`app/projects/[id]/work-prep/page.tsx:61` doet `await` in een `for`-lus**, één
+  `getEquivalentAlternatives` per gematchte spec-regel (360–680 ms per aanroep, gemeten). Vandaag
+  geen probleem: geen enkel dossier staat op `awarded` en het zwaarste heeft 3 gematchte regels.
+  Bij 40 regels is dat 15–25 s serieel. Niet triviaal te parallelliseren: de functie schrijft een
+  event per aanroep, dus `Promise.all` verandert de volgorde in het event-log.
+- **`app/projects/[id]/page.tsx:57,59,62` doet drie onafhankelijke `await`s serieel.** Samen te
+  voegen tot één `Promise.all`; winst = twee round-trips, vanaf Vercel ~4–10 ms. Bewust niet
+  gedaan — een wijziging zonder meetbare winst is precies wat besluit G25 verbiedt.
+- **De resterende tijd in de merk-alleen-tak zit in de sortering, niet in de scan.**
+  `ORDER BY similarity(name, '') DESC` sorteert alle matchende rijen op een sleutel die voor een
+  lege zoektekst aantoonbaar constant 0 is. Vereenvoudigen kan, maar dat is rangschikkingscode
+  (ijzeren regel 2 woont daar) en hoort niet bij een snelheidsopdracht.
+- **`searchProducts` en de matcher normaliseren artikelnummers verschillend** —
+  `lower(x) = lower($1)` tegenover `regexp_replace(lower(x), '[^a-z0-9]','','g') = $1`. Daarom
+  hebben ze elk een eigen index. Bestaand gedrag, niet gelijkgetrokken (dat is een
+  gedragswijziging); wel de moeite waard om ooit te bekijken, want de twee paden vinden nu niet
+  dezelfde dingen.
+- **C6 (FK-indexen) blijft liggen**, conform opdracht: `spec_lines` heeft 204 rijen, `events`
+  1.481. Houdbaarheidsnotitie voor zodra die tabellen zes cijfers naderen.
+
+### Nog te doen bij het pushen
+
+De migraties zijn **nog niet op productie toegepast**. `bun run db:migrate` hoort bij dit blok en
+mag zowel vóór als ná de push: `0017` en `0018` voegen uitsluitend indexen toe, dus de code werkt
+identiek mét en zonder — alleen langzamer zonder. Bouwtijd 3,7 s op 211k rijen; `CREATE INDEX`
+zonder `CONCURRENTLY` houdt in die seconden een `SHARE`-lock op `products` (lezen kan door,
+schrijven wacht).
+
+### Testrun
+
+`bun vitest run`: 1494 groen, 1 overgeslagen. Vijf tests vielen om onder volle belasting
+(`huisstijl` 2×, `project-status` 2×, `custom-fields` 1× — allemaal `oklab()` vs `rgb()` op
+berekende kleuren); geïsoleerd hertest zijn ze alle 70 groen. Bekende suite-conditie, geen
+codefout, en geen van de vijf raakt iets uit dit blok.
+
+---
+
+## Sprint 3.1 — G36/G39: wie mag lidmaatschappen en PIN's uitdelen (2026-07-30)
+
+Besluit **G36** (Timo): intern (`organizations.type = 'intern'`) mag alles; een `org_admin`
+mag alleen binnen zijn eigen organisatie en mag de `org_admin`-rol niet toekennen; een gewone
+gebruiker mag niets. Plus zin 1: wie van Brink een PIN krijgt, is org_admin van zijn eigen
+organisatie. Besluit **G39** (Timo, na de eerste critic-ronde) bepaalt de vórm: **een token
+dat de aanroeper meedraagt is nooit een autorisatiemechanisme** — de bevoegdheid wordt in de
+schrijfaanroep zelf uit de sessie en de database afgeleid. **Niets gecommit door mij; de
+sprintmaster heeft het vastgelegd in `9fae44d` / `02cef52`.**
+
+- `lib/repo/authz.ts` (nieuw) — `decideMembershipAuthority()` is de kern: puur, geen
+  database, en letterlijk de drie regels van G36. `decidePinIssue()` en
+  `decideMembershipChange()` zijn er de twee toepassingen van.
+- **Twee deuren, één regel.** `issuePinAsActor()` (PIN-scherm) en
+  `changeMembershipAsActor()` (organisatiescherm) autoriseren én schrijven in één aanroep.
+  Ze krijgen alleen `actorEmail` uit de sessie — identiteit, geen autorisatie: wélke rechten
+  daarbij horen zoekt de laag zelf vers op. Doeladres, org en rollen zijn de vráág.
+- `app/settings/organization/actions.ts` deed tot dit item **alleen `requireSession()`**.
+  Dat was een volledige omweg om G36: een gewone gebruiker zette zichzelf via
+  `addMemberAction` in de interne org en was daarna volgens regel 1 almachtig (gemeten door
+  de critic). Beide actions lopen nu door dezelfde laag.
+
+**Wat de code nu wél en niet garandeert — precies, want dit ging drie keer mis**
+1. **Wel:** de twee server actions die lidmaatschappen en PIN's schrijven, bepalen de
+   bevoegdheid op het moment van schrijven uit de database, met een actor die uit de sessie
+   komt. Niets uit het formulier of de invoer weegt mee in "mag hij dit" — vastgelegd met
+   twee tests die de mutant `actorEmail: formData.get("actorEmail") ?? session…` doden (die
+   mutant liet eerder 31 tests groen én gaf volledige escalatie).
+2. **Wel:** `lib/repo/authz-deuren.test.ts` leest de échte bronnen van `app/`, `components/`
+   en `lib/` en faalt op vier vormen van een nieuwe deur: named import (ook onder alias),
+   namespace-import, dynamische import, en een directe `insert/update/delete` op
+   `memberships` of `activation_pins`. Elke vorm heeft een eigen zelftest, en twee vormen
+   zijn met een echte overtreding in echte bestanden nagemeten.
+3. **Niet:** de kale schrijffuncties blijven aanroepbaar — ze zijn er voor migraties, seeds
+   en tests. "App-code gaat langs de laag" is een afspraak die door punt 2 wordt bewaakt,
+   geen slot in de code. De eerste versie van dit item claimde zo'n slot (een "grant" met een
+   privé symbool); dat is met één object-spread gebroken en door G39 afgeschaft.
+4. **Niet gedekt door de bewaker** (staat ook in zijn kopcommentaar): rauwe SQL via
+   `db.execute`, een modulepad dat uit strings wordt opgebouwd, code in `db/` en `scripts/`,
+   een nieuwe hulpfunctie ín de schrijflaag zelf, en testinfrastructuur (`*.test.ts(x)`,
+   `*-stubs.tsx`, `lib/test-actions.ts`). Die laatste uitzondering is bewust: een bewaker die
+   elke stub meldt, wordt uitgezet en bewaakt daarna niets.
+5. **Niet:** dit zegt niets over routes. Wie `/admin/users` of `/settings/organization`
+   überhaupt mag openen, is item **3.2a**.
+
+**Aannames en open eindes (vervolg op de nummering van golf 1/2)**
+18. **G36's twee zinnen verzoend met een bootstrap-regel op het PIN-pad.** Krijgt een
+    organisatie die nog géén org_admin heeft haar eerste lid van een *interne* uitgever, dan
+    wordt die persoon org_admin — ook als het vinkje uit stond. Een org_admin doorloopt die
+    regel nooit (de code roept hem op zijn pad niet aan, dus regel 2 steunt niet op het
+    toeval dat zijn eigen org al een beheerder heeft). Het organisatiescherm bootstrapt
+    **niet**: daar wijs je een beheerder expliciet aan, en dat mag alleen intern.
+19. **Een org_admin die de org_admin-rol probeert te geven, krijgt niets** — geen account,
+    geen membership, geen PIN. Bewust géén "wel aanmaken, rol stilletjes weglaten". Om
+    dezelfde reden weigert de laag sinds ronde 3 óók **rollen zonder organisatie**
+    (`rollen_zonder_org`): zonder org schrijft `issueActivationPin` geen membership, dus die
+    rollen zouden nergens landen terwijl het antwoord ze wél noemde. `IssuePinResult.roles`
+    is daarmee gelijk aan wat er in de database staat, niet "meestal gelijk".
+20. **Een org_admin mag alleen een volstrekt onbekend adres of een lid van zijn eigen org
+    aanraken.** Elders lid, collega-beheerder, hijzelf, of een bestaand account zonder
+    membership: geweigerd. Gevolg: hij kan zijn eigen wachtwoord niet via een PIN resetten
+    (dat gaat via `/settings`) en zichzelf niet uit zijn org verwijderen.
+21. **Eén foutmelding voor élke bevoegdheidsweigering**, zodat de melding niet verraadt of
+    een adres of organisatie bestaat. Alleen een vormloos adres, rollen zonder organisatie en
+    een verdwenen organisatie (die een interne actor sowieso in zijn lijst ziet) krijgen een
+    eigen tekst; die drie gaan over de eigen invoer van iemand die al bevoegd is. Op het
+    organisatiescherm is een weigering **stil**: dat zijn `<form action={…}>`-actions zonder
+    retourkanaal, net als bij lege invoer. De weigering staat wél in de events-tabel.
+22. **De memberships-tabel op `/admin/users` en de organisatielijst op
+    `/settings/organization` zijn nog ongescoopt**: iedereen die de pagina opent ziet alle
+    organisaties en adressen. De knoppen zijn weg voor wie ze niet mag gebruiken, de
+    gegevens niet. Afschermen is org-scoping over routes = **3.2a**.
+23. **`memberships.email` heeft geen CHECK op normalisatie** (`activation_pins` wél). Beide
+    lookups in de autorisatielaag gebruiken daarom `lower()`; met een exacte match brak de
+    critic de org-grens met één handmatig ingevoerde rij met hoofdletters. Een CHECK op de
+    kolom zou het bij de bron oplossen — dat is een migratie en staat open.
+24. **Wees-rijen bij een half mislukte uitgifte.** `issueActivationPin` schrijft nu eerst het
+    membership en dan de user-rij. Andersom bleef er een account zónder membership achter, en
+    dat is precies de toestand die een org_admin per regel 2c nooit meer mag aanraken — één
+    storing zou een adres dus permanent onbruikbaar maken voor de enige persoon die hem mag
+    uitnodigen. Een transactie kan niet: de neon-http-driver ondersteunt ze niet.
+
+**Landmijnen en meldingen — niet gerepareerd, bewust**
+25. ⚠️ **`organizations.slug` heeft geen unique-index**, terwijl
+    `db/migrations/0019_org_type_activatie.sql:49` een scalaire subquery op
+    `slug = 'brink-licht'` doet. Twee organisaties met die slug (mogelijk via
+    `createOrgAction` met de naam "Brink Licht") laten die migratie omvallen op een verse
+    omgeving — "more than one row returned by a subquery". Gevonden door de critic in ronde
+    3; hoort bij het orgbeheer van 3.2a, samen met een unique-index op slug.
+26. **Nog steeds alleen `requireSession()`**: `createOrgAction` en `saveBrandingAction`
+    (`app/settings/organization/actions.ts`) en `addEmailAction` (`app/settings/actions.ts`).
+    Buiten G36/G39 en dus niet aangeraakt. De critic heeft nagemeten dat `createOrgAction`
+    géén G36-escalatie oplevert: een verse org krijgt type `extern`, de aanvaller kan
+    zichzelf er niet in schrijven en de bootstrap-regel gaat niet af. Gaat naar 3.2a.
+27. **`hasRole()` in `lib/repo/orgs.ts` vergelijkt `memberships.email` zonder `lower()`** —
+    dezelfde latente zwakte als punt 23. De functie wordt vandaag nergens aangeroepen
+    (geverifieerd met grep over `app`/`lib`/`components`/`scripts`).
+28. **`app/admin/users/page.tsx` importeert `PIN_MAX_ATTEMPTS` zonder het te gebruiken**
+    (eslint-warning) en `app/settings/organization/page.tsx` heeft een
+    `react/no-unescaped-entities`-error in de headertekst. Beide bestonden vóór dit item —
+    geverifieerd met `git show df156e5:…`.
+
+---
+
+## Rebase van `claude/sprint31-pin` op main (2026-08-03)
+
+De branch stond 45 commits achter. Alle 25 commits zijn opnieuw op `origin/main` gezet
+(`git rebase --onto`); de stand van vóór de rebase staat als `backup/sprint31-pin-pre-rebase`
+(e2c940c) en mag weg zodra deze branch gedeployd is. Drie conflicten, allemaal opgelost
+met béíde bedoelingen erin — main's UI-norm wint, 3.1's gedrag blijft:
+
+- **`app/settings/organization/actions.ts`** — main gaf `removeMembership` een `actor` mee
+  (het event draagt sindsdien de rollen én wordt vóór het deleten geschreven); 3.1 verving
+  de aanroep door `changeMembershipAsActor` (de G36-poort). Nu allebei: de autorisatielaag
+  stelt de actor vast en geeft hem dóór aan `removeMembership`. Het dubbele
+  `membership_removed`-event dat 3.1 zelf schreef is weg — dat gaf twee sporen van één
+  verwijdering, waarvan het onze de rollen niet eens droeg.
+- **`components/org/org-list.tsx`** — main's `EmptyState` + `NewOrgFormFields` (C1/A7)
+  samen met 3.1's `canManageMembers`/`canGrantOrgAdmin`.
+- **`HANDOVER.md`** — beide blokken achter elkaar; alleen de kop van het 3.1-blok volgt de
+  laatste versie ("G36/G39").
+
+**Wat de rebase daarná aan het licht bracht** (vijf bevindingen, allemaal in dit blok
+gerepareerd — geen ervan is een fout van 3.1 of van main, het zijn de raakvlakken):
+
+1. **De tripwire in `lib/repo/authz-deuren.test.ts` matchte op het kále voorkomen van de
+   tekst `"use server"`.** Main's reviewzwerm zette in `lib/repo/dossiers.ts` een comment
+   neer dat uitlegt waarom een constante níet in zo'n module past; dat viel rood als
+   "server action buiten app/". De match is nu regel-geankerd (een directive is een
+   statement op zijn eigen regel). De ondergrens ging mee: die stond op vijf bestanden,
+   maar vier daarvan waren comment-vermeldingen in stubs — echt is er buiten `app/` er
+   precies één, `lib/test-actions.ts`.
+2. **Vier interfacenormen van main raakten 3.1's nieuwe schermen.** `pin-block.tsx` had
+   twee kale grijze lege staten (nu `<EmptyState variant="inline">`), `password-block.tsx`
+   een submit op `secondary` (nu `outline`), en `login-chrome.tsx` de afgeschafte
+   `/50`-focus-halo (nu de knop-norm: transparante rand → `--ring` op focus + `ring-3
+   ring-ring/10`; alléén de dekking omlaag zetten zou de focus onzichtbaar maken).
+   `/login` en `/activate` staan als bewuste uitzondering op de containerbreedte-lijst,
+   mét reden.
+3. **`app/settings/organization/org-gate.test.ts` (van main) las een lege
+   organisatielijst.** Migratie 0019 zet in élke verse database de interne org "Brink
+   Licht". De test meet nu het verschil vóór/ná de POST, en de actor krijgt een membership
+   in die org — anders hield de autorisatielaag de POST tegen en bewees de test niet meer
+   dat de sessiepoort het werk deed.
+4. **⚠️ `components/knophierarchie.test.tsx` scant de ruwe bron zonder commentaar te
+   strippen.** Een comment dat `<Button>` als JSX-tag noemt telt als een échte
+   primary-knop en maakt het scherm rood. Niet gerepareerd (die scan is eigendom van de
+   interfacenorm-sessie); wél gemeden, met een waarschuwing in `login-chrome.tsx`. De
+   zusterscan in hetzelfde bestand (`bg-primary`) slaat commentaarregels wél over — de
+   twee zijn dus inconsistent.
+5. **`app/projects/[id]/quote/quote-gate.test.tsx`** liep vast op 3.2b hieronder; zie daar.
+
+**Meting.** `bunx tsc --noEmit` schoon. `lib/repo/authz*.test.ts` 32/32 en
+`app/admin/users/issue-pin-authz.test.ts` + `lib/repo/activation.test.ts` 39/39, twee keer
+gedraaid. De volle suite gaf in twee runs 8 en 6 rode tests in wisselende bestanden; alle
+14 slagen in isolatie. Dat is de bekende flakiness van de suite (zie het blok van 30 jul),
+niet dit werk — draai twee keer voor je iets een regressie noemt.
+
+---
+
+## Sprint 3.2b — prijsloze estimate voor externen (2026-08-03)
+
+Given fase 0, when een extern account een estimate opent of de PDF downloadt, then bevatten
+scherm én PDF géén prijzen, bedragen of totalen — wel regels, aantallen, statussen en
+kleuren. Intern verandert er niets.
+
+**De vorm: een projectie, geen vlag.** `toPricelessEstimate()` (`lib/repo/estimate-extern.ts`)
+levert een `PricelessEstimate` waarin `unitPrice`, de regeltotalen, de zone-subtotalen en
+het eindtotaal er niet meer *zijn* — niet op nul, niet op null, weg. Het externe renderpad
+(`lib/pdf/estimate-extern.ts`, `components/dossier/quote-view-extern.tsx`) kent alleen dat
+type, dus een bedrag afdrukken is geen vergeten `if` maar een typefout. Dat is bewust géén
+`renderEstimatePdf(data, { prijzen: false })`: die functie noemt `eur()` op zeven plekken,
+en één vergeten tak is hier geen schoonheidsfout maar een lek naar de partij die de prijzen
+juist niet mag zien.
+
+**Wie is extern.** `resolvePrijszicht()` (`lib/repo/prijszicht.ts`) leest `organizations.type`
+(G31) via de sessie. De regel staat de strenge kant op geformuleerd — **"intern? toon"**, niet
+"extern? verberg" — zodat een vierde org-type, een ontbrekend membership of een vormloos adres
+vanzelf de veilige kant op valt (ijzeren regel 4). Bewust géén hergebruik van
+`resolveOrgAuthority()`: die beantwoordt "wie mag schrijven" en heeft een `org_admin`-tak. Een
+org_admin van een externe organisatie is nog steeds extern en ziet dus geen bedragen.
+
+**Bewijs op de gerenderde output, niet op een prop.** `lib/pdf/estimate-extern.test.ts` leest
+de PDF terug met unpdf en zeeft op de VORM van een bedrag (euroteken, of een getal met precies
+twee decimalen) — niet op losse cijfers, want aantallen, zones (A-08) en artikelcodes dragen
+die ook. `components/dossier/estimate-extern.test.tsx` doet hetzelfde op de DOM, in álle vier
+de standen (licht/donker × mobiel/desktop). Beide bestanden hebben een **omgekeerde toets**:
+het interne stuk moet wél door de zeef vallen, anders bewijst de externe assertie niets. Die
+toets heeft zich meteen terugverdiend — de eerste versie las de DOM vóór React had gecommit,
+en alle "er staat geen bedrag"-asserties waren daardoor gratis groen.
+`quote-gate.test.tsx` pint de wissel op de échte route: dezelfde GET, hetzelfde dossier,
+andere sessie → wel of geen bedragen in de bytes.
+
+**Aannames en open eindes**
+
+29. **"Fase 0" is gelezen als de huidige uitrolfase, niet als `project_dossiers.phase`.** Het
+    prijszicht hangt dus niet aan tender/gegund: een externe ziet nooit bedragen, in welke
+    dossierfase dan ook. Klopt die lezing niet, dan is het één regel in `page.tsx`/`route.ts`.
+30. **Het vervalmerkteken van de dagprijs staat niet op het externe stuk** ("day price expired
+    — catalogue price used instead"). Het bevat geen bedrag, maar vertelt wél welke prijsbron
+    gebruikt is, en zonder bedrag ernaast is het voor de ontvanger betekenisloos. Zelfde reden
+    voor "p.m." en "ea.": dat zijn plaatshouders op de plek van een bedrag.
+31. **De open-punten-zinnen zijn herschreven voor een externe lezer** (`EXTERN_PM_SENTENCE`),
+    omdat de interne versie in "wij/terug naar de klant" spreekt en naar een p.m.-totaal
+    verwijst dat op dit stuk niet bestaat. Eén bron voor scherm én PDF — het interne pad heeft
+    daar twee kopieën van, wat dit bestand bewust niet herhaalt.
+32. **De actiebalk is NIET ingeperkt.** Een externe ziet nog steeds "Generate estimate",
+    "Print", "Download PDF" en de XIS-dialoog. Geen daarvan toont een bedrag (de preflight
+    telt regels), dus het is geen prijslek — maar wie wat mág is **3.2a**, en dat item is hier
+    bewust niet aangeraakt. Het kopblok-bewerkformulier rendert op het externe pad wel al niet.
+33. **`lib/pdf/estimate.ts` en `lib/pdf/estimate-extern.ts` delen hun layout-constanten en
+    tekst-helpers niet.** Een gedeelde helperlaag zou de twee sjablonen aan elkaar vastknopen,
+    en dan is "de interne PDF krijgt een kolom erbij" opnieuw een moment waarop iemand aan de
+    externe kant moet denken. Loopt de opmaak uit de pas, dan is dat zichtbaar en herstelbaar;
+    loopt het geld mee, dan niet. (De opdracht noemde `lib/pdf/render.ts` als raakvlak — dat
+    bestand is de client-side rasterisatie voor OCR en staat hier los van.)
+34. **Op mobiel scrolt de regeltabel horizontaal**, dus de statuskolom staat buiten beeld tot
+    je naar rechts veegt. Dat is bestaand gedrag van het interne estimate-scherm (acht
+    kolommen); het externe stuk heeft er zes en is dus strikt beter. Niet gerepareerd: dat is
+    een wijziging aan de gedeelde tabel en raakt het interne scherm mee.
+35. **`generateQuote` blijft een interne handeling.** Draait een externe hem toch (de knop
+    staat er, zie 32), dan worden er offerteregels mét bedragen weggeschreven — hij ziet ze
+    alleen niet. Dat is geen lek, maar het hoort bij 3.2a om die knop weg te nemen.
+
+---
+
+## Tweede rebase op main — migratie 0017 werd 0019 (2026-08-03)
+
+Tijdens het werk hierboven landde sprint **2.5b** op main (vijf commits, expressie-indexen).
+De branch is dáár opnieuw op gerebased. Eén echte botsing, en het is er een die je niet met
+een merge-tool oplost:
+
+**2.5b had het nummer 0017 al ingenomen** (`0017_snelheid_indexen.sql` + `0018_analytics_
+merkgat_index.sql`), en 3.1 had zijn eigen `0017_org_type_activatie.sql`. Twee migraties met
+hetzelfde nummer laten staan maakt de volgorde dubbelzinnig, en `db/test-db.ts` — de plek die
+die volgorde écht bepaalt, want het drizzle-journal loopt maar tot 0013 — kan ze niet uit
+elkaar houden. 3.1's migratie is daarom **hernummerd naar `0019_org_type_activatie.sql`**;
+dat kon zonder gevolgen omdat hij nog niet gedeployd is. Meegegaan:
+
+- `db/migration-0017.test.ts` is nu van 2.5b (de indexen); 3.1's versie heet
+  `db/migration-0019.test.ts`. De twee bestonden onder dezelfde naam — een `add/add`-conflict.
+- Die test draait nu 0000–**0018** als voorstand en dán 0019, zoals het op Neon ook gaat.
+  De indexen raken `organizations` niet, dus de uitkomst verandert er niet van; de volgorde
+  klopt wél met productie.
+- Verwijzingen naar "migratie 0017" in `lib/repo/activation.test.ts`,
+  `scripts/cleanup-testdata.test.ts` en `components/org/org.test.tsx` zijn bijgewerkt.
+
+✅ **Het deploy-draaiboek is meegegaan.** Élke verwijzing naar 3.1's migratie staat nu op
+`0019`, mét de verschoven regelnummers (de drie adressen staan in 0019 op regel **61-63**, was
+59-61; de scalaire subquery op **49**, was 47) en met de actuele sha in het push-commando. Er
+staan geen twee nummers meer naast elkaar: wat er nog aan `0017`/`0018` in dit document staat
+gaat over de indexmigraties van 2.5b, en die horen op Neon vóór 0019.
+
+De stand van vóór deze tweede rebase staat als `backup/sprint31-pin-voor-tweede-rebase`.
+
+**Meting na de tweede rebase.** `bunx tsc --noEmit` schoon. Beide migratietests groen
+(0017 van 2.5b én 0019 van 3.1), de authz-suites 32/32, pin-autorisatie + activatie 39/39,
+en de nieuwe 3.2b-suites 21/21. Volle suite: 1/1694 en 4/1694 rood in twee runs.
+
+⚠️ Eén daarvan is géén flakiness en ook niet van deze branch:
+`components/data/custom-fields.test.tsx > "archiveren vraagt om bevestiging: geen
+archivering zonder VERSE telling"` faalt óók op een kale `origin/main` (nagemeten in een
+wegwerp-worktree op 1f0fb7e: 1 rood van 1500). In isolatie is hij 3 van de 3 keer groen —
+hij valt alleen om onder de volle-suite-belasting. Bestaande bevinding, hoort bij de sessie
+die `custom-fields` bezit. De overige rode tests wisselden per run en zijn in isolatie groen.
+---
+
+## 2026-07-30 — Spec-kolommen 28 merken: ronde 0 af, ronde 3 begonnen
+
+Werkbranch: `claude/relaxed-tereshkova-c27ac7`. **Niets gepusht, productie onaangeraakt.**
+Alles op de Neon-branch `enrichment-serien` (`ep-rapid-credit-at806lp6`), achter
+`scripts/branch-guard.ts`. Probleem: `docs/probleem-speckolommen-28-merken.md`, plan:
+`docs/plan-speckolommen-28-merken.md`.
+
+### Wat er nu staat en werkt
+
+- **`publishRun` bundelt.** Was drie round-trips per product (135–152 ms elk, 12,6 uur voor de
+  catalogus), nu één select + één `UPDATE … FROM (VALUES …)` per blok van 500. Twee dingen
+  werden er veiliger van: "nooit overschrijven" wordt nu door de database afgedwongen
+  (`coalesce(nullif(p.kolom,''), v.kolom)`, race-vrij) en `tier2_source` krijgt per veld dezelfde
+  voorwaarde als de vulling. `applied` telt wat de database teruggeeft.
+- **Drempel op de foutratio.** `errorRate` werd berekend en nergens vergeleken; één 'fout'
+  blokkeert nu de hele run (`DEFAULT_MAX_SAMPLE_ERROR_RATE = 0`, uitzondering expliciet te typen).
+  De UI zet de publiceerknop uit en zegt waarom.
+- **`revertRun`.** "Onomkeerbaar" was een eigenschap van de code, niet van de data. Draait alleen
+  terug wat nog exact onze waarde is én ons herkomststempel draagt.
+- **Voorstelpoort.** `verdenking.ts` hing aan nul productiepaden en is aangesloten in
+  `startEnrichmentRun` (niet in de parser — die voedt ook de aanvraagkant). Weert nu ~2.100 van
+  ~146.000; geweerde voorstellen staan geteld in `enrichment_runs.counts.onderdrukt`.
+- **Zwerm-gereedschap**: `scripts/zwerm-export.ts` (cellen + vallen + tegenproef + manifesthash)
+  en `scripts/zwerm-lees.ts` (fail-closed verwerker). `zwerm/` staat in `.gitignore`.
+
+### Parser-reparaties, alle vier gemeten vóór en ná
+
+| wat | gemeten omvang |
+|---|---|
+| `NON DIM` las als dimbaar | 3.164 landende producten kregen de OMGEKEERDE waarde; XAL's dimbaarheidsrun ging van 3.449 naar 649 voorstellen |
+| `C90 W` / `nn W-W` / `GX5.3 W` / `NxMW` als wattage | samen 1.442 van 71.883 → 0. `1x10W` blijft 10 |
+| het product ís een voeding | naam-begin-anker + drie samenstellingen die overal mogen; 453 producten, 3.700 valse positieven vermeden |
+| wattage boven 999 W | 16 voorstellen: 15 railprofielen, 1 typefout in de bron |
+
+### Runs op de branch
+
+- `99872733` Flos Architectural · cri — **gepubliceerd**, 27/27, elk met herkomststempel.
+- `500d0b4f`, `683d047f`, `f46b7678` — Flos · maxWattage, **afgewezen** (zwerm/verouderd).
+- `572e6baa` — Flos · maxWattage, 188 voorstellen, **wacht op Timo's steekproefoordeel**.
+
+### Open eindes
+
+1. **Prado en TossB-lumen zijn bevroren** (besluit Timo): Prado's kelvin/cri/beamAngle/dimmable
+   (23.392 vullingen) wacht op de kolomroute, want Prado is het enige merk waar beide routes over
+   hetzelfde veld iets zeggen — de enige onafhankelijke kruiscontrole die dit project heeft.
+2. **Ronde 1 moet herbouwd** met een gecureerd `rijfilter` in plaats van de Serien-specifieke
+   boolean `alleenGeintegreerdeLed`. `stap1Klaar` uit het zwerm-onderzoek is géén werklijst: vier
+   van de elf ingangen dragen in hun eigen kanttekening een gemeten defect.
+3. **Muuto verhuist naar ronde 2.** Gemeten op de geïntegreerde-LED-populatie (152 rijen): de
+   typografische grens levert 41 waarden, de betekenisgrens 435.
+4. **Negen Marset-sleutels spreken zichzelf tegen** in de bron (dubbele sleutel, afwijkende
+   tekst). Flos en Lombardo hebben óók duplicaten maar die dragen identieke tekst; de overzetting
+   heeft een dedup-stap nodig met die negen bij naam in het runrapport.
+5. **Eén bekend lek dat bewust open blijft**: een onderdeel waarvan het onderdeelwoord niet
+   vooraan staat én geen sterke samenstelling is. Gemeten omvang: nul, na de BELT-reparatie.
+   De zwerm is daar het vangnet, niet de regex.
+6. **De meetlat ziet dit werk maar deels.** 9 van de 28 merken worden gevraagd, 70 spec-regels,
+   waarvan 5 blauw/open. Per ronde hoort hardop in het rapport wélke merken per constructie
+   onmeetbaar zijn — anders leest "0 verschil" als "geen effect" terwijl het "niet gevraagd" is.
+
+### Twee lessen die geld waard zijn
+
+- **Kies je repetitiemerk niet op grootte.** Flos Architectural was klein en volledig te
+  overzien, en bleek het vuilste merk van de catalogus: 21,3 % van zijn wattage-voorstellen staat
+  op een onderdeelnaam, tegen 0,08 % bij Lombardo en 0,00 % bij Prado. De 38,6 % afkeur uit de
+  eerste zwermronde zei iets over Flos, niet over ronde 3 — en ik had dat bijna als
+  catalogusbrede conclusie gerapporteerd.
+- **Een voorfilter met 87,7 % valse positieven is geen poort maar een prioriteitenlijst.**
+  `accessoire-context` vlagt 12.417 landende voorstellen waarvan het overgrote deel gewone
+  armaturen zijn die hun driver alleen vermelden. Onderdrukken daarop zou duizenden juiste
+  waarden weggooien. De vlag bepaalt wélke cellen als eerste langskomen, niet wélke sneuvelen.
+
+---
+
+## 2026-07-30 — Waarneming bij de aanvraagkant: opgeslagen eis vs. verse parse
+
+Gevonden tijdens de nameting van het verrijkingsspoor, niet gerepareerd. Hoort bij de
+bestaande bevinding "verzonnen eisen" hierboven en is er een derde categorie naast.
+
+**Eerst de correctie op een te snelle conclusie.** Een eerste, slordige vergelijking suggereerde
+dat 65 van de 133 spec-regels met een opgeslagen eis het oneens zijn met een verse parse. Netjes
+gemeten — numeriek met tolerantie, tekst hoofdletterongevoelig — is dat niet waar:
+
+| | aantal |
+|---|---|
+| opgeslagen eiswaarden over alle `req_*`-kolommen | **525** |
+| identiek aan een verse parse van de opgeslagen tekst | 250 |
+| **werkelijk een andere waarde** | **1** |
+| verse parse vindt niets waar wél een eis staat | **274** |
+
+Die ene afwijking is `Lw101` (dossier `4ca9fafe`): opgeslagen `req_watt = 2.50`, verse parse 3.3.
+
+**Wat de 274 betekent en wat níét.** Het bewijst *niet* dat die eisen verouderd zijn. Het bewijst
+dat `description + product_text + brand_text` niet de volledige invoer is die de import gebruikte —
+de leesroute ziet meer (tabelkolommen, de hele rijcontext). **Elke meting die een eis probeert te
+reproduceren uit de opgeslagen tekst, reproduceert dus iets anders dan wat de matcher gebruikt.**
+Dat raakt de betrouwbaarheid van elke nameting die op een verse parse leunt, en het is de reden
+om metingen op `spec_lines` te doen en niet op een herbouwde parse.
+
+**Het overtuigendste voorbeeld staat op blauw.** `Lw101` in dossier `4ca9fafe` luidt
+*"Wand Vierkant Maatwerk wandarmatuur exact type nader uit te werken door architect - - - LED - - -
+- - - - 3000K CRI ≥ 80"* — een regel die letterlijk zegt dat het type nog bepaald moet worden.
+Een verse parse haalt daar zeven harde eisen uit: `maxWattage 3.3`, `kelvin 3000`, `cri 80`,
+`ipValue IP42`, `beamAngle 25`, `lumenOutput 50`, `dimmable DALI`. De IP-klasse, de bundelhoek en
+het dimprotocol staan nergens in die tekst; ze komen uit de streepjes en de omliggende kolommen.
+
+**En een val die vandaag twee keer toesloeg: `fixture_code` is geen sleutel.** Er zijn drie
+regels met code `Lw101`, in drie dossiers, met drie verschillende armaturen (Axo Light NEST,
+het maatwerk-armatuur hierboven, en een lege "Maatwerk wandarmatuur"). Wie een regel aanhaalt,
+moet het dossier erbij noemen — anders kijken twee mensen naar een andere regel en denken ze
+elkaar tegen te spreken.
+
+---
+
+## 2026-07-30 — De les uit vier valstrikken op één dag: de generalisatie is de fout
+
+Vier keer op één dag wilde ik een onderdeel-filter bouwen op een woord dat in de productnaam
+stond. Vier keer bleek datzelfde woord ook in échte armaturen te staan, en vier keer redde
+dezelfde gewoonte het: **eerst tellen wát de regel raakt, en dan naar de namen kijken in plaats
+van naar het getal.**
+
+| term | wilde ik weren | maar het raakt óók | het onderscheid dat wél werkt |
+|---|---|---|---|
+| `^LAMP` | losse vervanglampen (91) | Egoluce's `LAMP. SOSP./PAR./TAVOLO` — Italiaanse armatuurtypes (27) | eist óók een fitting of lamptype in de naam |
+| `SHADE` | losse kappen | `ROOMOR … PAR16 B NO SHADE max. 15W GU10` (31 armaturen) | eist een `max.`-opgave **en** géén fitting |
+| `CONTROL` | Casambi-besturingsmodules (4) | TossB's `ROUND CONTROL MINI Arm 550mm - 6W LED` (128 namen) | alleen in de samenstelling `WIRELESS … CONTROL` |
+| `TRACK ADAPTER` | railadapters (22) | **192 XAL-armaturen** waar het een montage-optie aan het regeleinde is | de POSITIE: niet aan het eind van de naam |
+
+Die laatste was de gevaarlijkste: die 192 XAL-producten dragen CRI, kelvin en wattage die al op
+productie staan. Een kale term-regel had ze alle drie afgenomen.
+
+**Twee bijvangsten van dezelfde soort.** De typecode-regel werkte eerst op NAAMniveau en wees de
+hele naam af zodra er ergens een typemaat-`W` in stond; gemeten kostte dat 16 namen een aanwezige
+juiste waarde (`SIRRO SPOT INSET 1.0 W max. 12W` → niets in plaats van 12). En de kap-regel paste
+de fitting-uitzondering toe op de héle klasse, terwijl alleen `SHADE` hem nodig had —
+`BOX MINI PAR16 INNER REFLECTOR B max. 10W` glipte daardoor door, want die `PAR16` slaat op de
+lamp waarvoor de reflector bedoeld is.
+
+**De vorm is steeds dezelfde:** een regel die op de hele naam werkt in plaats van op de plek waar
+de waarde vandaan komt, of op een hele klasse in plaats van op de term die de uitzondering nodig
+heeft. Wie hier een nieuwe onderdeel-term toevoegt: meet eerst hoeveel namen hij raakt, print de
+namen uit, en splits pas daarna.
+
+---
+
+## 2026-07-30 — Het patroon achter drie bugs: twee lagen die apart over hetzelfde oordelen
+
+Drie keer op één dag liep dezelfde fout op: twee stukken code beoordeelden onafhankelijk van
+elkaar hetzelfde feit, en gaven daarom vroeg of laat tegengestelde antwoorden. Steeds zag je het
+pas aan een uitkomst die niet klopte, nooit aan de code.
+
+| lagen | wat er uiteenliep | hoe het zich uitte |
+|---|---|---|
+| `parseWatt` vs. `verdenkingen()` | wélke tekstfragmenten een wattage-kandidaat zijn | `… 1.1 **B** ROUND incl. driver 4W` landde, `… 1.1 **W** ROUND …` werd geweerd op `meerdere-waarden`. Zelfde armatuur, andere kleurcode |
+| celsleutel vs. spanselectie | wélke karakters de waarde voortbrachten | `array #k cri#` en `rray #k cri#` werden twee cellen voor dezelfde vraag, omdat het venster middenin een woord knipte |
+| `startEnrichmentRun` vs. `publishRun` | wat "de kolom is leeg" betekent | 64 van 100 steekproefrijen op een kolom die `publishRun` hoe dan ook negeert — de poort stond formeel dicht en hield materieel niets tegen |
+
+**De reparatie was elke keer dezelfde vorm:** één functie tot bron van waarheid maken en de
+andere laag daarnaar laten verwijzen — `wattKandidaten()` in `parser.ts`, `specSpans()` voor de
+celsleutel, `fieldIsEmpty()` voor de leeg-toets. Niet: de tweede laag "ook" repareren.
+
+**Waar dit nog kan spelen:** overal waar een filter, een teller of een rapport een eigen regex of
+eigen definitie hanteert voor iets wat de parser of de matcher al bepaalt. Wie hier iets toevoegt
+dat over dezelfde tekens oordeelt: importeer de bestaande functie in plaats van het patroon over
+te schrijven, ook als dat één regel langer lijkt.
+
+---
+
+## 2026-07-30 — Kreon-zwerm: uitslag, en het derde slot op de valdeur
+
+**Run `22c6aa67-ed96-4d5e-88e8-027ca9ff7ad3`, één scherf, 197 echte cellen + 9 vallen.**
+194 goed · 3 `nee-hoort-bij-onderdeel` · 0 onzeker · val-recall 9/9 · 0 onbeslist.
+
+Drie dingen die in het verslag horen omdat ze anders verkeerd gelezen worden:
+
+- **Tegenproef 0/0 is géén geslaagde toets.** Deze ronde toetst het ankerfilter niet: Kreons
+  enige onderdrukking is `cri:afgekapt`, dus er waren geen geweerde onderdelen om mee te mengen.
+  Wat hier gemeten is, is uitsluitend wat het filter DOORLAAT.
+- **Eén scherf voor een merk van 14.000 producten klopt.** Na de `kolomAlGevuld`-reparatie zijn
+  Kreons kelvin en wattage al gevuld; wat overblijft ís `cri`. Er is niets overgeslagen.
+- **De drie afkeuringen zijn light engines** (`Light engine 80 2700K CRI90+ 15D 350mA`, 15
+  producten). Voor de WAARDE verandert dat niets — het product ís de lichtbron, dus CRI90 is er
+  een echte eigenschap van; dat is dezelfde vraag als de W&D LED-modules, en die is schoon
+  beantwoord (74 cellen overlap, 74× goed, 0× anders). Of zo'n motor als armatuur mág meedoen is
+  een andere laag: de matcher, niet de parser.
+
+### De val stond op een vaste stap
+
+De agent meldde het zelf, bijna terloops: *"exact elke twintigste celId — c0020, c0040, c0060 …
+de regelmaat viel pas achteraf op."* De oude menger zette één invoeging per `floor(197/10) = 19`
+echte cellen, dus de vallen lagen op de twintigtallen. Dit is de **derde** keer dat de val aan
+iets anders dan zijn inhoud te herkennen was:
+
+| verraden door | gerepareerd |
+|---|---|
+| celId-voorvoegsel `v` / `t` | hernummeren ná het mengen |
+| vaste vervalsing `waarde + 7` | valvorm varieert (+7 / cijferomkering / waarde lenen) |
+| **vaste stap tussen de invoegingen** | **positie uit een hash van de celinhoud** |
+
+`meng()` staat nu in `lib/enrichment/zwerm-meng.ts` met eigen tests: één invoeging per emmer van
+gelijke grootte (dus nog steeds over de hele scherf gespreid — val-recall blijft een uitspraak
+over élke scherf), maar de plek bínnen de emmer komt uit een hash van de inhoud van de echte
+cellen. Reproduceerbaar, en de afstanden verschillen per scherf en per run.
+
+⚠️ Lees `val-recall 9/9` uit de Kreon-scherf dus als **9/9 onder een herkenbaar patroon**. De
+agent zegt zelf dat hij ze op inhoud vond; dat is aannemelijk maar niet toetsbaar meer. De eerste
+scherf die de nieuwe menger gebruikt (Lombardo) is de eerste schone valmeting.
+
+### W/m nagemeten, catalogusbreed
+
+De agent waarschuwde dat namen met `44W/m` en `25,7W/m` een valstrik zijn zodra een scherf
+`maxWattage` uit deze namen leest. Nagemeten (`scripts/meet-wattpermeter.ts`): 147 namen met een
+vermogen per meter — Kreon 113, Wever & Ducré 20, XAL 14 — en **nul** daarvan levert een
+maxWattage op. De regel uit ronde 4 vangt dit catalogusbreed.
+
+### Niet gebouwd, wel gemeten: "light engine"
+
+125 producten dragen `light engine` of `led engine` in de naam (Serien Lighting 105, Kreon 20).
+120 vooraan, en de 5 die het niet vooraan hebben zijn juist het omgekeerde geval:
+`Module 60 for light engine`, `Aplis 60 dir. module for LED engine 35` — dat zijn behuizingen die
+een motor ópnemen, geen motoren. Een grove `light engine`-regel zou precies die vijf weren. Zelfde
+patroon als `TRACK ADAPTER` (192 XAL-armaturen) en `POWER SUPPLY`: de term staat in beide rollen
+in de catalogus, en alleen de POSITIE scheidt ze. Er is hier geen regel gebouwd.
+
+---
+
+## 2026-07-30 — Lombardo-zwerm: twee poortlekken en een vierde manier waarop de val zich verraadt
+
+Run `d7dbd69a-4836-4a52-a430-55255bc0a136`, 3.933 echte cellen, 17 scherven van 250.
+
+### De val verraadt zich nu aan zijn TWEELING
+
+Vijf agents schreven het onafhankelijk op, in hun eigen woorden: *"elke nee-cel is een duplicaat
+van een naastgelegen goede cel — zelfde naamvorm en dezelfde productnamen, alleen het getal is
+fout"*, *"opzettelijk geplante afwijkers"*, *"gif-cellen"*. Dat klopt: `zwerm-export.ts` bouwt een
+val door een ECHTE cel te kopiëren en de waarde te vervalsen, en die kopie belandt in dezelfde
+scherf als het origineel. De positie is nu willekeurig, het voorvoegsel is weg, de vervalsingsvorm
+varieert — maar zolang het origineel ernaast ligt, is de val herkenbaar zonder hem te lezen.
+
+**Vierde slot, nog te bouwen:** de bron van een val hoort NIET in dezelfde scherf te zitten. Dat
+stond al als uitgesteld punt in de vorige sessie; vijf onafhankelijke meldingen maken het urgent.
+Tot dat er is, geldt voor Kreon én Lombardo: **de val-recall is een ondergrens, geen bewijs van
+zorgvuldig lezen.**
+
+### Twee poortlekken die de zwerm vond, beide Italiaans
+
+| vorm | waar | door de poort mét een waarde | risico van een grove regel |
+|---|---|---|---|
+| `Alim.` / `Alim` (alimentatore = voeding) | Lombardo 93, Egoluce 65, Flos 15, Artemide Arch. 6 | **37** (48 werden al geweerd op een andere grond) | 486 namen dragen `ALIM` NIET vooraan — `ALPHABET OF LIGHT S ALIM 6MT`, `KIT ALIM. BLL`. Een regel op de hele naam raakt die |
+| `Drive` (zonder r) | 6 in totaal | **6** | 3 daarvan zijn `FARETTO DRIVE 24V 4000K` — *faretto* is Italiaans voor spot, dus **Drive is daar een familienaam** |
+
+Zelfde vorm als `TRACK ADAPTER`, `POWER SUPPLY` en `light engine`: de term staat in beide rollen
+in de catalogus en alleen de POSITIE scheidt ze. Voor `Alim.` is een vooraan-regel gratis (37
+gewonnen, 0 van de 486 geraakt); voor `Drive` is de balans 3 tegen 3 en dus geen regel waard.
+**Geen van beide is gebouwd** — dit gaat door de gewone cyclus: probleem, plan, dan pas bouwen.
+
+### Wat WEL bevestigd is
+
+- **De tegenproef werkt.** Vier `Driver …`-producten die de poort weerde zijn ononderscheidbaar
+  meegemengd; alle vier werden door de agents `nee-hoort-bij-onderdeel` genoemd. Het anker is dus
+  niet te grof — dat is de toets die bij Kreon niet gedaan kón worden.
+- **Namen die met driver/converter/voeding/trafo BEGINNEN**: 537 in de catalogus, over 12 merken,
+  en **nul** komen er met een waarde door de poort (`scripts/meet-driver-vooraan.ts`).
+
+### Een detail in de scherfopbouw
+
+434 cellen (10,5 %) tonen drie keer dezelfde productnaam. Dat is geen exportfout maar de
+catalogus zelf: Lombardo voert tientallen artikelnummers onder één identieke naam (60× `Ago
+Applique LED 2.2K 5W Bianco`). Voor de agent is het wel verspilde ruimte — drie voorbeelden die
+één voorbeeld zijn. Kandidaat voor de volgende exportronde: toon DISTINCTE namen.
+
+### Uitslag Lombardo (run `d7dbd69a`)
+
+| oordeel | cellen | producten |
+|---|---:|---:|
+| goed | 3.908 | 59.350 |
+| onzeker | 7 | 192 |
+| nee-hoort-bij-onderdeel | 18 | 27 |
+
+val-recall 196/196 · tegenproef 12/12 · 0 onbeslist · 0 ongeldige scherven.
+De verwerker zegt **niet schoon** en dat blijft staan: 25 cellen dragen bezwaar.
+
+**De 18 echte afkeuringen zijn samen 27 producten** en vallen in vier groepen: 12× `Alim.`
+(voeding), 2× `Drive/Sensore`, 2× `Led Cob Cree … Cri80/Cri95` (losse COB-chip), 2× `Molla Vetri
+Componi` (glasklem). Allemaal poortlekken, allemaal hierboven gemeten.
+
+**De 7 `onzeker` zijn geen twijfel maar een fout-positief die we kennen.** De agent zag de vlag
+`accessoire-context` op `Lula Bracket 150 LED 2.2K 12W` en durfde niet te kiezen. De catalogus
+beslist het wel: `Lula LED 2.2K 12W Nero` bestaat óók zonder "Bracket" — het is dezelfde armatuur
+in de wandbeugel-uitvoering, 168 van de 390 Lula's. Catalogusbreed draagt `bracket` 406 namen over
+15 merken, waaronder `SANTORINI WALL BRACKET GREY` van Marset: het woord beschrijft de montagewijze
+van een armatuur, niet een los onderdeel. Dit is precies de 87,7 % fout-positief waarom
+`accessoire-context` niet in `ONDERDRUKKENDE_VERDENKINGEN` staat — nu ook aan de andere kant van
+de zwerm zichtbaar.
+
+### Nog twee termen gemeten, geen regel waard
+
+- **`cob`**: 6.274 namen, waarvan **6.164 van XAL** waar COB gewoon de lichttechniek in een
+  armatuurnaam is. Slechts 2 producten (Lombardo) zijn werkelijk een losse chip. Een regel op
+  `cob` zou 6.235 armaturen raken om er 2 te winnen.
+- **`molla`**: 18 namen. Zelfs vooraan is het niet veilig — `MOLLA W LED 3000K WHITE` van Artemide
+  Architectural is een armatuurfamilie. Werkelijk een klem: 2 producten bij Lombardo.
+
+---
+
+## 2026-07-30 — XAL: de eerste schone zwerm, en wat "schoon" hier wel en niet betekent
+
+Run `ef2a0071-2ba6-4e5d-a8bc-72f898975a96`, 228 echte cellen, 2 scherven.
+**228 goed · 0 afgekeurd · 0 onzeker · val-recall 11/11 · 0 onbeslist ⇒ `✓ SCHOON`.**
+
+Dit is de eerste ronde waarin de verwerker geen enkel bezwaar teruggeeft. Drie kanttekeningen die
+er meteen bij horen, anders leest "schoon" ruimer dan het is:
+
+1. **Tegenproef 0/0 — het ankerfilter is niet getoetst.** Net als bij Kreon zijn er in deze run
+   geen als onderdeel geweerde producten om mee te mengen.
+2. **XAL is een makkelijke valmeting.** Vrijwel elke XAL-cel draagt `CRI90`; een vervalste 97 of
+   93 valt dan op zonder dat je de cel hoeft te lezen. De 11/11 is dus eerlijk verdiend maar zegt
+   minder dan dezelfde score bij Lombardo, waar de wattages over tientallen waarden lopen.
+3. **De ronde ervóór was ongeldig en is opnieuw gedraaid** — zie hieronder.
+
+### De reparatie van het derde lek maakte het eerste terug
+
+`scheidTweelingen` koos als ruilpartner de laagste vrije index. Gevolg: **alle vijf de vallen van
+scherf 1 kwamen op positie 1–5 en alle zes van scherf 2 op 0–5.** De agent zag het meteen — *"de
+vijf afkeuringen zitten allemaal direct na c0001, aan het begin van de scherf"* — en dat is exact
+de vaste-positie-fout die `meng()` een paar uur eerder had opgelost.
+
+Vierde keer dat een lek in de vallen pas aan de UITKOMST zichtbaar werd en nooit aan de code. Dat
+is nu geen incident meer maar een eigenschap van hoe ik hieraan werk: de test die ik erbij schrijf
+dekt telkens de fout die ik al gezien had.
+
+**Daarom controleert de exporteur nu zichzelf.** `controleerVallen()` (lib/enrichment/zwerm-meng.ts)
+stelt vier vragen aan de scherven zoals ze op schijf komen, en de exporteur drukt het antwoord af
+vóór er één agent leest:
+
+| vraag | de ronde die eraan onderdoor ging |
+|---|---|
+| staat er in élke scherf een val? | ronde 2, scherf 7 |
+| staan ze op een vaste stap? | Kreon (elke 20e cel) |
+| klonteren ze in een kwart van de scherf? | XAL (positie 0–5) |
+| staat een val naast een cel met dezelfde naam én vorm? | Lombardo (186 van 196) |
+
+De test bouwt alle vier de historische bugs na. Eén functie, twee gebruikers — geen vijfde geval
+van twee lagen die apart over hetzelfde oordelen.
+
+---
+
+## 2026-07-30 — TossB, en de stand van vier merken op een rij
+
+Run `a72e9fc6-9f6d-4395-8614-35891b892854`, 186 echte cellen, 2 scherven.
+**180 goed · 6 `nee-hoort-bij-onderdeel` (19 producten) · 0 onzeker · val-recall 9/9.**
+Ook hier tegenproef 0/0: geen geweerde onderdelen om mee te mengen, dus het anker is niet getoetst.
+
+De zes afkeuringen zijn twee soorten: 4× `LED bulb AR70/AR111` (losse lamp) en 2× `Base Rond SB
+100mm … - Driver 350mA - 10W … base black` (voetstuk mét driver).
+
+### De vier merken samen
+
+| merk | run | cellen | goed | afgekeurd | onzeker | val-recall | tegenproef |
+|---|---|---:|---:|---:|---:|---|---|
+| Kreon | `22c6aa67` | 197 | 194 | 3 | 0 | 9/9 ⚠ | 0/0 — niet getoetst |
+| Lombardo | `d7dbd69a` | 3.933 | 3.908 | 18 | 7 | 196/196 ⚠ | 12/12 ✓ |
+| XAL | `ef2a0071` | 228 | 228 | 0 | 0 | 11/11 | 0/0 — niet getoetst |
+| TossB | `a72e9fc6` | 186 | 180 | 6 | 0 | 9/9 | 0/0 — niet getoetst |
+
+⚠ = de val-recall van Kreon en Lombardo kwam tot stand vóór het vierde slot; lees hem als
+ondergrens. XAL en TossB zijn de eerste rondes met alle vier de sloten actief.
+
+**Alleen Lombardo heeft het ankerfilter werkelijk getoetst.** Bij de andere drie waren er geen
+geweerde onderdelen om als tegenproef mee te mengen, dus daar meet de zwerm uitsluitend wat het
+filter doorlaat.
+
+### De poortlekken bij elkaar — wat de meting wél en niet rechtvaardigt
+
+| term | gevonden bij | door de poort | grove regel raakt | oordeel |
+|---|---|---:|---|---|
+| `Alim.` vooraan | Lombardo | 37 | niets — de 486 met `ALIM` middenin blijven staan | **bouwen** |
+| `led/halogen bulb` vooraan | TossB | 26 | niets — Kreons 150 `sphere bulb`-pendels en TossB' `Bulb included` blijven staan | **bouwen** |
+| `Base` vooraan | TossB | 4 (alleen TossB) | 44 andere `Base …`-namen dragen geen waarde, dus 0 | **bouwen, smal** |
+| `cob` | Lombardo | 6.235 | **6.164 XAL-armaturen** waarvan de CRI al op productie staat | niet bouwen |
+| `molla` | Lombardo | 4 | `MOLLA W LED 3000K WHITE` is een Artemide-familienaam | niet bouwen |
+| `drive` (zonder r) | Lombardo | 6 | 3 daarvan zijn `FARETTO DRIVE` — een Egoluce-spot | niet bouwen |
+| `light engine` | Kreon | 15 | de 5 `Module 60 for light engine` zijn behuizingen | niet bouwen |
+
+Drie kandidaten die de meting draagt, vier die hem niet dragen. Geen van zeven is gebouwd.
+
+### Nieuw, en géén poortkwestie: meerkanaals-armaturen
+
+De TossB-agent zag dat `TIBO Wall indoor - 8W+4W LED` als maxWattage **8** krijgt en niet 12. De
+waarde staat letterlijk in de naam en beschrijft een echt kanaal — de zwerm noemt hem dus terecht
+`goed` — maar het armatuur trekt 12 W en dat is wat een bestek vraagt. Catalogusbreed:
+
+    namen met "xW + yW" : 34   (Kreon 24, TossB 10)   waarde ≠ som: 34 van 34
+
+Alle 34 rapporteren te laag. Klein genoeg om te laten liggen, maar het is een systematische
+onderschatting en geen leesfout — dus het hoort niet in de "afgekeurd"-stapel maar op deze lijst.
+
+---
+
+## 2026-07-30 — De kleine merken, en drie die te klein zijn voor de zwerm
+
+**Lumiance** (32 cellen) en **Nordlux** (24 cellen): allebei `✓ SCHOON`, alles goed, val-recall 2/2.
+Ook hier tegenproef 0/0.
+
+### Drie merken waar de zwerm niets kan meten — met de hand nagelopen
+
+Bij Flos Architectural (25 cellen), It's About RoMi (5) en Estiluz (2) meldde `controleerVallen`
+zelf dat de opzet niet werkt: te weinig cellen om een val van zijn tweeling te scheiden én elke
+scherf een val te geven. Dat is de bedoelde uitkomst — een val die je aan zijn buurman herkent,
+meet niets. Deze 32 cellen dus met de hand:
+
+| merk | oordeel | waarom |
+|---|---|---|
+| Flos Architectural | 25 van 25 goed | BON JOUR, FINDME, JUNCOS, G-O, THEBLOCKOFLIGHT, UT SPOT TRACK — allemaal complete armaturen, kelvin en wattage staan er letterlijk in |
+| It's About RoMi | **0 van 5** | alle vijf zijn `LED bulb globe/tube/sphere filament … E27/3,5W`: losse lampen |
+| Estiluz | **0 van 2** | `Kit recambio led volta 3000k` en `Replacement led volta 2700k`: reserve-LED-modules |
+
+Meegenomen detail dat goed ging: `KAP 80 W-W RND GOLD DW LED ARRAY C95 13W` levert 13 W en niet
+80 — de `W-W`-regel (warm-white) doet wat hij moet doen.
+
+### Twee kandidaten erbij
+
+- **`led bulb` vooraan** dekt nu álle vijf de RoMi-voorstellen, niet alleen TossB' vier. Daarmee
+  komt die regel op 26 namen catalogusbreed en is hij de enige die een heel merk opruimt.
+- **`recambio` / `replacement`**: 62 namen in de catalogus (Marset 33, Lombardo 10, Estiluz 7,
+  W&D 7, &Tradition 4, XAL 1), waarvan er **4 door de poort komen — alle vier van Estiluz**. De
+  overige 58 dragen geen waarde en worden dus toch al niet voorgesteld. Smalle, gratis regel.
+
+Nog steeds geen van de regels gebouwd.
+
+---
+
+## 2026-07-30 — Marset is een ander soort merk, en dat verandert wat de poort moet doen
+
+**Marset** (71 cellen): 23 goed, **48 afgekeurd** (76 producten), val-recall 3/3.
+**CLS** (113 cellen): 110 goed, 3 afgekeurd, val-recall 5/5.
+
+Marset is het eerste merk waar de meerderheid van de voorstellen niet over een armatuur gaat. Zijn
+catalogus draagt het complete ophangsysteem als losse artikelen, en die dragen wél een wattage:
+
+| soort | wat het is | cellen |
+|---|---|---:|
+| `CANOPY 20W 24V TRIAC GOLD` | kap/rozet met ingebouwde voeding | 19 |
+| `CLUSTER AMBROSIA V 100W 3 OUTPUTS 24V TRIAC` | meervoudige voedingseenheid | 11 |
+| `E27 LED GLOBE 120 11W 1521LM CRI80 2700K` | losse retrofit-lamp | 12 |
+
+Alle drie zijn ze `kap`, `voeding` of `losse lamp` — categorieën die de prompt al noemt en die de
+poort dus hóórt te weren. Ze komen er doorheen omdat de herkenning op andere woorden let.
+
+### Gemeten, en alle drie scherp af te bakenen op de POSITIE
+
+| term vooraan | door de poort | wat middenin staat en ongemoeid blijft |
+|---|---:|---|
+| `CANOPY` | 31 (alle Marset) | **2.054** namen dragen `canopy` niet vooraan — `AURA PLUS TRANSPARENT SMOKED W/CANOPY`, `VIRTUS SUSPENSION RECESSED CANOPY WATER BLUE 3000K` (Axo Light, een armatuur) |
+| `CLUSTER` | 20 (Marset) + 8 TossB | 14 middenin, waaronder Artemide's `RIPPLE S CLUSTER (3) APP` |
+| `E14/E27/G9/GU10/AR111` vooraan | 10 | — de 25 die er zo beginnen zijn stuk voor stuk een losse lamp |
+
+TossB' acht `CLUSTER …` heten voluit `CLUSTER Driverbox 30 Coax LED — Excl. Drivers`: ook
+componenten, dus de regel klopt ook daar.
+
+**Dit is nu de grootste van de kandidaten**: samen 61 voorstellen bij één merk, en Marset zakt
+daarmee van 48 afgekeurde cellen naar bijna nul. Nog steeds niet gebouwd.
+
+### Sylvania is geen armaturenmerk, en dat is geen regexprobleem
+
+Scherf 2 van de vier gaf al 34 afkeuringen op 250 cellen, allemaal van hetzelfde soort: de
+lampencatalogus van Sylvania zit tussen de armaturen. Catalogusbreed, en **alle vier de families
+komen uitsluitend bij Sylvania voor**:
+
+| familie | namen | door de poort mét een waarde |
+|---|---:|---:|
+| RefLED (retrofitlamp) | 169 | 81 |
+| LYNX / MINI-LYNX (CFL) | 22 | 20 |
+| BLACKLIGHT / circline (TL) | 18 | 18 |
+| LUXLINE PLUS (TL) | 1 | 1 |
+| **samen uniek** | | **117** |
+
+⚠ **Dit hoort NIET in dezelfde categorie als canopy, alim. en led bulb.** Die drie zijn woorden
+die een onderdeel benoemen, en de regel gaat over positie. Dit is iets anders: een fabrikant die
+naast armaturen ook lampen levert, en beide staan in dezelfde tabel zonder dat iets zegt wélk
+soort product het is. Vier merknaam-regexen erbij lost Sylvania op en niets anders — de volgende
+lampenleverancier begint weer bij nul.
+
+De structurele vraag hoort bij het import-pad, niet bij `verdenking.ts`: krijgt een product een
+soort (armatuur / lamp / driver / accessoire) bij het inlezen, dan valt deze hele klasse weg en
+verdwijnt de helft van de regels hierboven mee. Dat is een besluit voor Timo, geen reparatie.
+
+### Sylvania compleet: 241 van de 904 cellen afgekeurd
+
+Vier scherven binnen. **663 goed · 241 `nee-hoort-bij-onderdeel` (405 producten) · 0 onzeker ·
+val-recall 45/45.** Ruim een kwart van de cellen gaat niet over een armatuur — veruit het hoogste
+van alle merken. Alle 241 zijn lampen: RefLED-reflectorlampen (GU10/MR16/PAR/ES50/R39–R80),
+ToLEDo-retrofits, HPS SHP-T/GROLUX E40, CFL LYNX-D, PIGMY-ovenlamp E14, blacklight-TL.
+
+**En de familienaam-regel loopt op dezelfde klip als alle andere.** `ToLEDo` raakt buiten Sylvania
+vier namen — `Pendant lamp Toledo, brown` en `Table lamp Toledo, brown` van It's About RoMi, waar
+Toledo gewoon een armatuurfamilie is. Ook hier scheidt alleen de context, niet het woord.
+
+Bovendien dekt de familie-regex maar een deel: 581 Sylvania-producten dragen een lampfamilienaam
+(indicatie 380 voorstellen), terwijl de zwerm er 405 producten afkeurde die óók fittingen als
+`E27`, `GU10`, `R7s`, `G12`, `B22`, `T8` dragen. Wie dit met regexen wil oplossen blijft
+familienamen bijschrijven.
+
+Een agent zag bovendien iets wat voor de bewijsplicht uitmaakt: **de brondata bevat harde spaties
+(U+00A0)** in Otao/Quantum-namen. Een beoordelaar die de naam overtypt in plaats van kopieert
+levert een `bewijsNaam` die niet valideert — het slot doet dan het goede, maar om de verkeerde
+reden. Goed om te weten als er ooit handmatig een antwoord wordt bijgeschreven.
+
+---
+
+## 2026-07-30 — Twee runs die "TAL" heetten waren Metalarte
+
+`verrijk-xal.ts start --merk=TAL` zocht met `ilike '%TAL%'` en nam `const [merk] =` — de eerste
+rij. Dat filter levert **acht merken**: Metalarte, TAL, Castaldi, Rotaliana, Pallucco Italia,
+Luci Italiane, TALA en Metal Lux. De eerste is Metalarte, en Metalarte heeft geen producten.
+
+Ik heb daarop gerapporteerd: *"TAL leverde nul voorstellen op — na de leeg-kolomreparatie is daar
+niets meer te vullen."* Dat was onjuist. **TAL heeft 6.481 producten en 164 voorstellen.** En het
+script `meet-restant-merken.ts`, dat ik in dezelfde adem als onbetrouwbaar bestempelde omdat het
+"164 zei terwijl de run nul gaf", zei precies het goede getal — 164. De run had ongelijk, niet het
+script. (De afwijkingen bij TossB (8), XAL (302) en Kreon (~660) staan nog steeds; die kop-
+waarschuwing blijft dus terecht, maar het TAL-voorbeeld erin was mijn eigen fout.)
+
+**Reparatie:** de merkkeuze weigert nu bij twijfel. Past de opgegeven tekst op meer dan één merk
+en is er geen exacte naamtreffer, dan stopt het script en noemt het de kandidaten. Een lookup die
+bij twijfel de eerste rij pakt, geeft een fout antwoord met dezelfde stelligheid als een goed
+antwoord.
+
+## 2026-07-30 — Elf verouderde runs afgewezen, één run per merk
+
+Er stonden **24 runs op `steekproef` over 15 merken**. Timo tekent per merk, dus zeven openstaande
+Wever & Ducré-runs betekenen zeven regels die er even geldig uitzien, waarvan zes van vóór de
+reparaties van vandaag.
+
+De toets is machinaal: een run van ná de leeg-kolomreparatie draagt `counts.kolomAlGevuld`.
+**Alle zeven W&D-runs misten dat**, ook de nieuwste (19:47, zes minuten vóór de fix) — dus geen
+van de zeven was bruikbaar en er is een verse run gemaakt (`39f25f5d`, 16.005 voorstellen, exact
+gelijk aan de oude: bij W&D waren de kolommen toch al leeg, dus die fix verandert er niets).
+
+Afgewezen via `rejectRun` (`scripts/wijs-verouderde-runs-af.ts`, met `DRY_RUN=1` te bekijken):
+7× W&D, 1× Kreon (`5848a407`, de 32.917-run), 1× XAL (`ea7742ef`), 2× Metalarte (leeg, gevolg van
+de merkverwarring hierboven). Stand nu: **15 runs over 15 merken, precies één per merk.**
+
+⚠ Eén run is bewust ongemoeid gelaten: `902ba6e9` (&Tradition, 9 juli). Die komt niet uit deze
+sessie en het is niet aan mij om andermans werk af te wijzen — maar hij staat wél open, dus hij
+verschijnt in het tekenoverzicht. Timo moet weten dat die van vóór alles van vandaag is.
+
+---
+
+## 2026-07-30 — De restscherf werd een valmagneet (vijfde lek, derde zelfgemaakte)
+
+Wever & Ducré, verse run: 1.764 cellen bij scherfmaat 250 gaf **7 × 250 + 1 × 14**. Die laatste
+scherf van veertien had per definitie het laagste AANTAL vallen, dus `scheidTweelingen` verhuisde
+ze er allemaal naartoe:
+
+| scherf | cellen | vallen |
+|---|---:|---:|
+| 1–6 | 250 | 11–12 (4–5 %) |
+| 7 | 250 | **1** |
+| 8 | **14** | **11 (79 %)** |
+
+De agent van scherf 8 hoefde niet te lezen om te weten dat daar iets was: elf van zijn veertien
+cellen waren fout. En scherf 7 kreeg één val op 250 cellen, dus daar zei de recall niets.
+
+**Twee reparaties.** De doelscherf wordt gekozen op val-DICHTHEID (vallen per cel) in plaats van
+aantal, en de exporteur verdeelt de maat over het aantal scherven zodat er geen restscherf meer
+ontstaat — `Math.ceil(1764 / 8) = 221`, dus 8 × 221 in plaats van 7 × 250 + 1 × 14.
+
+### De tel loopt nu op vijf, en drie ervan maakte ik zelf
+
+| # | het lek | ontdekt door |
+|---|---|---|
+| 1 | celId-voorvoegsel `v` / `t` | een agent |
+| 2 | vaste stap tussen de vallen (elke 20e) | een agent |
+| 3 | de val naast zijn tweeling | vijf agents |
+| 4 | verhuisde vallen klonterden vooraan — **veroorzaakt door de fix voor 3** | een agent |
+| 5 | restscherf werd valmagneet — **veroorzaakt door de fix voor 3** | een agent |
+
+Alle vijf zijn zichtbaar geworden aan de UITKOMST, geen enkele aan de code, en `controleerVallen`
+ving 4 en 5 niet omdat hij per scherf kijkt en niet naar de verdeling tússen scherven. Dat is nu
+óók gedekt: de dichtheidstoets zit in de reparatie zelf. Wie hier nog iets verandert: **draai de
+export en kijk naar de valposities vóór je agents inzet** — dat kost een minuut en het heeft
+vandaag twee volledige rondes gekost om die gewoonte te leren.
+
+### Twee dingen die deze W&D-ronde wél oplevert
+
+**1. De tegenproef heeft voor het eerst iets betwist — en het anker had gelijk.**
+`tegenproef 10/12`. De twee betwiste cellen: `LAMP C35 LED 2700K OPAL 5.5W E14` en
+`LAMP G95 LED 2700K OPAL 10W E27`. Dat zijn losse lampen; de poort weerde ze terecht en **de
+agents zagen het niet**. Dat is de eerste gemeten FOUT-NEGATIEF van de zwerm zelf: 2 van de 12,
+op precies de vraag waar hij voor bestaat.
+
+De verwerker zei daarbij `← ANKER MOGELIJK TE GROF`, en dat is één van twee lezingen. Die tekst
+is aangepast: een betwiste tegenproef betekent onenigheid, niet dat het anker fout zit. Alleen
+een mens kan kiezen welke van de twee het is.
+
+⚠ **Consequentie voor alle andere merken:** de `goed`-oordelen zijn niet foutloos. Waar de
+tegenproef nul cellen had — negen van de vijftien runs — is deze fout-negatief niet meetbaar
+geweest en is er dus ook geen reden om aan te nemen dat hij daar niet bestaat.
+
+**2. De antwoordsleutel lag in dezelfde map als de scherven.**
+Een agent meldde het uit zichzelf: *"ik zag wel dat er een `antwoordsleutel.json` in dezelfde map
+staat — die heb ik bewust niet geopend, dat zou de controle zinloos maken."* Dat hij dat deed is
+netjes; dat hij het kón is het probleem. Een slot dat afhangt van de terughoudendheid van degene
+die je controleert is geen slot. De sleutel gaat nu naar `zwerm/sleutels/<runId>.json`, buiten de
+map waar de agents in werken; `zwerm-lees.ts` valt terug op de oude plek zodat afgeronde rondes
+na te rekenen blijven.
+
+---
+
+# 2026-07-30 — BEKENDE BEPERKINGEN van de 28-merken-verrijking
+
+Alles wat een lezer van de uitslagen moet weten voordat hij ze gelooft. Eén plek, want ze staan
+verspreid door de secties hierboven en dan leest niemand ze.
+
+## 1. Het ankerfilter is bij negen van de vijftien runs NIET getoetst
+
+De tegenproef mengt producten mee die de poort als onderdeel weerde. Zijn die er niet, dan meet de
+ronde alleen wat het filter DOORLAAT en niets over wat het onterecht tegenhoudt. Gemeten bij:
+Lombardo (12/12), Wever & Ducré (10/12). Niet getoetst bij: Kreon, XAL, TossB, Sylvania, CLS,
+Marset, Lumiance, Nordlux, TAL, Flos Architectural.
+
+## 2. De zwerm laat onderdelen door — gemeten, niet vermoed
+
+Bij W&D noemden agents twee tegenproef-cellen `goed` die losse lampen zijn
+(`LAMP C35 LED 2700K OPAL 5.5W E14`, `LAMP G95 …E27`). **2 van de 12**, op precies de vraag waar
+de zwerm voor bestaat. Waar de tegenproef nul cellen had is die fout niet gemeten — dat betekent
+niet dat hij er niet is.
+
+## 3. Val-recall van vóór het vierde slot is een ondergrens
+
+Kreon (9/9) en Lombardo (196/196) draaiden toen de val nog naast zijn tweeling stond. Die scores
+zijn geen bewijs van zorgvuldig lezen. XAL, TossB en later zijn de eerste rondes met alle sloten.
+
+## 4. Systematische onderschatting bij samengestelde vermogens
+
+| vorm | wat er gebeurt | gevonden | landend |
+|---|---|---:|---:|
+| `8W+4W` (twee kanalen) | alleen het eerste kanaal | 34 | **10** (TossB) |
+| `2X6/9W` | idem, één lid van het paar | zie eerdere sectie | |
+
+De waarde staat letterlijk in de naam en beschrijft een echt kanaal — de zwerm noemt hem terecht
+`goed`. Maar het armatuur trekt meer, en dat is wat een bestek vraagt. **Geen leesfout, een
+systematische onderschatting.**
+
+## 5. Harde spaties in de brondata (U+00A0)
+
+129 namen over vijf merken: Sylvania 77, Marset 37, Lombardo 12, Kreon 2, Northern 1. Wie een
+`bewijsNaam` overtypt in plaats van kopieert, faalt op het citaatslot — het slot doet dan het
+goede om de verkeerde reden.
+
+## 6. Het ontbrekende producttype-veld — de grootste van allemaal
+
+Sylvania (241 van 904 cellen afgekeurd) en Marset (48 van 71) leveren lampen en ophangsystemen in
+dezelfde tabel als hun armaturen, zonder dat iets zegt wélk soort product het is. Acht keer
+vandaag bleek dat alleen de POSITIE van een woord de twee scheidt en nooit het woord zelf:
+
+| woord | onderdeel | maar óók een armatuur |
+|---|---|---|
+| `canopy` | `CANOPY 20W 24V TRIAC` | `VIRTUS SUSPENSION RECESSED CANOPY 3000K` (Axo Light) |
+| `cob` | `Led Cob Cree Cxa1512 Cri80` | 6.164 XAL-namen, waarvan de CRI al op productie staat |
+| `molla` | `Molla Vetri Componi 200W` | `MOLLA W LED 3000K WHITE` (Artemide) |
+| `drive` | `Drive/Sensore Delta 1 20 W` | `FARETTO DRIVE 24V 4000K` (Egoluce) |
+| `light engine` | `Light engine 80 2700K CRI90+` | `Module 60 for light engine` (behuizing) |
+| `bulb` | `LED bulb AR70 8W` | Kreons 150 `sphere bulb`-pendels |
+| `toledo` | Sylvania's retrofitlijn | `Pendant lamp Toledo, brown` (It's About RoMi) |
+| `led module` | `LED MODULE 35 MEDIUM …` | `MILES WALL SURF 12.0 LED MODULE` |
+
+Elke regex hier is een gok op de positie van een woord. **Krijgt een product bij het inlezen een
+soort — armatuur / lamp / driver / accessoire — dan valt deze hele klasse weg en de helft van de
+kandidaatregels ermee.** Dat is een besluit voor Timo en het is groter dan welke regel ook.
+
+## 7. Prado is bevroren
+
+Enige merk waar de kolomroute en de naamroute over hetzelfde veld spreken. 14.035 landende
+voorstellen, bewust niet aangeraakt tot Timo daar zelf iets over zegt.
+
+## 8. Eén openstaande run is van vóór vandaag
+
+`902ba6e9` (&Tradition, 9 juli) draagt geen `counts.kolomAlGevuld` en staat in het overzicht als
+`poortversie: OUD ⚠`. Bewust niet afgewezen: hij komt niet uit deze sessie.
+
+---
+
+## 2026-07-30 — De promptHash dekte de deur, niet de deur ernaast
+
+Bij de tweede Wever & Ducré-ronde zette ik in de AGENT-opdracht een zin bij die niet in
+`prompt.md` stond:
+
+> *"Let extra op producten die ZELF een onderdeel zijn: een naam die begint met LAMP, LED MODULE,
+> DRIVER of SYSTEM DRIVER is geen armatuur, ook als het getal er letterlijk in staat."*
+
+Die zin is een **conclusie uit eerdere rondes**. Ik gaf de zwerm dus het antwoord op precies de
+vraag die ik aan het meten was — en de promptHash bleef ongewijzigd, want die dekte alleen het
+bestand. Twee agents hadden hem al toegepast en verwezen er letterlijk naar ("LAMP/LED MODULE als
+eigen product") vóór ik het zag; de zes andere zijn gestopt.
+
+Dit is dezelfde fout als op 30 jul om 15:41, toen ik scherf 6 opnieuw draaide met een
+aangescherpte prompt en de afwijking als agent-onenigheid meldde. Daarvoor is de promptHash
+gebouwd. Hij werkte — via de deur ernaast.
+
+**Reparatie.** De exporteur schrijft nu per scherf de VOLLEDIGE opdracht (`scherf-NN.opdracht.md`)
+inclusief leesinstructie en antwoordformaat, en de promptHash dekt die hele tekst. Wie een zwerm
+inzet geeft de agent nog één zin: *volg dit bestand*. Staat er iets in de agent-opdracht dat niet
+in het bestand staat, dan is de meting besmet zonder dat de hash het merkt — dus staat het er niet.
+
+⚠ **Wat dit betekent voor de gepubliceerde bevinding `LED MODULE vooraan`:** die kwam uit de
+EERSTE W&D-ronde, waar niemand dat gezegd had (drie agents trokken de grens zelf) en uit de
+Lombardo- en Kreon-rondes. Die staat dus. Maar de tweede ronde telt niet mee als bevestiging.
+
+---
+
+# OPENSTAAND VOOR TIMO — mag een LED-module een armatuurspec dragen?
+
+**Dit is het enige punt waar twee metingen van vandaag elkaar lijken tegen te spreken. Ze doen dat
+niet, en het verschil zit in de VRAAG — maar het besluit is niet aan mij.**
+
+## De twee metingen
+
+| | ronde `zwerm/ledmodule` (19:15) | de merkrondes (Lombardo, Kreon, W&D) |
+|---|---|---|
+| cellen | 112, twee lezers, identieke manifest- én prompthash | duizenden |
+| uitslag | **99 goed · 13 onzeker · 0 afgekeurd · 0 keer oneens** | drie agents wezen `LED MODULE …` af |
+| de gestelde vraag | *"beschrijft deze waarde het **PRODUCT** waar hij op staat?"* | *"is deze waarde een juiste technische specificatie van het **ARMATUUR** waar hij op staat?"* |
+
+Dat is niet dezelfde vraag. Voor `LED MOD HV DIM LOW FLICKER 2700K B 8W CRI90` luidt het antwoord
+op de eerste vraag **ja** — het product ís de module, dus 2700 K en CRI 90 zijn er echte
+eigenschappen van. Het antwoord op de tweede is **nee** — een module is geen armatuur.
+
+**Beide metingen zijn schoon en beide zijn juist.** Wat geen van beide beantwoordt is de vraag die
+er voor de catalogus toe doet: *mag een product dat de lichtbron ís, met die waarden meedoen in
+een armatuurzoekopdracht?* Dat is een productbeslissing, geen parservraag.
+
+⚠ **Ik heb die twee eerder vandaag door elkaar gehaald.** Toen ik de Kreon-light-engines behandelde
+citeerde ik de schone 74-cellenmeting als bewijs dat "de waarde klopt", terwijl die meting nooit
+gevraagd had of het ding een armatuur is. Dat was een verkeerd gebruik van een goede meting.
+
+## De omvang — en een correctie op mijn eigen eerste telling
+
+Ik schreef eerst **454 namen (Kreon 358 · W&D 96), 423 landend**. Dat getal deugt niet, en het
+deugt niet om exact de reden die dit document negen keer beschrijft: ik matchte op een WOORD.
+
+    begint met "LED MOD(ULE)"  :  96   ← alle Wever & Ducré, echte losse lichtmodules
+    begint met "MODULE"        : 358   ← alle Kreon, en dat is iets heel anders
+
+Kreons 358 zijn geen modules maar zijn **downlightfamilie**:
+
+| soort | namen | landend | voorbeeld |
+|---|---:|---:|---|
+| ARMATUUR | 242 | 232 | `Module 40 fixed downlight` |
+| onbekend/gemengd | 74 | 66 | `module 80 directional retro le50` |
+| toebehoren | 7 | 0 | `Module 80, sculpture lens`, `Module 40, plasterkit, trimless` |
+
+`Module` is bij Kreon de PRODUCTNAAM van een inbouwspotsysteem. Een regel op `^module` zou
+minstens 232 echte armaturen hun waarden afnemen.
+
+**Het besluit gaat dus over 96 producten van Wever & Ducré, niet over ruim vierhonderd.** En ook
+die 96 zijn niet één stapel:
+
+| wat het werkelijk is | namen | landend | voorbeeld |
+|---|---:|---:|---|
+| module MET lichtspec | 93 | **93** | `LED MOD HV DIM LOW FLICKER 3000K W 8W 220-240V CRI90` |
+| kabel/connector | 3 | 0 | `LED MODULE CABLE 1000mm with connector on 1 end` |
+
+De drie kabels dragen geen waarde en landen dus toch al niet — die vallen buiten het besluit.
+**Timo beslist over 93 producten**, allemaal van dezelfde vorm: een LED-module met kelvin, CRI en
+wattage in de naam. Dat is één homogene vraag en geen stapel met drie soorten erin.
+
+De
+sprintmaster kwam op 419/391 met Kreon 323 erin; ook dat cijfer telt Kreons downlights mee. W&D
+is in alle drie de tellingen 96 en dat is het getal dat telt.
+
+⚠ Dit is de negende keer vandaag dat alleen de positie én de context een woord scheiden — en de
+eerste keer dat ik die fout maakte in de notitie waarin ik het patroon opschreef.
+
+**Niets van dit alles is gebouwd of gepubliceerd.**
+
+## Bugfix — `/catalog` crashte op "merk zonder zoektekst" (`ORDER BY position 0`)
+
+_2026-08-03. Eén bug, één bestand: `lib/repo/products.ts#searchProducts`. Gevonden door de
+2.5b-snelheidssessie, daar buiten scope gelaten. Deze sectie is door de sprintmaster van week 2
+onder die van week 3 gezet: de codecommits landden apart, de HANDOVER-tekst botste._
+
+**Wat er misging.** Twee sorteertermen zijn constanten zodra er geen zoektokens zijn:
+`matchCount` blijft de letterlijke `0` bij nul tokens (tokens zijn stukken van ≥2 tekens, dus
+een lege óf één-teken-zoektekst levert er nul op) en `prefixBonus` blijft `0` bij een lege
+zoektekst. Allebei gingen ze onvoorwaardelijk de `.orderBy()` in, wat rendert als
+`order by 0 desc, 0 desc, …`. Postgres leest een kale integer in ORDER BY als **kolompositie**,
+niet als waarde; positie 0 bestaat niet:
+
+```
+ERROR: ORDER BY position 0 is not in select list   (SQLSTATE 42P10)
+```
+
+Precies de twee invoeren die op `/catalog` het startpunt zijn — een merk kiezen, of één letter
+typen — gaven dus een 500. De exacte-SKU-tak en elke zoekopdracht van ≥2 tekens waren nooit
+geraakt, wat verklaart waarom dit zo lang bleef staan.
+
+**De fix.** Het afvangpatroon dat al in `lib/matching/engine.ts` (rond regel 550) staat, nu ook
+hier: een constante sorteerterm wordt **weggelaten**, niet vervangen. Bewust géén `sql`0::int``
+en géén dummy-kolom in de SELECT — één afvangpatroon in de codebase is het punt.
+
+```ts
+const orderTerms = [
+  ...(tokens.length > 0 ? [desc(matchCount)] : []),
+  ...(query.length > 0 ? [desc(prefixBonus), desc(score)] : []),
+  asc(visibleProducts.name),
+];
+```
+
+**`score` gaat mee op `query.length > 0`, en dat is gemeten.** `similarity(name, '')` is géén
+positionele verwijzing (het is een functieaanroep, dus het crashte niet), maar op PGlite gaf hij
+**0 voor élke rij** — een sorteersleutel die niets ordent. Bij één teken is hij wél betekenisvol
+(gemeten `similarity(name,'S')` = 0 / 0,038 / 0,05 over drie namen), dus de grens ligt bij de
+lengte van de zoektekst en niet bij het aantal tokens. Hiermee is de open observatie uit de
+2.5b-sectie ("de resterende tijd in de merk-alleen-tak zit in de sortering") afgehandeld.
+
+**IJzeren regels.** Regel 2: er is geen term bij gekomen, alleen weggelaten — de ordening blijft
+`#tokens → prefix → similariteit → naam`, prijsloos. Regel 3: de query leest onveranderd uit
+`visibleProducts`. Regel 5: het `search`-event ligt buiten de `if` en logt ook nu elke zoekactie,
+inclusief de merk-alleen-tak die eerder de functie liet klappen vóórdat er iets gelogd werd.
+
+**De 2.5b-index is nu pas bereikbaar.** Gemeten met `EXPLAIN (ANALYZE)` op een PGlite-set van
+**211.001 zichtbare producten** (productieformaat), merk-alleen-tak, `limit 40`:
+
+| variant | plan op `products` | tijd |
+| --- | --- | --- |
+| na de fix (`ORDER BY name`) | **Bitmap Index Scan on `products_brand_key_trgm_idx`** (5.276 rijen) | 214 ms |
+| index gedropt | Seq Scan, 205.725 rijen weggefilterd | 310 ms |
+
+Dus ja: de merk-alleen-tak pakt `products_brand_key_trgm_idx` en doet géén seq scan meer op
+`products`. Kanttekening bij de totaaltijden — die zijn PGlite/WASM, niet Neon, en de
+`products`-kant is er maar een deel van (58 ms mét index, 181 ms zonder).
+
+### Aannames en open eindes
+
+- **Niet tegen productie gemeten.** De EXPLAIN-cijfers komen van PGlite met de productie-migraties
+  en een synthetische set van 211k rijen (32 merken → 40 hier). De plankeuze is daarmee
+  aangetoond, de absolute milliseconden zijn indicatief. Wie het hard wil: dezelfde EXPLAIN op
+  Neon draaien ná de push.
+- **Nieuwe observatie, buiten deze scope gelaten:** in de merk-alleen-tak blijft er een
+  `Seq Scan on prices` over alle 211.001 rijen staan (~65 ms gemeten) omdat de view
+  `visible_products` de prijs-join altijd volledig maakt vóór het limiet. Dat is nu de grootste
+  post in die tak — groter dan de `products`-scan die 2.5b heeft weggenomen. Geen bug, geen
+  regel-3-risico (de poort werkt), maar wel de volgende meting waard.
+- **Geen RSC-render-test voor `/catalog` toegevoegd.** Die bestaat vandaag niet (alleen
+  `lib/repo/catalog.test.ts` op de repo-laag) en er een introduceren is een grotere ingreep dan
+  deze bug rechtvaardigt. De bug is afgevangen op de laag waar hij zit.
+
+### Testrun
+
+`bun vitest run`: **1500 groen**, 1 overgeslagen, 1 rood — `custom-fields` viel om onder volle
+belasting en is geïsoleerd 15/15 groen (bekende flaky, raakt niets uit dit blok).
+`bunx tsc --noEmit` schoon. De twee nieuwe tests in
+`lib/repo/products-ordening.test.ts` zijn eerst rood gezet op de ongewijzigde code — beide
+faalden op letterlijk `ORDER BY position 0 is not in select list` — en zijn groen na de fix.
+
+### Nagemeten door de sprintmaster
+
+De twee codecommits zijn los gepusht (`27e9524`, `b3cef12`); de fix is voor de push zelf
+geverifieerd: `lib/repo/products-ordening.test.ts` geïsoleerd gedraaid, 2/2 groen, en de fix is
+letterlijk het patroon uit `lib/matching/engine.ts`. Migraties 0017 en 0018 van 2.5b zijn op
+2026-08-03 tegen de database toegepast — alle zes indexen bestaan in `pg_indexes`, en de exacte
+SKU-tak meet daar `Index Scan using products_article_code_key_idx`, 0,059 ms.
+
+---
+
+## 2026-07-31 — Drie dingen uit de CLS-fix die niet in de commit passen
+
+### 1. `lib/repo/events.test.ts` faalt ongeveer één op de drie runs, ook op kale main
+
+*"recentEvents geeft de nieuwste rijen terug, meest recent eerst"* → `expected 'search' to be
+'match'`. Twee events landen in dezelfde milliseconde en dan is de volgorde van `ORDER BY
+created_at DESC` willekeurig. Drie runs aan beide kanten gemeten:
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| met de CLS-fix | ✓ | ✓ | ✗ |
+| kale origin/main | ✓ | ✓ | ✗ |
+
+Geen regressie, maar het gaat vroeg of laat een echte bevinding maskeren. Reparatie zou zijn: de
+twee events een verschillende `created_at` geven, of secundair op `id` sorteren.
+
+### 2. Mijn "precies twee waarden veranderen" was de smalle vraag
+
+Ik dumpte per product wat er LANDT (parser levert iets, kolom leeg, niet onderdrukt), vóór en ná,
+en vond 2 verschillen. Dat klopt. De sprintmaster dumpte wat de poort VOORSTELT, ongeacht de
+kolomstand, en vond er 835:
+
+    landend (kolom leeg)            2 verschillen  — de CLS-driver en de toeslagregel
+    voorgesteld (kolomstand buiten beschouwing)   835 — plus 834 XAL UNICO-bestelcodes
+
+Die 834: `UNICO-000 305W-B010-B010 … 12,6W 3000K` droeg vóór de reparatie twee wattages (305 én
+12,6), kreeg daarom `maxWattage:meerdere-waarden` en werd onderdrukt. Nu leest de parser er nog
+maar één en valt de vlag weg — dus van onderdrukt naar voorstelbaar. Ze landen vandaag nergens
+(0 van de 834 heeft een lege kolom, op de testkopie én op productie), en als ze ooit landen is
+12,6 het juiste getal. Geen risico, wél een gedragsverandering.
+
+**Dit is de tweede les van 30 juli, op mijn eigen meting toegepast:** hij droeg alleen de vraag
+die hij letterlijk stelde. "Wat verandert er aan de data" en "wat verandert er aan het gedrag van
+de poort" zijn niet dezelfde vraag, en ik presenteerde het antwoord op de eerste als het antwoord
+op allebei.
+
+### 3. De map `zwerm/` is weg — en dat is een ontwerpfout, geen ongeluk
+
+Alle 19 zwermuitslagen (scherven, antwoorden, antwoordsleutels) stonden ONGETRACKT in de worktree
+`relaxed-tereshkova-c27ac7`, en die is door een andere sessie hergebruikt. Nooit gecommit, dus
+niet terug te halen. Daarmee bestaat het bewijs over de rijen die Timo's steekproef níét dekte
+niet meer — alleen de conclusies in dit document.
+
+Wat er wél nog is: de gereedschappen op main (`zwerm-export`, `zwerm-lees`, `zwerm-overzicht`) en
+de runs in de database. Opnieuw draaien kan dus.
+
+⚠ **Wie dat doet: laat de uitvoer niet in een wegwerpmap landen.** Ongetrackte uitvoer in een
+worktree is geen bewijs, want bewijs dat kan verdwijnen is geen bewijs. De antwoordsleutel hoort
+buiten de scherfmap (dat is al zo) en de hele boom hoort buiten de worktree — of in git.
+
+---
+
+## 2026-08-04 — De regel boven de twee incidenten: werk dat maar op één plek bestaat
+
+> **Bestaat een stuk werk maar op één plek, dan is het al verloren — je weet het alleen nog niet.**
+> Dat geldt voor een map die niet in git staat, voor commits die alleen op een lokale branch staan,
+> en voor een meting die alleen in een gesprek genoemd is.
+
+Twee keer op één dag, en beide keren was de reparatie één commando dat pas achterāf voor de hand
+lag:
+
+| wat verdween | waar het alleen bestond | de reparatie |
+|---|---|---|
+| 19 zwermuitslagen (`zwerm/`) | ongetrackt in een worktree die hergebruikt werd | een symlink naar buiten elke worktree |
+| 2 ongepushte commits | een lokale branch, vóór een `reset --hard` | `git branch backup/xyz` vóór de reset |
+
+Wat ze duur maakte was niet de moeilijkheid van de reparatie maar dat niemand hem had opgeschreven
+vóór het misging. Vandaar dat deze regel boven de gevallen staat en niet eronder.
+
+## 2026-08-04 — Twee ongepushte commits verdwenen door `git reset --hard origin/main`
+
+Ik reset mijn branch routinematig naar `origin/main` om vanaf de verse hoofdlijn te beginnen. Dat
+gaat goed zolang alles gepusht is. Vanmiddag was dat niet zo:
+
+    dc61fce HEAD@{0}: commit: Gemeten en NIET gebouwd: de vastgeplakte typenaam …
+    55f55ee HEAD@{1}: reset: moving to origin/main      ← hier gingen ze weg
+    8add2f3 HEAD@{2}: commit: HANDOVER: de flaky events-test, de smalle meting …
+    2c69b35 HEAD@{3}: commit: CLS gedeblokkeerd: de W van W-DMX en de toeslagregel
+
+`2c69b35` en `8add2f3` stonden op de branch, waren **niet** gepusht (de droogloop lag nog bij Timo),
+en na de reset wees geen enkele branch er meer naar. De objecten bestonden nog — een reset gooit
+niets weg, hij verplaatst alleen de wijzer — maar ze stonden op de nominatie voor `git gc`. De
+sprintmaster zag het en zette ze veilig op `redding/ldc407-fix`; daarvandaan is verder gewerkt.
+
+**Wat dit is, en wat het niet is.** Het is niet "git is gevaarlijk": de reflog had ze dertig dagen
+bewaard en `git reset --hard ORIG_HEAD` zou genoeg zijn geweest. Het is dat ik een commando gebruik
+waarvan de veiligheid afhangt van een voorwaarde (alles is gepusht) die ik niet controleerde.
+
+**De regel die daaruit volgt:**
+
+> Reset nooit naar `origin/main` zolang er ongepushte commits op je branch staan. Wil je van de
+> verse hoofdlijn beginnen, maak dan éérst een branch op je huidige HEAD — `git branch backup/xyz`
+> kost niets en is de enige stap die dit onmogelijk maakt.
+>
+> Toets vooraf: `git log --oneline origin/main..HEAD` moet leeg zijn.
+
+**Dit is vandaag de tweede keer dat werk verdween omdat het maar op één plek stond.** Vanochtend de
+map `zwerm/` met alle 19 zwermuitslagen, ongetrackt in een worktree die hergebruikt werd; nu deze
+twee commits. Beide keren was de oorzaak identiek: **werk dat alleen bestond waar het toevallig
+gemaakt was.** De reparatie is beide keren dezelfde vorm — de zwermuitvoer staat nu buiten elke
+worktree, en een branch kost één commando.
+
+Dit hoort in dezelfde reeks als `scripts/safe-push.sh` uit week 1: dat script bestaat omdat vier
+keer een push ongewenst werk meestuurde. Zelfde klasse, andere richting — daar ging er te véél mee,
+hier verdween er te veel.
+
+### Naschrift bij de vastgeplakte typenaam: mijn onderbouwing was te breed
+
+Ik schreef "een regel zou 25 goede wattages opeten om er 2 te repareren". Dat klopte voor mijn
+BREDE regex (`[A-Za-z]{2,}\d+…W`, 29 treffers), maar niet voor een regel die iemand werkelijk zou
+bouwen: `MAX46W` en `Max8W` zijn woorden die een vermogen AANKONDIGEN en vallen sowieso buiten zo'n
+regel. Ik telde risico dat er niet was, en dat maakte mijn conclusie sterker dan de meting droeg.
+
+Met de strakke afbakening (≥3 letters, geen cijfer of `x` ervoor, zonder de aankondigers, mét
+decimaalteken in het getal) blijven er **vijf** over, en twee daarvan zijn correct:
+
+    19,5 W  SENSOR19,5W   ← klopt, het armatuur trekt 19,5 W
+    24,4 W  SENSOR24,4W   ← klopt
+       —    Componi200W   typenaam; waarde inmiddels op null gezet
+       —    Componi75W    typenaam; waarde inmiddels op null gezet
+     240 W  MOD240W       OPEN — `A.24 C POWER KITXRCS/C MOD240W`: kan een echt driververmogen
+                          zijn. Onderdeelvraag, geen leesfout; valt onder de staande lijn.
+
+Twee goede tegenover drie foute waarvan er twee al opgelost zijn. **Geen regel gebouwd, en de
+reden is die verhouding — te duur voor het ene geval dat overblijft.**
+
+⚠ Het decimaalteken is hier twee keer de valstrik geweest: een regex met `(\d{1,4})W` breekt op de
+komma in `SENSOR19,5W` en geeft een te schoon antwoord. Zelfde soort fout als een komma-regex die
+Kreons `1200-1650, 2700K` voor twee kelvinwaarden aanziet.
+## Sprint 2 — de twee laatste restjes van A6 (lege toestanden)
+
+_2026-08-03. Klein, afgebakend: de twee plekken die na de A6-veegbeurt nog hun eigen kale
+grijze regel neerzetten, plus het bijwerken van de flaky-lijst. Niets erbuiten._
+
+**Wat er om is.**
+
+| plek | variant | actie | waarom |
+|---|---|---|---|
+| `components/dossier/quote-view.tsx` (`lines.length === 0`) | `framed` | `action={null}` | Staat direct onder de `</header>` op het kale canvas van de estimate-tab; geen `<Card>` omheen die het kader al tekent. De `border-b` in de buurt zit ÓNDER de kop, niet om dit blok heen. |
+| `components/admin/brands-list-block.tsx` (`brands.length === 0`) | `inline` | `action={null}` | Zit ín `<CardContent>`; `framed` zou hier een gestreept kader binnen een kaart zetten. |
+
+**De twee `action={null}`'s zijn allebei nagekeken, niet aangenomen.**
+
+- **quote-view:** de uitweg is het Lines-tabblad, en dat staat als tab in de dossier-tabbalk
+  vlak boven het document (`components/dossier/dossier-tabs.tsx`, `base` = `/projects/[id]`).
+  `QuoteView` krijgt géén `dossierId` binnen — een knop zou een extra prop plus een tweede
+  route-opbouw kosten voor navigatie die twee centimeter hoger al staat. De verwijzing staat nu
+  in de `description`. Zelfde afweging als `dossier-list.tsx`.
+- **brands-list-block:** hier bestáát de knop wél. `app/admin/brands/page.tsx` zet
+  `<Button asChild><Link href="/admin/brands/new">New brand</Link></Button>` in de paginakop,
+  één blok hoger. Een tweede exemplaar in de lege toestand zou dezelfde route dubbel in beeld
+  zetten. De test bouwt die kop na en meet dat er precies één link naar `/admin/brands/new` op
+  het scherm staat, buiten de lege toestand — dat is het bewijs onder de keuze, geen bewering.
+
+**De bronscan is meegekrompen.** `components/ui/empty-state.test.tsx` houdt een `BEKEND_OPEN`-
+lijst bij die "alleen mag krimpen"; beide bestanden stonden erin als "blok 3, andere worktree".
+Die twee regels zijn weg. De tweede test daar (`de uitzonderingenlijst verjaart niet`) zou
+anders rood zijn gegaan — dat is het mechanisme dat precies hiervoor bestaat en het werkte.
+
+**Tests.** Twee nieuwe bestanden, elk met een eigen Screen zodat de bestaande PNG's niet
+invalideren (zelfde reden als de kop van `brand-admin.test.tsx`):
+`components/dossier/quote-view-leeg.test.tsx` en `components/admin/brands-list-leeg.test.tsx`.
+Ze meten niet "er staat tekst" — dat deed de kale grijze regel ook — maar `data-slot="empty-state"`,
+de juiste `data-variant`, dat framed écht geen kaart-voorouder heeft en inline écht wel én geen
+tweede rand tekent, dat `action={null}` geen lege actie-container achterlaat (2 kinderen), en dat
+de titel niet meer volledig op de secundaire kleur staat. Screenshots licht/donker ×
+mobiel/desktop, alle acht bekeken (23–39 KB, geen blanco captures).
+
+**Gemeld, NIET gerepareerd (Timo's regel).**
+
+- **`components/dossier/quote-view.tsx:79-87`** — het kopblok (`<dl>` met `grid-cols-2` op
+  mobiel) laat een lang e-mailadres tegen de buurcel aanlopen: op 375px leest de screenshot
+  `hello@noplasticfloralfoam.com2026-08-07`, zonder spatie tussen "Author" en "Valid until".
+  Zichtbaar in `components/dossier/estimate-leeg.dark.mobile.test.png`. Pre-existent, raakt de
+  lege toestand niet.
+- **`components/admin/brands-list-block.tsx`** — de lege toestand kent het verschil niet tussen
+  "nog geen merken" en "het filter geeft niets". Bij `?q=xyz` staat er nu "No brands yet." terwijl
+  er 437 merken zijn. `dossier-list.tsx` heeft dit opgelost met een `emptyMessage`-prop; hier zou
+  dat dezelfde ingreep zijn. Bestond al vóór deze omzetting (de oude kale regel zei letterlijk
+  hetzelfde) en de `BrandFilterBar` erboven telt wél "0 of 437 brands", dus de context staat op
+  het scherm. Buiten scope gelaten.
+- **Nog open uit `BEKEND_OPEN`:** elf kale grijze lege toestanden over zeven bestanden
+  (`spec-line-table` 1, `werkvoorbereider-view` 2, `deviation-table` 1, `enrichment-panels` 3,
+  `price-list-status` 1, `custom-fields-table` 1, `analytics-view` 2), plus twee grensgevallen
+  waarover het besluit nog niet genomen is. Dat is veegbeurt 2 en stond al op de lijst.
+
+**Eén echte regressie onderweg, door mezelf veroorzaakt en gerepareerd.** De eerste versie van
+het commentaar in `brands-list-block.tsx` noemde de knop uit de paginakop bij zijn letterlijke
+tag. `components/knophierarchie.test.tsx` scant ruwe broncode met `/<Button\b/g` en **stript geen
+commentaar**, dus die genoemde tag telde mee als tweede primary van `/admin/brands` — precies de
+regel die het commentaar stond uit te leggen. Zichtbaar als "`/app/admin/brands/page.tsx` heeft 2
+primaries", waarvan de tweede naar een commentaarregel wees. Tag uit het commentaar gehaald, en
+er staat nu een waarschuwing bij voor de volgende die daar iets uitlegt. Waard om te weten voor
+elke sessie die knoppen documenteert in commentaar.
+
+**Testrun.** Twee volle runs, en ze illustreren de regel hierboven precies.
+
+Run 1 (vóór de knophierarchie-fix): **1809 groen**, 1 overgeslagen, **6 rood**. Eén daarvan was
+echt (knophierarchie, hierboven beschreven, ook geïsoleerd rood). De andere vijf waren alle vijf
+geïsoleerd groen: `custom-fields` 15/15 · `data-screens` 49/49 · `pdf-upload` 48/48 ·
+`activate` 17/17 · `huisstijl` 23/23.
+
+Run 2 (na de fix, de stand van deze commits): **1813 groen**, 1 overgeslagen, **2 rood** —
+`components/data/custom-fields.test.tsx` en `lib/repo/events.test.ts`. Allebei staan ze in de
+flaky-tabel; `custom-fields` is geïsoleerd 15/15 groen, en `events` is het structurele geval
+waar isolatie niets bewijst (de `created_at DEFAULT now()`-race, al gedocumenteerd). Dezelfde
+commit, andere verzameling rood dan run 1 — dat is de load-gevoeligheid, niet de code.
+
+`bunx tsc --noEmit` schoon op beide.
+
+**Observatie voor de flaky-lijst:** `components/huisstijl.test.tsx` (`specimen bediening (light,
+mobile)`) viel in run 1 om en staat nog nergens vermeld; `activate` stond alleen in de
+load-gevoeligheidstabel van sprint 3.1, niet in de flaky-lijst. Allebei geïsoleerd groen, en in
+run 2 allebei groen in de volle suite. Niet aan de tabel toegevoegd omdat één waarneming te
+weinig is voor een lijst die "alleen mag krimpen" — maar de volgende die ze ziet, weet nu dat
+het niet de eerste keer is.
+
+**Aanname.** `variant="framed"` staat in `quote-view.tsx` expliciet geschreven terwijl het de
+default is. De twee naaste precedenten (`dossier-list.tsx`, `quote-view-extern.tsx`) laten hem
+weg en documenteren de keuze in een comment. Expliciet gekozen omdat de test op `data-variant`
+meet en de keuze dan greppable is; wie dat liever anders ziet, haalt het attribuut weg zonder
+gevolg voor het gedrag.
+
+### Flaky-lijst samengevoegd
+
+Het kopje "Bekend en niet gerepareerd" (sprint 1.8) noemde drie wisselvallige tests. Er staat nu
+één tabel met alle zes — `brand-message`, `brand-admin`, `custom-fields`, `data-screens`, `events`,
+`pdf-upload` — met de vaste regel erboven: **rood in de volle run betekent eerst geïsoleerd
+hertesten, dan pas melden als kapot.** De losse vermeldingen elders in dit bestand zijn blijven
+staan en worden vanuit de tabel aangewezen; daar staat meer context dan in een tabelrij past.
+`events` is daarbij expliciet als uitzondering gemarkeerd: die is structureel ongedefinieerd
+(`created_at DEFAULT now()` + assertie op `DESC`-volgorde), niet load-gevoelig, dus groen in
+isolatie bewijst er niets.
+---
+
+# Sprint 3.2a — Externe toegang: route-allowlist + org-scoping (3 aug 2026)
+
+**Gebouwd, getest, NIET gepusht en NIET gedeployd.** Zes commits op deze branch. Het ontwerp
+met alle redenen staat in `docs/plan-3-2a-externe-toegang.md`.
+
+## Wat er nu staat
+
+Twee muren, twee mechanismen — los van elkaar zijn ze allebei lek.
+
+| | vraag | mechanisme |
+|---|---|---|
+| **Routes** | mag dit account deze URL openen? | `ROUTE_NIVEAUS` in `lib/route-allowlist.ts` + `bewaakRoute()` per route |
+| **Rijen** | welke projecten ziet het daarbinnen? | verplichte `DossierScope` op de vier leesdeuren van `project_dossiers` |
+
+Vier niveaus: `open` (alleen `/login`, `/activate`, `/api/auth`), `iedereen`, `org_admin`,
+`intern`. Weigeren is `notFound()` — wie er niet bij mag hoort ook niet te weten dát de route
+bestaat. Elke weigering gaat als `route_denied` de events-tabel in (regel 5).
+
+Deny-by-default zit op drie plekken en niet in een goede bedoeling:
+1. `Route = keyof typeof ROUTE_NIVEAUS` — een route die niet in de tabel staat is een
+   **typefout**, geen stille doorgang.
+2. `lib/route-allowlist.test.ts` leidt uit élk `page.tsx`/`route.ts` de route af en eist dat
+   het bestand precies díé route bewaakt. Een nieuwe route zonder regel is rood.
+3. De vier leesdeuren nemen de scope als **verplichte parameter**; vergeten compileert niet.
+   `lib/repo/dossier-scope.test.ts` scant op een vijfde deur.
+
+## Drie besluiten die ik heb genomen — toets ze
+
+Alle drie staan met de reden erbij in de code, en alle drie zijn één regel terug te draaien.
+
+1. **`/admin/users` staat op `org_admin`, niet op `intern`.** De acceptatie-eis noemt `/admin`
+   letterlijk bij de geweigerde routes, en mijn eerste versie volgde dat. Dat bleek fout: de
+   dérde acceptatie-eis zegt óók *"uitnodigen alleen admin"*, en besluit G36 (30 jul — ná de
+   zin over /admin) heeft precies dat gebouwd. Dichtzetten maakte die hele tak onbereikbaar,
+   inclusief de veertien aanvals-tests in `app/admin/users/issue-pin-authz.test.ts` die bewijzen
+   dat hij houdt. **De testsuite wees dit aan, niet ik.** Wát een externe beheerder daar ziet is
+   wél gescoped: de ledenlijst toont alleen zijn eigen organisatie(s) — dat was het open eind
+   dat in dit document stond. De rest van `/admin` is onveranderd intern.
+2. **`/settings` staat op `iedereen`.** Externen daar weigeren betekent dat ze hun eigen
+   wachtwoord niet kunnen wijzigen — precies wat 3.1 vorige week opleverde. De interne blokken
+   (toegelaten adressen, LLM-budget, XIS-sleutel) renderen alleen voor intern.
+3. **Een project zónder `org_id` is alleen voor intern zichtbaar**, en `createDossier()` zet
+   voortaan de organisatie van de maker. Tot nu toe zette hij hem helemaal niet: migratie 0019
+   koppelde de 13 bestaande dossiers aan brink-licht, en het veertiende viel er weer uit.
+
+## Wat ik buiten de opdracht heb meegenomen (en waarom)
+
+- **`saveBrandingAction`** — de opdracht vroeg erom. `setOrgBranding()` in de schrijflaag,
+  `setBrandingAsActor()` als poort ervoor, in de vorm van G39. `BEKENDE_SCHULD` in
+  `lib/repo/authz-deuren.test.ts` is **leeg**, met een test die dat vasthoudt.
+- **`createOrgAction`** stond achter alleen `requireSession()` — dezelfde deur, dus meteen mee.
+  Nu intern-only. Wie een organisatie kan aanmaken, kiest straks (G42) ook het type, en
+  `type='intern'` is per G36-regel 1 almachtig.
+- **`/products/[id]`** leidde `internal` af uit *"er is een sessie"*. Sinds 3.1 kan er een sessie
+  zijn die niet van Brink is, en die zag onvoorwaardelijk de tier-2-prijs — ijzeren regel 1 in
+  zijn kern. Komt nu uit het org-type. Het commentaar in dat bestand kondigde deze wissel zelf
+  al aan ("zodra het rollenmodel er is").
+- **De hoofdbalk** filtert nu op dezelfde allowlist. Zonder dat houdt een extern account vijf
+  links die allemaal op een 404 uitkomen.
+- **`db/schema.ts`**: `.references()` op `project_dossiers.org_id`. De database hád de constraint
+  (`0005_h2_h3.sql:34-35`); Drizzle kende hem niet. ⚠️ **Het DROP-risico uit de briefing heb ik
+  NIET kunnen toetsen** — `drizzle-kit generate` draaien tegen een database is precies wat hier
+  niet mag, en de snapshots stoppen bij 0003 (alles vanaf 0004 is handgeschreven). Wat ik wél
+  weet: de declaratie klopt nu met de database, dus de aanleiding voor een DROP is weg.
+
+## Aannames en open eindes
+
+- **`primaireOrgId` is `null` bij een extern account in méérdere organisaties**, en dan weigert
+  `createDossierAction` het project. Vandaag bestaat dat geval niet (één organisatie). Liever
+  geen project dan een project in de verkeerde organisatie — maar het is een gok over een
+  situatie die er nog niet is.
+- **Rate limiting is er niet.** De briefing liet het vrij "als het de allowlist niet vertroebelt".
+  Het vertroebelt hem: het is een andere vraag (hoe váák) op een andere as (per IP/account, niet
+  per organisatie). Blijft open.
+- **`lib/repo/analytics-tiles.ts` is niet aangesloten.** De `orgId`-parameter staat er nog steeds
+  klaar; `/analytics` staat op `intern`, dus er is vandaag geen kijker die hem zou meegeven.
+  Zodra er een externe analytics-weergave komt, is dát de plek — niet een tweede mechanisme.
+- **`lib/ai/vangnet.ts:707`** leest de fase van een dossier zonder scope. Het draait vanuit een
+  action die al door `bewaakProject()` is gekomen, dus het is een vervolgstap en geen ingang.
+  Staat met die reden in de uitzonderingslijst van `lib/repo/dossier-scope.test.ts`.
+- **`ALLE_DOSSIERS`** is de ontsnapping, voor migraties, seeds en tests. De scan meldt élk gebruik
+  ervan in `app/`, `components/` en niet-test-`lib/`.
+
+## De suite
+
+`bunx tsc --noEmit` schoon. Drie volle runs op deze branch: **2, 2 en 2 rood van 1896**, maar niet
+steeds dezelfde twee. Constant is alleen `components/data/custom-fields.test.tsx > "archiveren
+zonder VERSE telling"` — de bekende uit de briefing. De tweede wisselde per run
+(`activate zwak wachtwoord (dark, mobile)`, daarna `pdf-upload > project-ocr-done-failures`) en
+slaagt telkens in isolatie.
+
+**Nagemeten in plaats van aangenomen.** Ik heb een wegwerp-worktree op een kale `origin/main`
+gezet en daar dezelfde volle suite gedraaid: **run 1 gaf 1 rood, run 2 gaf 23 rood** — op
+identieke code, inclusief precies die `activate zwak wachtwoord (dark, mobile)` waar ik over
+twijfelde, plus login, catalog, password-block en empty-state. De flakiness uit de briefing is dus
+echt en **erger dan daar beschreven** (3/2/9 → nu 1/23). Conclusie: de tweede rode test op deze
+branch is een belastingsverschijnsel en geen regressie. Wie hier een rode test ziet die niet
+`custom-fields` heet: draai hem eerst in isolatie.
+
+⚠️ Deze branch voegt ~94 tests toe (1802 → 1896), dus de belasting waaronder die screenshot-tests
+omvallen is met dit werk toegenomen. De onderliggende breekbaarheid is niet van 3.2a, maar wie hem
+gaat repareren heeft nu een iets scherpere aanleiding.
+
+Screenshots (light/dark × mobile/desktop) van de twee standen die deze sprint maakt:
+`components/settings/settings-toegang.*.test.png` en `components/site-nav.extern.*.test.png`.
+
+⚠️ **`origin/main` is tijdens deze sessie doorgelopen** (van `a3d6d1c` naar `97b3c01`). Deze
+branch staat op `a3d6d1c`; rebasen vóór het pushen.
+
 ## TypeScript 7 (goal-typescript-7, 5 aug)
 
 De codebase draait op **TypeScript 7.0.2** — de native (Go) compiler. `tsc --noEmit` is schoon
@@ -1912,6 +5051,5 @@ en het schema · dev-server rendert `/login` zonder console-fouten · `bun.lock`
   TS 5/6 draaien werkend.
 - **`@types/node` blijft op ^20** (26 is beschikbaar) en `target` blijft `ES2017` — allebei
   onafhankelijk van de compilerwissel, niet meegenomen.
-- **De lokale `main` liep bij aanvang 10 commits achter op `origin/main`** (sprint 3.2a +
-  health-endpoint) en 5 vooruit. Deze migratie is gemeten op de lokale boom; na het samenvoegen
-  moeten `tsc --noEmit` en `next build` opnieuw langs de code uit die 10 commits.
+- **De migratie is gemeten op een lokale boom die 252 commits achterliep op `origin/main`**
+  (t/m sprint 3.2a + health-endpoint). Direct erna samengevoegd — zie de merge-notitie hieronder.

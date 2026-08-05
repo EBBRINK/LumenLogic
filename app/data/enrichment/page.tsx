@@ -12,11 +12,11 @@ import {
   listEnrichableBrands,
   listEnrichmentRuns,
 } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
 import { startRunAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function VerrijkingPage() {
-  await requireSession();
+  await bewaakRoute("/data/enrichment");
   const [brands, runs] = await Promise.all([
     listEnrichableBrands(db),
     listEnrichmentRuns(db),
@@ -32,7 +32,7 @@ export default async function VerrijkingPage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

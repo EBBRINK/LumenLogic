@@ -74,6 +74,15 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per scherm — iets uit de gerenderde ImportProposal zelf, niet uit de
+// <Screen>-wrapper hierboven. `expect.element` retryt en wacht dus de RSC-stream af.
+// Zonder dit anker was `expect.element(document.body)` de enige assertie in deze acht
+// tests, en die blijft groen als de component niets rendert.
+const anchors: Record<keyof typeof screens, string | RegExp> = {
+  "import-ocr": "onleesbaar", // productText van de onzekere derde OCR-rij
+  "import-csv": "Laser Blade", // productText van de tweede CSV-rij
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -81,7 +90,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof screens]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
@@ -154,3 +165,46 @@ test("de annuleer-knop is aanwezig — niets opgeslagen tot bevestigen", async (
     .element(page.getByRole("button", { name: /Cancel import/i }))
     .toBeInTheDocument();
 });
+
+// Reviewzwerm 2.5a C1: een import zonder herkende regels stond op een kale grijze regel —
+// het dialect dat components/ui/empty-state.tsx afschaft. De assertie hangt aan
+// `data-slot="empty-state"` en niet aan de zin: alleen zo bewijst hij dat het GEDEELDE
+// component rendert en niet dat er toevallig dezelfde woorden staan.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`nul herkende regels: de gedeelde lege toestand, framed, zonder eigen actie (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <ImportProposal
+            dossierId="d3" runId="r3" source="ocr" confidence="laag"
+            filename="onleesbaar.pdf"
+            rows={[]} confirmAction={noopAction} cancelAction={noopAction}
+          />
+        </Screen>,
+      );
+      await expect
+        .element(page.getByText("No lines recognized in this source."))
+        .toBeInTheDocument();
+
+      const leeg = document.querySelector<HTMLElement>('[data-slot="empty-state"]');
+      expect(
+        leeg,
+        "geen [data-slot=empty-state]: terug op de kale grijze regel",
+      ).not.toBeNull();
+      // "framed": het blok staat los in het formulier op het kale canvas, geen <Card>.
+      expect(leeg!.dataset.variant).toBe("framed");
+      expect(leeg!.className).toContain("border-dashed");
+      // Bewuste `action={null}`: alleen de titel, geen leeg actie-blok en geen tweede
+      // annuleerknop — die staat in de voettekst van hetzelfde formulier.
+      expect(leeg!.children.length).toBe(1);
+      expect(leeg!.querySelector("form")).toBeNull();
+      await expect
+        .element(page.getByRole("button", { name: /Cancel import/i }))
+        .toBeInTheDocument();
+
+      await page.screenshot({ path: `./import-leeg.${theme}.${device}.test.png` });
+    });
+  }
+}

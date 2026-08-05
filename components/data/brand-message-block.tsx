@@ -5,6 +5,7 @@
 // (expliciete gebruikersactie — geen ruis bij elke page-load), via de meegegeven action.
 import { useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function BrandMessageBlock({
   brandId,
@@ -50,18 +51,17 @@ export function BrandMessageBlock({
         className="w-full resize-y rounded-md border border-foreground/15 bg-background p-3 font-mono text-sm leading-relaxed text-foreground"
       />
       <div className="mt-2 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={kopieer}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
+        {/* Outline, geen navy vlak: kopiëren naar het klembord verandert niets aan de
+            gegevens. De primary van dit scherm is Save in het relatieformulier
+            (DESIGN.md §6). */}
+        <Button type="button" variant="outline" onClick={kopieer}>
           {gekopieerd ? (
             <Check className="size-4" aria-hidden />
           ) : (
             <Copy className="size-4" aria-hidden />
           )}
           {gekopieerd ? "Copied" : "Copy message"}
-        </button>
+        </Button>
         <span className="text-xs text-muted-foreground">
           Paste the message into your email and attach the Excel template.
         </span>

@@ -170,3 +170,61 @@ test("b3 hermatch: variant-flag blijft óók staan als de uitkomst niet geel is"
   expect(saved.reviewKind).toBe("variant"); // bewaard — niet door de hermatch gewist
   expect(saved.matchedProductId).toBeNull(); // groen wordt nooit automatisch gekozen
 });
+
+// A2 (reviewzwerm 2.5a), de persistente kant van het gat tussen Gat B en B3: een
+// kandidaat die op ónze afgeleide optiekcode leunt zakt naar lijst 2, maar werd door
+// pickUnambiguousYellow alsnog automatisch geaccepteerd — matched gezet, reviewKind
+// null, en de regel telde geel mee in het projecttotaal zónder dat een mens hem zag.
+test("A2: gele kandidaat op een onbevestigde bron wordt niet auto-geaccepteerd maar gereviewd", async () => {
+  const db = await createTestDb();
+  const { productId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 RD WF CRI90 ADJ DALI 24,7W cob LED 3000K",
+    beamAngle: 57, // WF ≈ 57° uit onze eigen vertaaltabel
+    kelvin: 3000,
+  });
+  const schema = await import("@/db/schema");
+  await db
+    .update(schema.products)
+    .set({ tier2Source: { beamAngle: "optic-code" } })
+    .where(eq(schema.products.id, productId));
+
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Onbevestigd" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lp302",
+      brandText: "XAL",
+      productText: "SASSO 100",
+      reqBeamAngle: "40", // 17° verschil → geel
+      reqKelvin: 3000,
+    })
+    .returning();
+
+  const outcome = await runMatcher(db as TestDb, line.id, "tester");
+  expect(outcome.unambiguousYellow).toBeUndefined();
+
+  const [saved] = await db.select().from(specLines).where(eq(specLines.id, line.id));
+  // vóór de fix: matchedProductId gezet, reviewKind null, chosenBy "system:auto"
+  expect(saved.matchedProductId).toBeNull();
+  expect(saved.reviewKind).toBe("geel"); // de mens beslist
+  const chosen = await db
+    .select()
+    .from(specLineCandidates)
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, line.id),
+        eq(specLineCandidates.chosen, true),
+      ),
+    );
+  expect(chosen.length).toBe(0);
+  const evts = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "near_match_auto_accepted"));
+  expect(evts.length).toBe(0);
+});

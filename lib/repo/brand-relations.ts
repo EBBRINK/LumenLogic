@@ -11,7 +11,7 @@
 //   • K8: brands.brand_code is niet uniek (bv. L052 dubbel) — merken die een code
 //     delen krijgen een dubbele-code-markering, zodat niemand dubbel belt.
 
-import { asc, eq, sql, type SQL } from "drizzle-orm";
+import { asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   brandRelations,
   brands,
@@ -195,12 +195,27 @@ function completenessSelection(
     }
     selection[field.key] = sql`count(*) filter (where ${sql.raw(`"${column}"`)} is not null)`;
   }
-  // Prijs: EXISTS op prices ⨝ price_lists — sinds 1.6-A ongeacht valid_until (dit
-  // meet aanlevering, niet geldigheid; de join blijft staan, maar de datum wordt
-  // niet meer als filter gebruikt). Nooit het bedrag (regel 2).
+  // Prijs: EXISTS op prices — sinds 1.6-A ongeacht valid_until (dit meet aanlevering,
+  // niet geldigheid). Nooit het bedrag (regel 2).
+  //
+  // 2.5b: de `join price_lists pl on pl.id = pr.price_list_id` die hier tot nu toe stond
+  // is WEG. Sinds 1.6-A werd er niets meer uit `pl` gelezen en niets op gefilterd, en de
+  // join kon ook geen rij meer wegnemen: `prices.price_list_id` is NOT NULL en draagt een
+  // gevalideerde foreign key naar `price_lists.id` (primary key), dus élke prijsrij heeft
+  // per constructie exact één lijst. De EXISTS is er dus letterlijk hetzelfde van — maar
+  // hij draait per productrij, en dat maakte de join wél duur.
+  //
+  // Gemeten op productie (EXPLAIN ANALYZE, BUFFERS), zwaarste merkrelaties-pagina
+  // (25 merken, 65.850 producten): 330 ms → 212 ms. De join was goed voor 263.400 van de
+  // 526.801 buffers in het subplan, alleen aan `Heap Fetches: 65850` op price_lists.
+  // Dat de uitkomst gelijk blijft staat vast in lib/repo/brand-relations.test.ts.
+  //
+  // ⚠️ Dit is GEEN zichtbaarheidspoort. Ijzeren regel 3 leeft in `visible_products`; deze
+  // functie raakt die view niet en heeft hem nooit geraakt. Zet hier dus ook geen
+  // datumfilter terug "voor de veiligheid" — dat zou compleetheid stil in geldigheid
+  // veranderen, precies wat 1.6-A ongedaan maakte.
   selection[PRICE_FIELD_KEY] = sql`count(*) filter (where exists (
     select 1 from ${prices} pr
-    join ${priceLists} pl on pl.id = pr.price_list_id
     where pr.product_id = ${sql.raw('"products"."id"')}
   ))`;
   return selection;
@@ -259,15 +274,27 @@ export async function getBrandCompleteness(
 
 // Voor het overzicht: alle merken mét producten in één query (geen N+1).
 // Merken zonder producten ontbreken in de map — de UI toont daar "n.v.t.".
+//
+// `brandIds` (UX-audit 30 jul, bak 2 item 10) beperkt de scan tot een gegeven set merken.
+// Zonder die grens leest deze query élke productrij (~210k) en telt hij per rij 66+
+// `count(*) filter (…)`-uitdrukkingen — dat is waar dit scherm zijn traagheid vandaan
+// haalt. Het overzicht paginéért sinds die audit en heeft de cijfers alleen nodig voor de
+// merken die op het scherm staan (≤ BRAND_RELATIONS_PAGE_SIZE), dus daar gaat de filter
+// op de brand_id-index in plaats van een volledige tabelscan.
+// Lege array = geen merken gevraagd → lege map, zónder de database aan te raken (een kale
+// `in ()` is bovendien geen geldige SQL).
 export async function getAllBrandCompleteness(
   db: AppDb,
   catalogus?: readonly CatalogBucket[],
+  brandIds?: readonly string[],
 ): Promise<Map<string, BrandCompleteness>> {
+  if (brandIds && brandIds.length === 0) return new Map();
   const cat = catalogus ?? (await laadCatalogus(db));
-  const rows = (await db
-    .select(completenessSelection(cat))
-    .from(products)
-    .groupBy(products.brandId)) as Record<string, unknown>[];
+  const base = db.select(completenessSelection(cat)).from(products);
+  const rows = (await (brandIds
+    ? base.where(inArray(products.brandId, [...brandIds]))
+    : base
+  ).groupBy(products.brandId)) as Record<string, unknown>[];
   const map = new Map<string, BrandCompleteness>();
   for (const row of rows) {
     const brandId = String(row.brand_id);
@@ -333,4 +360,70 @@ export async function upsertBrandRelation(
   }
 
   return row;
+}
+
+export type BulkStatusResult = {
+  /** Merken waarvan de status daadwerkelijk veranderde. */
+  changed: number;
+  /** Merken die de gevraagde status al hadden — aangeraakt, maar niet gewijzigd. */
+  unchanged: number;
+};
+
+// BULK (UX-audit 30 jul, bak 2 item 10): N merken in één keer op dezelfde status.
+// Zelfde schrijfregels als upsertBrandRelation — ON CONFLICT op brand_id, dus race-vrij,
+// en reads blijven virtueel — maar één INSERT met N waarden in plaats van N losse rondes.
+//
+// Ijzeren regel 5 op twee niveaus, en dat is met opzet:
+//  • per merk 'brand_relation_status_changed' {from, to}, precies zoals bij één rij, zodat
+//    de merkgeschiedenis niet afhangt van het toevalligeandere pad waarlangs het ging;
+//  • één 'brand_relation_status_bulk_set' met {status, requested, changed} — anders is
+//    achteraf niet te zien dat dit één menselijke handeling was en geen 25 losse.
+// Merken die de status al hadden krijgen géén event: 'changed' zou dan liegen.
+export async function bulkSetBrandRelationStatus(
+  db: AppDb,
+  brandIds: readonly string[],
+  status: BrandRelationStatus,
+  actor?: string,
+): Promise<BulkStatusResult> {
+  // Dubbele ids uit de UI (of uit een geknutselde POST) mogen de ON CONFLICT-clausule
+  // niet twee keer dezelfde rij laten raken: Postgres weigert dat binnen één statement.
+  const ids = [...new Set(brandIds)].filter((id) => id.length > 0);
+  if (ids.length === 0) return { changed: 0, unchanged: 0 };
+
+  const bestaand = await db
+    .select({ brandId: brandRelations.brandId, status: brandRelations.status })
+    .from(brandRelations)
+    .where(inArray(brandRelations.brandId, ids));
+  const huidig = new Map(bestaand.map((r) => [r.brandId, r.status]));
+
+  await db
+    .insert(brandRelations)
+    .values(ids.map((brandId) => ({ brandId, status })))
+    .onConflictDoUpdate({
+      target: brandRelations.brandId,
+      set: { status, updatedAt: new Date() },
+    });
+
+  let changed = 0;
+  for (const brandId of ids) {
+    const from: BrandRelationStatus = huidig.get(brandId) ?? "niet_benaderd";
+    if (from === status) continue;
+    changed += 1;
+    await logEvent(db, {
+      entity: "brand",
+      entityId: brandId,
+      action: "brand_relation_status_changed",
+      actor,
+      payload: { from, to: status, bulk: true },
+    });
+  }
+
+  await logEvent(db, {
+    entity: "brand",
+    action: "brand_relation_status_bulk_set",
+    actor,
+    payload: { status, requested: ids.length, changed },
+  });
+
+  return { changed, unchanged: ids.length - changed };
 }

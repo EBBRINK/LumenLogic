@@ -78,7 +78,7 @@ async function seedWorld(db: TestDb) {
     name: "Wever & Ducré",
     slug: "wever-ducre",
   });
-  const dossier = await createDossier(db, { name: "Deerns beeldboek" });
+  const dossier = await createDossier(db, { orgId: null, name: "Deerns beeldboek" });
   return dossier.id;
 }
 
@@ -265,7 +265,7 @@ test("regel die de matcher op geel zet houdt reviewKind 'geel' (niet 'ocr')", as
     kelvin: 3000,
     maxWattage: 14,
   });
-  const dossier = await createDossier(db, { name: "Geel blijft geel" });
+  const dossier = await createDossier(db, { orgId: null, name: "Geel blijft geel" });
   const { run } = await startOcrRun(db, {
     dossierId: dossier.id,
     filename: "boek.pdf",
@@ -891,7 +891,7 @@ test("mens-gekozen match die na de upgrade nog steeds klopt: matchedProductId bl
     cri: 90,
     maxWattage: 17.9,
   });
-  const dossier = await createDossier(db, { name: "Nog steeds geldig na upgrade" });
+  const dossier = await createDossier(db, { orgId: null, name: "Nog steeds geldig na upgrade" });
   const { run } = await startOcrRun(db, {
     dossierId: dossier.id,
     filename: "boek.pdf",
@@ -975,7 +975,7 @@ test("mens-gekozen match die na de upgrade nog steeds klopt: matchedProductId bl
 // (gelimiteerde) kandidatenlijst van runMatcher.
 test(">8 kandidaten voor hetzelfde merk/token: een mens-gekozen match buiten de top-8 blijft staan", async () => {
   const db = await createTestDb();
-  const dossier = await createDossier(db, { name: ">8 kandidaten" });
+  const dossier = await createDossier(db, { orgId: null, name: ">8 kandidaten" });
 
   // 9 decoys matchen BEIDE producttext-tokens ("SASSO" én "100") → matchCount=2,
   // en vullen daarmee gegarandeerd de volledige top-8 van fetchCandidates
@@ -1104,7 +1104,7 @@ test("stillValid met een gele afwijking (watt binnen tolerantie, niet exact): st
     kelvin: 3000,
     maxWattage: 12,
   });
-  const dossier = await createDossier(db, { name: "Stillvalid-maar-geel" });
+  const dossier = await createDossier(db, { orgId: null, name: "Stillvalid-maar-geel" });
   const { run } = await startOcrRun(db, {
     dossierId: dossier.id,
     filename: "boek.pdf",

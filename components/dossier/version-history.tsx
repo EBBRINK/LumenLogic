@@ -4,6 +4,9 @@
 // datasheets (G-04). Esthetiek = eerlijkheid: rustige tinten, onopgeloste regels blijven
 // zichtbaar met hun status, niets telt op tot iets misleidends.
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -109,7 +112,7 @@ function SnapshotForm({
         type="text"
         name="note"
         placeholder="Note (optional) — e.g. after customer revision"
-        className="h-8 w-64 max-w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+        className={cn(veldClass, "w-64 max-w-full")}
       />
       <Button type="submit" size="sm">
         Save new version
@@ -146,7 +149,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
                     {c.location ? (
                       <span className="text-muted-foreground"> · {c.location}</span>
                     ) : null}
-                    <span className="text-amber-700 dark:text-amber-400">
+                    <span className="text-status-amber-ink">
                       {" "}
                       — {fieldLabels(c.fields)}
                     </span>
@@ -162,7 +165,7 @@ function DiffPanel({ diff }: { diff: VersionDiffView }) {
               </p>
               <ul className="mt-1 flex flex-col gap-1">
                 {diff.added.map((r) => (
-                  <li key={r.fixtureCode} className="text-emerald-700 dark:text-emerald-400">
+                  <li key={r.fixtureCode} className="text-status-green-ink">
                     <span className="font-medium">{r.fixtureCode}</span>
                     {r.location ? (
                       <span className="opacity-80"> · {r.location}</span>
@@ -275,6 +278,11 @@ export function VersionHistory({
   diff: VersionDiffView | null;
   snapshotAction: Action;
 }) {
+  // UX-audit 30 jul, A7: het "Save new version"-formulier stond bóven het kader dat
+  // uitlegt dat er nog niets is — de lege toestand wees dus naar boven. Bij leeg staat
+  // er nu alleen de lege toestand, mét het formulier erín; het formulier keert pas
+  // terug in de kop zodra er minstens één versie is.
+  const empty = versions.length === 0;
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -285,17 +293,19 @@ export function VersionHistory({
             so every change can be found and compared.
           </p>
         </div>
-        <SnapshotForm dossierId={dossierId} snapshotAction={snapshotAction} />
+        {!empty && (
+          <SnapshotForm dossierId={dossierId} snapshotAction={snapshotAction} />
+        )}
       </div>
 
-      {versions.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-8 text-center">
-          <p className="font-medium">No versions saved yet.</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            Save the first version once the luminaire schedule is ready for the
-            construction site. The lines — product, specs and location — are frozen.
-          </p>
-        </div>
+      {empty ? (
+        <EmptyState
+          title="No versions saved yet."
+          description="Save the first version once the luminaire schedule is ready for the construction site. The lines — product, specs and location — are frozen."
+          action={
+            <SnapshotForm dossierId={dossierId} snapshotAction={snapshotAction} />
+          }
+        />
       ) : (
         <>
           {diff && <DiffPanel diff={diff} />}

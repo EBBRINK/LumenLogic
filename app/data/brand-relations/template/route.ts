@@ -7,9 +7,10 @@ import { buildMasterTemplateXlsx, TEMPLATE_FILENAME } from "@/lib/excel-template
 import { laadCatalogus, listEigenVelden } from "@/lib/repo/custom-fields";
 import { logEvent } from "@/lib/repo/events";
 import { getActor, requireSession } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export async function GET() {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations/template");
 
   // De COMPLETE catalogus, inclusief Stefans eigen velden. Deze route is het enige moment
   // waarop een eigen veld het merk bereikt: bouwt hij het template uit FIELD_CATALOG, dan

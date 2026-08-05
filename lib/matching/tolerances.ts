@@ -16,6 +16,7 @@
 // nooit 'rood') · elke afwijking benoemd, ook binnen groen (C-07).
 
 import type { MatchDeviation } from "@/db/schema";
+import { acronymWord, capitalizeFirst, splitIdentifier } from "@/lib/acronyms";
 
 export type FieldVerdict = "groen" | "geel" | "rood" | "onbekend";
 
@@ -175,6 +176,35 @@ const FIELD_LABELS: Record<string, string> = {
   dimmable: "dimmability",
 };
 
+// UX-audit 30 jul (bug #8): deze map bestond al, maar alleen om `note`-zinnen mee te
+// bouwen — de schermen toonden de ruwe sleutel (`beamAngle`, `dimmable`). Nu geëxporteerd,
+// mét fallback, zodat een nieuw veld nooit meer als camelCase-identifier kan lekken.
+//
+// REPARATIE 30 jul — de eerste versie leverde vier conventies in vier tabelrijen op
+// (`kelvin` · `Straalhoek` · `IP` · `beam angle`, gemeten in de screenshot van de
+// Field-kolom). Twee oorzaken, allebei hier weggenomen:
+//
+//  1. De mapwaarden zijn met opzet kléin: ze zitten midden in een zin ("no data for beam
+//     angle"). De fallback zette juist een hoofdletter. Nu levert `fieldLabel()` ALTIJD de
+//     midden-in-de-zin-vorm; wie een kolomkop of lijstitem rendert vraagt
+//     `fieldLabelTitle()`. De hoofdletter zit dus op de rendersite, niet in de data.
+//  2. Er was geen afkortingentabel terwijl de zusterfunctie `eventLabel()` die wél had:
+//     "IP" werd "Ip", "CRI" werd "Cri", "UGR" werd "Ugr". Beide gebruiken nu lib/acronyms.ts.
+
+/** Midden-in-de-zin-vorm: `beam angle`, `IP`, `dimmability`. */
+export function fieldLabel(key: string): string {
+  const known = FIELD_LABELS[key];
+  if (known) return known;
+  const words = splitIdentifier(key);
+  if (words.length === 0) return key;
+  return words.map(acronymWord).join(" ");
+}
+
+/** Begin-van-een-regel-vorm: `Beam angle`, `IP`, `Dimmability`. Voor kolommen en labels. */
+export function fieldLabelTitle(key: string): string {
+  return capitalizeFirst(fieldLabel(key));
+}
+
 // Élk gevuld gevraagd veld krijgt een oordeel + benoemde afwijking (C-07:
 // transparantieregel — ook binnen groen wordt het verschil benoemd).
 export function judgeCandidate(
@@ -188,7 +218,7 @@ export function judgeCandidate(
     delivered: string | number | null,
     verdict: FieldVerdict,
   ) => {
-    const label = FIELD_LABELS[field] ?? field;
+    const label = fieldLabel(field);
     let note: string | undefined;
     if (verdict === "onbekend") note = `no data for ${label}`;
     else if (String(requested) !== String(delivered))

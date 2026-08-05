@@ -4,6 +4,13 @@
 //   • tier1            → adviesprijs zichtbaar, geen aanvraagknop.
 //   • tier2 (gated)    → "Request price via Brink", specs zichtbaar, GEEN prijs.
 //   • tier3 (awaiting) → "Data awaiting brand", geen specs, geen prijs.
+//
+// LET OP bij de tier1-gevallen (gewijzigd bij reviewzwerm 2.5a, A5): die vroegen hun
+// disclosure eerder op mét een EXTERNE context zonder project, en dat gaf een prijs —
+// precies het fail-open-gedrag dat A5 beschrijft. De tier1-tak respecteert de context nu
+// wél (§4.11), dus deze render-tests draaien op de kijker die de prijs ook echt hoort te
+// zien. Wat hier getest wordt is de KAART (rendert hij een prijs die hij mag tonen), niet
+// wie hem mag zien; die vraag hoort in lib/repo/disclosure.test.ts en staat daar.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -44,7 +51,7 @@ const baseSpec: ProductSpec = {
 function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
-      <div className="mx-auto w-full max-w-6xl">{children}</div>
+      <div className="mx-auto w-full max-w-7xl">{children}</div>
     </div>
   );
 }
@@ -56,7 +63,7 @@ afterEach(() => {
 // ── De drie vereiste, precieze asserts ───────────────────────────────────────
 
 test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
-  const disclosure = resolveDisclosure("tier1", externZonderProject);
+  const disclosure = resolveDisclosure("tier1", intern);
   await renderServer(
     <Screen>
       <ProductCard
@@ -72,6 +79,34 @@ test("tier1: toont de adviesprijs, geen aanvraagknop", async () => {
   await expect.element(page.getByText("310,00")).toBeInTheDocument();
   // Geen pricerequest in tier1.
   expect(document.body.textContent ?? "").not.toContain("Prijs via Brink");
+});
+
+// UX-audit 30 jul (item 3): de prijs stond op text-2xl en was daarmee de GROOTSTE tekst
+// op de productpagina — groter dan de productnaam. Ijzeren regel 2 zegt dat geld de
+// rangschikking niet raakt; dan hoort het ook niet het luidste element te zijn. De prijs
+// blijft volledig zichtbaar, alleen niet meer groter dan de naam van het product.
+test("tier1: de prijs is zichtbaar maar nooit groter dan de productnaam", async () => {
+  const disclosure = resolveDisclosure("tier1", intern);
+  await renderServer(
+    <Screen>
+      <ProductCard
+        spec={baseSpec}
+        disclosure={disclosure}
+        price={{ grossPrice: "310.00", currency: "EUR" }}
+        overrides={{}}
+        requestAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("310,00")).toBeInTheDocument();
+  const prijs = document.querySelector<HTMLElement>("[data-price]");
+  const titel = document.querySelector<HTMLElement>('[data-slot="card-title"]');
+  expect(prijs).not.toBeNull();
+  expect(titel).not.toBeNull();
+  const px = (el: Element) => parseFloat(getComputedStyle(el).fontSize);
+  expect(px(prijs!)).toBeLessThan(px(titel!));
+  // En hij staat er nog echt, met het volledige bedrag.
+  expect(prijs!.textContent).toContain("310,00");
 });
 
 test("tier2 gated: 'Request price via Brink', specs wél, prijs niet", async () => {
@@ -142,7 +177,7 @@ const screens = {
   "tier1-prijs": (
     <ProductCard
       spec={baseSpec}
-      disclosure={resolveDisclosure("tier1", externZonderProject)}
+      disclosure={resolveDisclosure("tier1", intern)}
       price={{ grossPrice: "310.00", currency: "EUR" }}
       overrides={{}}
       requestAction={noopAction}
@@ -168,6 +203,21 @@ const screens = {
   ),
 } as const;
 
+// Ankerassertie per tier: precies het onderscheidende zinnetje van díe tier. Zo pint
+// elke screenshot-test ook wát er op de foto hoort te staan; `document.body` alleen
+// bleef groen als ProductCard niets rendert.
+//
+// Twéé ankers per tier waar de kaart specs toont. Met alleen het prijs-/gated-anker zaten
+// alle ankers in PriceBlock: `rows.length = 0` haalde de complete 13-regels specificatie-
+// tabel weg (de kaart valt dan terug op "No specifications available.") en deze 12 tests
+// bleven groen — gemeten. Het tweede anker is een specrij, zodat de tabel meetelt.
+// tier3 toont per definitie geen specs (awaitingData), dus daar ís de wachttekst de inhoud.
+const anchors: Record<keyof typeof screens, (string | RegExp)[]> = {
+  "tier1-prijs": ["€ 310,00", "1200 lm"],
+  "tier2-gated": ["Request price via Brink", "Ra 90"],
+  "tier3-awaiting": ["Data awaiting brand."],
+};
+
 for (const [name, ui] of Object.entries(screens)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -175,7 +225,9 @@ for (const [name, ui] of Object.entries(screens)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(<Screen>{ui}</Screen>);
-        await expect.element(document.body).toBeInTheDocument();
+        for (const anchor of anchors[name as keyof typeof screens]) {
+          await expect.element(page.getByText(anchor).first()).toBeInTheDocument();
+        }
         await page.screenshot({ path: `./product-${name}.${theme}.${device}.test.png` });
       });
     }

@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { SubstitutionDoc } from "@/components/dossier/substitution-doc";
+import { formatDate } from "@/lib/format";
 import { getDossier } from "@/lib/repo/dossiers";
 import { getSubstitution } from "@/lib/repo/substitution";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import { PrintButton } from "../../luminaire-schedule/print-button";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Substitutievoorstel-document (F-06/07). Binnen de dossier-layout: die rendert de
 // hoofd-header, fasebadge, tally en tabs al — deze pagina levert alléén zijn eigen inhoud
@@ -16,9 +19,11 @@ export default async function SubstitutiePage({
 }: {
   params: Promise<{ id: string; proposalId: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/substitution/[proposalId]");
   const { id, proposalId } = await params;
-  const dossier = await getDossier(db, id);
+  // Beide uuid-kolommen (project_dossiers.id, substitution_proposals.id).
+  requireUuid(id, proposalId);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const proposal = await getSubstitution(db, proposalId);
   // Voorstel moet bij dít dossier horen — anders geen toegang via deze URL.
@@ -35,17 +40,15 @@ export default async function SubstitutiePage({
         </Link>
         <PrintButton />
       </div>
+      {/* UX-audit 30 jul (bug #9): createdAt was een kale ISO-slice (`2026-07-30`) — een
+          derde datumformaat naast de twee die de app al had. Nu de gedeelde formatter. */}
       <SubstitutionDoc
         dossierName={dossier.name}
         reference={proposal.reference}
         alternative={proposal.alternative}
         fields={proposal.fields}
         savingNote={proposal.savingNote}
-        createdAt={
-          proposal.createdAt
-            ? new Date(proposal.createdAt).toISOString().slice(0, 10)
-            : null
-        }
+        createdAt={proposal.createdAt ? formatDate(proposal.createdAt) : null}
       />
     </>
   );

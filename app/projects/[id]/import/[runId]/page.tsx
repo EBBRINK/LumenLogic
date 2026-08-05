@@ -8,8 +8,10 @@ import { getDossier } from "@/lib/repo/dossiers";
 import { getImportRun } from "@/lib/repo/imports";
 import { countFailedOcrPages } from "@/lib/repo/ocr";
 import type { ImportRow } from "@/db/schema";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import { cancelImportAction, confirmImportAction } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Import-voorstelscherm (B-06). Zit binnen de dossier-layout → render alleen de eigen inhoud
 // (fragment, geen <main>/header/tabs). Een eigen sub-terug-link naar de regels mag.
@@ -18,10 +20,14 @@ export default async function ImportRunPage({
 }: {
   params: Promise<{ id: string; runId: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/import/[runId]");
   const { id, runId } = await params;
+  // Beide uuid-kolommen (project_dossiers.id, import_runs.id) en beide in dezelfde
+  // Promise.all — vóór de eigendomscheck hieronder, want die wordt nooit bereikt als
+  // de cast al klapt.
+  requireUuid(id, runId);
   const [dossier, run] = await Promise.all([
-    getDossier(db, id),
+    getDossier(db, toegangScope(toegang), id),
     getImportRun(db, runId),
   ]);
   // run moet bestaan én bij dit dossier horen (geen kruislekken tussen dossiers)

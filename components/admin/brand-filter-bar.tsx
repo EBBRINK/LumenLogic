@@ -2,6 +2,9 @@
 // waarop je niet kunt filteren lost niets op: 437 merken, 18 daarvan met een annotatie in
 // de naam. Gewone `<form method="get">`, geen client-state: de URL is de filterstand, dus
 // hij is deelbaar, bookmarkbaar en werkt zonder JavaScript.
+import { Button } from "@/components/ui/button";
+import { veldClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import type { BrandLifecycle } from "@/db/schema";
 
 const PHASE_OPTIONS: { value: string; label: string }[] = [
@@ -39,7 +42,7 @@ export function BrandFilterBar({
           defaultValue={q ?? ""}
           placeholder="Name or brand code"
           aria-label="Search by name or brand code"
-          className="h-9 w-56 rounded-md border border-input bg-background px-3 text-sm"
+          className={cn(veldClass, "w-56")}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -48,7 +51,7 @@ export function BrandFilterBar({
           name="phase"
           defaultValue={phase ?? ""}
           aria-label="Filter by lifecycle"
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+          className={veldClass}
         >
           {PHASE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -57,12 +60,11 @@ export function BrandFilterBar({
           ))}
         </select>
       </label>
-      <button
-        type="submit"
-        className="inline-flex h-9 items-center rounded-md border border-input px-4 text-sm font-medium hover:bg-accent"
-      >
+      {/* Outline: de primary van /admin/brands is "New brand". Via het Button-component,
+          zodat de knop dezelfde 44px haalt als de velden ernaast (O9), niet 36px. */}
+      <Button type="submit" variant="outline">
         Filter
-      </button>
+      </Button>
       {filtering && (
         <a
           href="/admin/brands"

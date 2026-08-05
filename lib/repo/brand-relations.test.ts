@@ -4,10 +4,18 @@
 import { expect, test } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
 import { createTestDb, seedBrandProduct } from "@/db/test-db";
-import { brandRelations, brands, events, products } from "@/db/schema";
+import {
+  brandRelations,
+  brands,
+  events,
+  priceLists,
+  prices,
+  products,
+} from "@/db/schema";
 import { eigenVeldKey } from "@/lib/custom-fields";
 import { archiveEigenVeld, createEigenVeld } from "@/lib/repo/custom-fields";
 import {
+  bulkSetBrandRelationStatus,
   getAllBrandCompleteness,
   getBrandCompleteness,
   listBrandRelations,
@@ -407,4 +415,147 @@ test("1.8: een GEARCHIVEERD eigen veld verdwijnt uit de scorecard", async () => 
   const na = await getBrandCompleteness(db, brandId);
   expect(na.aggregate.templateFieldCount).toBe(66);
   expect(na.filledByField[eigenVeldKey(def)]).toBeUndefined();
+});
+
+// ── UX-audit 30 jul, bak 2 item 10 ───────────────────────────────────────────
+
+test("getAllBrandCompleteness met brandIds: alleen die merken, met identieke cijfers", async () => {
+  const db = await createTestDb();
+  const a = await seedBrandProduct(db, {
+    brand: "Merk Een", name: "P1", kelvin: 3000, color1: "wit",
+  });
+  const b = await seedBrandProduct(db, {
+    brand: "Merk Twee", name: "P2", cri: 80,
+  });
+
+  const beperkt = await getAllBrandCompleteness(db, undefined, [a.brandId]);
+  expect([...beperkt.keys()]).toEqual([a.brandId]);
+  // De grens mag de UITKOMST niet veranderen — alleen hoeveel er gescand wordt.
+  const alles = await getAllBrandCompleteness(db);
+  expect(beperkt.get(a.brandId)).toEqual(alles.get(a.brandId));
+  expect(beperkt.has(b.brandId)).toBe(false);
+
+  // Lege selectie raakt de database niet en levert een lege map (geen kale `in ()`).
+  expect(await getAllBrandCompleteness(db, undefined, [])).toEqual(new Map());
+});
+
+test("bulkSetBrandRelationStatus: één schrijfronde, per merk een event én één bulk-event", async () => {
+  const db = await createTestDb();
+  const a = await seedBrandProduct(db, { brand: "Merk A", name: "P1" });
+  const b = await seedBrandProduct(db, { brand: "Merk B", name: "P2" });
+  const c = await seedBrandProduct(db, { brand: "Merk C", name: "P3" });
+  // C staat al op de doelstatus: die telt niet als wijziging en krijgt geen event.
+  await upsertBrandRelation(db, c.brandId, { status: "benaderd" }, "tester");
+
+  const res = await bulkSetBrandRelationStatus(
+    db,
+    // Dubbele id erin: de ON CONFLICT-clausule mag niet twee keer dezelfde rij raken.
+    [a.brandId, b.brandId, c.brandId, a.brandId],
+    "benaderd",
+    "tester",
+  );
+  expect(res).toEqual({ changed: 2, unchanged: 1 });
+
+  const statussen = await db
+    .select({ brandId: brandRelations.brandId, status: brandRelations.status })
+    .from(brandRelations);
+  expect(statussen).toHaveLength(3);
+  expect(statussen.every((r) => r.status === "benaderd")).toBe(true);
+
+  // Regel 5 op twee niveaus: per merk het gewone status-event (zodat de merkgeschiedenis
+  // niet afhangt van wélk pad de wijziging nam), plus één event voor de handeling zelf.
+  const perMerk = await eventsFor(db, a.brandId);
+  expect(perMerk.map((e) => e.action)).toEqual(["brand_relation_status_changed"]);
+  expect(perMerk[0].payload).toEqual({
+    from: "niet_benaderd",
+    to: "benaderd",
+    bulk: true,
+  });
+  expect(await eventsFor(db, c.brandId)).toHaveLength(1); // alleen de losse upsert
+
+  const bulk = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "brand_relation_status_bulk_set"));
+  expect(bulk).toHaveLength(1);
+  expect(bulk[0].payload).toEqual({
+    status: "benaderd",
+    requested: 3,
+    changed: 2,
+  });
+  expect(bulk[0].actor).toBe("tester");
+});
+
+test("bulkSetBrandRelationStatus met een lege selectie doet niets — ook geen event", async () => {
+  const db = await createTestDb();
+  expect(await bulkSetBrandRelationStatus(db, [], "verwerkt")).toEqual({
+    changed: 0,
+    unchanged: 0,
+  });
+  expect(await db.select().from(events)).toHaveLength(0);
+  expect(await db.select().from(brandRelations)).toHaveLength(0);
+});
+
+// ── 2.5b: de aanname onder de weggehaalde price_lists-join ────────────────────
+// De prijs-EXISTS in completenessSelection joinde tot 2.5b nog op price_lists, terwijl
+// er sinds 1.6-A niets meer uit die tabel werd gelezen of op gefilterd. Weghalen mocht
+// omdat de join per constructie geen rij kón wegnemen — maar dat is een eigenschap van
+// het SCHEMA, niet van de query. Wordt `price_list_id` ooit nullable, of verdwijnt de
+// foreign key, dan verandert de betekenis van het cijfer stil: een prijsrij zonder lijst
+// zou dan wél meetellen waar hij dat vroeger niet deed. Deze test maakt dat luidruchtig.
+test("2.5b: elke prijsrij heeft per constructie exact één prijslijst", async () => {
+  const db = await createTestDb();
+  const kolom = await db.execute(sql`
+    select a.attnotnull as not_null
+    from pg_attribute a
+    where a.attrelid = 'prices'::regclass and a.attname = 'price_list_id'
+  `);
+  const kolomRijen = (
+    Array.isArray(kolom) ? kolom : ((kolom as { rows?: unknown[] }).rows ?? [])
+  ) as { not_null: boolean }[];
+  expect(kolomRijen[0]?.not_null).toBe(true);
+
+  const fk = await db.execute(sql`
+    select c.convalidated
+    from pg_constraint c
+    where c.conrelid = 'prices'::regclass
+      and c.contype = 'f'
+      and c.confrelid = 'price_lists'::regclass
+  `);
+  const fkRijen = (
+    Array.isArray(fk) ? fk : ((fk as { rows?: unknown[] }).rows ?? [])
+  ) as { convalidated: boolean }[];
+  expect(fkRijen).toHaveLength(1);
+  expect(fkRijen[0].convalidated).toBe(true);
+});
+
+// En de gedragskant: het prijscijfer telt nog steeds producten, niet prijsrijen. Een
+// product met twee prijsrijen (twee lijsten) mag niet dubbel tellen — dat zou de eerste
+// misrekening zijn als iemand de EXISTS ooit tot een join platslaat.
+test("2.5b: twee prijslijsten op één product tellen als één geleverde prijs", async () => {
+  const db = await createTestDb();
+  const { brandId, productId } = await seedBrandProduct(db, {
+    brand: "Merk Twee Lijsten",
+    name: "P1",
+  });
+  // `price_lists_brand_active_uniq` laat maar één níet-vervangen lijst per merk toe, dus
+  // de tweede is een vervángen lijst — precies het echte geval: het product houdt zijn
+  // prijsrij op de oude lijst én krijgt er één op de nieuwe.
+  const [tweede] = await db
+    .insert(priceLists)
+    .values({
+      brandId,
+      name: "Vervangen lijst",
+      validFrom: "2025-01-01",
+      validUntil: "2025-12-31",
+      replacedAt: new Date("2026-01-01T00:00:00Z"),
+    })
+    .returning();
+  await db
+    .insert(prices)
+    .values({ productId, priceListId: tweede.id, grossPrice: "200.00" });
+
+  const c = await getBrandCompleteness(db, brandId);
+  expect(c.productCount).toBe(1);
+  expect(c.filledByField[PRICE_FIELD_KEY]).toBe(1);
 });

@@ -5,7 +5,15 @@
 // die rode ongematchte regels als wachtend meetelt.
 import { expect, test } from "vitest";
 import { and, asc, eq } from "drizzle-orm";
-import { events, projectDossiers, specLineCandidates, specLines } from "@/db/schema";
+import {
+  events,
+  importRuns,
+  ocrPageImages,
+  projectDossiers,
+  specLineCandidates,
+  specLines,
+  type ImportRow,
+} from "@/db/schema";
 import { addProductToBrand, createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import { runMatcher } from "@/lib/repo/matching";
 import {
@@ -123,6 +131,131 @@ test("N-keuze: accepteer mét productId kiest die kandidaat → groen + merkteke
   expect(chosen.length).toBe(1);
   expect(chosen[0].productId).toBe(s.p900);
   expect(chosen[0].chosenBy).toBe(ACTOR);
+});
+
+// ── A1 (reviewzwerm 2.5a): de afwijkingen horen bij het GEKOZEN product ───────
+// De bestaande tests hierboven dekken alleen het geval waarin beide kandidaten
+// dezelfde afwijking hebben (allebei 14 W) — dan klopt de rank-1-kolom toevallig.
+// Hieronder de twee gereproduceerde gevallen uit het rapport.
+
+// Twee schoon-gele kandidaten met een VERSCHILLENDE watt (gevraagd 12 → 14 = 16,7%
+// en 16 = 33,3%, allebei binnen de gele band ≤40%): de regel toonde "VELA ROUND 900"
+// met de afwijking van de 600.
+async function seedTwoYellowDifferentWatt() {
+  const db = await createTestDb();
+  const { brandId, priceListId, productId: p600 } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 14,
+  });
+  const { productId: p900 } = await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 16,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "A1" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lk410",
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      reqWatt: "12",
+      reqKelvin: 3000,
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+  const wattVan = (id: string) => (id === p600 ? 14 : 16);
+  return { db, dossierId: dossier.id, lineId: line.id, p600, p900, wattVan };
+}
+
+test("A1: accepteer mét ander productId → de afwijkingen van DAT product, niet van rank 1", async () => {
+  const s = await seedTwoYellowDifferentWatt();
+  const before = await getLine(s.db, s.lineId);
+  expect(before.status).toBe("geel");
+  const [rank1] = await s.db
+    .select()
+    .from(specLineCandidates)
+    .where(eq(specLineCandidates.specLineId, s.lineId))
+    .orderBy(asc(specLineCandidates.rank))
+    .limit(1);
+  // vóór de keuze staat de afwijking van rank 1 op de regel (runMatcher)
+  expect(before.deviations?.find((d) => d.field === "watt")?.delivered).toBe(
+    s.wattVan(rank1.productId),
+  );
+
+  // de mens kiest expliciet de ánder
+  const ander = rank1.productId === s.p600 ? s.p900 : s.p600;
+  await decideReview(s.db, {
+    specLineId: s.lineId,
+    decision: "accepteer",
+    productId: ander,
+    actor: ACTOR,
+  });
+
+  const after = await getLine(s.db, s.lineId);
+  expect(after.matchedProductId).toBe(ander);
+  expect(after.status).toBe("groen"); // menskeuze → groen (besluit 14 jul / 31 jul)
+  // vóór de fix stond hier nog de watt van rank 1 — het cijfer van een ánder product
+  expect(after.deviations?.find((d) => d.field === "watt")?.delivered).toBe(
+    s.wattVan(ander),
+  );
+  expect(after.deviations?.find((d) => d.field === "watt")?.verdict).toBe("geel");
+});
+
+test("A1: handmatig gelinkt product erft nooit de rode afwijking van een afgekeurde kandidaat", async () => {
+  const db = await createTestDb();
+  // enige kandidaat van het merk is 4000K terwijl 3000K gevraagd is → rood, en die
+  // rode verdicts belanden via topDeviations op de regel (engine: geen kandidaat-record)
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 4000,
+  });
+  // het product dat de mens zélf zoekt en linkt — ander merk, dus nooit kandidaat
+  // van deze regel en dus nooit door de tolerantietabel gegaan
+  const { productId: juist } = await seedBrandProduct(db, {
+    brand: "Flos",
+    name: "COMPLEET ANDER ARMATUUR",
+    kelvin: 3000,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "A1 rood" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lr702",
+      brandText: "XAL",
+      productText: "VELA ROUND 600",
+      reqKelvin: 3000,
+    })
+    .returning();
+  await runMatcher(db as TestDb, line.id, "tester");
+
+  const before = await getLine(db, line.id);
+  expect(before.status).toBe("rood");
+  expect(before.deviations?.some((d) => d.field === "kelvin" && d.verdict === "rood")).toBe(
+    true,
+  );
+
+  await linkManualProduct(db, { specLineId: line.id, productId: juist, actor: ACTOR });
+
+  const after = await getLine(db, line.id);
+  expect(after.status).toBe("groen");
+  expect(after.matchedProductId).toBe(juist);
+  // vóór de fix: [{kelvin requested 3000, delivered 4000, rood}] — de afwijking van
+  // een afgewezen kandidaat, groen afgedrukt op scherm én PDF
+  expect(after.deviations ?? []).toEqual([]);
 });
 
 test("variant mét productId → groen + matched; onbekende zuster krijgt kandidaat-record", async () => {
@@ -409,4 +542,283 @@ test("linkManualProduct weigert een niet-zichtbaar product (regel 3)", async () 
   await expect(
     linkManualProduct(db, { specLineId: line.id, productId: invisible, actor: ACTOR }),
   ).rejects.toThrow(/not visible/);
+});
+
+// UX-audit 30 jul, bug #2: de OCR-kaart linkt naar /ocr-image/<run>/<page> — een
+// PAGINA-resource. De vlag in de wachtrijquery keek alleen of de RUN érgens beelden
+// had, dus een run met gedeeltelijke beelddekking (een vision-fout of budgetstop
+// haalt de beeldrij van een mislukte pagina weer weg) liet de link óók renderen op
+// kaarten wier eigen source_page geen beeld heeft → kale 404. Deze test pint de
+// per-pagina-correlatie én dat de vlag een échte boolean is (geen 't'/'f'-string).
+// Tweede helft: de kaart moet de ruwe tabelregel kunnen tonen — die komt uit
+// import_runs.rows (ImportRow.rawText) van de eigen run.
+async function seedOcrRunMetHalveBeelddekking() {
+  const db = await createTestDb();
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "OCR-beelddekking" })
+    .returning();
+  const rows: ImportRow[] = [
+    {
+      fixtureCode: "Ld105",
+      quantity: null,
+      brandText: "XAL",
+      productText: "UNICO Q4",
+      source: "ocr",
+      rawText: "Ld105  XAL  UNICO Q4 2700K  IP20  9W",
+      page: 3,
+      checked: true,
+    },
+    {
+      fixtureCode: "Ld106",
+      quantity: null,
+      brandText: "XAL",
+      productText: "UNICO Q4",
+      source: "ocr",
+      rawText: "Ld106  XAL  UNICO Q4 3000K  IP20  9W",
+      page: 7,
+      checked: true,
+    },
+  ];
+  const [run] = await db
+    .insert(importRuns)
+    .values({
+      dossierId: dossier.id,
+      source: "ocr",
+      status: "bevestigd",
+      ocrStatus: "gestopt",
+      rows,
+    })
+    .returning();
+  // Alléén pagina 3 heeft een beeldrij — pagina 7 verloor die (vision-fout).
+  await db.insert(ocrPageImages).values({
+    importRunId: run.id,
+    page: 3,
+    mime: "image/jpeg",
+    width: 1568,
+    height: 1109,
+    bytes: new Uint8Array([1, 2, 3]),
+  });
+  const gemaakt = await db
+    .insert(specLines)
+    .values(
+      [3, 7].map((page, i) => ({
+        dossierId: dossier.id,
+        fixtureCode: i === 0 ? "Ld105" : "Ld106",
+        brandText: "XAL",
+        productText: "UNICO Q4",
+        source: "ocr" as const,
+        sourcePage: page,
+        importRunId: run.id,
+        reviewKind: "ocr" as const,
+        sortOrder: i,
+      })),
+    )
+    .returning();
+  return { db, dossierId: dossier.id, runId: run.id, lines: gemaakt };
+}
+
+test("wachtrij: paginabeeld-vlag is per PAGINA, niet per run (geen link naar een 404)", async () => {
+  const s = await seedOcrRunMetHalveBeelddekking();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  const metBeeld = pending.find((r) => r.sourcePage === 3);
+  const zonderBeeld = pending.find((r) => r.sourcePage === 7);
+
+  // Echte booleans (niet 't'/'f'): de UI test op `=== true`, dus dat moet hard zijn.
+  expect(metBeeld?.hasPageImage).toBe(true);
+  expect(zonderBeeld?.hasPageImage).toBe(false);
+});
+
+test("wachtrij: OCR-regel draagt zijn ruwe brontekst uit import_runs.rows", async () => {
+  const s = await seedOcrRunMetHalveBeelddekking();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending.find((r) => r.fixtureCode === "Ld105")?.sourceText).toBe(
+    "Ld105  XAL  UNICO Q4 2700K  IP20  9W",
+  );
+  expect(pending.find((r) => r.fixtureCode === "Ld106")?.sourceText).toBe(
+    "Ld106  XAL  UNICO Q4 3000K  IP20  9W",
+  );
+});
+
+test("wachtrij: niet-OCR-regels vragen de brontekst niet op (blijft null)", async () => {
+  const s = await seedTwoCleanYellow();
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending.length).toBe(1);
+  expect(pending[0].reviewKind).toBe("geel");
+  expect(pending[0].sourceText).toBeNull();
+  // Zonder import_run_id is er ook geen paginabeeld.
+  expect(pending[0].hasPageImage).toBe(false);
+});
+
+// ── Rijidentiteit van de brontekst (reviewronde 2, 30 jul) ───────────────────
+// De eerste versie zocht de rij op armatuurcode, met de eigen pagina als
+// VOORKEUR. Maar de code is geen sleutel: het regel-detail laat de reviewer hem
+// vrij overschrijven (editSpecLineAction → updateSpecLine, geen uniciteitscheck,
+// source_page blijft staan) en één run kan dezelfde code op meerdere pagina's
+// lezen. Zo kon de tekst van pagina 5 onder de kop "Read from page 9" verschijnen —
+// een verkeerd citaat, en dat is erger dan geen citaat. Onderstaande seeds bouwen
+// die gevallen letterlijk na; de eis is nu: pagina én code moeten kloppen, anders
+// zwijgt de kaart.
+async function seedRunMetRegels(
+  rows: ImportRow[],
+  lines: { code: string; page: number | null; reviewedAt?: Date }[],
+) {
+  const db = await createTestDb();
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "OCR-rijidentiteit" })
+    .returning();
+  const [run] = await db
+    .insert(importRuns)
+    .values({
+      dossierId: dossier.id,
+      source: "ocr",
+      status: "bevestigd",
+      ocrStatus: "klaar",
+      rows,
+    })
+    .returning();
+  await db.insert(specLines).values(
+    lines.map((l, i) => ({
+      dossierId: dossier.id,
+      fixtureCode: l.code,
+      source: "ocr" as const,
+      sourcePage: l.page,
+      importRunId: run.id,
+      reviewKind: "ocr" as const,
+      reviewedAt: l.reviewedAt ?? null,
+      sortOrder: i,
+    })),
+  );
+  return { db, dossierId: dossier.id, runId: run.id };
+}
+
+function ocrRij(over: Partial<ImportRow> & { fixtureCode: string }): ImportRow {
+  return {
+    quantity: null,
+    brandText: "XAL",
+    productText: null,
+    source: "ocr",
+    checked: true,
+    ...over,
+  };
+}
+
+test("wachtrij: een handmatig bijgewerkte code citeert nóóit de tekst van een andere pagina", async () => {
+  // Het gerapporteerde geval: de run las Lr001 op pagina 5 en Lr001B op pagina 9;
+  // de reviewer besloot dat die B een hallucinatie was en zette de code van de
+  // pagina-9-regel op Lr001. Die regel heeft nu source_page 9 met een rij die
+  // alleen op pagina 5 bestaat.
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({
+        fixtureCode: "Lr001",
+        rawText: "Lr001 XAL UNICO Q4 2700K IP20 9W",
+        page: 5,
+      }),
+      ocrRij({
+        fixtureCode: "Lr001B",
+        rawText: "Lr001B XAL UNICO Q4 3000K IP20 9W",
+        page: 9,
+      }),
+    ],
+    [
+      { code: "Lr001", page: 5 },
+      { code: "Lr001", page: 9 }, // code bijgewerkt in de review
+    ],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  const pagina5 = pending.find((r) => r.sourcePage === 5)!;
+  const pagina9 = pending.find((r) => r.sourcePage === 9)!;
+  // Pagina 5 klopt gewoon.
+  expect(pagina5.sourceText).toBe("Lr001 XAL UNICO Q4 2700K IP20 9W");
+  // Pagina 9 heeft geen eigen rij meer → geen citaat. Vóór de fix stond hier het
+  // 2700K-citaat van pagina 5 onder de kop "Read from page 9".
+  expect(pagina9.sourceText).toBeNull();
+  expect(pagina9.sourceText ?? "").not.toContain("2700K");
+});
+
+test("wachtrij: een rij zonder ruwe tekst leent er geen van een andere pagina", async () => {
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({ fixtureCode: "Ld200", page: 2 }), // winnende lezing, géén rawText
+      ocrRij({
+        fixtureCode: "Ld200",
+        rawText: "Ld200 XAL van een heel andere pagina",
+        page: 8,
+        checked: false,
+      }),
+    ],
+    [{ code: "Ld200", page: 2 }],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending[0].sourceText).toBeNull();
+});
+
+test("wachtrij: twee regels met dezelfde code op dezelfde pagina krijgen géén citaat", async () => {
+  // De expliciet geaccepteerde race in verwerkGelezenRegels kan twee spec-regels met
+  // dezelfde code in één run overhouden. Ze zijn niet te onderscheiden, dus liever
+  // beide zonder citaat dan beide hetzelfde citaat waarvan één bij de verkeerde regel
+  // staat.
+  const s = await seedRunMetRegels(
+    [ocrRij({ fixtureCode: "Ld300", rawText: "Ld300 XAL 4000K", page: 4 })],
+    [
+      { code: "Ld300", page: 4 },
+      { code: "Ld300", page: 4 },
+    ],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending).toHaveLength(2);
+  expect(pending.map((r) => r.sourceText)).toEqual([null, null]);
+});
+
+test("wachtrij: afgeronde regels krijgen geen brontekst (de afgerond-sectie toont hem niet)", async () => {
+  const s = await seedRunMetRegels(
+    [
+      ocrRij({ fixtureCode: "Ld400", rawText: "Ld400 XAL 2700K", page: 1 }),
+      ocrRij({ fixtureCode: "Ld401", rawText: "Ld401 XAL 3000K", page: 2 }),
+    ],
+    [
+      { code: "Ld400", page: 1 },
+      { code: "Ld401", page: 2, reviewedAt: new Date("2026-07-29T10:00:00Z") },
+    ],
+  );
+  const { pending, done } = await getReviewQueue(s.db, s.dossierId);
+  expect(pending[0].sourceText).toBe("Ld400 XAL 2700K");
+  expect(done).toHaveLength(1);
+  expect(done[0].sourceText).toBeNull();
+});
+
+test("wachtrij: lange brontekst wordt niet meer op 240 tekens gekapt", async () => {
+  // De vorige versie kapte in SQL op 240 tekens én zette diezelfde 240 tekens als
+  // "volledige tekst" in een title-tooltip. Afkappen voor het oog hoort in de kaart;
+  // de data-laag levert de hele regel (payload-plafond ligt op 2000).
+  const lang = `Ld500 XAL ${"UNICO Q4 2700K IP20 9W 650lm 36gr wit ".repeat(20)}`;
+  const s = await seedRunMetRegels(
+    [ocrRij({ fixtureCode: "Ld500", rawText: lang, page: 1 })],
+    [{ code: "Ld500", page: 1 }],
+  );
+  const { pending } = await getReviewQueue(s.db, s.dossierId);
+  expect(lang.length).toBeGreaterThan(600);
+  expect(pending[0].sourceText).toBe(lang);
+});
+
+// ── B7 (reviewzwerm 2.5a): flagForReview logde niets en droeg geen actor ─────
+// Een regel in de wachtrij zetten is een schrijfactie (FUNCTIONEEL-ONTWERP §6:
+// "élke schrijfactie draagt de actor") en de tegenhanger van review_decided, dat
+// wél gelogd werd. Zonder dit event begint het reviewspoor pas bij de beslissing.
+test("flagForReview logt review_flagged mét actor en soort", async () => {
+  const s = await seedTwoCleanYellow();
+
+  await flagForReview(s.db, s.lineId, "variant", ACTOR);
+
+  const gelogd = await s.db
+    .select()
+    .from(events)
+    .where(eq(events.action, "review_flagged"));
+  expect(gelogd).toHaveLength(1);
+  expect(gelogd[0].entity).toBe("spec_line");
+  expect(gelogd[0].entityId).toBe(s.lineId);
+  expect(gelogd[0].actor).toBe(ACTOR);
+  expect(gelogd[0].payload).toEqual({ kind: "variant" });
 });

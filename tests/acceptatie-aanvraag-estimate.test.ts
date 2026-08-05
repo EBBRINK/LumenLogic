@@ -77,6 +77,7 @@ import {
   getReviewQueue,
   linkManualProduct,
 } from "@/lib/repo/review";
+import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
 const ACTOR = "hello@noplasticfloralfoam.com";
 
@@ -202,7 +203,7 @@ beforeAll(async () => {
 
 // ── Stap 1 — project aanmaken ────────────────────────────────────────────────
 test("project aanmaken: status concept, xis_phase start, phase tender (default veilig)", async () => {
-  const dossier = await createDossier(db, {
+  const dossier = await createDossier(db, { orgId: null,
     name: "Nieuwbouw Kantoorpand De Boog",
     customer: "Deerns Nederland B.V.",
     actor: ACTOR,
@@ -498,19 +499,25 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
 //   (geen matchedProductId → geen prijs; kiezen blijft menswerk).
 test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens in de PDF", async () => {
   const year = new Date().getFullYear();
-  const quote = await generateQuote(db, dossierId, ACTOR);
+  const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, ACTOR);
   expect(quote.quoteNumber).toBe(`BL-${year}-0001`);
 
   const quoteData = await getQuote(db, dossierId);
   expect(quoteData?.lines).toHaveLength(6); // alleen groen/geel mét prijs
   expect(quoteData?.total).toBe(1150);
 
-  const data = (await getEstimateData(db, dossierId))!;
+  const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(data.lines).toHaveLength(20); // álle regels — niets stilzwijgend weg
   expect(data.computed.totals).toEqual({ groen: 660, geel: 490, samen: 1150 });
   // p.m.-verdeling sinds O5: de twee productloze merken zijn blauw (inladen — onze
-  // actie), niet rood; het p.m.-totaal blijft 5.
-  expect(data.computed.pm).toEqual({ blauw: 2, rood: 1, paars: 2, total: 5 });
+  // actie), niet rood. Sinds A4 tellen de 4 open regels (gat A, nooit gematcht) hier
+  // óók mee: ze kregen wél "p.m." in de regeltotaalkolom van de PDF en stonden in geen
+  // enkel getal — 5 verantwoorde posten bij 9 niet-tellende regels.
+  expect(data.computed.pm).toEqual({ blauw: 2, rood: 1, paars: 2, open: 4, total: 9 });
+  expect(data.computed.openLines).toHaveLength(4);
+  // De verantwoording dekt exact de regels die buiten het totaal vallen: 20 regels,
+  // 11 tellend (8 groen + 3 geel), 9 p.m.
+  expect(data.computed.pmLines).toHaveLength(9);
   // merktekens op de estimate-data (scherm en PDF gebruiken dezelfde bron)
   const flag = (code: string) => data.lines.find((l) => l.fixtureCode === code)!;
   expect(flag("Ld202").autoAccepted).toBe(true);
@@ -532,8 +539,14 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   expect(text).toContain("1.150,00"); // samen
   expect(text).toContain("Combined (green + yellow)");
 
-  // p.m.-posten: getoond, nooit opgeteld
-  expect(text).toContain("blue 2 · red 1 · purple 2");
+  // p.m.-posten: getoond, nooit opgeteld — en élke niet-tellende status staat erbij,
+  // inclusief de vier open regels (A4).
+  expect(text).toContain("blue 2 · red 1 · purple 2 · open 4");
+  // …met voor elke open regel een eigen punt onder "Open items & actions", in plaats
+  // van een kale "p.m." in de kolom die nergens wordt uitgelegd.
+  expect(text.match(/not matched yet/g) ?? []).toHaveLength(4);
+  const flat = text.replace(/\s+/g, " ");
+  expect(flat).toContain("blue, red, purple and open are shown as p.m.");
   // blauw = inladen, onze actie (O5): beide merken staan als "load brand … (us)"
   expect(text).toContain("load brand Zumtobel (us)");
   expect(text).toContain("load brand Trilux (us)");
@@ -548,8 +561,8 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
 
 // ── Stap 7 — statusflow ──────────────────────────────────────────────────────
 test("statusflow: estimate_gestuurd bevriest de quote; gegund → phase awarded", async () => {
-  await setStatus(db, dossierId, "estimate_gestuurd", ACTOR);
-  let dossier = (await getDossier(db, dossierId))!;
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "estimate_gestuurd", ACTOR);
+  let dossier = (await getDossier(db, ALLE_DOSSIERS, dossierId))!;
   expect(dossier.status).toBe("estimate_gestuurd");
   expect(dossier.phase).toBe("tender"); // gestuurd ≠ gegund: suggesties blijven uit
 
@@ -557,8 +570,8 @@ test("statusflow: estimate_gestuurd bevriest de quote; gegund → phase awarded"
   expect(frozen?.quote.frozenAt).not.toBeNull(); // I-06: kopblok + aantallen op slot
   expect(await eventsByAction("quote_frozen")).toHaveLength(1);
 
-  await setStatus(db, dossierId, "gegund", ACTOR);
-  dossier = (await getDossier(db, dossierId))!;
+  await setStatus(db, ALLE_DOSSIERS, dossierId, "gegund", ACTOR);
+  dossier = (await getDossier(db, ALLE_DOSSIERS, dossierId))!;
   expect(dossier.status).toBe("gegund");
   expect(dossier.phase).toBe("awarded"); // afgeleid door derivePhase (B6, één schrijver)
 

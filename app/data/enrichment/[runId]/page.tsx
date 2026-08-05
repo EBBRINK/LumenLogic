@@ -12,20 +12,23 @@ import {
   type RunStatus,
 } from "@/components/data/enrichment-status";
 import { getEnrichmentRun, getSampleItems } from "@/lib/repo/enrichment";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   publishRunAction,
   rejectRunAction,
   setVerdictAction,
 } from "../../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function VerrijkingRunPage({
   params,
 }: {
   params: Promise<{ runId: string }>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/enrichment/[runId]");
   const { runId } = await params;
+  // runId gaat als uuid in enrichment_runs.id — kapotte param is 404, geen 500.
+  requireUuid(runId);
   const run = await getEnrichmentRun(db, runId);
   if (!run) notFound();
 
@@ -41,7 +44,7 @@ export default async function VerrijkingRunPage({
   const counts = (run.counts as Record<string, number> | null) ?? {};
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data/enrichment"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

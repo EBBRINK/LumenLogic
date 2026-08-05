@@ -1,6 +1,7 @@
 // Merkrelatie-detail (stap 5): volledige compleetheids-scorecard (één
 // getBrandCompleteness-call — geen per-bucket-queries) + relatievelden bewerken.
-// Kruislink naar /admin/brands: dáár woont de toestemmings-as (disclosure).
+// Sprint 2.0a (blok 3): de toestemmings-as (disclosure) is hierheen verhuisd — zie de
+// Visibility-sectie onderaan.
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -9,36 +10,49 @@ import { db } from "@/db/client";
 import { brandRelations, brands, priceLists } from "@/db/schema";
 import { BrandMessageBlock } from "@/components/data/brand-message-block";
 import { BrandRelationForm } from "@/components/data/brand-relation-form";
+import { BrandVisibilityBlock } from "@/components/data/brand-visibility-block";
 import { TemplateDownloadLink } from "@/components/data/template-download-link";
+import { formatDate } from "@/lib/format";
 import { TemplateUploadCard } from "@/components/data/template-upload-card";
 import { BrandScorecard } from "@/components/data/brand-scorecard";
 import { PriceListExpiryNotice } from "@/components/data/price-list-expiry-notice";
 import { buildBrandMessage } from "@/lib/brand-message";
+import { listBrandFieldOverrides } from "@/lib/repo/admin";
 import {
   getBrandCompleteness,
   priceListIndicator,
 } from "@/lib/repo/brand-relations";
 import { listBrandUploads } from "@/lib/repo/brand-portal";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   logBrandMessagePreparedAction,
+  setFieldVisibilityAction,
+  setTierAction,
   updateBrandRelationAction,
 } from "../actions";
 import { uploadTemplateAction } from "./upload-actions";
+import { readApplySummary, TemplateApplySummary } from "./apply-summary";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 export default async function MerkrelatieDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ brandId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/data/brand-relations/[brandId]");
   const { brandId } = await params;
+  // Deze pagina was het bewijsstuk van bug #1: brandId ging ongefilterd in
+  // eq(brands.id, …) — de rij-check hieronder deed het goed, de cast erboven niet.
+  requireUuid(brandId);
 
   const [row] = await db
     .select({
       id: brands.id,
       name: brands.name,
       brandCode: brands.brandCode,
+      disclosureTier: brands.disclosureTier,
       status: brandRelations.status,
       contactName: brandRelations.contactName,
       contactEmail: brandRelations.contactEmail,
@@ -51,7 +65,14 @@ export default async function MerkrelatieDetailPage({
     .limit(1);
   if (!row) notFound();
 
+  // C8: de uitkomst van een zojuist goedgekeurd template. Alleen aanwezig direct ná de
+  // redirect uit approveTemplateProposalAction; verder null. Puur weergave — er wordt
+  // niets uit de querystring gelezen dat de pagina stuurt of iets schrijft.
+  const applySummary = readApplySummary(await searchParams);
+
   const completeness = await getBrandCompleteness(db, brandId);
+  // Eén merk → geen N+1 (in tegenstelling tot de oude /admin/brands-lijst).
+  const fieldOverrides = await listBrandFieldOverrides(db, brandId);
 
   // Open template-voorstellen van dít merk (retour-pad, sprint 1.2). Alleen 'staging':
   // een afgehandeld voorstel heeft geen werk meer en zou de lijst laten dichtslibben.
@@ -78,7 +99,7 @@ export default async function MerkrelatieDetailPage({
   });
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <Link
         href="/data/brand-relations"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -96,14 +117,14 @@ export default async function MerkrelatieDetailPage({
             )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Relationship and data completeness. Manage permission (disclosure) on{" "}
-            <Link href="/admin/brands" className="underline">
-              Admin · Brands
-            </Link>
-            .
+            Relationship, visibility and data completeness.
           </p>
         </div>
       </header>
+
+      {/* Bovenaan, vóór de rest: dit is het antwoord op de handeling die de gebruiker
+          zojuist deed. Daaronder staat het scherm zoals het altijd al stond. */}
+      {applySummary && <TemplateApplySummary summary={applySummary} />}
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
         <h2 className="mb-3 font-medium">Relationship</h2>
@@ -117,6 +138,16 @@ export default async function MerkrelatieDetailPage({
             notes: row.notes,
           }}
           updateAction={updateBrandRelationAction}
+        />
+      </section>
+
+      <section className="mb-8">
+        <BrandVisibilityBlock
+          brandId={row.id}
+          disclosureTier={row.disclosureTier}
+          overrides={fieldOverrides}
+          setTierAction={setTierAction}
+          setFieldVisibilityAction={setFieldVisibilityAction}
         />
       </section>
 
@@ -155,7 +186,9 @@ export default async function MerkrelatieDetailPage({
                     {String(upload.payload?.filename ?? "Filled template")}
                   </Link>
                   <span className="ml-2 text-xs text-muted-foreground tabular-nums">
-                    {upload.createdAt.toISOString().slice(0, 10)}
+                    {/* Eén datumformaat (UX-audit 30 jul, bug #9): hier stond een
+                        kale ISO-slice, "2026-07-30". */}
+                    {formatDate(upload.createdAt)}
                   </span>
                 </li>
               ))}
@@ -173,6 +206,10 @@ export default async function MerkrelatieDetailPage({
               validUntil={validUntil}
               variant="banner"
               brandName={row.name}
+              // De melding vraagt om een verlenging; zonder href was hij kale tekst en
+              // stond de gebruiker hier stil. /data/price-lists is de plek waar die
+              // verlenging daadwerkelijk gedaan kan worden (bevinding B3).
+              href="/data/price-lists"
             />
           </div>
         )}

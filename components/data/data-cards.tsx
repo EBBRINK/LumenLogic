@@ -10,11 +10,6 @@ export const DATA_CARDS: DataCard[] = [
     desc: "Parser over brand names, review the sample and publish.",
   },
   {
-    href: "/data/loading",
-    title: "Loading",
-    desc: "Blue queue: requested brands not yet in the catalog.",
-  },
-  {
     href: "/data/price-lists",
     title: "Price lists",
     desc: "Expiring-soon and expired lists (coverage gaps).",
@@ -25,14 +20,14 @@ export const DATA_CARDS: DataCard[] = [
     desc: "Measure the matcher's hit-rate against the evaluation set.",
   },
   {
-    href: "/data/brand-relations",
-    title: "Brand relations",
-    desc: "Relationship status and data completeness per brand; data collection.",
-  },
-  {
     href: "/data/fields",
     title: "Fields",
     desc: "What we ask brands for — and the fields you add yourself.",
+  },
+  {
+    href: "/data/event-log",
+    title: "Event log",
+    desc: "Counts by type, plus the chronological log of every logged event.",
   },
 ];
 
@@ -48,7 +43,7 @@ export function DataCards({ badge }: { badge: Record<string, number> }) {
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-medium">{c.title}</h2>
             {badge[c.href] > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-100 px-1.5 text-xs font-medium text-sky-800 tabular-nums dark:bg-sky-950 dark:text-sky-300">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-status-blue-tint px-1.5 text-xs font-medium text-status-blue-ink tabular-nums">
                 {badge[c.href]}
               </span>
             )}

@@ -14,7 +14,11 @@
 // server-actie via useActionState. Dit bestand verzint geen enkele reden waarom iets niet
 // kan.
 import { useActionState, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { veldClass, tekstvakClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 import type { Compleetheidsniveau } from "@/lib/field-catalog";
+import { niveauLabel } from "@/lib/niveau-labels";
 
 /** De 10 template-buckets. "intern" hoort er per contract nooit bij: een eigen veld gaat
  *  per definitie naar het merk, en bucket 11 is juist wat we NIET vragen. */
@@ -35,22 +39,27 @@ export type VeldFormAction = (
   formData: FormData,
 ) => Promise<VeldFormState>;
 
-// De drie niveaus in één adem — en het must-verhaal staat er letterlijk, want het wijkt
+// De drie niveaus in één adem — en het Required-verhaal staat er letterlijk, want het wijkt
 // AF van wat "must" bij een catalogusveld betekent (plan §2). Een catalogus-must is
 // dragend voor de verwerking (zonder artikelcode is er geen sleutel), dus een ontbrekende
 // kolom wijst het hele bestand af. Een eigen veld kan dat per definitie nooit zijn: het
 // bestond nog niet toen de bestanden die nu onderweg zijn werden verstuurd.
+//
+// UX-audit 30 jul (item 4): de zinnen openden met het ruwe enum-woord ("wanna = …"). De
+// opgeslagen waarden zijn ongewijzigd (`value={n}` hieronder is nog steeds must/wanna/nice);
+// alleen het zichtbare woord komt uit lib/niveau-labels.ts.
 export const NIVEAU_UITLEG: Record<Compleetheidsniveau, string> = {
-  must: "must = weighs the heaviest in the scorecard. A brand file is never rejected because of it — files that were already on their way could not have known this field.",
-  wanna:
-    "wanna = we ask for it and it counts towards the score, but its absence is not a problem.",
-  nice: "nice = welcome extra. Lowest weight in the scorecard.",
+  must: `${niveauLabel("must")} = weighs the heaviest in the scorecard. A brand file is never rejected because of it — files that were already on their way could not have known this field.`,
+  wanna: `${niveauLabel("wanna")} = we ask for it and it counts towards the score, but its absence is not a problem.`,
+  nice: `${niveauLabel("nice")} = welcome extra. Lowest weight in the scorecard.`,
 };
 
 const NIVEAUS: Compleetheidsniveau[] = ["must", "wanna", "nice"];
 
-const invoerClass =
-  "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm";
+// De veldtokens staan in components/ui/field.ts (reviewzwerm 2.5a, B9): hier stond een
+// eigen reeks die op ~34px uitkwam, tegen de 44px van besluit O9.
+const invoerClass = cn(veldClass, "w-full");
+const tekstvakInvoerClass = cn(tekstvakClass, "w-full");
 
 function Veld({
   label,
@@ -79,7 +88,7 @@ function Veld({
           rows={2}
           defaultValue={defaultValue}
           placeholder={placeholder}
-          className={invoerClass}
+          className={tekstvakInvoerClass}
         />
       ) : (
         <input
@@ -165,7 +174,8 @@ export function CustomFieldForm({
                 onChange={() => setNiveau(n)}
                 className="size-4 accent-foreground"
               />
-              {n}
+              {/* `value={n}` blijft de opgeslagen enum; alleen dit woord is de weergave. */}
+              {niveauLabel(n)}
             </label>
           ))}
         </div>
@@ -200,28 +210,23 @@ export function CustomFieldForm({
       {fout && (
         <p
           role="alert"
-          className="mt-4 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          className="mt-4 rounded-md bg-status-amber-tint px-3 py-2 text-sm text-status-amber-ink"
         >
           {fout}
         </p>
       )}
 
       <div className="mt-4 flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-        >
+        {/* De primary van /data/custom-fields: het formulier ís het scherm zodra het
+            open staat, en dit is de actie die het veld wegschrijft. */}
+        <Button type="submit" disabled={pending}>
           {bewerken ? "Save field" : "Add field"}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex h-9 items-center rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
-          >
+          // Ghost = wegwerpactie (DESIGN.md §6).
+          <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>

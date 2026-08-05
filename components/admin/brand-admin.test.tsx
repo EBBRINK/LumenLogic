@@ -30,7 +30,7 @@ import {
   type BrandDeleteAction,
 } from "./brand-delete-block";
 import { BrandFilterBar } from "./brand-filter-bar";
-import { BrandsTierBlock, type BrandTierRow } from "./brands-tier-block";
+import { BrandsListBlock, type BrandListRow } from "./brands-list-block";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
@@ -114,35 +114,29 @@ const confirmState: BrandDeleteState = {
   impact: freeImpact,
 };
 
-const tierRows: BrandTierRow[] = [
+const tierRows: BrandListRow[] = [
   {
     id: "b1",
     name: "Delta Light",
     brandCode: "L041",
     lifecycle: "actief",
-    disclosureTier: "tier1",
     productCount: 42,
-    overrides: { gross_price: false },
   },
   {
     id: "b2",
     name: "Itre",
     brandCode: "L077",
     lifecycle: "slapend",
-    disclosureTier: "tier2",
     productCount: 0,
-    overrides: {},
   },
   {
     id: "b3",
     name: "Tronconi",
     brandCode: null,
     lifecycle: "bestaat_niet_meer",
-    disclosureTier: "tier3",
     productCount: 0,
     // Sprint 1.6 (deel B): verlopen prijslijst → PriceListExpiryNotice-badge in de rij.
     priceListValidUntil: "2024-01-01",
-    overrides: {},
   },
 ];
 
@@ -208,11 +202,7 @@ const deleteScreen = (
 const listScreen = (
   <Screen>
     <BrandFilterBar q="" phase="" shown={3} total={437} />
-    <BrandsTierBlock
-      brands={tierRows}
-      setTierAction={noopAction}
-      setFieldVisibilityAction={noopAction}
-    />
+    <BrandsListBlock brands={tierRows} />
   </Screen>
 );
 
@@ -448,11 +438,7 @@ test("cascade-bevestiging: noemt het outreach-record in gewone taal", async () =
 test("lijst: 'actief' krijgt geen badge, de andere twee wel; naam linkt naar het detail", async () => {
   await renderServer(
     <Screen>
-      <BrandsTierBlock
-        brands={tierRows}
-        setTierAction={noopAction}
-        setFieldVisibilityAction={noopAction}
-      />
+      <BrandsListBlock brands={tierRows} />
     </Screen>,
   );
   await expect.element(page.getByText("Delta Light")).toBeInTheDocument();
@@ -475,11 +461,7 @@ test("lijst: 'actief' krijgt geen badge, de andere twee wel; naam linkt naar het
 test("lijst: verlopen prijslijst toont de gedeelde PriceListExpiryNotice-badge, niet bij een merk zonder datum", async () => {
   await renderServer(
     <Screen>
-      <BrandsTierBlock
-        brands={tierRows}
-        setTierAction={noopAction}
-        setFieldVisibilityAction={noopAction}
-      />
+      <BrandsListBlock brands={tierRows} />
     </Screen>,
   );
   await expect.element(page.getByText(/extension/i)).toBeInTheDocument();

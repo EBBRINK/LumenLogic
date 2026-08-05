@@ -52,3 +52,6 @@ next-env.d.ts
 
 # geneste git-worktrees (parallelle branches; niet in git, niet in de testrun)
 /.worktrees/
+
+# zwerm-bestanden: exports en agent-antwoorden per run (herbouwbaar uit de branch)
+zwerm/

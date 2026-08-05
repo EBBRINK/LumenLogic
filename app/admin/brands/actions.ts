@@ -26,7 +26,8 @@ import {
   type BrandDuplicate,
   type BrandInput,
 } from "@/lib/repo/brands";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakNiveau } from "@/lib/route-toegang";
 
 const LIFECYCLES: BrandLifecycle[] = ["actief", "slapend", "bestaat_niet_meer"];
 
@@ -136,7 +137,7 @@ export async function createBrandAction(
   prev: BrandFormState,
   formData: FormData,
 ): Promise<BrandFormState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/admin/brands");
   const values = readValues(formData);
   if (!values.name) {
     return { status: "error", message: "Merknaam is verplicht.", values };
@@ -165,7 +166,7 @@ export async function updateBrandAction(
   prev: BrandFormState,
   formData: FormData,
 ): Promise<BrandFormState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/admin/brands");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const values = readValues(formData);
   if (!brandId) {
@@ -197,7 +198,7 @@ export async function updateBrandAction(
 // De uitweg naast de verwijderblokkade (G4), als losse actie zodat hij in hetzelfde blok
 // als het verwijderpaneel kan staan. Ongeldige waarde → geen wijziging (fail-safe).
 export async function setBrandLifecycleAction(formData: FormData): Promise<void> {
-  await requireSession();
+  await bewaakNiveau("intern", "/admin/brands");
   const brandId = String(formData.get("brandId") ?? "").trim();
   const lifecycle = String(formData.get("lifecycle") ?? "").trim() as BrandLifecycle;
   if (!brandId || !LIFECYCLES.includes(lifecycle)) return;
@@ -221,7 +222,7 @@ export async function deleteBrandAction(
   prev: BrandDeleteState,
   formData: FormData,
 ): Promise<BrandDeleteState> {
-  await requireSession();
+  await bewaakNiveau("intern", "/admin/brands");
   const brandId = String(formData.get("brandId") ?? "").trim();
   if (!brandId) return { status: "error", message: "Onbekend merk." };
 

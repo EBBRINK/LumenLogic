@@ -5,7 +5,7 @@
 // zonder key (nette stop, nooit stil). Conventies volgen lib/repo/ocr.test.ts.
 import { expect, test } from "vitest";
 import { asc, eq } from "drizzle-orm";
-import { events, llmUsage, specLines } from "@/db/schema";
+import { events, importRuns, llmUsage, specLines } from "@/db/schema";
 import { createTestDb, seedBrandProduct, type TestDb } from "@/db/test-db";
 import {
   MAX_TOKENS_PER_BATCH,
@@ -53,7 +53,7 @@ async function seedWorld(db: TestDb) {
     name: "SASSO 100 SQ SP CEIL 3000K",
     kelvin: 3000,
   });
-  const dossier = await createDossier(db, { name: "Raadhuis tekstboek" });
+  const dossier = await createDossier(db, { orgId: null, name: "Raadhuis tekstboek" });
   return dossier.id;
 }
 
@@ -126,9 +126,16 @@ test("happy path 2 batches: regels mét review/herkomst, rijkste-wint over batch
   // controlespoor), pageCount over ÁLLE pagina's (ook de lege — het boek is 10).
   expect(result.run.source).toBe("pdf");
   expect(result.run.status).toBe("bevestigd");
-  expect(result.run.ocrStatus).toBeNull();
+  // A6: de lus liep uit → eindstand 'klaar' (niet 'bezig', dus niet afgebroken).
+  expect(result.run.ocrStatus).toBe("klaar");
+  expect(result.hervat).toBe(false);
   expect(result.run.rawMarkdown).toBe(MARKDOWN);
-  expect(result.run.counts).toMatchObject({ total: 3, checked: 2, pageCount: 10 });
+  expect(result.run.counts).toMatchObject({
+    total: 3,
+    checked: 2,
+    pageCount: 10,
+    pagesDone: 10,
+  });
   expect(result).toMatchObject({
     created: 2,
     duplicates: 0,
@@ -255,6 +262,9 @@ test("budget op ná batch 1 → gestopt budget_run + skip-event; batch 1-regels 
   const lines = await runLines(db, result.run.id);
   expect(lines.map((l) => l.fixtureCode)).toEqual(["Lp301"]);
   expect(result.run.counts).toMatchObject({ total: 1, checked: 1 });
+  // A6: budget is terminaal — 'gestopt', niet 'bezig' (hervatten heeft geen zin,
+  // de volgende poging loopt tegen hetzelfde plafond).
+  expect(result.run.ocrStatus).toBe("gestopt");
 
   // Skip-event op de run (regel 5, nooit stil).
   const skipped = await eventsByAction(db, "leesroute_skipped_budget");
@@ -282,6 +292,9 @@ test("geen key en geen client → gestopt no_key + skip-event; run met markdown 
   expect(result).toMatchObject({ created: 0, batches: 0, costEur: 0 });
   // De run bestaat mét het markdown-controlespoor — de import verdwijnt nooit stil.
   expect(result.run.rawMarkdown).toBe(MARKDOWN);
+  // A6: zonder key blijft de run op 'bezig' — key terug = gewoon verder lezen
+  // (exact het OCR-gedrag), dus dit is géén terminale stand.
+  expect(result.run.ocrStatus).toBe("bezig");
   expect((await runLines(db, result.run.id)).length).toBe(0);
   const skipped = await eventsByAction(db, "leesroute_skipped_no_key");
   expect(skipped.length).toBe(1);
@@ -353,6 +366,268 @@ test("gat B: afgekapte ruwe_tekst + volledige paginatekst → req_*-velden gevul
     regelsMetSegment: 1,
     regelsVerrijkt: 1,
   });
+});
+
+// ── A6 (reviewzwerm 2.5a): afgekapte run herkenbaar én hervatbaar ────────────
+// De batchlus draait serieel binnen één server action; bij een boek van tientallen
+// pagina's kapt het platform de functie af terwijl import_runs en een deel van de
+// spec-regels al weggeschreven zijn. Deze twee tests pinnen het vangnet:
+//   (1) MIDDEN in de lus draagt de run-rij al een stand ('bezig') én voortgang
+//       (counts.pagesDone) — dus een kill op dat moment is herkenbaar afgebroken,
+//       niet "mislukt" en niet "klaar";
+//   (2) zo'n achtergebleven rij wordt door de volgende poging opgepakt: dezelfde
+//       run, en het model krijgt alleen de nog ongelezen pagina's.
+test("A6: midden in de lus staat de run op 'bezig' mét pagesDone — een kill is herkenbaar afgebroken", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+
+  // 9 niet-lege pagina's → batch 1 = pagina 1..8, batch 2 = pagina 9.
+  const pages = Array.from({ length: 9 }, (_, i) => `tekst van pagina ${i + 1}`);
+  // De waarneming gebeurt van BINNENUIT: op de tweede modelcall (= batch 1 is
+  // verwerkt en weggeschreven, batch 2 is nog niet klaar) lezen we de run-rij.
+  let middenInDeLus: { ocrStatus: string | null; pagesDone: unknown } | null =
+    null;
+  let call = 0;
+  const client: OcrClient = {
+    async createMessage() {
+      call++;
+      if (call === 2) {
+        const [row] = await db.select().from(importRuns);
+        middenInDeLus = {
+          ocrStatus: row.ocrStatus,
+          pagesDone: (row.counts ?? {}).pagesDone,
+        };
+      }
+      return toolResponse([
+        {
+          armatuurcode: `Lp30${call}`,
+          merk: "XAL",
+          type: "SASSO 100",
+          ruwe_tekst: `Lp30${call} XAL SASSO 100`,
+          pagina: call === 1 ? 1 : 9,
+        },
+      ]);
+    },
+  };
+
+  await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "raadhuis.pdf",
+    pages,
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 9 },
+    client,
+    actor: ACTOR,
+  });
+
+  // Dít is de kern: op dat moment zegt de rij "bezig" (niet klaar, niet gestopt)
+  // én vertelt hij hoe ver hij was. Zonder beide is een afgekapte run niet van een
+  // geslaagde te onderscheiden en kan een tweede poging niet verder.
+  expect(middenInDeLus).not.toBeNull();
+  expect(middenInDeLus!.ocrStatus).toBe("bezig");
+  expect(middenInDeLus!.pagesDone).toBe(8);
+});
+
+test("A6: een afgebroken run ('bezig' + pagesDone) wordt hervat — zelfde run, alleen de resterende pagina's", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const pages = Array.from({ length: 9 }, (_, i) => `tekst van pagina ${i + 1}`);
+
+  // De afgebroken toestand wordt door de CODE ZELF gemaakt, niet met de hand
+  // gefabriceerd. De vorige versie van deze test zaaide `rows: []` mét
+  // `pagesDone: 8` — een toestand die de lus nooit produceert (rows en pagesDone
+  // gaan in ÉÉN update de database in), waardoor het dedup-pad ongetest bleef.
+  // Hier leest een echte eerste aanroep batch 1 (pagina 1..8) en schrijft die zijn
+  // snapshot weg; het enige dat we simuleren is het gevolg van de kill: de
+  // eindstand-update aan het slot heeft nooit gedraaid, dus de rij staat op 'bezig'.
+  const { client: eersteClient } = mockClient([
+    toolResponse([
+      {
+        armatuurcode: "Lp301",
+        merk: "XAL",
+        type: "SASSO 100",
+        ruwe_tekst: "Lp301 XAL SASSO 100",
+        pagina: 1,
+      },
+    ]),
+  ]);
+  const eerste = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "raadhuis.pdf",
+    pages: pages.slice(0, 8),
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 9 },
+    client: eersteClient,
+    actor: ACTOR,
+  });
+  expect(eerste.run.counts).toMatchObject({ pagesDone: 8 });
+  expect(eerste.run.rows).toHaveLength(1);
+  const afgekapt = eerste.run;
+  await db
+    .update(importRuns)
+    .set({ ocrStatus: "bezig" })
+    .where(eq(importRuns.id, afgekapt.id));
+
+  const { client, calls } = mockClient([
+    toolResponse([
+      {
+        armatuurcode: "Lp309",
+        merk: "XAL",
+        type: "SASSO 100",
+        ruwe_tekst: "Lp309 XAL SASSO 100",
+        pagina: 9,
+      },
+    ]),
+  ]);
+
+  const result = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "raadhuis.pdf",
+    pages,
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 9 },
+    client,
+    actor: ACTOR,
+  });
+
+  // Dezelfde run — geen tweede import_runs-rij, dus geen dubbele boekhouding.
+  expect(result.hervat).toBe(true);
+  expect(result.run.id).toBe(afgekapt.id);
+  expect(await db.select().from(importRuns)).toHaveLength(1);
+
+  // Eén call, en die bevat alléén pagina 9: de eerste acht worden niet opnieuw
+  // gelezen (en dus niet opnieuw betaald).
+  expect(calls.length).toBe(1);
+  const [blok] = calls[0].messages[0].content;
+  if (blok.type !== "text") throw new Error("verwachtte een tekstblok");
+  expect(blok.text).toContain("=== PAGE 9 ===");
+  expect(blok.text).not.toContain("=== PAGE 1 ===");
+
+  // Afgerond → 'klaar', en de hervatting staat in het log (regel 5, nooit stil).
+  expect(result.run.ocrStatus).toBe("klaar");
+  expect(result.created).toBe(1);
+  const hervat = await eventsByAction(db, "leesroute_resumed");
+  expect(hervat).toHaveLength(1);
+  expect(hervat[0].entityId).toBe(afgekapt.id);
+  expect(hervat[0].actor).toBe(ACTOR);
+  expect(hervat[0].payload).toMatchObject({ pagesDone: 8, pageCount: 9 });
+  // Een hervatting is géén nieuwe run: import_run_created blijft bij de eerste.
+  expect(await eventsByAction(db, "import_run_created")).toHaveLength(1);
+});
+
+// A6-HERSTEL: de kill valt niet netjes tússen twee batches maar MIDDEN in
+// verwerkGelezenRegels — de spec-regels van deze batch staan al in de database, de
+// run-snapshot (rows + pagesDone) nog niet: die gaat pas ná de hele batch in één
+// update mee. De dedup leunde op `run.rows`; is die leeg, dan liep elke code recht
+// het created-pad in (addSpecLines) en werd de bestaande eigen regel nooit
+// opgezocht. Resultaat: twee spec-regels met dezelfde armatuurcode in dezelfde run —
+// de duplicaten-bugklasse (A9) die deze sprint al vier keer opdook.
+test("A6: hervatten na een kill MIDDEN in de batch (spec-regels er al, snapshot stale) dupliceert de regel niet", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const pages = ["tekst van pagina 1", "tekst van pagina 2", "tekst van pagina 3"];
+  const regel = {
+    armatuurcode: "Lp301",
+    merk: "XAL",
+    type: "SASSO 100",
+    ruwe_tekst: "Lp301 XAL SASSO 100",
+    pagina: 1,
+  };
+
+  // Eerste aanroep: de batch wordt echt gelezen en de spec-regel echt aangemaakt.
+  const { client: eersteClient } = mockClient([toolResponse([regel])]);
+  const eerste = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pages,
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 3 },
+    client: eersteClient,
+    actor: ACTOR,
+  });
+  expect(await runLines(db, eerste.run.id)).toHaveLength(1);
+
+  // De kill: de snapshot-update die rows én pagesDone wegschrijft heeft nooit
+  // gedraaid. Dít is de echte crashvorm — regels in de database, boekhouding leeg.
+  await db
+    .update(importRuns)
+    .set({
+      rows: [],
+      counts: { total: 0, checked: 0, pageCount: 3, pagesDone: 0 },
+      ocrStatus: "bezig",
+    })
+    .where(eq(importRuns.id, eerste.run.id));
+
+  // Hervatting: dezelfde pagina's worden opnieuw gelezen (dat kost geld — dat is de
+  // prijs van het vangnet), en het model levert dezelfde code opnieuw.
+  const { client } = mockClient([toolResponse([regel])]);
+  const hervat = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "boek.pdf",
+    pages,
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 3 },
+    client,
+    actor: ACTOR,
+  });
+
+  expect(hervat.hervat).toBe(true);
+  expect(hervat.run.id).toBe(eerste.run.id);
+  // De kern: één spec-regel per armatuurcode in deze run, niet twee.
+  const lines = await runLines(db, eerste.run.id);
+  expect(lines).toHaveLength(1);
+  expect(lines.filter((l) => l.fixtureCode === "Lp301")).toHaveLength(1);
+  expect(hervat.created).toBe(0);
+  expect(hervat.duplicates).toBe(1);
+});
+
+// A6-HERSTEL (tweede, kleinere fout): een gefaalde batch verhoogt pagesDone niet,
+// maar een látere geslaagde batch zette pagesDone op zíjn eigen laatste pagina —
+// bij hervatting werden de pagina's van de gefaalde batch dan stilzwijgend
+// overgeslagen. Paginaverlies, geen duplicaat. pagesDone mag daarom alleen de
+// AANEENGESLOTEN voortgang volgen: na een gat schuift hij niet meer op.
+test("A6: een gefaalde batch bevriest pagesDone — een latere geslaagde batch slaat de gemiste pagina's niet stilzwijgend over", async () => {
+  const db = await createTestDb();
+  const dossierId = await seedWorld(db);
+  const pages = Array.from({ length: 9 }, (_, i) => `tekst van pagina ${i + 1}`);
+
+  // Batch 1 (pagina 1..8) faalt met een echte fout; batch 2 (pagina 9) slaagt.
+  const { client } = mockClient([
+    new Error("model onbereikbaar"),
+    toolResponse([
+      {
+        armatuurcode: "Lp309",
+        merk: "XAL",
+        type: "SASSO 100",
+        ruwe_tekst: "Lp309 XAL SASSO 100",
+        pagina: 9,
+      },
+    ]),
+  ]);
+
+  const result = await recordLeesrouteImport(db, {
+    dossierId,
+    filename: "raadhuis.pdf",
+    pages,
+    markdown: MARKDOWN,
+    brandNames: ["XAL"],
+    routerBesluit: { reden: "merkdekking", bekendeMerken: 1, totaal: 9 },
+    client,
+    actor: ACTOR,
+  });
+
+  // De fout is gelogd (regel 5) en de tweede batch is wél verwerkt.
+  expect(await eventsByAction(db, "leesroute_batch_failed")).toHaveLength(1);
+  expect(result.batches).toBe(1);
+  expect(result.created).toBe(1);
+  // Maar de voortgang staat op 0: pagina 1..8 zijn nooit gelezen, dus een
+  // hervatting moet daar opnieuw beginnen in plaats van bij pagina 10.
+  expect(result.run.counts).toMatchObject({ pagesDone: 0 });
 });
 
 test("gat B: paginatekst zonder de code (of vision-achtig pad zonder segment) → gedrag ongewijzigd, geen event", async () => {

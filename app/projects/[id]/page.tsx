@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getOpenOcrRun } from "@/lib/repo/ocr";
 import type { SpecLineRow } from "@/components/dossier/types";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import {
   addSpecCsvAction,
   addSpecLineAction,
@@ -20,6 +20,24 @@ import {
   ocrPageAction,
   startOcrImportAction,
 } from "../actions";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
+
+// A6-vangnet (reviewzwerm 2.5a): een EXPLICIET functieplafond, zodat het een keuze is
+// en geen platformdefault. Route Segment Config werkt op page/layout/route — niet in
+// een los "use server"-actions-bestand — en Next' documentatie zegt het uitdrukkelijk:
+// `maxDuration` op paginaniveau verandert de timeout van álle server actions die vanaf
+// die pagina gebruikt worden. Dit is het segment waar de zwaarste actie hangt:
+// `importArmaturenboekPagesAction` (hieronder doorgegeven aan PdfUploadCard) draait de
+// AI-leesroute serieel over batches van 8 pagina's.
+// 300 s is bewust GEEN verhoging maar een vastlegging: sprint 0.1 stelde via de
+// Vercel-API vast dat dit project op Hobby draait met Fluid compute aan en
+// `functionDefaultTimeout: 300` (docs/sprint0-1-ai-vangnet-live.md, F11/F12) — 300 is
+// daar tegelijk het maximum. Verhogen kan pas op een ander plan.
+// Dit maakt het afkappen NIET onmogelijk (een boek van 40 pagina's kan er nog steeds
+// overheen): daarvoor draagt de import-run sinds dezelfde reparatie een afgebroken-
+// stand, zodat een tweede poging verder leest — zie lib/repo/leesroute.ts.
+export const maxDuration = 300;
 
 // Tab REGELS — de header en tabs komen uit layout.tsx. Deze pagina toont de PDF-upload
 // als hoofdingang (stap 5), daarna de spec-regeltabel (aanvraagvolgorde, statuskleur,
@@ -31,10 +49,13 @@ export default async function RegelsTab({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ pdf?: string; ocr?: string; run?: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]");
   const { id } = await params;
+  // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. De dossier-layout
+  // heeft dezelfde regel; beide zijn nodig (zie de toelichting daar).
+  requireUuid(id);
   const { pdf, ocr, run } = await searchParams;
-  const dossier = await getDossier(db, id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const lines = (await getSpecLines(db, id)) as unknown as SpecLineRow[];
   // B5: een OCR-run die 'bezig' bleef (tab dichtgeklapt) → de upload-kaart toont
@@ -113,11 +134,13 @@ export default async function RegelsTab({
       />
 
       <section className="mb-8">
-        <div className="mb-2 flex items-baseline justify-between">
+        {/* UX-audit 30 jul (item 12): hier stond "Order = request order. No sort
+            buttons." De volgorde ís nog steeds de aanvraagvolgorde — dat is besluit C-11
+            en het staat afgedwongen in lib/repo/review.ts:42. Alleen de zin is weg: de
+            tabel hoeft niet uit te leggen dat ze geen knop heeft. Voeg dus geen
+            sorteerknoppen toe omdat de disclaimer verdwenen is; dat zou C-11 breken. */}
+        <div className="mb-2">
           <h2 className="text-lg font-medium">Lines ({lines.length})</h2>
-          <p className="text-xs text-muted-foreground">
-            Order = request order. No sort buttons.
-          </p>
         </div>
         <SpecLineTable
           dossierId={dossier.id}
@@ -154,7 +177,9 @@ export default async function RegelsTab({
               className="w-full rounded-lg border border-input bg-background p-2.5 font-mono text-sm"
             />
             <div className="mt-2">
-              <Button type="submit" variant="secondary" size="sm">
+              {/* Echte submit, dus `outline` en niet het neutrale `secondary`-vlak:
+                  dit schrijft aantallen over de hele regeltabel. Zie DESIGN.md §6. */}
+              <Button type="submit" variant="outline" size="sm">
                 Link quantities
               </Button>
             </div>

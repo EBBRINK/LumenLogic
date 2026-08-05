@@ -39,82 +39,262 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Vaste waarden i.p.v. de multiplicatieve calc-keten: de kit vraagt exact 6px
+     (knop, input, KPI), 8px (kaart, dialog) en 4px (focus-hoeken). Met factoren
+     ×0.8/×1.4 op een 6px-basis wordt xl 8,4px en sm 3,75px — off-grid. Zo klopt
+     rounded-lg vanzelf op 6px en rounded-xl op 8px, en hoeft geen enkel
+     component voor radius aangepast. Kit §7/§8/§11. */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: var(--radius); /* 6px */
+  --radius-xl: 0.5rem; /* 8px */
+  --radius-2xl: 0.75rem; /* 12px */
+  --radius-3xl: 1rem; /* 16px */
+  --radius-4xl: 1.5rem; /* 24px */
+
+  /* Merk- en statuskleuren. Apart van de shadcn-semantiek: daar zijn --secondary
+     en --accent vlákken, terwijl de kit met "secundair" en "accent" merkkleuren
+     bedoelt. Twee vocabulaires, gescheiden gehouden. */
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-slate: var(--brand-slate);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+
+  /* Navigatiebalk. Een eigen laagje omdat de balk een DONKER vlak in een LICHT
+     canvas is: --foreground, --muted-foreground, --border en --ring hebben daar
+     allemaal de verkeerde waarde. Zie DESIGN.md O12. */
+  --color-nav: var(--nav);
+  --color-nav-foreground: var(--nav-foreground);
+  --color-nav-muted: var(--nav-muted);
+  --color-nav-accent: var(--nav-accent);
+  --color-nav-border: var(--nav-border);
+
+  /* Statuskleuren (zie de bevroren-hues-toelichting bij :root, en O13). */
+  --color-status-green-tint: var(--status-green-tint);
+  --color-status-green-ink: var(--status-green-ink);
+  --color-status-green-dot: var(--status-green-dot);
+  --color-status-amber-tint: var(--status-amber-tint);
+  --color-status-amber-ink: var(--status-amber-ink);
+  --color-status-amber-dot: var(--status-amber-dot);
+  --color-status-blue-tint: var(--status-blue-tint);
+  --color-status-blue-ink: var(--status-blue-ink);
+  --color-status-blue-dot: var(--status-blue-dot);
+  --color-status-red-tint: var(--status-red-tint);
+  --color-status-red-ink: var(--status-red-ink);
+  --color-status-red-dot: var(--status-red-dot);
+  --color-status-purple-tint: var(--status-purple-tint);
+  --color-status-purple-ink: var(--status-purple-ink);
+  --color-status-purple-dot: var(--status-purple-dot);
+  --color-status-grey-tint: var(--status-grey-tint);
+  --color-status-grey-ink: var(--status-grey-ink);
+  --color-status-grey-dot: var(--status-grey-dot);
+  --color-status-orange-tint: var(--status-orange-tint);
+  --color-status-orange-ink: var(--status-orange-ink);
+  --color-status-blue-border: var(--status-blue-border);
+  --color-status-amber-border: var(--status-amber-border);
 }
 
+/* LumenLogic-huisstijl. Waarden staan als hex, letterlijk zoals in de brand kit
+   (docs/brand/lumenlogic_brand_kit.md) — zo is elke regel hier byte-voor-byte
+   terug te vinden in de bron. Zie docs/plan-2.0b-huisstijl-implementatie.md §2
+   voor waarom hex en niet oklch. Paragraafverwijzingen zijn die van de kit.
+
+   Het logo-palet (violet #7C5CFF, magenta #EC5CD6) staat hier BEWUST niet: dat
+   hoort bij het logo en niet bij de interface — twee paletten, zie DESIGN.md §1. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #ffffff; /* §3 Light Canvas */
+  --foreground: #1a1a1a; /* §3 Black (tekst) */
+  --card: #ffffff; /* §8 Standard Card */
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #1a1f3a; /* §7 Primary Button — LumenLogic Navy */
+  --primary-foreground: #ffffff;
+  --primary-hover: #0f1626; /* §7 hover-state */
+  --primary-active: #0a0e18; /* §7 active-state */
+  --secondary: #f0f2f5; /* §3 Light Neutral — vlak, niet de kit-"secundaire kleur" */
+  --secondary-foreground: #1a1f3a;
+  --muted: #f5f7fa; /* §3 Soft Grey Canvas */
+  /* §3 schrijft #8E9BA8 voor secundaire tekst voor. Dat haalt 2,8:1 op wit en
+     faalt daarmee de 4.5:1-eis uit §11 van diezelfde kit. Besluit Timo
+     2026-07-30: kit-letterlijk aanhouden. Bewuste, vastgelegde afwijking —
+     zie DESIGN.md O8. Niet "opruimen". */
+  --muted-foreground: #8e9ba8;
+  --accent: #f0f2f5; /* hover-vlak; shadcn-"accent" ≠ kit-"Accent Teal" */
+  --accent-foreground: #1a1f3a;
+  --destructive: #d84c4c; /* §3 Negative/Alert */
+  --border: #e5e9f0; /* §3 rand */
+  --input: #d0d6e0; /* §7 invoerrand (de achtergrond loopt via --muted) */
+  --ring: #2d5a8c; /* §11 focus — Professional Blue */
+  --chart-1: #2d5a8c; /* §3 Technical Palette: insight */
+  --chart-2: #1ba89a; /* positief */
+  --chart-3: #ff9500; /* waarschuwing */
+  --chart-4: #d84c4c; /* negatief */
+  --chart-5: #8e9ba8; /* neutraal */
+  --radius: 0.375rem; /* 6px — §7 */
+  --sidebar: #f5f7fa;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #1a1f3a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f2f5;
+  --sidebar-accent-foreground: #1a1f3a;
+  --sidebar-border: #e5e9f0;
+  --sidebar-ring: #2d5a8c;
+
+  /* Merkkleuren, los van de shadcn-vlakken (§3). */
+  --brand-navy: #1a1f3a;
+  --brand-blue: #2d5a8c;
+  --brand-teal: #1ba89a;
+  --brand-slate: #3f4a5c;
+
+  /* Statuskleuren (§3). Nodig om de 26 bestanden met hardgecodeerde
+     amber/emerald/sky-utilities in hun eigen stap naar het merk te trekken. */
+  --success: #1ba89a;
+  --success-foreground: #ffffff;
+  --warning: #ff9500;
+  --warning-foreground: #1a1a1a;
+
+  /* Navigatiebalk — bewuste toevoeging BOVENOP de kit, zie DESIGN.md O12.
+     De kit wijst navy toe aan CTA's en nadruk (§3) en zet wit als app-canvas;
+     een navy chrome-balk staat er niet in. Timo heeft er expliciet om gevraagd.
+     Alleen kit-kleuren, niets afgeleid.
+
+     Deze vijf staan BEWUST niet in .dark: de balk is in beide standen hetzelfde
+     donkere vlak, dus §14 is hier ook in light de juiste bron. Ze overschrijven
+     zou een tweede navy verzinnen die de kit niet levert. De huisstijltest pint
+     dat vast door ze in LIGHT_TOKENS én DARK_TOKENS te zetten. */
+  --nav: #1a1f3a; /* §3 Dark Canvas — navy */
+  --nav-foreground: #ffffff; /* §3 Wit: tekst op kleur — 16,1:1 */
+  --nav-muted: #b0b8c4; /* §14 Text Secondary — 8,1:1 op navy */
+  --nav-accent: #1ba89a; /* §3 Accent Teal — 5,5:1; §8 gebruikt teal al als accentlijn op navy */
+  --nav-border: #3a4254; /* §14 Border */
+
+  /* ── Statuskleuren: BEVROREN HUES, geen kit-kleuren ──────────────────────
+     Besluit Timo 2026-07-30: het mechanisme gaat nu om, de kleuren niet. Dit
+     zijn exact de Tailwind-waarden die de code vandaag hardgecodeerd gebruikt,
+     letterlijk overgenomen uit node_modules/tailwindcss/theme.css — niet
+     geconverteerd, niet bijgestemd, dus de app ziet er identiek uit. Zie O13.
+
+     Waarom niet naar het kit-palet: de kit heeft vijf kleuren voor zes
+     statussen, en élke kit-letterlijke route heeft minstens één afgeleide
+     kleur nodig. Nagemeten in een echte browser: kit-blauw #2D5A8C haalt op
+     wit 5,87:1 maar op de navy kaart in dark 2,09:1; dark-rood met ongemengde
+     #D84C4C haalt 3,40:1. Bovendien ZIJN de statuslabels de kleurnamen
+     ("Blue", "Purple" — zie components/dossier/status.ts en MASTERPLAN §3),
+     en `word` wordt letterlijk afgedrukt in lib/pdf/estimate.ts. "Yellow" naar
+     oranje zetten maakt het geprinte woord onwaar. Wacht op een zes-kleuren-
+     statusramp van Eduard.
+
+     De namen volgen de hue en niet een rol: dezelfde hue betekent per familie
+     iets anders (emerald is "groen" in de matcher en "Won" in de projectstatus),
+     dus een rolnaam zou liegen. */
+  --status-green-tint: oklch(95% 0.052 163.051); /* emerald-100 */
+  --status-green-ink: oklch(43.2% 0.095 166.913); /* emerald-800 */
+  --status-green-dot: oklch(69.6% 0.17 162.48); /* emerald-500 */
+  --status-amber-tint: oklch(96.2% 0.059 95.617); /* amber-100 */
+  --status-amber-ink: oklch(47.3% 0.137 46.201); /* amber-800 */
+  --status-amber-dot: oklch(76.9% 0.188 70.08); /* amber-500 */
+  --status-blue-tint: oklch(95.1% 0.026 236.824); /* sky-100 */
+  --status-blue-ink: oklch(44.3% 0.11 240.79); /* sky-800 */
+  --status-blue-dot: oklch(68.5% 0.169 237.323); /* sky-500 */
+  --status-red-tint: oklch(94.1% 0.03 12.58); /* rose-100 */
+  --status-red-ink: oklch(45.5% 0.188 13.697); /* rose-800 */
+  --status-red-dot: oklch(64.5% 0.246 16.439); /* rose-500 */
+  /* Let op: dit is violet-500 (oklch 292,7°), NIET het logo-violet #7C5CFF.
+     Een statuskleur, geen merkkleur — G23 blijft dus intact, en de
+     logopalet-guard in huisstijl.test.tsx dekt deze tokens mee. */
+  --status-purple-tint: oklch(94.3% 0.029 294.588); /* violet-100 */
+  --status-purple-ink: oklch(43.2% 0.232 292.759); /* violet-800 */
+  --status-purple-dot: oklch(60.6% 0.25 292.717); /* violet-500 */
+  --status-grey-tint: oklch(96.8% 0.007 247.896); /* slate-100 */
+  --status-grey-ink: oklch(37.2% 0.044 257.287); /* slate-700 */
+  --status-grey-dot: oklch(70.4% 0.04 256.788); /* slate-400 */
+  /* Eén plek gebruikt oranje als eigen hue naast amber: de duplicaatcode-vlag in
+     brand-relations-table. Oranje ≠ amber (37° vs 46°), dus samenvoegen zou een
+     kleur wijzigen — en dat is precies wat deze omzetting niet doet. */
+  --status-orange-tint: oklch(95.4% 0.038 75.164); /* orange-100 */
+  --status-orange-ink: oklch(47% 0.157 37.304); /* orange-800 */
+  /* Randen van gestippelde info-/waarschuwingsvlakken. Eigen paar, want het loopt de
+     ANDERE kant op dan de inkt: licht in light, donker in dark. */
+  --status-blue-border: oklch(82.8% 0.111 230.318); /* sky-300 */
+  --status-amber-border: oklch(87.9% 0.169 91.605); /* amber-300 */
 }
 
+/* Dark mode is verplicht (besluit G24), niet optioneel zoals kit §14 suggereert.
+   De waarden komen uit §14; twee dingen die §14 niet geeft zijn met een besluit
+   gedicht — zie de kanttekeningen bij --primary en --ring. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0f1626; /* §14 Background */
+  --foreground: #ffffff; /* §14 Text Primary */
+  --card: #1a1f3a; /* §14 Surface (Cards) */
+  --card-foreground: #ffffff;
+  --popover: #1a1f3a;
+  --popover-foreground: #ffffff;
+  /* §14 geeft geen primaire knop voor donker. Navy op een navy kaart is ≈1:1.
+     Besluit Timo 2026-07-30: wit vlak met navy tekst — §3 zegt letterlijk dat
+     wit voor "CTA's op donker" is. Zie DESIGN.md O10. */
+  --primary: #ffffff;
+  --primary-foreground: #1a1f3a;
+  --primary-hover: #f0f2f5;
+  --primary-active: #e5e9f0;
+  --secondary: #2a3145; /* §14 Canvas (Soft) */
+  --secondary-foreground: #ffffff;
+  --muted: #2a3145; /* §14 Canvas (Soft) — ook de invoerachtergrond, §14 Input Bg */
+  --muted-foreground: #b0b8c4; /* §14 Text Secondary — 9:1 op de achtergrond */
+  --accent: #2a3145;
+  --accent-foreground: #ffffff;
+  --destructive: #d84c4c; /* §14 geeft geen dark-variant; kit-kleur ongewijzigd */
+  --border: #3a4254; /* §14 Border — solide, verving de translucente rand */
+  --input: #3a4254;
+  /* §11 kent maar één focus-kleur, maar #2D5A8C haalt 2,25:1 op de kaart-navy en
+     faalt daarmee de eis "altijd zichtbaar" + 3:1 uit die paragraaf zelf.
+     Besluit Timo 2026-07-30: teal in dark (5,4:1), ook een kit-kleur.
+     Light blijft blauw. Zie DESIGN.md O10. */
+  --ring: #1ba89a;
+  --chart-1: #2d5a8c;
+  --chart-2: #1ba89a;
+  --chart-3: #ff9500;
+  --chart-4: #d84c4c;
+  --chart-5: #8e9ba8;
+  --sidebar: #1a1f3a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #1a1f3a;
+  --sidebar-accent: #2a3145;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #3a4254;
+  --sidebar-ring: #1ba89a;
+
+  /* Merk- en statuskleuren blijven gelijk aan light: §14 geeft er geen
+     dark-varianten voor, en we verzinnen geen kleuren die de kit niet levert. */
+
+  /* Statuskleuren dark — óók bevroren op de huidige Tailwind-waarden, letterlijk
+     uit theme.css. De code deed hier dark:bg-*-950 dark:text-*-300; dat blijft
+     dus precies zo renderen. De dot wisselt niet mee (deed hij vandaag ook niet).
+     Deze paren zijn nooit op contrast nagerekend — dat hoort bij de kit-vraag
+     die bij Eduard ligt, niet bij een mechanische omzetting. Zie O13. */
+  --status-green-tint: oklch(26.2% 0.051 172.552); /* emerald-950 */
+  --status-green-ink: oklch(84.5% 0.143 164.978); /* emerald-300 */
+  --status-amber-tint: oklch(27.9% 0.077 45.635); /* amber-950 */
+  --status-amber-ink: oklch(87.9% 0.169 91.605); /* amber-300 */
+  --status-blue-tint: oklch(29.3% 0.066 243.157); /* sky-950 */
+  --status-blue-ink: oklch(82.8% 0.111 230.318); /* sky-300 */
+  --status-red-tint: oklch(27.1% 0.105 12.094); /* rose-950 */
+  --status-red-ink: oklch(81% 0.117 11.638); /* rose-300 */
+  --status-purple-tint: oklch(28.3% 0.141 291.089); /* violet-950 */
+  --status-purple-ink: oklch(81.1% 0.111 293.571); /* violet-300 */
+  --status-grey-tint: oklch(27.9% 0.041 260.031); /* slate-800 */
+  --status-grey-ink: oklch(86.9% 0.022 252.894); /* slate-300 */
+  --status-orange-tint: oklch(26.6% 0.079 36.259); /* orange-950 */
+  --status-orange-ink: oklch(83.7% 0.128 66.29); /* orange-300 */
+  --status-blue-border: oklch(44.3% 0.11 240.79); /* sky-800 */
+  --status-amber-border: oklch(41.4% 0.112 45.904); /* amber-900 */
 }
 
 @layer base {

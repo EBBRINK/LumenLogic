@@ -1,9 +1,12 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { ArmaturenboekView } from "@/components/dossier/armaturenboek-view";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
-import { requireSession } from "@/lib/session";
+import { requireUuid } from "@/lib/uuid";
 import { PrintButton } from "./print-button";
+import { bewaakRoute } from "@/lib/route-toegang";
+import { toegangScope } from "@/lib/repo/toegang";
 
 // Armaturenboek-tab (§3.10): overdrachtsdocument voor de bouwplaats. De dossier-layout
 // levert al de kop (naam, klant, fase, telling) + tabs — deze pagina rendert alleen zijn
@@ -13,15 +16,28 @@ export default async function ArmaturenboekPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSession();
+  const toegang = await bewaakRoute("/projects/[id]/luminaire-schedule");
   const { id } = await params;
-  const dossier = await getDossier(db, id);
+  // Eigen guard, niet die van de dossier-layout: die rendert concurrent met deze pagina,
+  // dus wie het eerst gooit bepaalt het antwoord. Zie de regel bij requireUuid in
+  // lib/uuid.ts.
+  requireUuid(id);
+  const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const lines = await getSpecLines(db, id);
 
   return (
     <>
-      <div className="mb-4 flex justify-end print:hidden">
+      {/* UX-audit 30 jul (bug #11): de versiegeschiedenis was alleen via work-prep te
+          bereiken, en die tab bestaat pas als het project gegund is — in tender-stand was
+          het scherm dus onbereikbaar. Secundaire link naast de printknop. */}
+      <div className="mb-4 flex items-center justify-end gap-4 print:hidden">
+        <Link
+          href={`/projects/${id}/luminaire-schedule/versions`}
+          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Version history →
+        </Link>
         <PrintButton />
       </div>
       <ArmaturenboekView

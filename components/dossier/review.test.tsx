@@ -33,6 +33,16 @@ const pending: ReviewItem[] = [
         verdict: "geel",
         note: "300K koeler dan gevraagd",
       },
+      // UX-audit 30 jul (bug #8): de DeviationList op de geel-kaart toonde de ruwe
+      // veldsleutel. `Kelvin` ziet er per ongeluk goed uit, `beamAngle` niet — vandaar
+      // deze tweede regel, die wél door de fix moet worden opgevangen.
+      {
+        field: "beamAngle",
+        requested: 24,
+        delivered: 36,
+        verdict: "geel",
+        note: "12° breder dan gevraagd",
+      },
     ],
     candidates: [
       {
@@ -134,7 +144,8 @@ const pending: ReviewItem[] = [
 ];
 
 // OCR-controle (bouwstap 7/8): een regel uit een beeld-PDF mét herkomst — de kaart
-// toont het paginanummer en linkt naar het opgeslagen paginabeeld (de échte bron, B6).
+// toont het paginanummer en linkt naar het opgeslagen paginabeeld (de échte bron, B6),
+// plus de ruwe tabelregel zoals de import hem las (UX-audit 30 jul).
 const ocrItem: ReviewItem = {
   id: "s5",
   fixtureCode: "Ld105",
@@ -146,6 +157,40 @@ const ocrItem: ReviewItem = {
   reqColor: null,
   sourcePage: 14,
   importRunId: "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+  hasPageImage: true,
+  sourceText: "Ld105  XAL  UNICO Q4 2700K  IP20  9W  650lm  36°  wit",
+};
+
+// Zelfde run, andere pagina — en van DIE pagina staat geen beeld in ocr_page_images
+// (vision-fout/budgetstop halen de beeldrij weer weg, dus een run kan een deel van
+// zijn pagina's in beeld hebben). De run-brede vlag liet hier tóch de beeldlink
+// renderen → kale 404 (UX-audit 30 jul, bug #2). Verwacht: de tekstlink.
+// De brontekst is hier bewust een ECHTE boekregel-lengte (~350 tekens, zoals een
+// detailpagina in het Deerns-boek): zo laat de screenshot op 375px zien dat het
+// citaat in rust twee regels blijft en uitklapbaar is (reviewronde 2, 30 jul).
+const ocrItemZonderBeeld: ReviewItem = {
+  ...ocrItem,
+  id: "s6",
+  fixtureCode: "Ld106",
+  sourcePage: 15,
+  hasPageImage: false,
+  sourceText:
+    "Ld106  XAL  UNICO Q4 3000K  IP20  9W  650lm  36°  zwart  " +
+    "inbouwspot vierkant 68x68 mm inbouwdiepte 95 mm  driver extern DALI dimbaar  " +
+    "CRI ≥ 90  MacAdam step 3  behuizing aluminium gepoedercoat  " +
+    "levensduur L80B10 50.000 h  bestelnummer 1234-5678-90  positie plafond gang 1.04",
+};
+
+// Aanroeper die de vlag niet meestuurt (fixture/oudere code). Er is dan geen bewijs
+// dát het paginabeeld bestaat, dus de kaart valt terug op de tekstlink — nooit op een
+// mogelijke 404 (reviewronde 2, 30 jul: de "onbekend → tóch de beeldlink"-tak is weg).
+const ocrItemZonderVlag: ReviewItem = {
+  ...ocrItem,
+  id: "s7",
+  fixtureCode: "Ld107",
+  sourcePage: 16,
+  hasPageImage: undefined,
+  sourceText: "Ld107  XAL  UNICO Q4 4000K  IP44  12W  900lm  60°  wit",
 };
 
 const done: ReviewItem[] = [
@@ -240,7 +285,10 @@ const shots = {
     <Screen>
       <ReviewQueue
         dossierId="d1"
-        pending={[ocrItem]} // OcrCard mét paginanummer + "View page image"-link
+        // Drie OcrCards: mét paginabeeld ("View page image"), zonder beeld van die
+        // pagina (lange brontekst, clamp + "show all") en zonder vlag — alle drie
+        // met hun ruwe brontekst.
+        pending={[ocrItem, ocrItemZonderBeeld, ocrItemZonderVlag]}
         done={[]}
         decideAction={noopAction}
         linkAction={noopAction}
@@ -249,6 +297,17 @@ const shots = {
   ),
 } as const;
 
+// Ankerassertie per set: één tekst die alléén door de kaarten van díe set wordt
+// gerenderd. Zonder dit anker bewees deze lus niets — `expect.element(document.body)`
+// is per definitie waar, ook als ReviewQueue niets rendert.
+const anchors: Record<keyof typeof shots, string | RegExp> = {
+  "review-queue": "VELA ROUND 900", // tweede kandidaat op de "welke van deze N"-kaart
+  // De variantknop draagt de kléúr als zichtbare tekst (de productnaam zit alleen in
+  // `title`) — dus dít is wat een lezer op de foto ziet staan.
+  "review-variant-rood": "black/gold",
+  "review-ocr": "Ld107", // regelcode van de derde OCR-kaart
+};
+
 for (const [name, ui] of Object.entries(shots)) {
   for (const theme of ["light", "dark"] as const) {
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -256,7 +315,9 @@ for (const [name, ui] of Object.entries(shots)) {
         await page.viewport(viewport.width, viewport.height);
         if (theme === "dark") document.documentElement.classList.add("dark");
         await renderServer(ui);
-        await expect.element(document.body).toBeInTheDocument();
+        await expect
+          .element(page.getByText(anchors[name as keyof typeof shots]).first())
+          .toBeInTheDocument();
         await page.screenshot({ path: `./${name}.${theme}.${device}.test.png` });
       });
     }
@@ -337,6 +398,14 @@ test("review-queue toont alle kaarttypes met hun beslis-acties", async () => {
   await expect
     .element(page.getByText(/eduard@brinklicht\.nl/))
     .toBeInTheDocument();
+
+  // UX-audit 30 jul (bug #8): de afwijkingenlijst op de kaart droeg de ruwe veldsleutel.
+  // Reparatie 30 jul (bevinding 3): het label begint een lijstitem, dus het is de
+  // begin-van-de-regel-vorm — één conventie met de Field-kolom van de afwijkingentabel.
+  await expect
+    .element(page.getByText(/Beam angle: requested 24 → delivered 36/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("beamAngle");
 });
 
 // OcrCard (bouwstap 7/8): paginanummer + link naar het opgeslagen paginabeeld in een
@@ -365,10 +434,108 @@ test("ocr-kaart toont paginanummer en linkt naar het paginabeeld", async () => {
   );
   expect(el.getAttribute("target")).toBe("_blank"); // boek náást de review
 
+  // De kaart toont de ruwe tabelregel: zonder dat citaat is "is de lezing correct?"
+  // een vraag zonder materiaal (UX-audit 30 jul).
+  await expect
+    .element(page.getByText(/UNICO Q4 2700K\s+IP20\s+9W/))
+    .toBeInTheDocument();
+
   // De bevestig-actie blijft de bestaande 'gecontroleerd'-knop.
   await expect
     .element(page.getByRole("button", { name: /Checked/ }))
     .toBeInTheDocument();
+});
+
+// Bug #2 (UX-audit 30 jul): dezelfde run, een pagina zónder beeldrij. De vlag is nu
+// per pagina, dus deze kaart mag GEEN beeldlink dragen — die gaf een kale 404 —
+// maar de bestaande tekst-fallback naar het markdown-controlespoor van de run.
+test("ocr-kaart zonder beeld van díe pagina linkt naar de brontekst, niet naar het beeld", async () => {
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderBeeld]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  expect(page.getByRole("link", { name: /View page image/ }).query()).toBeNull();
+
+  const link = page.getByRole("link", { name: /View source text/ });
+  await expect.element(link).toBeInTheDocument();
+  const el = link.element() as HTMLAnchorElement;
+  expect(el.getAttribute("href")).toBe(
+    `/projects/d1/import/${ocrItemZonderBeeld.importRunId}`,
+  );
+  expect(el.getAttribute("target")).toBe("_blank");
+
+  // Paginanummer én brontekst blijven staan — de reviewer weet waar het vandaan komt.
+  await expect.element(page.getByText(/Read from page/)).toBeInTheDocument();
+  await expect
+    .element(page.getByText(/UNICO Q4 3000K\s+IP20\s+9W/))
+    .toBeInTheDocument();
+});
+
+// Reviewronde 2 (30 jul): de "onbekend → tóch de beeldlink"-tak was gedocumenteerd maar
+// ongetest, en was de énige tak die nog een kale 404 kón opleveren. Hij is weg: zonder
+// bewijs dat het beeld bestaat linkt de kaart naar de brontekst.
+test("ocr-kaart zonder hasPageImage-vlag linkt naar de brontekst, niet naar het beeld", async () => {
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderVlag]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  expect(page.getByRole("link", { name: /View page image/ }).query()).toBeNull();
+  await expect
+    .element(page.getByRole("link", { name: /View source text/ }))
+    .toBeInTheDocument();
+});
+
+// F4 (reviewronde 2, 30 jul): de kaart beweerde "volledige tekst in de title", maar die
+// title droeg dezelfde al op 240 tekens gekapte string — dubbel afgekapt, en op 375px
+// (geen hover) helemaal onbereikbaar. Nu: de héle regel staat één keer in de DOM,
+// zichtbaar op twee regels, en uitklappen haalt de clamp weg.
+test("brontekst: hele regel in de DOM, uitklappen haalt de afkapping weg", async () => {
+  await page.viewport(375, 812); // de telefoon waar geen hover bestaat
+  await renderServer(
+    <Screen>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[ocrItemZonderBeeld]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>,
+  );
+  const quote = page.getByText(/bestelnummer 1234-5678-90/);
+  await expect.element(quote).toBeInTheDocument();
+  const el = quote.element() as HTMLElement;
+  // Geen afgekapte kopie: de tekst in de DOM is exact de meegegeven brontekst, en
+  // er staat géén title-attribuut meer dat "de rest" belooft.
+  expect(el.textContent).toBe(ocrItemZonderBeeld.sourceText);
+  expect(el.closest("[title]")).toBeNull();
+
+  // In rust twee regels: er valt méér tekst binnen dan er te zien is, en de kaart
+  // biedt de uitklap-affordance aan.
+  const details = el.closest("details") as HTMLDetailsElement;
+  const showAll = page.getByText("show all", { exact: true }).element();
+  const showLess = page.getByText("show less", { exact: true }).element();
+  expect(details.open).toBe(false);
+  expect(el.scrollHeight).toBeGreaterThan(el.clientHeight);
+  expect(getComputedStyle(showAll).display).not.toBe("none");
+  expect(getComputedStyle(showLess).display).toBe("none");
+
+  // Uitgeklapt staat de hele regel er — de clamp is weg (geen overloop meer).
+  details.open = true;
+  expect(el.scrollHeight).toBe(el.clientHeight);
+  expect(getComputedStyle(showAll).display).toBe("none");
+  expect(getComputedStyle(showLess).display).not.toBe("none");
 });
 
 test("review-queue lege staat", async () => {

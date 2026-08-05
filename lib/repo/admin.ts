@@ -22,7 +22,7 @@ import {
   setBrandFieldVisibility,
   type DisclosureTier,
 } from "./disclosure";
-import { logEvent, recentEvents } from "./events";
+import { logEvent } from "./events";
 import { TEMPLATE_UPLOAD_KIND } from "./template-return";
 
 export type BrandWithTier = {
@@ -284,10 +284,4 @@ export async function recordPdlImport(
     payload: { brandId: input.brandId },
   });
   return row;
-}
-
-// ── Event-inzage (ijzeren regel 5) ───────────────────────────────────────────
-// De admin ziet de recente activiteit; hergebruikt de events-repo zodat er één leespad is.
-export async function recentAdminEvents(db: AppDb, limit = 50) {
-  return recentEvents(db, limit);
 }

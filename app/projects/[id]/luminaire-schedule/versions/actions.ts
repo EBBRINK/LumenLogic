@@ -7,10 +7,11 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { snapshotArmaturenboek } from "@/lib/repo/armaturenboek-versions";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakProject } from "@/lib/project-poort";
 
 export async function snapshotAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   if (!dossierId) return;
   const note = String(formData.get("note") ?? "").trim() || null;

@@ -7,7 +7,7 @@ import type { ProjectStatus, XisPhase } from "./types";
 
 export type ProjectStatusMeta = {
   label: string;
-  tint: string; // subtiele pill-achtergrond + tekst (licht + donker)
+  tint: string; // subtiele pill-achtergrond + tekst; dark loopt via de tokens
   meaning: string;
 };
 
@@ -23,32 +23,32 @@ export const PROJECT_STATUS_ORDER: ProjectStatus[] = [
 export const PROJECT_STATUS_META: Record<ProjectStatus, ProjectStatusMeta> = {
   concept: {
     label: "Concept",
-    tint: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    tint: "bg-status-grey-tint text-status-grey-ink",
     meaning: "Work in progress — nothing has gone out yet.",
   },
   estimate_gestuurd: {
     label: "Estimate sent",
-    tint: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+    tint: "bg-status-blue-tint text-status-blue-ink",
     meaning: "The estimate has been sent; header and quantities are locked.",
   },
   offerte: {
     label: "Quote",
-    tint: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    tint: "bg-status-purple-tint text-status-purple-ink",
     meaning: "Quote in progress (outside the tool, in XIS).",
   },
   gegund: {
     label: "Won",
-    tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    tint: "bg-status-green-tint text-status-green-ink",
     meaning: "Won — alternative suggestions may be enabled (phase: awarded).",
   },
   niet_gegund: {
     label: "Lost",
-    tint: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    tint: "bg-status-amber-tint text-status-amber-ink",
     meaning: "Lost — stays editable; a lost tender is data.",
   },
   archief: {
     label: "Archived",
-    tint: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+    tint: "bg-status-grey-tint text-status-grey-ink",
     meaning: "Archived with a reason — read-only.",
   },
 };

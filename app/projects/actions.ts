@@ -1,9 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { brands } from "@/db/schema";
+import { brands, reviewKind } from "@/db/schema";
+// Invoervalidatie: elke action die hier wordt aangeraakt gaat om naar een schema-parse.
+// De conventie staat in docs/INVOERVALIDATIE.md.
+import {
+  parseForm,
+  z,
+  zEnumFrom,
+  zOptionalText,
+  zPrice,
+  zUuid,
+} from "@/lib/validation";
+import { isUuid } from "@/lib/uuid";
 import {
   addSpecLines,
   createDossier,
@@ -13,6 +24,7 @@ import {
   linkQuantities,
   parseBestek,
   parseSpecCsv,
+  SPEC_CSV_MAX_LINES,
   setDayPrice,
   setQuantity,
   updateQuoteHeader,
@@ -42,13 +54,13 @@ import {
 import { beslisRoute } from "@/lib/ai/leesroute";
 import { envApiKey } from "@/lib/ai/shared";
 import { recordLeesrouteImport } from "@/lib/repo/leesroute";
-import { setDossierOrg } from "@/lib/repo/orgs";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import { dismissSuggestion, useAiSuggestion } from "@/lib/repo/ai-suggestions";
 import { decideReview, flagForReview, linkManualProduct } from "@/lib/repo/review";
 import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
-import { requireSession, getActor } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakProject } from "@/lib/project-poort";
 
 function intOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
@@ -70,25 +82,45 @@ function asXisPhase(v: FormDataEntryValue | null): XisPhase {
 }
 
 export async function createDossierAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
+
+  // ⚠️ 3.2a — DE ORGANISATIE HOORT ER METEEN BIJ. Tot deze sprint zette createDossier()
+  // géén org_id en werd hij hier achteraf optioneel gezet via het keuzelijstje; wie dat
+  // leeg liet, kreeg een dossier met `org_id IS NULL`. Migratie 0019 had de 13 bestaande
+  // dossiers net aan brink-licht gekoppeld, dus het veertiende viel er weer uit — en een
+  // dossier zonder organisatie is per dossierScopeSql() alleen voor intern zichtbaar.
+  // Een externe die er één maakte, zou hem daarna zelf niet meer terugzien.
+  //
+  // Intern mag kiezen (dat lijstje is er voor het koppelen van een klantproject); leeg
+  // betekent nu "van Brink zelf" en niet meer "van niemand". Extern kiest niet: zijn
+  // project valt onder zijn eigen organisatie, wat het formulier ook meestuurt — dat is
+  // dezelfde regel als G39 (de invoer bepaalt de vraag, nooit het antwoord).
+  const gevraagdeOrg = strOrNull(formData.get("orgId"));
+  const orgId =
+    toegang.soort === "intern"
+      ? (gevraagdeOrg ?? toegang.primaireOrgId)
+      : toegang.primaireOrgId;
+  // Geen bruikbare organisatie → niet aanmaken. Dat kan alleen bij een account zonder
+  // lidmaatschap of bij een extern account in meerdere organisaties (dan is er geen
+  // eerlijk antwoord — zie Toegang.primaireOrgId). Liever niets dan een stuurloos dossier.
+  if (!orgId) return;
+
   // Geen statuskeuze bij aanmaken: altijd 'concept'. Alleen de XIS-fase (default start).
   const dossier = await createDossier(db, {
     name,
     customer: strOrNull(formData.get("customer")),
     xisPhase: asXisPhase(formData.get("xisPhase")),
-    actor: await getActor(),
+    orgId,
+    actor: toegang.email ?? "anoniem",
   });
-  // Optioneel: dossier aan een org koppelen (leeg = intern Brink-dossier).
-  const orgId = strOrNull(formData.get("orgId"));
-  if (orgId) await setDossierOrg(db, dossier.id, orgId);
   redirect(`/projects/${dossier.id}`);
 }
 
 // Handmatige regel toevoegen → matcher draait direct (functioneel ontwerp 3.4-5).
 export async function addSpecLineAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
@@ -117,12 +149,50 @@ export async function addSpecLineAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}`);
 }
 
+// B6 (reviewzwerm 2.5a): er stond geen enkele bovengrens op het geplakte CSV-blok, niet in
+// parseSpecCsv, niet in addSpecLines en niet hier — en daarna draaide er één matcher PER
+// REGEL. Zelf-DoS door de enige gebruiker.
+//
+// De weerlegger heeft de omvang gemeten op PGlite: addSpecLines doet één INSERT met 22
+// kolommen per rij, dus Postgres' bind-parameterlimiet (65535) kapt af boven 2978 regels —
+// en dan draait er géén enkele matcher. "Honderdduizenden regels" kan dus niet; het
+// realistische worstcase is ≤2978 matcher-runs waarbij de functietimeout de invocatie
+// halverwege afkapt → een half gematcht dossier.
+//
+// Het ontwerp wíl >10 regels via een controlescherm (CSV_PROPOSAL_THRESHOLD = 10), maar
+// createCsvProposalAction is nergens aangesloten — dode code. De "kleine plak"-aanname
+// wordt dus door niets afgedwongen. Tot dat scherm er is, is dit de afdwinging.
+//
+// 500 is ruim boven elk echt armaturenboek (het Deerns-boek heeft er 20) en ruim onder
+// zowel de parameterlimiet als de timeout. Precedent voor de vorm:
+// app/data/brand-relations/actions.ts (BULK_MAX = 100), met exact deze redenering.
+//
+// Alles-of-niets, bewust: half inlezen levert precies het half gematchte dossier op dat we
+// willen voorkomen, en dat is stiller en duurder om terug te draaien dan een weigering.
+//
+// De constante staat in lib/repo/dossiers.ts naast parseSpecCsv en NIET hier: een
+// "use server"-module mag uitsluitend async functies exporteren. Een geëxporteerde const
+// laat registerServerReference klappen met "Object.defineProperties called on non-object" —
+// gemeten, niet beredeneerd.
 export async function addSpecCsvAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const csv = String(formData.get("csv") ?? "");
   const lines = parseSpecCsv(csv).map((l) => ({ ...l, source: "csv" as const }));
+  if (lines.length > SPEC_CSV_MAX_LINES) {
+    // Regel 5: het gebeurde, dus het staat in events. Er is (nog) geen terugmeldkanaal op
+    // dit formulier; zonder dit event zou een geweigerde plak spoorloos zijn.
+    await logEvent(db, {
+      entity: "project_dossier",
+      entityId: dossierId,
+      action: "spec_csv_rejected_too_large",
+      actor,
+      payload: { lines: lines.length, max: SPEC_CSV_MAX_LINES },
+    });
+    revalidatePath(`/projects/${dossierId}`);
+    return;
+  }
   if (dossierId && lines.length) {
     const rows = await addSpecLines(db, dossierId, lines);
     for (const r of rows) await runMatcher(db, r.id, actor);
@@ -132,7 +202,7 @@ export async function addSpecCsvAction(formData: FormData) {
 
 // Bestek/telstaat plakken → aantallen koppelen op fixture-code (B-08/A-06).
 export async function linkBestekAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const block = String(formData.get("bestek") ?? "");
   const pairs = parseBestek(block);
@@ -154,7 +224,7 @@ export async function importArmaturenboekPagesAction(input: {
   filename: string;
   pages: string[];
 }): Promise<{ error: string } | void> {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const dossierId =
     typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
@@ -287,6 +357,11 @@ export async function importArmaturenboekPagesAction(input: {
 // binnen Next's action-bodylimiet (JPEG van 1568px lange zijde ≈ 200–500 kB).
 const OCR_IMAGE_CAP = 2 * 1024 * 1024; // hard plafond per paginabeeld
 const OCR_MAX_PAGES = 500;
+// C10: bovengrenzen op de overige client-invoer van ocrPageAction. 16 tegels = 4×4, ruim
+// boven wat de A3-tiling nodig heeft; 20.000 px is ruim boven elke reële paginarender
+// (A3 op 300 dpi ≈ 3500×4960).
+const OCR_MAX_TILES = 16;
+const OCR_MAX_DIMENSION = 20_000;
 
 // Run starten (of hervatten, B5: zelfde dossier + bestand + ocrStatus 'bezig').
 // Geen key → eerlijke melding vóór er ook maar iets gerenderd of geüpload wordt.
@@ -300,7 +375,7 @@ export async function startOcrImportAction(input: {
   // pagina, dus voor bestaande runs is dit één-op-één het oude donePages.
   | { runId: string; resumed: boolean; doneTiles: { page: number; tile: number }[] }
 > {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const dossierId =
     typeof input?.dossierId === "string" ? input.dossierId.trim() : "";
@@ -322,9 +397,8 @@ export async function startOcrImportAction(input: {
         "OCR is unavailable: no AI key is configured. Add the fixture rows manually or via CSV.",
     };
   }
-  if (!(await getDossier(db, dossierId))) {
-    return { error: "Unknown project." };
-  }
+  // (De "bestaat dit project"-check die hier stond zit sinds 3.2a in bewaakProject()
+  // bovenaan deze functie — daar weegt hij meteen ook de org-scope mee.)
   const { run, resumed, doneTiles } = await startOcrRun(db, {
     dossierId,
     filename,
@@ -340,11 +414,11 @@ export async function startOcrImportAction(input: {
 export async function ocrPageAction(formData: FormData): Promise<
   | { error: string }
   | { alreadyDone: true }
-  | { stopped: "budget" | "no_key" }
+  | { stopped: "budget_run" | "budget_month" | "no_key" }
   | { failed: string }
   | { created: number; duplicates: number; upgraded: number }
 > {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const runId = String(formData.get("runId") ?? "").trim();
@@ -359,10 +433,35 @@ export async function ocrPageAction(formData: FormData): Promise<
   const tileCountRaw = formData.get("tileCount");
   const tileCount = tileCountRaw == null ? 1 : intOrNull(tileCountRaw);
   const image = formData.get("image");
+  // C10 (reviewzwerm 2.5a): er stonden alleen ONDERgrenzen (page >= 1, tile >= 0,
+  // tileCount >= 1). OCR_MAX_PAGES gold uitsluitend bij het STARTEN van een run, dus een
+  // los request mocht elk paginanummer noemen — pagina 999.999 van een boek van 12.
+  // Het geschetste gevolg ("1.024 requests = 1 GB permanente opslag") is weerlegd: bij een
+  // budgetstop zet processOcrPage de run op 'gestopt' en weigert dit endpoint daarna élk
+  // volgend request vóór de opslag, dus er blijft één weesrij per run staan, niet duizend.
+  // Wat blijft is de ontbrekende bovengrens zelf — hygiëne, in een paar regels te dichten.
+  //
+  // Deze bovengrenzen zijn statisch; de grens die er écht toe doet (page tegen het
+  // werkelijke aantal pagina's van díe run) staat verderop, ná de run-lookup.
   if (!dossierId || !runId || !page || page < 1 || !width || !height) {
     return { error: "Invalid OCR page request." };
   }
-  if (tile == null || tile < 0 || tileCount == null || tileCount < 1) {
+  if (page > OCR_MAX_PAGES) {
+    return { error: "Invalid OCR page request." };
+  }
+  if (
+    tile == null ||
+    tile < 0 ||
+    tileCount == null ||
+    tileCount < 1 ||
+    tileCount > OCR_MAX_TILES ||
+    // Tegel 3 van 2 bestaat niet; zonder deze check is `tile` los van `tileCount` vrij.
+    tile >= tileCount
+  ) {
+    return { error: "Invalid OCR page request." };
+  }
+  // Ook de beeldafmetingen zijn client-input en gingen ongegrensd de database in.
+  if (width < 1 || width > OCR_MAX_DIMENSION || height < 1 || height > OCR_MAX_DIMENSION) {
     return { error: "Invalid OCR page request." };
   }
   // Server-hardening: de client-loop stuurt altijd JPEG (canvas → toBlob
@@ -386,6 +485,13 @@ export async function ocrPageAction(formData: FormData): Promise<
   if (run.ocrStatus !== "bezig") {
     return { error: "This OCR run is no longer active." };
   }
+  // C10, de grens die er echt toe doet: `page` werd nergens getoetst tegen het aantal
+  // pagina's dat déze run daadwerkelijk heeft. Pagina 400 van een boek van 12 leverde een
+  // opgeslagen paginabeeld en een vision-call op voor een pagina die niet bestaat.
+  const pageCount = run.counts?.pageCount;
+  if (typeof pageCount === "number" && pageCount > 0 && page > pageCount) {
+    return { error: "Invalid OCR page request." };
+  }
 
   const result = await processOcrPage(db, {
     runId,
@@ -399,9 +505,11 @@ export async function ocrPageAction(formData: FormData): Promise<
     actor,
   });
   if ("alreadyDone" in result) return { alreadyDone: true };
-  if ("skipped" in result) {
-    return { stopped: result.skipped === "no_key" ? "no_key" : "budget" };
-  }
+  // De reden komt onvertaald uit de repo-laag naar de kaart. Hier stond eerder een
+  // ternary die budget_run en budget_month tot één 'budget' plette — dan noemt de
+  // melding een volle maandcap "het €1-budget van dit boek" en is ze onwaar: andere
+  // oorzaak, andere oplossing (cap ophogen vs. wachten op een nieuwe run).
+  if ("skipped" in result) return { stopped: result.skipped };
   if ("failed" in result) return { failed: result.failed };
   // Regels verschijnen progressief op de projectpagina terwijl de loop draait.
   revalidatePath(`/projects/${dossierId}`);
@@ -415,7 +523,7 @@ export async function ocrPageAction(formData: FormData): Promise<
 // Afronden: transcript + ocrStatus 'klaar' + ocr_done-event, daarna terug naar de
 // projectpagina met ?ocr=<aantal regels>&run=<id> (zelfde patroon als ?pdf=…).
 export async function finishOcrAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const runId = String(formData.get("runId") ?? "").trim();
@@ -432,7 +540,7 @@ export async function finishOcrAction(formData: FormData) {
 
 // Matcher (opnieuw) draaien op één regel.
 export async function runMatchAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   if (specLineId) await runMatcher(db, specLineId, await getActor());
@@ -441,7 +549,7 @@ export async function runMatchAction(formData: FormData) {
 
 // Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht.
 export async function chooseCandidateAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const productId = String(formData.get("productId"));
@@ -462,7 +570,7 @@ export async function chooseCandidateAction(formData: FormData) {
 
 // Rood/paars/blauw handmatig zetten (regel-detailknoppen).
 export async function setLineStatusAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const status = String(formData.get("status"));
@@ -479,7 +587,7 @@ export async function setLineStatusAction(formData: FormData) {
 }
 
 export async function unlinkMatchAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const reason = String(formData.get("reason") ?? "").trim();
@@ -488,19 +596,38 @@ export async function unlinkMatchAction(formData: FormData) {
 }
 
 // Dagprijs op de regel (I-04).
+// C4 (reviewzwerm 2.5a): `numOrNull` controleerde alleen op NaN, dus een negatieve
+// dagprijs liep zo door naar numeric(12,2) en naar countedLineTotal. De enige grens stond
+// in de UI (type=number min=0) — dat is uitleg voor de gebruiker, geen regel van het
+// systeem. Dit raakt geld, dus de check staat op twee plekken: hier op de vorm, en als
+// domeininvariant in setDayPrice zelf (zie docs/INVOERVALIDATIE.md, uitzondering bij
+// regel 2). Een bedrag van 0 blijft geldig — "gratis meegeleverd" is een echte uitkomst.
+const setDayPriceSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+  price: zPrice,
+  validUntil: zOptionalText.optional().default(null),
+});
+
 export async function setDayPriceAction(formData: FormData) {
-  await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  const price = numOrNull(formData.get("price"));
-  if (specLineId && price != null) {
-    await setDayPrice(db, {
-      specLineId,
-      price,
-      validUntil: strOrNull(formData.get("validUntil")),
-      actor: await getActor(),
-    });
+  const { toegang, scope } = await bewaakProject(formData);
+  const parsed = parseForm(setDayPriceSchema, formData);
+  // Ongeldige invoer verandert niets; de gebruiker keert terug naar dezelfde regel en ziet
+  // de oude prijs nog staan. Een uuid dat niet klopt heeft geen regel om naar terug te
+  // keren, dus dan is 404 het eerlijke antwoord.
+  if (!parsed.ok) {
+    const dossierId = String(formData.get("dossierId") ?? "");
+    const specLineId = String(formData.get("specLineId") ?? "");
+    if (!isUuid(dossierId) || !isUuid(specLineId)) notFound();
+    redirect(`/projects/${dossierId}/line/${specLineId}`);
   }
+  const { dossierId, specLineId, price, validUntil } = parsed.data;
+  await setDayPrice(db, {
+    specLineId,
+    price,
+    validUntil,
+    actor: await getActor(),
+  });
   redirect(`/projects/${dossierId}/line/${specLineId}`);
 }
 
@@ -508,7 +635,7 @@ export async function setDayPriceAction(formData: FormData) {
 // ("welke van deze N", kleurvariant) — de repo maakt de regel dan groen met merkteken
 // "handmatig gekozen" (herontwerp 2026-07-14).
 export async function decideReviewAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const decision = String(formData.get("decision")) as
@@ -535,7 +662,7 @@ export async function decideReviewAction(formData: FormData) {
 // Rood-kaart: handmatig een vergelijkbaar product linken (stap 7). Menshandeling —
 // de gebruiker zocht zelf en klikte; het systeem suggereerde niets (ijzeren regel 4).
 export async function linkManualProductAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const productId = String(formData.get("productId"));
@@ -552,21 +679,31 @@ export async function linkManualProductAction(formData: FormData) {
 }
 
 // Een regel handmatig in de review-wachtrij zetten (bv. variantkeuze).
+//
+// C3 (reviewzwerm 2.5a): `kind` werd met `as` gecast en ging zo rechtstreeks een pgEnum
+// in. Een onbekende waarde gaf `invalid input value for enum review_kind` (22P02) → een
+// 500. De UPDATE faalde netjes atomair en app/error.tsx ving hem af, dus er ging niets
+// stuk — maar een 500 is nooit het goede antwoord op slechte invoer. Nu een schema-parse
+// volgens docs/INVOERVALIDATIE.md; onbekende invoer verandert simpelweg niets.
+// De toegestane waarden komen uit de pgEnum zelf (db/schema.ts), niet uit een
+// handgeschreven lijst: één bron, dus een nieuwe review-soort kan hier niet vergeten worden.
+const flagReviewSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+  kind: zEnumFrom(reviewKind.enumValues),
+});
+
 export async function flagReviewAction(formData: FormData) {
-  await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  const kind = String(formData.get("kind")) as
-    | "geel"
-    | "variant"
-    | "onvolledig"
-    | "ocr";
-  if (specLineId) await flagForReview(db, specLineId, kind);
+  const { toegang, scope } = await bewaakProject(formData);
+  const parsed = parseForm(flagReviewSchema, formData);
+  if (!parsed.ok) return;
+  const { dossierId, specLineId, kind } = parsed.data;
+  await flagForReview(db, specLineId, kind, await getActor());
   revalidatePath(`/projects/${dossierId}`);
 }
 
 export async function setQuantityAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const quantity = intOrNull(formData.get("quantity"));
@@ -576,7 +713,7 @@ export async function setQuantityAction(formData: FormData) {
 
 // A-10: kopblok van de estimate opslaan (bewerkbaar tot uitsturen).
 export async function saveQuoteHeaderAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   if (dossierId) {
     await updateQuoteHeader(
@@ -600,7 +737,7 @@ export async function saveQuoteHeaderAction(formData: FormData) {
 
 // B-10: een spec-regel bewerken → daarna de matcher opnieuw draaien.
 export async function editSpecLineAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
@@ -641,7 +778,7 @@ export async function editSpecLineAction(formData: FormData) {
 // als historie gemarkeerd ('gebruikt door <actor>'). Een niet-meer-zichtbaar product
 // gooit in de repo — dan blijft alles ongewijzigd (zelfde vangnet als setStatusAction).
 export async function useAiSuggestionAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const suggestionId = String(formData.get("suggestionId") ?? "").trim();
@@ -659,7 +796,7 @@ export async function useAiSuggestionAction(formData: FormData) {
 
 // AI-suggestie verwerpen: dismissed_at/by + event; de regel zelf blijft onaangeroerd.
 export async function dismissAiSuggestionAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const specLineId = String(formData.get("specLineId"));
   const suggestionId = String(formData.get("suggestionId") ?? "").trim();
@@ -671,18 +808,29 @@ export async function dismissAiSuggestionAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}`);
 }
 
+// B7 (reviewzwerm 2.5a) gaf deze action een actor en een event; volgens de conventie van
+// docs/INVOERVALIDATIE.md ("een action die je aanraakt, zet je om") gaat hij daarmee ook
+// naar een schema-parse. Dat is hier meer dan boekhouding: dit is de enige destructieve
+// action op een spec-regel, en de oude `if (specLineId)`-guard liet elke niet-lege string
+// door. `dossierId` werd zelfs ongecontroleerd in revalidatePath gezet.
+const deleteLineSchema = z.object({
+  dossierId: zUuid,
+  specLineId: zUuid,
+});
+
 export async function deleteLineAction(formData: FormData) {
-  await requireSession();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  if (specLineId) await deleteSpecLine(db, specLineId);
+  const { toegang, scope } = await bewaakProject(formData);
+  const parsed = parseForm(deleteLineSchema, formData);
+  if (!parsed.ok) return;
+  const { dossierId, specLineId } = parsed.data;
+  await deleteSpecLine(db, specLineId, await getActor());
   revalidatePath(`/projects/${dossierId}`);
 }
 
 export async function generateQuoteAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
-  if (dossierId) await generateQuote(db, dossierId, await getActor());
+  if (dossierId) await generateQuote(db, scope, dossierId, await getActor());
   redirect(`/projects/${dossierId}/quote`);
 }
 
@@ -690,12 +838,12 @@ export async function generateQuoteAction(formData: FormData) {
 // afgeleide fase gaat in dezelfde update mee. Archief zonder reden wordt serverside
 // geweigerd; die fout vangen we hier op (de UI dwingt de reden al af — dit is het vangnet).
 export async function setStatusAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const status = formData.get("status");
   if (!dossierId || !PROJECT_STATUSES.includes(status as ProjectStatus)) return;
   try {
-    await setStatus(db, dossierId, status as ProjectStatus, await getActor(), {
+    await setStatus(db, scope, dossierId, status as ProjectStatus, await getActor(), {
       reason: strOrNull(formData.get("reason")),
     });
   } catch {
@@ -706,11 +854,11 @@ export async function setStatusAction(formData: FormData) {
 }
 
 export async function setXisPhaseAction(formData: FormData) {
-  await requireSession();
+  const { toegang, scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const xisPhase = formData.get("xisPhase");
   if (!dossierId || !XIS_PHASES.includes(xisPhase as XisPhase)) return;
-  await setXisPhase(db, dossierId, xisPhase as XisPhase, await getActor());
+  await setXisPhase(db, scope, dossierId, xisPhase as XisPhase, await getActor());
   revalidatePath(`/projects/${dossierId}`);
   revalidatePath("/projects");
 }

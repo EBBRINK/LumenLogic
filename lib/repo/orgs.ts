@@ -49,6 +49,53 @@ export async function createOrganization(
   return row;
 }
 
+/**
+ * Branding (logo + accentkleur) op één organisatie — sprint 3.2a.
+ *
+ * ⚠️ Dit is een KALE schrijffunctie, net als `addMembership`/`removeMembership` hieronder:
+ * hij controleert niets. App-code roept hem NOOIT rechtstreeks aan maar gaat via
+ * `setBrandingAsActor()` in `lib/repo/authz.ts`; `lib/repo/authz-deuren.test.ts` bewaakt
+ * dat (`setOrgBranding` staat in VERBODEN_NAMEN).
+ *
+ * Hij bestaat omdat `saveBrandingAction` tot 3.2a rechtstreeks `db.update(organizations)`
+ * deed met alleen `requireSession()` — org A kon de branding van org B overschrijven. Dat
+ * stond als BEKENDE_SCHULD vastgepind en is met deze functie plus de poort erboven gedicht.
+ *
+ * Lege velden worden weggelaten in plaats van als lege string opgeslagen: ontbrekende data
+ * blijft eerlijk ontbreken (gedrag ongewijzigd t.o.v. de action die dit deed).
+ */
+export async function setOrgBranding(
+  db: AppDb,
+  input: {
+    orgId: string;
+    logoUrl?: string | null;
+    accentColor?: string | null;
+    actor?: string;
+  },
+) {
+  const branding: Record<string, unknown> = {};
+  const logoUrl = (input.logoUrl ?? "").trim();
+  const accentColor = (input.accentColor ?? "").trim();
+  if (logoUrl) branding.logoUrl = logoUrl;
+  if (accentColor) branding.accentColor = accentColor;
+
+  await db
+    .update(organizations)
+    .set({ branding, updatedAt: new Date() })
+    .where(eq(organizations.id, input.orgId));
+
+  // Regel 5. De branding van een organisatie wijzigen is precies het soort handeling dat
+  // je achteraf wilt kunnen terugvinden — het was tot deze sprint het gat waar één org de
+  // ander mee kon overschrijven, en dat gebeurde zonder enig spoor.
+  await logEvent(db, {
+    entity: "organization",
+    entityId: input.orgId,
+    action: "org_branding_changed",
+    actor: input.actor,
+    payload: { keys: Object.keys(branding) },
+  });
+}
+
 export async function listMemberships(db: AppDb, orgId: string) {
   return db
     .select()
@@ -91,19 +138,29 @@ export async function addMembership(
   });
 }
 
+// Spiegel van addMembership: destructief, dus loggen VÓÓR deleten en mét de rollen
+// die het lid had — anders is na het verwijderen niet meer te zien wát er weg is.
 export async function removeMembership(
   db: AppDb,
   orgId: string,
   email: string,
+  actor?: string,
 ) {
-  await db
-    .delete(memberships)
-    .where(
-      and(
-        eq(memberships.orgId, orgId),
-        eq(memberships.email, email.toLowerCase().trim()),
-      ),
-    );
+  const normalized = email.toLowerCase().trim();
+  const where = and(
+    eq(memberships.orgId, orgId),
+    eq(memberships.email, normalized),
+  );
+  const [row] = await db.select().from(memberships).where(where).limit(1);
+  if (!row) return;
+  await logEvent(db, {
+    entity: "organization",
+    entityId: orgId,
+    action: "membership_removed",
+    actor,
+    payload: { email: normalized, roles: row.roles },
+  });
+  await db.delete(memberships).where(where);
 }
 
 // A-05 / org-scoping: dossier aan een org koppelen.

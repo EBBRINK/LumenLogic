@@ -1,13 +1,13 @@
-import { asc } from "drizzle-orm";
 import { db } from "@/db/client";
-import { visibleProducts } from "@/db/schema";
 import {
   CatalogSearch,
   type CatalogResult,
   type CatalogValues,
 } from "@/components/catalog-search";
+import { listCatalogBrands } from "@/lib/repo/catalog";
 import { searchProducts, type ProductCandidate } from "@/lib/repo/products";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakRoute } from "@/lib/route-toegang";
 
 // Los zoeken in de catalogus, zonder dossier (functioneel ontwerp §3.12). GEEN dossier-layout
 // → eigen <main>. De aanpak is bewust de eenvoudigste die werkt: een GET-form schrijft de
@@ -85,7 +85,7 @@ export default async function CatalogusPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireSession();
+  await bewaakRoute("/catalog");
   const sp = await searchParams;
 
   const values: CatalogValues = {
@@ -96,15 +96,13 @@ export default async function CatalogusPage({
     ip: str(sp.ip),
   };
 
-  // Merk-anker: alleen merken die daadwerkelijk zichtbare producten hebben (de view is de
-  // enige poort — regel 3). Alfabetisch, puur als keuzelijst (geen ranking).
-  const brandRows = await db
-    .selectDistinct({ brandName: visibleProducts.brandName })
-    .from(visibleProducts)
-    .orderBy(asc(visibleProducts.brandName));
-  const brands = brandRows
-    .map((r) => r.brandName)
-    .filter((b): b is string => Boolean(b));
+  // Merk-anker: alleen merken die daadwerkelijk zichtbare producten hebben (regel 3).
+  // Alfabetisch, puur als keuzelijst (geen ranking). Deze lijst wordt bij ELK bezoek
+  // opgehaald, ook zonder zoekopdracht — het formulier staat er altijd. Daarom hoort hier
+  // géén brede join over de prijs-view maar de semi-join uit lib/repo/catalog.ts (B4);
+  // de verzameling is identiek, inclusief het verbergen van merken met een verlopen
+  // prijslijst. Lees de toelichting daar voor je dit terugdraait.
+  const brands = await listCatalogBrands(db);
 
   const crit: Criteria = {
     kelvin: toInt(values.kelvin),
@@ -130,10 +128,15 @@ export default async function CatalogusPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Catalog</h1>
+      {/* UX-audit 30 jul (item 12): "Price is shown, never sorted." is hier weg. Het
+          bleef waar — ijzeren regel 2 staat en het scherm heeft geen sorteerknop — maar
+          een scherm hoeft zijn eigen regels niet voor te lezen op een plek waar niets te
+          kiezen valt. Alleen de zin is geschrapt; de regel niet. Zet hier dus géén
+          sorteermogelijkheid neer omdat de disclaimer verdwenen is. */}
       <p className="mb-6 text-sm text-muted-foreground">
-        Search the visible catalog freely. Price is shown, never sorted.
+        Search the visible catalog freely.
       </p>
       <CatalogSearch
         brands={brands}

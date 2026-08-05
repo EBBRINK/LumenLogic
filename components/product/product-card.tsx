@@ -16,6 +16,7 @@
 import { fieldVisible, type Disclosure } from "@/lib/repo/disclosure";
 import { formatEur } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
 // Structurele subset van een visible_specs-rij — de pagina geeft de volledige rij door
@@ -136,8 +137,16 @@ function PriceBlock({
   if (disclosure.awaitingData) return null;
   if (disclosure.showPrice) {
     return (
+      // UX-audit 30 jul (item 3): dit was `text-2xl font-semibold` — de prijs was
+      // letterlijk de grootste tekst op de productpagina, groter dan de productnaam
+      // (text-xl). Ijzeren regel 2 zegt dat geld de rangschikking nooit beïnvloedt; dan
+      // hoort het ook niet het luidste element van het scherm te zijn. Nu bodygewicht:
+      // even zichtbaar en even exact, alleen niet meer als eerste in het oog.
+      // Niet terugzetten naar een koptekstformaat zonder dat besluit terug te draaien.
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular-nums">{formatEur(price?.grossPrice)}</span>
+        <span data-price className="text-base font-medium tabular-nums">
+          {formatEur(price?.grossPrice)}
+        </span>
         <span className="text-sm text-muted-foreground">list price</span>
       </div>
     );
@@ -205,7 +214,13 @@ export function ProductCard({
             ))}
           </dl>
         ) : disclosure.showSpecs ? (
-          <p className="text-sm text-muted-foreground">No specifications available.</p>
+          // Zit al in een <Card>: inline. Specs komen van het merk, niet van deze
+          // pagina — bewuste `action={null}`.
+          <EmptyState
+            variant="inline"
+            title="No specifications available."
+            action={null}
+          />
         ) : null}
       </CardContent>
     </Card>

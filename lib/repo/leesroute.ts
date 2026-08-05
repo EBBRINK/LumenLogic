@@ -25,6 +25,21 @@
 //     gating sluit regels met een open review uit; een door het model gelezen
 //     merk mag de merkvergrendelde zoektool niet sturen vóór een mens de bron
 //     zag. De trigger volgt, net als bij OCR, uit de review-decide-flow.
+//   • A6-VANGNET (reviewzwerm 2.5a): de batchlus loopt serieel binnen ÉÉN server
+//     action; per batch staat er tot ~240 s (CALL_TIMEOUT_MS 120 s + tweede poging)
+//     tegen een functieplafond van 300 s. Een boek van 40 pagina's haalt dat niet.
+//     Dit is NIET de echte oplossing (die trekt de leesroute naar het OCR-patroon:
+//     één action per batch, door de client aangestuurd) — het is het vangnet:
+//     (1) `app/projects/[id]/page.tsx` zet een expliciete `maxDuration`, zodat het
+//     plafond een keuze is; (2) de run-rij draagt een STAND. `ocrStatus` 'bezig'
+//     vanaf de eerste regel, 'klaar' als de lus hem uitloopt, 'gestopt' bij een
+//     budgetstop. Kapt het platform de functie af, dan blijft de rij op 'bezig'
+//     staan mét `counts.pagesDone` — herkenbaar afgebroken (niet mislukt, niet
+//     klaar) en hervatbaar: dezelfde upload pakt die run op en leest verder vanaf
+//     de eerste onbehandelde pagina. Geen nieuw mechanisme: dit is exact de
+//     hervat-vorm van startOcrRun (lib/repo/ocr.ts), en de dedup over batches heen
+//     bestond al (run.rows, rijkste-wint).
+import { and, desc, eq } from "drizzle-orm";
 import { importRuns } from "@/db/schema";
 import {
   LEESROUTE_BATCH_PAGES,
@@ -49,6 +64,8 @@ export type RecordLeesrouteImportResult = {
   truncated: number;
   costEur: number;
   gestopt: "budget_run" | "budget_month" | "no_key" | null;
+  // A6: pakte deze aanroep een eerder afgebroken run op (ocrStatus 'bezig')?
+  hervat: boolean;
 };
 
 export async function recordLeesrouteImport(
@@ -70,48 +87,97 @@ export async function recordLeesrouteImport(
     actor?: string;
   },
 ): Promise<RecordLeesrouteImportResult> {
+  // (a-0) A6: bestaat er voor precies dit dossier + bestand al een leesroute-run
+  // die op 'bezig' bleef staan, dan is dít een hervatting van een afgebroken run —
+  // geen tweede run. Zelfde vorm als startOcrRun; de source-filter ('pdf' hier,
+  // 'ocr' daar) houdt de twee routes uit elkaars vaarwater.
+  const [afgebroken] = input.filename
+    ? await db
+        .select()
+        .from(importRuns)
+        .where(
+          and(
+            eq(importRuns.dossierId, input.dossierId),
+            eq(importRuns.source, "pdf"),
+            eq(importRuns.filename, input.filename),
+            eq(importRuns.ocrStatus, "bezig"),
+          ),
+        )
+        .orderBy(desc(importRuns.createdAt))
+        .limit(1)
+    : [];
+
   // (a) De run: zoals recordPdfImport (source 'pdf', direct 'bevestigd', markdown
   // als controlespoor), maar met lege rows/counts — de regels stromen per batch
   // binnen. pageCount in counts, zoals de OCR-run, voor de voortgangsweergave.
-  // ocrStatus blijft null: dit is geen beeld-OCR-run (geen paginabeelden, geen
-  // hervat-loop) — de batches lopen synchroon binnen deze ene aanroep.
-  const [run] = await db
-    .insert(importRuns)
-    .values({
-      dossierId: input.dossierId,
-      source: "pdf",
-      filename: input.filename ?? null,
-      status: "bevestigd",
-      rows: [],
-      counts: { total: 0, checked: 0, pageCount: input.pages.length },
-      rawMarkdown: input.markdown,
-      actor: input.actor ?? null,
-    })
-    .returning();
+  // ocrStatus 'bezig' is hier de A6-stand: "deze run loopt nog" (zie kop) — niet
+  // beeld-OCR, want die queries filteren allemaal op source 'ocr'.
+  const hervat = !!afgebroken;
+  const run =
+    afgebroken ??
+    (
+      await db
+        .insert(importRuns)
+        .values({
+          dossierId: input.dossierId,
+          source: "pdf",
+          filename: input.filename ?? null,
+          status: "bevestigd",
+          rows: [],
+          counts: {
+            total: 0,
+            checked: 0,
+            pageCount: input.pages.length,
+            pagesDone: 0,
+          },
+          ocrStatus: "bezig",
+          rawMarkdown: input.markdown,
+          actor: input.actor ?? null,
+        })
+        .returning()
+    )[0];
   // Zelfde event als recordPdfImport (entity dossier, action import_run_created),
   // met de route + routerreden erbij zodat het audit-spoor vertelt wáárom dit
-  // boek door het model gelezen werd (regel 5).
-  await logEvent(db, {
-    entity: "dossier",
-    entityId: input.dossierId,
-    action: "import_run_created",
-    actor: input.actor,
-    payload: {
-      runId: run.id,
-      source: "pdf",
-      rows: 0,
-      status: "bevestigd",
-      route: "leesroute",
-      reden: input.routerBesluit.reden,
-      bekendeMerken: input.routerBesluit.bekendeMerken,
-      totaal: input.routerBesluit.totaal,
-    },
-  });
+  // boek door het model gelezen werd (regel 5). Bij een hervatting is de run al
+  // aangemaakt — dan een hervat-event, zodat het afkappen zichtbaar blijft.
+  const eerderGedaan = Number(run.counts?.pagesDone ?? 0);
+  if (hervat) {
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: run.id,
+      action: "leesroute_resumed",
+      actor: input.actor,
+      payload: {
+        filename: input.filename ?? null,
+        pagesDone: eerderGedaan,
+        pageCount: input.pages.length,
+      },
+    });
+  } else {
+    await logEvent(db, {
+      entity: "dossier",
+      entityId: input.dossierId,
+      action: "import_run_created",
+      actor: input.actor,
+      payload: {
+        runId: run.id,
+        source: "pdf",
+        rows: 0,
+        status: "bevestigd",
+        route: "leesroute",
+        reden: input.routerBesluit.reden,
+        bekendeMerken: input.routerBesluit.bekendeMerken,
+        totaal: input.routerBesluit.totaal,
+      },
+    });
+  }
 
-  // (b) Lege pagina's overslaan (deterministisch veilig — zie kop-commentaar).
+  // (b) Lege pagina's overslaan (deterministisch veilig — zie kop-commentaar), en
+  // bij een hervatting alles wat de afgebroken run al las (A6): verder waar hij
+  // ophield, geen tweede keer betalen voor dezelfde pagina's.
   const paginas: LeesroutePagina[] = input.pages
     .map((text, i) => ({ pageNumber: i + 1, text }))
-    .filter((p) => p.text.trim() !== "");
+    .filter((p) => p.text.trim() !== "" && p.pageNumber > eerderGedaan);
 
   // (c) Sequentieel batchen. `snapshot` volgt de rows/counts die
   // verwerkGelezenRegels per batch teruggeeft, zodat de dedup van batch n+1
@@ -126,6 +192,17 @@ export async function recordLeesrouteImport(
   let segmentRegels = 0;
   let segmentVerrijkt = 0;
   let gestopt: RecordLeesrouteImportResult["gestopt"] = null;
+  // A6-HERSTEL: pagesDone is een AANEENGESLOTEN voortgangsmerk ("tot hier is alles
+  // gelezen"), geen "laatste pagina die toevallig lukte". Een gefaalde batch slaat
+  // de lus over (`continue`) zonder pagesDone te verhogen — zette een látere batch
+  // hem dan op zijn eigen laatste pagina, dan sprong het merk over het gat heen en
+  // werden die pagina's bij een hervatting stilzwijgend overgeslagen (paginaverlies).
+  // Na een gat schuift het merk daarom niet meer op: een hervatting begint bij de
+  // eerste pagina van de gefaalde batch en leest de rest opnieuw. Dat kost een
+  // tweede lezing van pagina's die al verwerkt zijn — geen duplicaten, want de
+  // dedup van verwerkGelezenRegels toetst tegen de database (lib/repo/ocr.ts).
+  let pagesDoneAaneengesloten = eerderGedaan;
+  let gatInDeVoortgang = false;
 
   for (let i = 0; i < paginas.length; i += LEESROUTE_BATCH_PAGES) {
     const batchPaginas = paginas.slice(i, i + LEESROUTE_BATCH_PAGES);
@@ -153,8 +230,12 @@ export async function recordLeesrouteImport(
       });
       break;
     }
-    // Gefaalde batch: leesroute_batch_failed is al gelogd — door met de rest.
-    if ("failed" in result) continue;
+    // Gefaalde batch: leesroute_batch_failed is al gelogd — door met de rest, maar
+    // de voortgang heeft nu een gat en pagesDone bevriest (zie boven).
+    if ("failed" in result) {
+      gatInDeVoortgang = true;
+      continue;
+    }
 
     batches++;
     truncated += result.truncated;
@@ -188,6 +269,20 @@ export async function recordLeesrouteImport(
 
     // (e-2) Persisteren via exact de OCR-lus; de pagina komt per regel uit het
     // verplichte pagina-veld van het tekst-toolschema.
+    // A6: pagesDone gaat MEE in dezelfde snapshot-update die verwerkGelezenRegels
+    // toch al doet (die spreidt run.counts) — geen extra schrijfactie, en de
+    // voortgang staat pas in de database als de batch écht verwerkt is.
+    if (!gatInDeVoortgang) {
+      pagesDoneAaneengesloten =
+        batchPaginas[batchPaginas.length - 1].pageNumber;
+    }
+    snapshot = {
+      ...snapshot,
+      counts: {
+        ...(snapshot.counts ?? {}),
+        pagesDone: pagesDoneAaneengesloten,
+      },
+    };
     const verwerkt = await verwerkGelezenRegels(db, {
       run: snapshot,
       regels: verrijkt,
@@ -212,6 +307,23 @@ export async function recordLeesrouteImport(
     });
   }
 
+  // (f-0) A6: de eindstand op de run-rij. 'klaar' = de lus liep uit. Een
+  // budgetstop is terminaal ('gestopt', zoals processOcrPage doet): hervatten
+  // levert dezelfde weigering op. Zonder key blijft de run bewust op 'bezig' —
+  // key terug = gewoon verder, precies het OCR-gedrag. En kapt het platform de
+  // functie hierboven af, dan wordt deze update nooit bereikt en blijft 'bezig'
+  // staan: dát is de afgebroken-stand waaraan de volgende poging verder kan.
+  if (gestopt !== "no_key") {
+    const eindstand =
+      gestopt === "budget_run" || gestopt === "budget_month"
+        ? "gestopt"
+        : "klaar";
+    await db
+      .update(importRuns)
+      .set({ ocrStatus: eindstand, updatedAt: new Date() })
+      .where(eq(importRuns.id, run.id));
+  }
+
   // (f) Totalen. GEEN triggerVangnet hier (B8, zie kop-commentaar): elke
   // leesroute-regel draagt een open reviewKind en de vangnet-gating sluit die
   // uit — de trigger hoort bij de review-beslissing, niet bij de import.
@@ -225,5 +337,6 @@ export async function recordLeesrouteImport(
     truncated,
     costEur,
     gestopt,
+    hervat,
   };
 }

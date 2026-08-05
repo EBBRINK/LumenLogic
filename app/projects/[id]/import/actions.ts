@@ -9,7 +9,8 @@ import {
   confirmImportRun,
   createImportRun,
 } from "@/lib/repo/imports";
-import { getActor, requireSession } from "@/lib/session";
+import { getActor } from "@/lib/session";
+import { bewaakProject } from "@/lib/project-poort";
 
 // Grens waarboven een geplakt CSV-blok niet direct wordt toegevoegd, maar eerst als
 // voorstel-scherm langskomt (B-06): een grote plak verdient een controle-tik.
@@ -28,7 +29,7 @@ function checkedIndicesFrom(formData: FormData): number[] {
 
 // Bevestigen: maak spec_lines van de aangevinkte rows en draai de matcher (in de repo-laag).
 export async function confirmImportAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const runId = String(formData.get("runId"));
   if (runId) {
@@ -39,7 +40,7 @@ export async function confirmImportAction(formData: FormData) {
 
 // Annuleren: run op 'geannuleerd', geen enkele regel ontstaat.
 export async function cancelImportAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const runId = String(formData.get("runId"));
   if (runId) await cancelImportRun(db, runId, await getActor());
@@ -49,7 +50,7 @@ export async function cancelImportAction(formData: FormData) {
 // Groot CSV-blok (>10 regels) → géén directe toevoeging, maar een voorstel-run + het
 // controle-scherm. Kleinere plak-flows blijven bij addSpecCsvAction (directe toevoeging).
 export async function createCsvProposalAction(formData: FormData) {
-  await requireSession();
+  const { scope } = await bewaakProject(formData);
   const dossierId = String(formData.get("dossierId"));
   const csv = String(formData.get("csv") ?? "");
   const parsed = parseSpecCsv(csv);
