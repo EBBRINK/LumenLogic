@@ -1,24 +1,50 @@
 # Research: waar AI-geschreven code in dit project systematisch misgaat
 
-**Gemeten tegen** `origin/main` @ `a1985a6` ("Briefing 3.1"), 30 juli 2026.
-**Meetmethode:** statisch (grep/AST-achtige tellingen over 321 TS/TSX-bestanden) + dynamisch
-(read-only `psql` en `EXPLAIN (ANALYZE, BUFFERS)` op de productie-Neon, plus timings via `bun run`
-tegen de echte database) + `bun audit`. Er is niets gewijzigd, gefixt of geschreven buiten dit document.
+> ## ⚠️ Leesinstructie — dit document is ingehaald
+>
+> **Deel 1 (de checklist) is nog geldig en is nog steeds het punt van dit document.**
+> **Deel 2 (de bevindingen) is grotendeels achterhaald**: het is gemeten op 30 juli, en sinds
+> die dag heeft sprint 3.2a een volledige toegangslaag gebouwd, is de reviewzwerm 2.5a er
+> overheen gegaan (mét dit raster als tweede ronde) en heeft 2.5b de snelheidskant gemeten
+> én gerepareerd.
+>
+> **Voor een actuele bevindingenlijst: lees [docs/reviewzwerm-2.5a.md](reviewzwerm-2.5a.md)
+> en [docs/2.5b-snelheid.md](2.5b-snelheid.md), niet dit document.** Wat hier nog van
+> overeind staat, staat in de statustabel in [§2.0](#20-status-per-bevinding--hermeting-7-augustus).
+
+**Oorspronkelijk gemeten tegen** `origin/main` @ `a1985a6` ("Briefing 3.1"), 30 juli 2026.
+**Hermeten tegen** `main` @ `8a7f63e` ("TS7: .bin/tsc terugzetten"), 7 augustus 2026 — zie §2.0.
+**Meetmethode:** statisch (grep/AST-achtige tellingen; 321 TS/TSX-bestanden op 30 juli, **533** op
+7 augustus) + dynamisch (read-only `psql` en `EXPLAIN (ANALYZE, BUFFERS)` op de productie-Neon, plus
+timings via `bun run` tegen de echte database) + `bun audit`. Er is niets gewijzigd, gefixt of
+geschreven buiten dit document.
+**Toolketen (per 5 augustus):** Next.js **16.2.12** · React 19.2.4 · **TypeScript 7.0.2** (de native
+Go-compiler) · Drizzle 0.45 op Neon Postgres 17.10 · Better Auth 1.6 · Tailwind 4 + shadcn/ui · Bun
+1.3.14 · Vercel. Typecheck via `bun run typecheck` (= `tsc --noEmit`) — nieuw script, en de reden dat
+elk commando in dit document dat over de toolketen gaat op 7 augustus opnieuw is gedraaid. Zie
+`HANDOVER.md`, sectie "TypeScript 7 (goal-typescript-7, 5 aug)"; TS 7 vroeg **geen enkele regel
+broncodewijziging** — de hele migratie zat in de toolketen.
 **Twee bronnen:** publiek onderzoek naar failure modes van AI-code (deel 1, §1.1–1.3), en Timo's
 eigen vault — de Chad Gill-meeting, drie reels en het Brink-RLS-dossier (§2.4). De vault-ronde is
 apart gehouden omdat die bevindingen niet generiek zijn maar teruggaan op dingen die in déze context
 al zijn misgegaan of expliciet zijn afgesproken.
-**Waarschuwing over houdbaarheid:** een parallelle sessie werkt in `components/`, `app/projects/`,
-`app/data/` en `lib/repo/`. Regelnummers hieronder gelden voor `a1985a6`; bij twijfel eerst
-`git log -L` op de genoemde regel.
+**Waarschuwing over houdbaarheid:** regelnummers in deel 2 gelden voor `a1985a6` tenzij er expliciet
+"(7 aug)" bij staat. Sprint 3.2a verplaatste veel; bij twijfel eerst `git log -L` op de genoemde regel.
 
-Dit document is het voorwerk voor **sprint 2.5 (besluit G25)**. Deel 1 is bedoeld als afvinkraster
-voor de reviewzwerm: elk item heeft een code (`TRG-*`, `SEC-*`, `KST-*`), een herkenningspatroon en
-een concreet grep-commando. Deel 2 is wat er van dat raster in déze codebase daadwerkelijk aanslaat.
+Dit document was het voorwerk voor **sprint 2.5 (besluit G25)**. Dat voorwerk is inmiddels gebruikt:
+`docs/reviewzwerm-2.5a.md` noemt onder "Uit het addendum (tweede ronde, tegen het raster
+`docs/research-ai-codefouten.md`)" acht bevindingen die één-op-één uit deel 2 komen, plus **A14** —
+een gebroken merkvergrendeling in tenderfase die de zwerm vond dóór dit raster af te lopen en die ik
+zelf niet had. Deel 1 is dus geleverd waarvoor het bedoeld was, en blijft bruikbaar voor de volgende
+ronde. Elk item heeft een code (`TRG-*`, `SEC-*`, `KST-*`), een herkenningspatroon en een concreet
+grep-commando.
 
 ---
 
 ## Samenvatting in acht regels
+
+> *Dit is de stand van **30 juli**. Vijf van de acht punten hieronder zijn inmiddels opgelost —
+> welke, staat in [§2.0](#20-status-per-bevinding--hermeting-7-augustus).*
 
 1. **Autorisatie is in dit project alleen authenticatie.** 65 van de 66 server actions checken
    "ben je ingelogd"; **geen enkele** checkt "is dit object van jou" of "mag jouw rol dit". Rollen
@@ -159,8 +185,18 @@ aangeroepen; extra alarm bij een **gecorreleerde** subquery (`EXISTS (... WHERE 
 ```bash
 grep -rn "count(\*) filter\|EXISTS (" lib/repo/*.ts | grep -v "\.test\."
 ```
-**Meten:** `EXPLAIN (ANALYZE, BUFFERS)` en kijk naar `loops=` onder `SubPlan`. Meer dan ~1.000 loops
-is per definitie een probleem.
+**Meten — en dit is de belangrijkste meetregel van het hele raster:** `EXPLAIN (ANALYZE, BUFFERS)`
+en kijk naar `loops=` onder `SubPlan`. Meer dan ~1.000 loops is per definitie een probleem.
+
+**Meet serverzijdig, niet met een stopwatch vanaf je laptop.** `Execution Time` uit `EXPLAIN` is de
+maatstaf; wandkloktijd vanaf een werkplek bevat de round-trip naar de databaseregio, en die staat
+er in productie niet (Vercel draait in dezelfde regio). Gemeten vanaf deze werkplek naar
+`us-east-1`: **114 ms per round-trip**. Ik ben hier zelf in getrapt — zie kanttekening 1 bij §2.0.
+Alleen waar het *aantal* round-trips het punt is (serieel versus `Promise.all`, TRG-01/TRG-02) telt
+wandkloktijd wél, en dan hoort erbij te staan dat je die meet.
+Beter nog, en zo deed 2.5b het: vang de échte query op met een `drizzle-orm/pg-proxy`-client die de
+SQL vastlegt en 0 rijen teruggeeft. Dan meet je gegarandeerd de query die de repo-functie genereert,
+en niet een nagetypte benadering ervan.
 
 ## 1.2 Onveilig
 
@@ -344,6 +380,15 @@ bun audit
 advisory op een transitieve build-tool weegt anders dan een op de runtime waarop je productie draait.
 Vergelijk de gepinde versie tegen de fix-versie in de advisory-range, niet tegen "de nieuwste".
 
+**Waarom dit een terugkerende check moet zijn en geen eenmalige opruiming:** tussen 30 juli en
+7 augustus zijn negen advisories gesloten (de Next-upgrade) en er zeventien bijgekomen. Netto ging
+het totaal van 20 naar 28. Een opruimactie veroudert dus binnen een week. Zie kanttekening 3 bij §2.0.
+
+**Let op bij een toolketen-upgrade:** controleer of `bun audit` en `bun run lint` daarna nog
+draaien. Bij de TypeScript 7-migratie van 5 augustus crashte typescript-eslint volledig op de
+verdwenen JS-API, en een `bun install` was verplicht om de shim-symlinks terug te zetten. Een
+lint-keten die niet start meldt ook nul problemen — dat is niet hetzelfde als schoon.
+
 ## 1.3 Duur / onbetrouwbaar
 
 | ID | Failure mode | Status hier |
@@ -465,6 +510,100 @@ grep -rn "new Pool\|createClient\|drizzle(" db lib --include="*.ts" | grep -v "\
 
 Gerangschikt op **impact × moeite**. "Impact" is wat het nu of aantoonbaar binnenkort kost;
 "moeite" is mijn inschatting van het herstelwerk.
+
+## 2.0 Status per bevinding — hermeting 7 augustus
+
+De onderstaande secties §2.1–§2.4 zijn **niet herschreven**; ze staan er nog zoals ze op 30 juli
+gemeten zijn, want de redenering en het bewijs erachter zijn nog steeds na te lopen. Deze tabel zegt
+wat er sindsdien mee gebeurd is. Hermeten tegen `main` @ `8a7f63e`, met dezelfde commando's als de
+eerste ronde.
+
+| # | Bevinding | Status 7 aug | Bewijs van de hermeting |
+|---|---|---|---|
+| **B-01** | Geen objectniveau-autorisatie | **grotendeels opgelost** | Sprint 3.2a bouwde `lib/repo/toegang.ts`, `lib/route-allowlist.ts`, `lib/route-toegang.ts`, `lib/repo/authz.ts`, `lib/repo/prijszicht.ts`. **70 van de 72** server actions zitten nu achter `bewaakNiveau()`/`bewaakRoute()`; de 2 zonder poort zijn `signInAction` en `activateAction` — terecht. Eigenaars-predicaten in `lib/repo/*.ts`: van **1 op 275** naar **10 op 378**. Restant: dat is nog steeds dun voor 378 clausules — de scoping zit in de toegangslaag, niet in elke repo-functie. |
+| **B-02** | `requestPriceAction` zonder sessie | **opgelost** | `app/products/[id]/actions.ts` heeft nu `bewaakNiveau("iedereen", …)`, een `isUuid()`-guard op `productId` én `brandId`, en 30 regels toelichting waarom het pad dichtgaat. Gerepareerd als 2.5a-**B18**, dat rechtstreeks uit dit document komt. |
+| **B-03** | `getAllBrandCompleteness` traag | **opgelost én mijn meting gecorrigeerd** | Zie de kanttekening onder deze tabel. 2.5b mat 318 → **209 ms** serverzijdig (`138d81b`). |
+| **B-04** | 21 FK's zonder index | **open** | Ongewijzigd: `events`, `spec_lines`, `project_dossiers`, `quote_lines` en `leads` hebben nog uitsluitend hun pkey. Staat bij 2.5a als **C6**. |
+| **B-05** | Nul foutgrenzen / Suspense | **deels opgelost** | Van 0 naar **5** foutgrenzen (`app/error.tsx`, `app/global-error.tsx`, `app/admin/`, `app/data/`, `app/projects/`). `<Suspense>`: van 0 naar **1**. `loading.tsx`: nog steeds **0**. |
+| **B-06** | N+1 in `work-prep` | **open** | `app/projects/[id]/work-prep/page.tsx:63` is nog steeds een `for`-lus met een `await` erin. |
+| **B-07** | Sequentiële watervallen | **open, iets breder** | 15 → **16** pagina's met ≥3 top-level `await`s zonder `Promise.all`. |
+| **B-08** | Nul inputvalidatie | **deels opgelost** | `lib/validation.ts` (119 regels) en `lib/uuid.ts` bestaan nu — maar worden geïmporteerd door **2** van de 16 `"use server"`-bestanden. Nog steeds geen validatiebibliotheek. 2.5a noemt dit **A10**, "systeemuitspraak, geen los geval". |
+| **B-09** | Geen transacties | **open, bewust** | Nog steeds `drizzle(neon(...))` (HTTP-driver) in `db/client.ts:12`; 9 plekken documenteren waarom `db.transaction()` er niet is. |
+| **B-10** | Aanmaak zonder idempotentie | **open** | Ongewijzigd. Verwant aan 2.5a-**A9** ("half mislukte import laat duplicaten toe — bewezen"). |
+| **B-11** | `runMatcher` 2 queries per kandidaat | **open** | Ongewijzigd. |
+| **B-12** | `SELECT *` | **open, iets breder** | 70 → **75** plekken (de codebase groeide van 321 naar 533 bestanden). |
+| **B-13** | Kale `catch {}` | **open** | Nog steeds 2 in `app/projects/actions.ts`. |
+| **B-14** | `no_match_reason` nooit geschreven | **open** | Opnieuw gemeten op productie: **0** van 204 regels. Ongewijzigd. |
+| **B-15** | `orgId` zonder `.references()` | **opgelost** | `db/schema.ts:469` — nu `uuid("org_id").references(() => organizations.id)`. |
+| **B-16** | `button.tsx` focus-indicator | **open** | Ongewijzigd: `focus-visible:border-ring` (1px) + `ring-3 ring-ring/10`. Staat bij 2.5a als **B10**. |
+| **B-17** | Flaky tests | **open, en veel groter dan gedacht** | Zie de tweede kanttekening onder deze tabel. |
+| **B-18** | Geen retentie op `events` | **open** | Ongewijzigd. |
+| **B-19** | Prompt-injectie via klant-PDF's | **opgelost** | `lib/ai/vangnet.ts:419-450` draagt nu delimiters om élk stuk klanttekst, een systeemprompt-regel dat alles daarbinnen gegevens zijn, en een cap. De commit-toelichting noemt het expliciet 2.5a-**B17** en komt daarmee uit dit document. Het oordeel dat de zwerm eraan hing — *"Ernst laag"*, omdat de ID-whitelist en de read-only tools de schade begrenzen — is dezelfde nuance die ik in §2.4 zelf maakte. |
+| **B-20** | Dure endpoints zonder rem | **deels** | De ene open deur (B-02) is dicht. Rate limiting bestaat nog steeds nergens in de repo, en de code-toelichting bij `requestPriceAction` zegt dat expliciet: *"de sessiepoort is hier de rem"*. |
+| **B-21** | OCR-beelden nooit opgeruimd | **open** | Opnieuw gemeten: **31 beelden, 2.685 kB**, ongewijzigd. Staat bij 2.5a als **C9**. |
+| **B-22** | Geen tweede slot (RLS) | **open** | Opnieuw gemeten: **0 van 42** tabellen met RLS (was 41 tabellen). Staat bij 2.5a als **B15**, met de scherpere formulering dat RLS aanzetten nú een no-op is zolang de app-rol `rolbypassrls` heeft. |
+| **B-23** | `next` op kwetsbare patch | **opgelost — maar zie hieronder** | `next` staat op **16.2.12** en komt niet meer voor in `bun audit`. Alle negen advisories weg, inclusief GHSA-955p-x3mx-jcvp. Dit was 2.5a-**A13**, "de goedkoopste fix van het document". |
+
+**Vijf opgelost, drie deels, vijftien open.** De opgeloste zijn zonder uitzondering de bevindingen
+die via `docs/reviewzwerm-2.5a.md` een eigenaar kregen; wat alleen in dít document staat, staat er
+nog.
+
+### Kanttekening 1 — mijn snelheidsmeting was zwakker dan die van 2.5b
+
+`docs/2.5b-snelheid.md` meet `getAllBrandCompleteness` op **318 ms vóór, 209 ms ná**. Ik meldde
+8.803 ms koud en 1.320 ms warm. Beide kloppen, maar ze meten niet hetzelfde, en de hunne is de
+betere maatstaf:
+
+- Ik mat **wandkloktijd vanaf deze werkplek**, inclusief de round-trip naar `us-east-1`. 2.5b heeft
+  die round-trip apart gemeten op **114 ms** en noemt wandkloktijd vanaf hier terecht nutteloos als
+  maatstaf, omdat Vercel in dezelfde regio als de database draait.
+- Zij mat `Execution Time` uit `EXPLAIN (ANALYZE, BUFFERS)`, serverzijdig, 3–5× warm — en met een
+  `pg-proxy`-client die de échte gegenereerde SQL opvangt in plaats van een nagetypte query.
+
+Mijn cijfer was dus geen fout getal, maar wel het verkeerde getal om een optimalisatiebesluit op te
+baseren. **De les hoort in het raster** en staat inmiddels in TRG-09: meet serverzijdig, niet met een
+stopwatch vanaf je laptop. Wat ik wél goed had, was de *oorzaak* — de gecorreleerde `EXISTS` met
+211.317 subplan-loops — en dat is de tak die 2.5b heeft aangepakt.
+
+### Kanttekening 2 — de flakiness is geen drie bestanden maar veertien
+
+Ik schreef bij B-17 dat drie testbestanden flaky waren en dat het een suite-conditie was. Dat tweede
+klopt; het eerste was een forse onderschatting. Volledige suite op 7 augustus:
+
+```
+Test Files  14 failed | 131 passed (145)
+     Tests  20 failed | 1901 passed | 1 skipped (1922)
+  Duration  7548 s
+```
+
+Alle veertien zitten in `components/**`, alle twintig falen op hetzelfde: een screenshot-timeout of
+`[vitest] Browser connection was closed while running tests`. Het is dus geen verzameling losse
+testproblemen maar **één infrastructuurprobleem in de browser-modus van vitest**. Een eerdere run
+diezelfde dag brak zelfs halverwege af met `[birpc] rpc is closed`.
+
+Twee dingen die dit relativeren, en die erbij horen:
+- **Deze machine draaide zwaar onder load** — er staan achttien git-worktrees open, meerdere
+  sessies tegelijk. De duur van 7.548 s tegenover ~108 s voor een deelrun laat zien hoe scheef dat
+  trok. `HANDOVER.md` meldt voor dezelfde commit *"952/955 groen (2 timeouts, beide geïsoleerd
+  groen")*. Mijn cijfer is dus de belaste bovengrens, niet het normale beeld.
+- **`@vitest/browser` is precies het pakket met de `critical` uit B-23** (GHSA-p63j-vcc4-9vmv,
+  kwetsbaar `<4.1.10`, gepind `^4.1.9`). Of de bug en de flakiness iets met elkaar te maken hebben
+  weet ik niet — maar de upgrade die de CVE dicht is dezelfde die je voor de flakiness sowieso wilt
+  proberen. Dat is de goedkoopste volgende stap: **eerst `@vitest/browser` naar `^4.1.10`, dan
+  opnieuw meten**, vóórdat iemand aan `vitest.config.ts` gaat sleutelen.
+
+### Kanttekening 3 — `bun audit` ging van 20 naar 28, terwijl er negen zijn opgelost
+
+Dat lijkt tegenstrijdig en is precies het argument voor SEC-14. Op 30 juli: 20 kwetsbaarheden
+(1 critical, 10 high, 9 moderate). Op 7 augustus, ná de Next-upgrade: **28** (1 critical, 15 high,
+12 moderate). De negen Next-advisories zijn weg; er kwamen er in acht dagen zeventien bij, in
+`js-yaml`, `ip-address`, `undici`, `postcss` en `brace-expansion` — bijna allemaal transitief via
+build-tooling. De enige `critical` is nog steeds `@vitest/browser`, een devDependency.
+
+Een eenmalige opruimactie levert dus niets blijvends op. Dit is het punt waar Chad Gill's Security
+Sentinel over gaat, en de reden dat SEC-14 om een **terugkerende** check vraagt en niet om een fix.
+
+---
 
 ## 2.1 Hoge impact
 
@@ -1231,7 +1370,23 @@ indexmigratie.
    transcripts gegrept op probleemtaal en de vier relevante volledig gelezen — maar het is een
    trefwoordsweep, geen integrale lezing. Als er een reel is die Timo specifiek in gedachten had en
    die hier niet terugkomt, kan die gemist zijn; noem het bestandsnummer en ik lees hem alsnog.
-9. **De procesadviezen uit de Chad-meeting zijn niet gemeten.** Twee daarvan zijn werkwijze, geen
+9. **Of de resterende B-01-scoping compleet is.** Sprint 3.2a heeft de poort gebouwd en 70 van de
+   72 actions erachter gezet, maar de eigenaars-predicaten in `lib/repo/*.ts` gingen van 1 naar
+   10 op 378 `.where(`-clausules. Dat kán kloppen — de scoping zit in de toegangslaag in plaats van
+   in elke repo-functie, wat een verdedigbaar ontwerp is. Om te wéten of er geen pad omheen loopt,
+   moet je elke repo-functie langs zijn aanroepers volgen, en dat is een aparte opdracht. 2.5a houdt
+   **B1** ("geen eigendomsmodel") om die reden nog open.
+10. **Waardoor de browser-testflakiness precies komt (B-17, kanttekening 2).** Ik heb vastgesteld
+   dát het veertien bestanden zijn en dat het allemaal screenshot-timeouts en verbroken
+   browserverbindingen zijn. Ik heb **niet** vastgesteld of dat aan de load van deze machine ligt,
+   aan `@vitest/browser` `^4.1.9`, of aan de vitest-configuratie. Die drie zijn alleen uit elkaar te
+   halen door op een rustige machine te draaien, één variabele tegelijk.
+11. **De 19 lint-errors in projectbestanden.** `bun run lint` meldt 138 problemen (64 errors,
+   74 warnings), waarvan 31 in `scripts/` en de rest verdeeld over `components/` (27), `lib/` (10) en
+   `app/` (10). `HANDOVER.md` markeert de projectbestand-errors als bewuste opvolgtaak van de
+   TS7-migratie — ze bestonden al, lint kón alleen niet draaien omdat typescript-eslint crashte. Ik
+   heb ze geteld, niet beoordeeld; welke echt fout zijn en welke ruis is een eigen ronde waard.
+12. **De procesadviezen uit de Chad-meeting zijn niet gemeten.** Twee daarvan zijn werkwijze, geen
    code, en vallen dus buiten dit onderzoek: de **Codex-als-reviewlaag** (Claude schrijft, Codex
    reviewt, itereren tot schoon — volgens Chad *"a huge breakthrough"*, en `sprintbord-plan.md:149`
    noteert dat Codex niet op deze machine staat), en de **Security Sentinel** als wekelijkse
@@ -1240,6 +1395,18 @@ indexmigratie.
 ---
 
 ## Bronnen
+
+### Wat hierna kwam — lees dit eerst voor een actuele lijst
+- [docs/reviewzwerm-2.5a.md](reviewzwerm-2.5a.md) — de zwerm zelf, gemeten tegen `0d3850a`
+  (31 juli). Zeven finder-agents, elf weerleg-agents. Het addendum is de tweede ronde tegen dít
+  raster; A13/A14/A10/B15/B16/B17/B18/C9/C10 komen daaruit.
+- [docs/2.5b-snelheid.md](2.5b-snelheid.md) — de snelheidsronde, gemeten tegen `6f0a47b`
+  (3 augustus), serverzijdig met `EXPLAIN (ANALYZE, BUFFERS)`. Vóór- en ná-cijfers per reparatie;
+  de bron van kanttekening 1 bij §2.0.
+- [docs/scan-rsc-grens-databaselek.md](scan-rsc-grens-databaselek.md) — losse scan op RSC-grens en
+  databaselek-risico (geen lek gevonden).
+- `HANDOVER.md`, sectie "TypeScript 7 (goal-typescript-7, 5 aug)" — de toolketenmigratie, en de
+  reden dat `bun install` in een verse worktree verplicht is.
 
 ### Uit de vault (`~/Documents/AIgenstate/timo-vault/`)
 - `raw/chad-gill-eduard-meeting-2026-07-21.md` — prompt-injectieregel, Security Sentinel,
