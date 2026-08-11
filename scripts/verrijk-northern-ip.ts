@@ -6,9 +6,10 @@
 //
 // Draaien:
 //   bun --env-file=<pad>/.env.branch scripts/verrijk-northern-ip.ts
+//   bun --env-file=<pad>/.env.local  scripts/verrijk-northern-ip.ts --productie
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { assertBranchDb, logGuard } from "./branch-guard";
+import { assertBranchDb, assertProductieDb, logGuard } from "./branch-guard";
 
 const PAD = "/Users/timowittkamp/Documents/dev/lumenlogic-zwerm/brink_northern_raw.ndjson";
 const VERWACHTE_HASH =
@@ -16,7 +17,23 @@ const VERWACHTE_HASH =
 const MERK = "Northern";
 const KOLOM = "IP code";
 
-logGuard(await assertBranchDb(process.cwd()));
+// Zie branch-guard.ts: --productie zet de bedoeling in het commando en stelt de omgekeerde
+// eisen (endpoint MOET productie zijn, branch-marker mag NIET gezet zijn). Zonder de vlag
+// blijft het gedrag ongewijzigd fail-closed op de branch. De vlag is bewust niet af te leiden
+// uit de omgeving: hij moet getypt worden. Zelfde patroon als publiceer-run.ts en verrijk-xal.ts.
+const naarProductie = process.argv.includes("--productie");
+const poort = naarProductie
+  ? await assertProductieDb(process.cwd())
+  : await assertBranchDb(process.cwd());
+if (naarProductie) {
+  console.log(
+    `\n🔴 PRODUCTIE-MODUS — endpoint ${poort.endpoint} (bevestigd als productie via .env.local)\n` +
+      `   Dit schrijft voorstellen in enrichment_runs/enrichment_items. products blijft ongemoeid:\n` +
+      `   dit script stopt na startSupplierColumnRun en publiceert niet.\n`,
+  );
+} else {
+  logGuard(poort);
+}
 
 // ── De bron, met vingerafdruk ────────────────────────────────────────────────
 const ruw = readFileSync(PAD);
