@@ -1550,9 +1550,29 @@ gevuld terwijl schema en C-14/K-03 het beloven. Beide bevestigd op de live datab
 **3.2b — Prijsloze estimate voor externen** (~4 u)
 - *Given* fase 0, *when* een extern account een estimate opent of de PDF downloadt, *then* bevatten scherm én PDF **géén prijzen/bedragen/totalen** — wel regels, aantallen, statussen en kleuren (eigen render-pad + sjabloonvariant, met screenshottest); intern blijft alles zichtbaar.
 
-**3.3 — (alleen als XIS-keys binnen zijn) Lead-seintje** (optioneel)
+**3.3 — ~~(alleen als XIS-keys binnen zijn) Lead-seintje~~ (optioneel)** → **GESCHRAPT, zie G46**
 - *Given* de Lynx-keys, *when* de installateur **de estimate bekijkt of downloadt** (trigger, besluit C1), *then* schiet er idempotent een lead in XIS.
 - ⚠️ **Vóórwerk:** het "estimate bekeken/gedownload"-event bestaat nog niet en moet gebouwd worden vóór deze trigger kan werken. Geen keys → export-stub blijft, geen weekrisico; beginfase mag handmatig.
+
+**Besluit G46 (Timo, 5 aug) — 3.3 gaat uit week 3; het handmatige pad blijft.** Timo verwacht de
+API "binnenkort" maar wil er nu niet op wachten: *"dat hoeft voorlopig niet, dit halen we eruit."*
+Dat kan zonder gevolgen, want het plan B stond al beschreven en werkt: XIS-koppelen gebeurt vandaag
+met de hand.
+
+**Wat er al ligt** (nagemeten 5 aug, groter dan het plan suggereert): `lib/repo/xis.ts` met tests,
+de push-dialoog `components/dossier/xis-push-dialog.tsx`, het sleutelblok
+`components/settings/xis-block.tsx` en een attributen-overzicht in
+`docs/xis-post-api-attributes.md`. Een dossier is dus nú al naar XIS te duwen — alleen met de hand.
+
+**Wat 3.3 daar nog aan toevoegt, voor wie het later oppakt:** (1) een event dat vastlegt dat een
+estimate *bekeken of gedownload* is — dat bestaat niet en is het echte vóórwerk, want zonder dat
+moment is er niets om de trigger aan te hangen; (2) de bestaande push automatisch én **idempotent**
+maken. Dat tweede is het eigenlijke werk: een verkoper die vijf keer dezelfde lead in zijn CRM ziet
+omdat de installateur zijn estimate vijf keer opende, vertrouwt het systeem daarna niet meer.
+
+**Als de API binnenkomt:** eerst meten of de endpoints van de echte XIS-API overeenkomen met wat
+`lib/repo/xis.ts` en `docs/xis-post-api-attributes.md` aannemen. Die zijn gebouwd op documentatie,
+niet op een werkende koppeling.
 
 **Risico's & plan B:** ~~onboarding-mechanisme niet op tijd gekozen~~ → **opgelost 16 jul met besluit C10** (PIN → wachtwoord); het resterende risico is de omvang van de Better-Auth-wissel, niet de keuze · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
 
@@ -1634,7 +1654,7 @@ gebeurd, op productie, door Timo zelf — zie de acceptatietest onderaan deze se
 | 3.2b prijsloze estimate | live, en in de praktijk bewezen |
 | 3.2c onboarding op één scherm | live, `0a232b8` |
 | monitoring (health-endpoint + uptime + deploy-alerts) | live, `5d96dca` |
-| 3.3 lead-seintje XIS | **open** — hangt op de Lynx-keys |
+| 3.3 lead-seintje XIS | **geschrapt** (G46, 5 aug) — handmatig pad blijft |
 
 #### Besluiten G43–G45 (Timo, 3 aug) — de drie keuzes van de 3.2a-bouwsessie, geratificeerd
 
@@ -1716,8 +1736,9 @@ niet aan de tier. Les: een productkeuze voor een acceptatietest eerst nameten, n
 
 #### Wat er ná week 3 nog ligt
 
-- **3.3 lead-seintje XIS** — vervalt als de Lynx-keys niet binnen zijn. Vóórwerk: het event
-  "estimate bekeken/gedownload" bestaat nog niet.
+- ~~**3.3 lead-seintje XIS**~~ — **geschrapt op 5 aug (G46).** Timo verwacht de API binnenkort maar
+  wacht er niet op; XIS-koppelen gaat voorlopig met de hand, en dat werkt. Wie het oppakt: eerst
+  het event "estimate bekeken/gedownload" bouwen, dan de push idempotent maken.
 - **GitHub-repo-transfer naar de Brink-org** — bufferuren, staat op Timo's account.
 - **`recentEvents` sorteert alleen op `created_at`.** Twee events in dezelfde milliseconde komen in
   willekeurige volgorde terug; de test hierop faalt ongeveer één op de drie keer, óók op een kale
