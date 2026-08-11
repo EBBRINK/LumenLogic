@@ -6,6 +6,7 @@ import { FIELDS } from "./parser";
 import { NORMALISATOREN } from "./supplier-cell";
 import {
   beoordeeldeKolommen,
+  EXTRA_DOELVELDEN,
   overzetbareKolommen,
   sourceLabel,
   SUPPLIER_COLUMNS,
@@ -13,12 +14,13 @@ import {
 } from "./supplier-columns";
 
 test("elke ingang is compleet: veld bestaat, motivatie niet leeg, oordeel gezet", () => {
+  const doelvelden = [...FIELDS, ...EXTRA_DOELVELDEN] as readonly string[];
   for (const k of SUPPLIER_COLUMNS) {
     const id = `${k.merk} / ${k.kolom}`;
     expect(k.beschrijft, `${id}: beschrijft ontbreekt`).toBeTruthy();
     expect(k.bewijs.trim().length, `${id}: bewijs is leeg`).toBeGreaterThan(40);
     if (k.veld !== null) {
-      expect(FIELDS as readonly string[], `${id}: '${k.veld}' is geen matchveld`).toContain(k.veld);
+      expect(doelvelden, `${id}: '${k.veld}' is geen bekend doelveld`).toContain(k.veld);
     }
   }
 });
@@ -123,6 +125,42 @@ test("de LED-restrictie staat precies op de drie kolommen waar de meting hem eis
   // behuizing beschrijft. Regelung idem (114/114).
   expect(perKolom.get("Schutzart")).toBe(false);
   expect(perKolom.get("Regelung")).toBe(false);
+});
+
+// ── Northern — de zes overzetbare kolommen plus de afgewezen drie ────────────
+test("Northern zet exact zes kolommen over, op de gemeten velden", () => {
+  const paren = overzetbareKolommen("Northern")
+    .map((k) => `${k.kolom}->${k.veld}`)
+    .sort();
+  expect(paren).toEqual(
+    [
+      "IP code->ipValue",
+      "watt->maxWattage",
+      "kelvin->kelvin",
+      "lumen->lumenOutput",
+      "dimbaar->dimmable",
+      "herkomst->countryOfOrigin",
+    ].sort(),
+  );
+});
+
+test("Northern's LED-restrictie staat op watt/kelvin/lumen/dimbaar en niet op IP/herkomst", () => {
+  const perKolom = new Map(
+    overzetbareKolommen("Northern").map((k) => [k.kolom, k.alleenGeintegreerdeLed]),
+  );
+  // Gemeten: E27-rijen dragen '100W' (max fittingbelasting), G9-rijen dragen lumen van de
+  // lamp, en dimbaar hangt bij een schroef fitting aan de lamp. IP en herkomst zijn van de
+  // behuizing/het product, ongeacht de lichtbron.
+  for (const kolom of ["watt", "kelvin", "lumen", "dimbaar"]) {
+    expect(perKolom.get(kolom), kolom).toBe(true);
+  }
+  expect(perKolom.get("IP code")).toBe(false);
+  expect(perKolom.get("herkomst")).toBe(false);
+});
+
+test("Northern's garantie, cat en fitting zijn beoordeeld en vullen niets", () => {
+  const afgewezen = beoordeeldeKolommen("Northern").filter((k) => k.veld === null);
+  expect(afgewezen.map((k) => k.kolom).sort()).toEqual(["cat", "fitting", "garantie"]);
 });
 
 test("het source-label draagt de kolomnaam, zodat herkomst per veld herleidbaar blijft", () => {

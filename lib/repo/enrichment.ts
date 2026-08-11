@@ -411,6 +411,10 @@ export async function startSupplierColumnRun(
     rijen: BronRij[];
     sleutel: (r: BronRij) => string | null; // → products.supplier_article_code
     cel: (r: BronRij) => string | null; // → de ruwe cel van `kolom`
+    // Verplicht zodra de toewijzing `alleenGeintegreerdeLed` draagt: wijst per bronrij aan of
+    // het armatuur een geïntegreerde LED heeft. Zonder predicaat weigert de run — de restrictie
+    // stond tot 11 aug alleen als vlag in SUPPLIER_COLUMNS en werd nergens afgedwongen.
+    geintegreerdeLed?: (r: BronRij) => boolean;
   },
   actor?: string,
 ): Promise<EnrichmentRun> {
@@ -433,6 +437,13 @@ export async function startSupplierColumnRun(
   }
   const field = toewijzing.veld;
   const normaliseer = NORMALISATOREN[toewijzing.normalisator];
+  if (toewijzing.alleenGeintegreerdeLed && !bron.geintegreerdeLed) {
+    throw new Error(
+      `GEBLOKKEERD: "${bron.kolom}" (${brand.name}) draagt alleenGeintegreerdeLed maar de bron ` +
+        `levert geen geintegreerdeLed-predicaat. Zonder dat predicaat zou de waarde van de ` +
+        `verwisselbare LAMP als armatuureigenschap landen — zie het bewijs in SUPPLIER_COLUMNS.`,
+    );
+  }
 
   // Bronrijen op sleutel. Een dubbele sleutel is een bronfout, geen keuze die wij stil maken.
   const perSleutel = new Map<string, BronRij>();
@@ -459,9 +470,14 @@ export async function startSupplierColumnRun(
   const proposals: Proposal[] = [];
   const counts = {
     geenBronrij: 0,
-    celLeegOfPlaatshouder: 0,
+    // Leeg (null/"") en "de leverancier zegt expliciet géén data" ("-", "OHNE LM", …) apart:
+    // een gat in de bron en een bewuste opgave zijn twee verschillende feiten, en het rapport
+    // moet ze niet op één hoop laten verdwijnen.
+    celLeeg: 0,
+    celPlaatshouder: 0,
     celBereik: 0,
     celOnbekend: 0,
+    geenGeintegreerdeLed: 0,
     kolomAlGevuld: 0,
     genormaliseerd: 0,
   };
@@ -472,9 +488,14 @@ export async function startSupplierColumnRun(
       counts.geenBronrij++;
       continue;
     }
+    if (toewijzing.alleenGeintegreerdeLed && !bron.geintegreerdeLed!(rij)) {
+      counts.geenGeintegreerdeLed++;
+      continue;
+    }
     const uitkomst = normaliseer(bron.cel(rij));
     if (uitkomst.soort === "plaatshouder") {
-      counts.celLeegOfPlaatshouder++;
+      if (uitkomst.reden === "null" || uitkomst.reden === "leeg") counts.celLeeg++;
+      else counts.celPlaatshouder++;
       continue;
     }
     if (uitkomst.soort === "bereik") {
@@ -690,6 +711,9 @@ const APPLY_FIELDS: {
   { veld: "beamAngle", kolom: "beam_angle", cast: "numeric", tekst: false },
   { veld: "ipValue", kolom: "ip_value", cast: "text", tekst: true },
   { veld: "dimmable", kolom: "dimmable", cast: "text", tekst: true },
+  // Geen matchveld maar een productfeit uit de leverancierstabel (fase 1, Northern `herkomst`).
+  // Alleen de publiceerroute kent hem; de matcher en de naam-parser blijven er blind voor.
+  { veld: "countryOfOrigin", kolom: "country_of_origin", cast: "text", tekst: true },
 ];
 
 // "is deze kolom leeg?" als SQL-uitdrukking, met p als alias voor products.
