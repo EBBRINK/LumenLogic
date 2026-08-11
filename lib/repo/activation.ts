@@ -182,12 +182,24 @@ export async function issueActivationPin(
     if (!org) {
       throw new Error("issueActivationPin: onbekende organisatie");
     }
-    await addMembership(db, {
+    // Zetellimiet (besluit 6, 4 aug). `addMembership` toetst de telling in de `where` van
+    // zijn eigen insert; `false` betekent dus "vol op dit moment". Fail loud, en vóór de
+    // user-rij en de PIN: een PIN zonder lidmaatschap zou een account opleveren dat nergens
+    // bij hoort en dat daarna niemand meer kan beheren.
+    //
+    // ⚠️ In de praktijk komt de aanroeper hier niet: `issuePinAsActor()` weigert een volle
+    // organisatie al mét een bruikbare melding ("… 5 of 5 … raise the seat limit"). Deze
+    // regel dekt het racevenster tussen die lezing en dit moment, plus de kale aanroepen
+    // uit migraties, seeds en tests.
+    const geplaatst = await addMembership(db, {
       orgId: input.orgId,
       email,
       roles: input.roles ?? [],
       actor: input.actor,
     });
+    if (!geplaatst) {
+      throw new Error("issueActivationPin: organisatie zit vol (zetellimiet)");
+    }
   }
 
   const existing = await findUserByEmail(db, email);

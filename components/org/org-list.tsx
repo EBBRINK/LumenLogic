@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -6,7 +7,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { Organization } from "@/db/schema";
 import { OrgMembers, type MemberRow } from "./org-members";
@@ -25,6 +25,16 @@ export type OrgWithMembers = {
   canManageMembers: boolean;
 };
 
+// ⚠️ HIER STOND HET AANMAAKFORMULIER (`NewOrgFormFields` + `NewOrgForm`), en dat is sinds
+// sprint 3.2c weg — besluit 1 (Timo, 4 aug). Een organisatie aanmaken gebeurt op
+// `/admin/users`, samen met de PIN-uitgifte: "iemand toegang geven" is één handeling en
+// kostte twee schermen. Het formulier is verhuisd naar `components/admin/orgs-block.tsx`,
+// niet gekopieerd — twee ingangen laten bestaan verdubbelt de versnippering.
+//
+// Dit component gaat daarmee uitsluitend nog over BESTAANDE organisaties: hun leden en hun
+// branding. Er is dus ook geen `createAction`/`canCreate` meer, en de lege toestand wijst
+// naar Admin in plaats van een formulier aan te bieden.
+
 // Alleen de velden die de UI van de branding leest. De opslag is een vrije jsonb-map;
 // hier pakken we er de twee die we tonen uit.
 type Branding = { logoUrl?: string; accentColor?: string };
@@ -35,99 +45,6 @@ function readBranding(value: Organization["branding"]): Branding {
     logoUrl: typeof b.logoUrl === "string" ? b.logoUrl : "",
     accentColor: typeof b.accentColor === "string" ? b.accentColor : "",
   };
-}
-
-// De uitleg bij het aanmaak-formulier — staat in de kaartkop én, bij een lege lijst,
-// als uitleg in de lege toestand. Eén zin, twee plekken, geen tweede formulering.
-const NEW_ORG_HINT =
-  "A customer organization with its own members, roles and branding.";
-
-// Het aanmaak-formulier voor een nieuwe organisatie: naam (verplicht), prijsmodel en
-// een optionele zetellimiet. Los van zijn kaart, zodat het óók in de lege toestand kan
-// staan (UX-audit 30 jul, A7) zonder een tweede kader te tekenen.
-// `createAction` is een server action die hier direct als <form action> hangt — Next'
-// eigen pad; `callAction()` geldt alleen voor een action die je vanuit client-code awaits.
-function NewOrgFormFields({
-  createAction,
-  centered = false,
-}: {
-  createAction: (formData: FormData) => void | Promise<void>;
-  centered?: boolean;
-}) {
-  return (
-    <form
-      action={createAction}
-      className={
-        centered
-          ? "flex flex-col gap-3 text-left sm:flex-row sm:items-end sm:justify-center"
-          : "flex flex-col gap-3 sm:flex-row sm:items-end"
-      }
-    >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="org-name" className="text-sm font-medium">
-          Name
-        </label>
-        <Input
-          id="org-name"
-          name="name"
-          required
-          placeholder="De Vries Installations"
-          className="sm:w-64"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="org-plan" className="text-sm font-medium">
-          Plan
-        </label>
-        <select
-          id="org-plan"
-          name="plan"
-          defaultValue="trial"
-          className={veldClass}
-        >
-          <option value="trial">Trial</option>
-          <option value="abonnement">Subscription</option>
-          <option value="per-dossier">Per project</option>
-        </select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="org-seats" className="text-sm font-medium">
-          Seats
-        </label>
-        <Input
-          id="org-seats"
-          name="seatLimit"
-          type="number"
-          min="1"
-          step="1"
-          placeholder="unlimited"
-          className="sm:w-28"
-        />
-      </div>
-      <Button type="submit" className="self-start sm:self-auto">
-        Create
-      </Button>
-    </form>
-  );
-}
-
-// Het formulier in zijn eigen kaart — de stand zodra er minstens één organisatie is.
-function NewOrgForm({
-  createAction,
-}: {
-  createAction: (formData: FormData) => void | Promise<void>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>New organization</CardTitle>
-        <p className="text-sm text-muted-foreground">{NEW_ORG_HINT}</p>
-      </CardHeader>
-      <CardContent>
-        <NewOrgFormFields createAction={createAction} />
-      </CardContent>
-    </Card>
-  );
 }
 
 // Branding per organisatie: logo-URL + accentkleur. Leeg = eerlijk leeg; er wordt niets
@@ -195,58 +112,52 @@ function BrandingForm({
   );
 }
 
-// De organisatielijst: het aanmaak-formulier boven, daaronder per organisatie een kaart
-// met haar leden (petten) en branding.
+// De organisatielijst: per organisatie een kaart met haar leden (petten) en branding.
 export function OrgList({
   orgs,
-  createAction,
   addMemberAction,
   removeMemberAction,
   saveBrandingAction,
   canGrantOrgAdmin,
-  canCreate,
 }: {
   orgs: OrgWithMembers[];
-  createAction: (formData: FormData) => void | Promise<void>;
   addMemberAction: (formData: FormData) => void | Promise<void>;
   removeMemberAction: (formData: FormData) => void | Promise<void>;
   saveBrandingAction: (formData: FormData) => void | Promise<void>;
   /** G36, tweede zin: alleen Brink zelf kent de org_admin-rol toe. */
   canGrantOrgAdmin: boolean;
-  /**
-   * 3.2a: een organisatie aanmaken is intern werk (`createOrgAction` weigert de rest).
-   * Gemak bovenop de poort, nooit in plaats daarvan — zelfde regel als `canManageMembers`.
-   */
-  canCreate: boolean;
 }) {
-  // UX-audit 30 jul, A7: het Create-formulier stond bóven de zin "No organizations yet.
-  // Create one above." — een lege toestand die naar boven wijst. Bij leeg staat er nu
-  // alleen de lege toestand, mét het formulier erín; "Create one above" is daarmee
-  // onwaar geworden en vervangen door de zin die al bij het formulier hoorde. Het
-  // formulier keert terug in zijn eigen kaart zodra er één organisatie is.
+  // 3.2c, besluit 1: er valt hier niets meer aan te maken, dus de lege toestand biedt geen
+  // formulier maar wijst naar de plek waar het wél kan. `action={null}` is bewust: een
+  // knop naar Admin zou voor een externe org_admin een deur openen die hij toch niet mag
+  // gebruiken (besluit 2), en dit scherm weet niet wie er kijkt.
   if (orgs.length === 0) {
     return (
       <EmptyState
         title="No organizations yet."
-        description={canCreate ? NEW_ORG_HINT : undefined}
-        action={
-          canCreate ? (
-            <NewOrgFormFields createAction={createAction} centered />
-          ) : undefined
-        }
+        description="New organizations are created in Admin, where the PINs are issued."
+        action={null}
       />
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {canCreate && <NewOrgForm createAction={createAction} />}
-
       {orgs.map(({ org, members, canManageMembers }) => (
         <Card key={org.id}>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>{org.name}</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>{org.name}</CardTitle>
+                {/* 3.2c, besluit 8: het type staat waar een organisatie genoemd wordt —
+                    ook hier. Aan `organizations.type` hangt of de leden in deze kaart
+                    inkoopprijzen zien (lib/repo/prijszicht.ts); dat hoor je te kunnen
+                    controleren zonder in de database te kijken. Wijzigen kan hier niet en
+                    nergens: G42 zegt dat het type vaststaat na aanmaken. */}
+                <Badge variant="outline" data-testid="org-type">
+                  {org.type}
+                </Badge>
+              </div>
               <span className="text-xs text-muted-foreground">
                 Plan: {org.plan}
                 {org.seatLimit != null

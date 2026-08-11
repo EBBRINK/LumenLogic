@@ -45,6 +45,8 @@ import { brandKeyOf } from "@/lib/matching/engine";
 import { FIELDS, parseProductName } from "@/lib/enrichment/parser";
 import { verdenkingen } from "@/lib/enrichment/verdenking";
 import { OPTIC_SOURCE, opticBeamAngle } from "@/lib/enrichment/optic-code";
+import { NORMALISATOREN } from "@/lib/enrichment/supplier-cell";
+import { overzetbareKolommen, sourceLabel } from "@/lib/enrichment/supplier-columns";
 import { isUuid } from "@/lib/uuid";
 
 // De parser-veldnamen komen 1-op-1 overeen met de kolomnamen in products (db/schema.ts),
@@ -382,6 +384,129 @@ export async function startOpticCodeRun(
   }
 
   return createRun(db, brand, prods.length, proposals, OPTIC_SOURCE, actor);
+}
+
+// ── Start: één leverancierskolom → één matchveld, voor één merk (fase 1) ─────
+// De derde bron. Waar de naam-route uit `products.name` leest en de optiekroute uit een
+// vertaaltabel, leest deze route de cel die de LEVERANCIER zelf heeft ingevuld — het hoogste
+// bewijsniveau dat dit project kent, want er wordt niets afgeleid.
+//
+// De rijen komen als geparste export binnen in plaats van dat deze functie een bestand leest:
+// dat houdt de repo vrij van node:fs, maakt de route testbaar zonder bron én zonder database,
+// en dwingt de aanroeper de bron-hash te verantwoorden op de plek waar het bestand opengaat.
+//
+// Fail-closed op drie plekken:
+//   1. de kolom moet in SUPPLIER_COLUMNS staan als 'armatuur' MET doelveld voor dít merk —
+//      een niet-beoordeelde kolom kan hier nooit een voorstel uit krijgen;
+//   2. de cel gaat door de gecureerde normalisator; alleen `soort: "waarde"` wordt voorstel.
+//      Plaatshouders, bereiken en onbegrepen cellen worden GETELD, niet stil weggelaten;
+//   3. een al gevulde kolom levert geen voorstel (zelfde fieldIsEmpty als publishRun).
+export type BronRij = Record<string, unknown>;
+
+export async function startSupplierColumnRun(
+  db: AppDb,
+  brandId: string,
+  bron: {
+    kolom: string; // canonieke leverancierskolomnaam, bv. "IP code"
+    rijen: BronRij[];
+    sleutel: (r: BronRij) => string | null; // → products.supplier_article_code
+    cel: (r: BronRij) => string | null; // → de ruwe cel van `kolom`
+  },
+  actor?: string,
+): Promise<EnrichmentRun> {
+  const [brand] = await db
+    .select({ id: brands.id, name: brands.name })
+    .from(brands)
+    .where(eq(brands.id, brandId))
+    .limit(1);
+  if (!brand) throw new Error(`brand ${brandId} not found`);
+
+  const toewijzing = overzetbareKolommen(brand.name).find(
+    (k) => k.kolom === bron.kolom,
+  );
+  if (!toewijzing || !toewijzing.veld || !toewijzing.normalisator) {
+    throw new Error(
+      `GEBLOKKEERD: "${bron.kolom}" is voor merk ${brand.name} geen overzetbare kolom. ` +
+        `Alleen kolommen die in SUPPLIER_COLUMNS staan als beschrijft:'armatuur' mét een ` +
+        `doelveld én een normalisator mogen voorstellen opleveren.`,
+    );
+  }
+  const field = toewijzing.veld;
+  const normaliseer = NORMALISATOREN[toewijzing.normalisator];
+
+  // Bronrijen op sleutel. Een dubbele sleutel is een bronfout, geen keuze die wij stil maken.
+  const perSleutel = new Map<string, BronRij>();
+  const dubbeleSleutels: string[] = [];
+  for (const r of bron.rijen) {
+    const k = bron.sleutel(r)?.trim();
+    if (!k) continue;
+    if (perSleutel.has(k)) dubbeleSleutels.push(k);
+    else perSleutel.set(k, r);
+  }
+  if (dubbeleSleutels.length > 0) {
+    throw new Error(
+      `GEBLOKKEERD: ${dubbeleSleutels.length} dubbele koppelsleutel(s) in de bron ` +
+        `(o.a. ${dubbeleSleutels.slice(0, 5).join(", ")}). Welke rij geldt is dan een gok.`,
+    );
+  }
+
+  const prods = await db
+    .select()
+    .from(products)
+    .where(eq(products.brandId, brandId))
+    .orderBy(asc(products.name));
+
+  const proposals: Proposal[] = [];
+  const counts = {
+    geenBronrij: 0,
+    celLeegOfPlaatshouder: 0,
+    celBereik: 0,
+    celOnbekend: 0,
+    kolomAlGevuld: 0,
+    genormaliseerd: 0,
+  };
+  for (const p of prods) {
+    const k = String(p.supplierArticleCode ?? "").trim();
+    const rij = k ? perSleutel.get(k) : undefined;
+    if (!rij) {
+      counts.geenBronrij++;
+      continue;
+    }
+    const uitkomst = normaliseer(bron.cel(rij));
+    if (uitkomst.soort === "plaatshouder") {
+      counts.celLeegOfPlaatshouder++;
+      continue;
+    }
+    if (uitkomst.soort === "bereik") {
+      counts.celBereik++;
+      continue;
+    }
+    if (uitkomst.soort === "onbekend") {
+      counts.celOnbekend++;
+      continue;
+    }
+    if (!fieldIsEmpty(p as Record<string, unknown>, field)) {
+      counts.kolomAlGevuld++;
+      continue;
+    }
+    if (uitkomst.genormaliseerd) counts.genormaliseerd++;
+    proposals.push({
+      productId: p.id,
+      productName: p.name,
+      field,
+      value: uitkomst.waarde,
+    });
+  }
+
+  return createRun(
+    db,
+    brand,
+    prods.length,
+    proposals,
+    sourceLabel(bron.kolom),
+    actor,
+    { bronrijen: bron.rijen.length, ...counts },
+  );
 }
 
 type Proposal = {

@@ -27,7 +27,7 @@ export const eigenOrganisatie: OrgOption[] = [organizations[0]];
 export const users: PinUserRow[] = [
   {
     email: "geen@voorbeeld.nl",
-    orgName: "Aannemer Zuid",
+    orgs: [{ name: "Aannemer Zuid", type: "extern" }],
     roles: ["calculator"],
     state: "geen",
     expiresAtIso: null,
@@ -36,7 +36,7 @@ export const users: PinUserRow[] = [
   },
   {
     email: "actief@voorbeeld.nl",
-    orgName: "Aannemer Zuid",
+    orgs: [{ name: "Aannemer Zuid", type: "extern" }],
     roles: ["werkvoorbereider"],
     state: "actief",
     expiresAtIso: "2026-08-05T09:00:00.000Z",
@@ -45,7 +45,7 @@ export const users: PinUserRow[] = [
   },
   {
     email: "gebruikt@voorbeeld.nl",
-    orgName: "Brink Licht",
+    orgs: [{ name: "Brink Licht", type: "intern" }],
     roles: ["org_admin"],
     state: "gebruikt",
     expiresAtIso: "2026-07-20T09:00:00.000Z",
@@ -54,7 +54,7 @@ export const users: PinUserRow[] = [
   },
   {
     email: "verlopen@voorbeeld.nl",
-    orgName: "Aannemer Zuid",
+    orgs: [{ name: "Aannemer Zuid", type: "extern" }],
     roles: [],
     state: "verlopen",
     expiresAtIso: "2026-07-10T09:00:00.000Z",
@@ -63,7 +63,7 @@ export const users: PinUserRow[] = [
   },
   {
     email: "geblokkeerd@voorbeeld.nl",
-    orgName: "Brink Licht",
+    orgs: [{ name: "Brink Licht", type: "intern" }],
     roles: ["projectleider"],
     state: "geblokkeerd",
     expiresAtIso: "2026-08-01T09:00:00.000Z",
@@ -77,7 +77,11 @@ export const users: PinUserRow[] = [
 export const eigenUsers: PinUserRow[] = [
   { ...users[0], canReissue: true },
   { ...users[1], canReissue: true },
-  { ...users[2], orgName: "Aannemer Zuid", canReissue: false },
+  {
+    ...users[2],
+    orgs: [{ name: "Aannemer Zuid", type: "extern" }],
+    canReissue: false,
+  },
 ];
 
 // Happy path: elke aanroep (nieuw account of herhaling) geeft dezelfde vaste PIN terug,
@@ -94,4 +98,7 @@ export const issueHappy: IssuePinAction = async (input) => ({
   // De rollen zoals de server ze toekende — de echte action geeft hier de grant-rollen
   // terug, dus inclusief een org_admin die de bootstrap-regel erbij zette.
   roles: input.roles ?? [],
+  // Besluit 4b (3.2c): bij de één-klik-variant draagt het antwoord de naam van de
+  // organisatie die in dezelfde handeling ontstond; anders `null`.
+  orgCreated: input.newOrg?.name ?? null,
 });

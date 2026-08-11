@@ -12,8 +12,13 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import type { MembershipRole } from "@/db/schema";
-import { issuePinAsActor } from "@/lib/repo/authz";
-import { bewaakRoute } from "@/lib/route-toegang";
+import {
+  createOrgAndIssuePinAsActor,
+  createOrgAsActor,
+  issuePinAsActor,
+  setSeatLimitAsActor,
+} from "@/lib/repo/authz";
+import { bewaakNiveau, bewaakRoute } from "@/lib/route-toegang";
 
 export type IssuePinResult =
   | {
@@ -38,6 +43,12 @@ export type IssuePinResult =
        * dan ongemoeid, dus er is niets toegekend.
        */
       roles: MembershipRole[];
+      /**
+       * De naam van de organisatie die in dezelfde handeling is aangemaakt (besluit 4b),
+       * of `null` bij een bestaande organisatie. Het scherm noemt hem in het succespaneel:
+       * wie in één klik twee dingen doet, hoort te zien dat er twee dingen zijn gebeurd.
+       */
+      orgCreated: string | null;
     }
   | { ok: false; error: string };
 
@@ -76,11 +87,46 @@ export async function issuePinAction(input: {
   name?: string;
   orgId?: string | null;
   roles?: MembershipRole[];
+  /**
+   * Besluit 4b (Timo, 4 aug): in ÉÉN handeling een organisatie aanmaken én de PIN uitgeven.
+   * Aanwezig = "maak deze organisatie", en dan telt `orgId` niet mee. Alles-of-niets: gaat
+   * de PIN mis, dan bestaat de organisatie ook niet (besluit 5, uitgevoerd in
+   * `createOrgAndIssuePinAsActor`).
+   */
+  newOrg?: { name: string; plan?: string; seatLimit?: number };
 }): Promise<IssuePinResult> {
   const toegang = await bewaakRoute("/admin/users");
   const name = input.name?.trim() || null;
 
   try {
+    if (input.newOrg) {
+      // ⚠️ Geen `bewaakNiveau("intern")` hier: dat zou de regel op twee plekken zetten.
+      // `createOrgAndIssuePinAsActor` weigert een niet-interne actor zelf (besluit 2), leidt
+      // die bevoegdheid vers uit de database af en logt de weigering — zelfde vorm als G39.
+      const uitkomst = await createOrgAndIssuePinAsActor(db, {
+        actorEmail: toegang.email,
+        orgName: input.newOrg.name,
+        plan: input.newOrg.plan,
+        seatLimit: input.newOrg.seatLimit,
+        email: input.email,
+        name: name ?? undefined,
+        roles: input.roles,
+      });
+      if (!uitkomst.ok) return { ok: false, error: uitkomst.message };
+      revalidatePath("/admin/users");
+      return {
+        ok: true,
+        email: uitkomst.issued.email,
+        pin: uitkomst.issued.pin,
+        expiresAtIso: uitkomst.issued.expiresAt.toISOString(),
+        userCreated: uitkomst.issued.userCreated,
+        activateUrl: await buildActivateUrl(uitkomst.issued.email),
+        name,
+        roles: uitkomst.roles,
+        orgCreated: uitkomst.org.name,
+      };
+    }
+
     // Besluiten G36/G39 — de enige poort. Deze action beslist zelf niets en draagt ook geen
     // toestemming: hij geeft door wíé het vraagt (uit de sessie, niet uit de invoer) en wát
     // er gevraagd wordt. issuePinAsActor zoekt de rechten van die actor vers op en schrijft
@@ -112,8 +158,83 @@ export async function issuePinAction(input: {
       activateUrl: await buildActivateUrl(outcome.issued.email),
       name,
       roles: outcome.roles,
+      orgCreated: null,
     };
   } catch {
     return { ok: false, error: friendlyIssueError() };
+  }
+}
+
+// ── Organisatiebeheer (sprint 3.2c, besluiten 1/2/4a/6/7) ──────────────────────
+//
+// Deze twee actions komen van `/settings/organization` en horen sinds 3.2c hier: iemand
+// toegang geven is in het hoofd van Brink één handeling, en die stond over twee schermen
+// verdeeld. Het aanmaakformulier is dáár weggehaald in plaats van gedupliceerd — twee
+// plekken laten bestaan verdubbelt de versnippering in plaats van hem op te lossen.
+
+export type OrgResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Besluit 4a: een organisatie los aanmaken, zonder meteen iemand uit te nodigen — om alvast
+ * klaar te zetten. De één-klik-variant (4b) loopt via `issuePinAction({ newOrg })`.
+ *
+ * Er is geen intern/extern-keuze, hier niet en nergens (besluit 3): `createOrganization()`
+ * zet 'extern', altijd. `bewaakNiveau("intern")` staat er als eerste poort — de action zit
+ * op een route die op `org_admin` staat, dus zonder deze regel zou een externe beheerder
+ * hem kunnen aanroepen. `createOrgAsActor` weigert hem daarna nóg een keer, en dát is de
+ * regel; deze poort is de goedkope voorkant.
+ */
+export async function createOrgAction(input: {
+  name: string;
+  plan?: string;
+  seatLimit?: number;
+}): Promise<OrgResult> {
+  const toegang = await bewaakNiveau("intern", "createOrgAction");
+  try {
+    const uitkomst = await createOrgAsActor(db, {
+      actorEmail: toegang.email,
+      name: input.name,
+      plan: input.plan,
+      seatLimit: input.seatLimit,
+    });
+    if (!uitkomst.ok) return { ok: false, error: uitkomst.message };
+    revalidatePath("/admin/users");
+    // De organisatielijst op het organisatiescherm verandert hier ook van.
+    revalidatePath("/settings/organization");
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Something went wrong while creating the organization. Check the events log, or try again.",
+    };
+  }
+}
+
+/**
+ * Besluit 7: de zetellimiet later aanpassen, in Admin, naast de organisatie in de lijst.
+ * Raakt uitsluitend `seat_limit` — G42 verbiedt élke weg om het type te wijzigen.
+ */
+export async function setSeatLimitAction(input: {
+  orgId: string;
+  seatLimit: number;
+}): Promise<OrgResult> {
+  const toegang = await bewaakNiveau("intern", "setSeatLimitAction");
+  try {
+    const uitkomst = await setSeatLimitAsActor(db, {
+      actorEmail: toegang.email,
+      orgId: input.orgId,
+      seatLimit: input.seatLimit,
+    });
+    if (!uitkomst.ok) return { ok: false, error: uitkomst.message };
+    revalidatePath("/admin/users");
+    revalidatePath("/settings/organization");
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Something went wrong while saving the seat limit. Check the events log, or try again.",
+    };
   }
 }

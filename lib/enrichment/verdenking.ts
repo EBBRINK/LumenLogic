@@ -12,7 +12,14 @@
 // Puur: geen database, geen I/O — zodat elke regel een test kan hebben en het filter op elke
 // schaal draait.
 
-import { FIELDS, NIET_DIMBAAR, wattKandidaten, type ParsedSpecs } from "./parser";
+import {
+  FIELDS,
+  NIET_DIMBAAR,
+  criKandidaten,
+  kelvinKandidaten,
+  wattKandidaten,
+  type ParsedSpecs,
+} from "./parser";
 
 export type Veld = (typeof FIELDS)[number];
 
@@ -299,18 +306,27 @@ export function verdenkingen(naam: string, specs: ParsedSpecs): Verdenking[] {
     ["ipValue", G.ip],
     ["beamAngle", G.beam],
   ];
+  // Drie velden tellen hun kandidaten via de PARSER in plaats van via een eigen regex hier.
+  // Wattage doet dat sinds 30 jul: wat de parser als typecode of typemaat verwerpt, mag hier
+  // geen tweede kandidaat meer zijn — anders oordelen twee lagen onafhankelijk over hetzelfde
+  // teken (zie de kanttekening bij wattKandidaten()). Kelvin en CRI zijn er 4 aug bij gekomen,
+  // toen Flos' korte code ("30KC90", "3K C90", "40K98HC") in de parser landde: het lokale
+  // `G.kelvin` kent alleen de lange vorm, dus een naam met de korte vorm zou hier nul kandidaten
+  // tellen terwijl de parser er één ziet. Dezelfde scheefstand, één laag verderop.
+  const viaParser: Partial<Record<Veld, (naam: string) => (string | number)[]>> = {
+    maxWattage: (n) => wattKandidaten(n).map((v) => v.replace(",", ".")),
+    kelvin: kelvinKandidaten,
+    cri: criKandidaten,
+  };
   for (const [veld, re] of paren) {
     if (specs[veld] === undefined) continue;
-    // Wattage telt zijn kandidaten via de parser zelf: wat die als typecode of typemaat
-    // verwerpt, mag hier geen tweede kandidaat meer zijn. Anders oordelen twee lagen
-    // onafhankelijk over hetzelfde teken — zie de kanttekening bij wattKandidaten().
-    const meer =
-      veld === "maxWattage"
-        ? (() => {
-            const uniek = [...new Set(wattKandidaten(naam).map((v) => v.replace(",", ".")))];
-            return uniek.length > 1 ? uniek : null;
-          })()
-        : meerdereWaarden(naam, re);
+    const eigen = viaParser[veld];
+    const meer = eigen
+      ? (() => {
+          const uniek = [...new Set(eigen(naam).map(String))];
+          return uniek.length > 1 ? uniek : null;
+        })()
+      : meerdereWaarden(naam, re);
     if (meer) {
       vlag(veld, "meerdere-waarden", `${meer.length} verschillende waarden in de naam: ${meer.join(", ")} — de parser nam de eerste`);
     }

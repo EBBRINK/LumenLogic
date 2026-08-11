@@ -49,6 +49,63 @@ const LUMEN_RE = /(\d{2,6})\s*(?:lm|lumen)\b/i;
 // parseDimmable blijven leidend voor de WAARDE, dit patroon alleen voor de span.
 const DIMMABLE_SPAN_RE = /\b(?:DALI|TRIAC|PHASE|[01]\s*-\s*10\s*V|DIM(?:MABLE)?)\b/i;
 
+// ── De KORTE kleurcode: "30KC90", "3K C90", "40K98HC" (4 aug) ────────────────
+// Flos Architectural schrijft kleurtemperatuur en kleurweergave in één samengestelde code in
+// plaats van voluit. Van 18.263 producten misten er 18.218 een kelvin en 18.236 een CRI — het
+// grootste gat in de catalogus, en volledig een NOTATIEkwestie, geen ontbrekende data.
+//
+// ── Waarom dit geen aanname is (scripts/meet-flos-notatie{,-2,-3,-4}.ts) ─────
+// De vertaling is niet afgeleid uit hoe het eruitziet, maar uit vijf productlijnen die BEIDE
+// notaties dragen. Daar staat de vertaling in Flos' eigen catalogus:
+//
+//   FIND ME 2 BLACK POWER LED 2700K CRI90   naast   FIND ME 0 WHITE POWER LED 27K C90
+//   BON JOUR 45 WHITE POWER LED 3000K CRI90 naast   BON JOUR 90 WHITE LED ARRAY 3K CRI90
+//   RUN.MAGNET 2.0 FINDME SUSPLED 8W 2700K  naast   RUN.MAGNET 2.0 FINDME SUSP 27K C90 CHR
+//
+// Elf van de twaalf korte waarden hebben zo een exacte lange tegenhanger in dezelfde lijn; de
+// twaalfde (UT SPOT 4K) heeft er geen omdat die lijn geen 4000K-naam in de lange vorm kent —
+// geen tegenspraak, alleen een ontbrekend paar. Tegenspraak gemeten: 0 op 18.263.
+//
+// Twee schalen, allebei uit dezelfde paren: TWEE cijfers is ×100 (27K = 2700K) en ÉÉN cijfer is
+// ×1000 (3K = 3000K). Dat is geen ad-hoc uitzondering maar hoe de bron het schrijft, en het
+// botst nergens: geen enkele familie draagt zowel 3K als 30K (beide zouden 3000 zijn).
+//
+// De getalspreiding bevestigt het onafhankelijk: over 15.842 treffers komen alléén 22, 27, 30,
+// 35, 40, 50 (×100) en 3, 4 (×1000) voor — exact de LED-kleurtemperatuurladder, met families die
+// netjes over {27,30,40,50} variëren. Bij een typemaat of vermogen zou je 12, 45 of 88 zien.
+//
+// ── Waarom de K VAST aan het getal moet zitten ──────────────────────────────
+// Precies één Flos-naam heeft een spatie vóór de K, en dat is geen kleurtemperatuur maar een
+// driver: "ALIM.LED AC/DC TCI MP32 K2110-240V 50/60". De eis "geen spatie" kost dus niets en
+// weert het enige tegenvoorbeeld dat er is.
+//
+// ── Waarom er iets ACHTER de K moet staan ───────────────────────────────────
+// Zonder die eis leest de regel Sylvania's kilolumen: "KUBIXX 4000K 19KLM SMAL PIR" zou 1900 K
+// opleveren, "RAIDEN IP66 40KLM 830" zelfs 4000 K. Gemeten: 68 Sylvania-namen dragen zo'n
+// <nn>KLM-vorm. De drie toegestane vervolgen zijn wél gemeten vormen:
+//   ...K C90 / ...KC90   de CRI met een C   (13.979 namen)
+//   ...K90    / ...K98   de CRI zonder C, altijd vastgeplakt (2.660 namen)
+//   ...K<niet-alfanumeriek of eind>          de kale vorm ("27K DALI", 1.862 namen)
+// Een letter direct achter de K is dus nooit goed — dat weert KLM, en ook "3Kap".
+const KELVIN_KORT_RE = /(?<![\d.,])(\d{1,2})K(?:\s?C(\d{2})(?!\d)|(\d{2})(?!\d)|(?![A-Za-z0-9]))/;
+
+// De C-vorm die LOS staat, dus zonder K ervoor: "… LED ARR C80 3000K", "… LED ARRAY C95 13W".
+// Twee eisen, allebei uit een gemeten valse positief:
+//   • géén letter vóór de C — anders leest hij de C uit een woord of bestelcode:
+//     "ECLECTIC 90" (376×), "DC 90-305V", "XTSC 635-3", "LC43MINI", "QR-CBC51".
+//   • géén spatie ná de C — Flos schrijft de CRI altijd vast ("C90"), 11.796 keer. De 395
+//     "C <getal>"-treffers zijn zónder uitzondering ECLECTIC/QR-CBC-namen. Deze eis weert
+//     bovendien Artemide's "A.24 C 90° CORNER" (101 namen): dat is een HOEK, geen CRI, en met
+//     een spatie-tolerantie zou de regel daar stil de kleurweergave op 90 zetten.
+const CRI_C_LOS_RE = /(?<![A-Za-z0-9])C(\d{2})(?!\d)/;
+
+// De aannemelijke band voor een CRI die ZONDER label geschreven is. De lange vorm mag ruimer
+// (die draagt het woord CRI of Ra en is daarmee zelf het bewijs); een kale "C<nn>" moet het
+// hebben van de waarde. Gemeten bij Flos: 90 (10.784×), 98 (726), 80 (179), 95 (48) — verder
+// niets. Alles onder de 80 dat in de catalogus als C<nn> geschreven staat, is een maat- of
+// typecode: C35, C43, C51, C57, C60, C68, C70. Vandaar de ondergrens op 80.
+const CRI_ZONDER_LABEL: [number, number] = [80, 100];
+
 // Eerste capture-groep van de eerste match, of null.
 function firstCapture(name: string, re: RegExp): string | null {
   const m = re.exec(name);
@@ -213,25 +270,84 @@ function parseWatt(name: string): number | undefined {
   return undefined;
 }
 
-// Kleurtemperatuur: 3-5 cijfers gevolgd door K/Kelvin. Alleen het reële LED-bereik
-// 2000–8000 K telt; daarbuiten (bv. een toevallige "9000K" of "1500K") wordt genegeerd —
-// beter niets dan een verkeerde kelvin.
-function parseKelvin(name: string): number | undefined {
-  const raw = firstCapture(name, KELVIN_RE);
-  if (raw == null) return undefined;
-  const k = parseInt(raw, 10);
-  return k >= 2000 && k <= 8000 ? k : undefined;
+// ── Kandidaten per veld: ÉÉN bron voor de parser én de verdenking ────────────
+// Zelfde constructie en zelfde reden als `wattKandidaten` hierboven: `verdenking.ts` telt hoeveel
+// kandidaten een naam draagt (`meerdere-waarden`) en moet daarbij exact hetzelfde zien als de
+// parser. Sinds de korte vorm erbij kwam is dat geen theorie meer — een tweede regexset zou
+// "30KC90" in de ene laag wél en in de andere niet herkennen.
+//
+// De kandidaten zijn GENORMALISEERD naar echte kelvin, niet naar de ruwe tekst. Anders zou
+// "27K" naast "2700K" als twee verschillende waarden tellen terwijl het één feit is. Bewust
+// ONgefilterd op bereik: `parseKelvin` verwerpt hieronder wat buiten 2000–8000 valt, maar voor
+// de vraag "hoeveel kandidaten staan er in deze naam" telt ook een onwaarschijnlijke mee —
+// "1500K 3000K" moet `meerdere-waarden` blijven vlaggen, precies zoals vóór deze wijziging.
+export function kelvinKandidaten(name: string): number[] {
+  if (!name) return [];
+  const uit: number[] = [];
+  const lang = new RegExp(KELVIN_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = lang.exec(name)) !== null) uit.push(parseInt(m[1], 10));
+  const kort = new RegExp(KELVIN_KORT_RE.source, "g");
+  while ((m = kort.exec(name)) !== null) {
+    const v = parseInt(m[1], 10);
+    // Twee cijfers = ×100 (27K → 2700), één cijfer = ×1000 (3K → 3000). Zie de meting boven.
+    uit.push(m[1].length === 1 ? v * 1000 : v * 100);
+  }
+  return uit;
 }
 
-// CRI/Ra (kleurweergave-index), optioneel met een label-dubbele-punt en/of ≥/>=/>.
-// "CRI90", "Ra90", "CRI≥90", "CRI 90", "CRI: ≥ 90", "CRI:90" → 90. OCR-labels uit
-// armaturenboeken zetten vaak een ":" tussen het label en de waarde ("CRI: ≥90").
-// Alleen 0–100 (index kan niet hoger).
+// Kleurtemperatuur: de lange vorm eerst (3-5 cijfers + K/Kelvin), dan de korte. Alleen het reële
+// LED-bereik 2000–8000 K telt; daarbuiten (bv. een toevallige "9000K" of "1500K") wordt genegeerd
+// — beter niets dan een verkeerde kelvin. Die grens doet meteen dienst als vangnet onder de korte
+// vorm: "19K" zou 1900 opleveren en valt er dus vanzelf uit.
+//
+// De lange vorm blijft vóóraan staan zodat namen die hem dragen zich exact gedragen als vóór
+// 4 aug; gemeten is dat geen enkele naam de twee vormen met een ANDERE waarde combineert.
+function parseKelvin(name: string): number | undefined {
+  for (const k of kelvinKandidaten(name)) {
+    if (k >= 2000 && k <= 8000) return k;
+  }
+  return undefined;
+}
+
+// CRI/Ra (kleurweergave-index): eerst de vorm MET label, dan Flos' kale C-vorm.
+//
+// Met label, optioneel met een label-dubbele-punt en/of ≥/>=/>: "CRI90", "Ra90", "CRI≥90",
+// "CRI 90", "CRI: ≥ 90", "CRI:90" → 90. OCR-labels uit armaturenboeken zetten vaak een ":"
+// tussen het label en de waarde ("CRI: ≥90"). Alleen 0–100 (index kan niet hoger).
+//
+// Zonder label komt de waarde uit Flos' samengestelde code, in twee gemeten vormen: mét C
+// ("30K C90", "30KC90") en zonder ("30K90HC", "40K98HC"). Dat het tweede getal daar écht de CRI
+// is en niet iets anders, is apart gemeten: in 27 productfamilies varieert dat getal (80/90/98)
+// terwijl de K gelijk blijft, en in 1.821 families varieert de K terwijl het getal gelijk blijft.
+// Twee onafhankelijke assen — dat is precies wat kleurtemperatuur en kleurweergave zijn.
+export function criKandidaten(name: string): number[] {
+  if (!name) return [];
+  const uit: number[] = [];
+  const gelabeld = new RegExp(CRI_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = gelabeld.exec(name)) !== null) uit.push(parseInt(m[1], 10));
+
+  const [min, max] = CRI_ZONDER_LABEL;
+  const zonderLabel = (raw: string | undefined) => {
+    if (raw == null) return;
+    const v = parseInt(raw, 10);
+    if (v >= min && v <= max) uit.push(v);
+  };
+  // Groep 2 en 3 van de korte kleurcode: "…K C90" / "…KC90" en "…K90".
+  const kort = new RegExp(KELVIN_KORT_RE.source, "g");
+  while ((m = kort.exec(name)) !== null) zonderLabel(m[2] ?? m[3]);
+  // De C-vorm zonder K ervoor: "… LED ARR C80 3000K".
+  const los = new RegExp(CRI_C_LOS_RE.source, "g");
+  while ((m = los.exec(name)) !== null) zonderLabel(m[1]);
+  return uit;
+}
+
 function parseCri(name: string): number | undefined {
-  const raw = firstCapture(name, CRI_RE);
-  if (raw == null) return undefined;
-  const cri = parseInt(raw, 10);
-  return cri > 0 && cri <= 100 ? cri : undefined;
+  for (const cri of criKandidaten(name)) {
+    if (cri > 0 && cri <= 100) return cri;
+  }
+  return undefined;
 }
 
 // IP-klasse: "IP20", "IP 44", "IP65", "IP: 44", "IP:44" → genormaliseerd "IP44"
@@ -340,7 +456,12 @@ export type SpecSpan = {
   end: number;
 };
 
-const SPAN_PATTERNS: [(typeof FIELDS)[number], RegExp][] = [
+// De derde kolom is een OPTIONELE toets op de match. De korte kleurcode heeft er een nodig: hij
+// herkent "C35" in "A6/C35" wel als vorm, maar `parseCri` verwerpt die waarde (buiten 80–100).
+// Zonder de toets zou de matcher een span melden voor een spec die nooit geparsed is, en dan
+// onderdrukt hij een tekstscore op grond van een veld dat er niet is — de spiegelbeeldige fout
+// van de dubbeltelling die deze module moest oplossen.
+const SPAN_PATTERNS: [(typeof FIELDS)[number], RegExp, ((m: RegExpExecArray) => boolean)?][] = [
   ["maxWattage", WATT_RE],
   ["kelvin", KELVIN_RE],
   ["cri", CRI_RE],
@@ -348,16 +469,26 @@ const SPAN_PATTERNS: [(typeof FIELDS)[number], RegExp][] = [
   ["beamAngle", BEAM_RE],
   ["lumenOutput", LUMEN_RE],
   ["dimmable", DIMMABLE_SPAN_RE],
+  // Flos' korte code levert twee velden uit één span: "30KC90" is zowel de kelvin als de CRI.
+  ["kelvin", KELVIN_KORT_RE, (m) => {
+    const k = m[1].length === 1 ? +m[1] * 1000 : +m[1] * 100;
+    return k >= 2000 && k <= 8000;
+  }],
+  ["cri", KELVIN_KORT_RE, (m) => {
+    const c = m[2] ?? m[3];
+    return c != null && +c >= CRI_ZONDER_LABEL[0] && +c <= CRI_ZONDER_LABEL[1];
+  }],
+  ["cri", CRI_C_LOS_RE, (m) => +m[1] >= CRI_ZONDER_LABEL[0] && +m[1] <= CRI_ZONDER_LABEL[1]],
 ];
 
 export function specSpans(text: string): SpecSpan[] {
   if (!text) return [];
   const out: SpecSpan[] = [];
-  for (const [field, re] of SPAN_PATTERNS) {
+  for (const [field, re, toets] of SPAN_PATTERNS) {
     const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
     let m: RegExpExecArray | null;
     while ((m = g.exec(text)) !== null) {
-      out.push({ field, start: m.index, end: m.index + m[0].length });
+      if (!toets || toets(m)) out.push({ field, start: m.index, end: m.index + m[0].length });
       if (m[0].length === 0) g.lastIndex++; // nooit vastlopen op een lege match
     }
   }

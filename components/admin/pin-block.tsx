@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { veldClass } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { MembershipRole } from "@/db/schema";
 import { callAction, failureDetail } from "@/lib/next-action-result";
@@ -38,7 +39,15 @@ export type PinState = "geen" | "actief" | "gebruikt" | "verlopen" | "geblokkeer
 
 export type PinUserRow = {
   email: string;
-  orgName: string | null;
+  /**
+   * De organisaties waar dit adres lid van is, mét hun type — besluit 8 (Timo, 4 aug):
+   * het type staat waar een organisatie genoemd wordt. Hier stond een kant-en-klare
+   * `orgName`-string, en dat was precies de plek waar het type ontbrak ("Brink Licht ·
+   * org_admin"). Aan `organizations.type` hangt of iemand inkoopprijzen ziet; dat moet je
+   * kunnen controleren zonder in de database te kijken. Het samenvoegen gebeurt daarom
+   * hier, in één regel die de test kan vastpinnen, en niet in de pagina.
+   */
+  orgs: { name: string; type: string }[];
   roles: string[];
   state: PinState;
   expiresAtIso: string | null;
@@ -58,6 +67,8 @@ export type IssuePinResult =
       name: string | null;
       /** Wat er daadwerkelijk is toegekend — kan één rol méér zijn dan aangevinkt. */
       roles: string[];
+      /** Naam van de organisatie die in dezelfde handeling ontstond (besluit 4b), of null. */
+      orgCreated: string | null;
     }
   | { ok: false; error: string };
 
@@ -66,7 +77,24 @@ export type IssuePinAction = (input: {
   name?: string;
   orgId?: string | null;
   roles?: MembershipRole[];
+  newOrg?: { name: string; plan?: string; seatLimit?: number };
 }) => Promise<IssuePinResult>;
+
+/**
+ * De waarde van de "+ New organization"-optie in de organisatiekeuze (besluit 4b). Geen
+ * uuid, dus hij kan nooit per ongeluk als bestaande organisatie doorgaan: de submit-handler
+ * splitst hierop, en bij een echte orgId gaat er geen `newOrg` mee.
+ */
+const NIEUWE_ORG = "__new__";
+
+/** Besluit 6: een zinnige standaardwaarde. Spiegelt STANDAARD_ZETELS in lib/repo/orgs.ts. */
+const STANDAARD_ZETELS = 5;
+
+const PLAN_OPTIONS: { value: string; label: string }[] = [
+  { value: "trial", label: "Trial" },
+  { value: "abonnement", label: "Subscription" },
+  { value: "per-dossier", label: "Per project" },
+];
 
 const ROLE_OPTIONS: { value: MembershipRole; label: string }[] = [
   { value: "calculator", label: "Calculator" },
@@ -200,6 +228,7 @@ export function PinBlock({
   pinLength,
   pinTtlDays,
   canGrantOrgAdmin,
+  canCreateOrgs = false,
 }: {
   /** Alleen de organisaties die deze gebruiker mág kiezen (besluit G36). */
   organizations: OrgOption[];
@@ -209,6 +238,15 @@ export function PinBlock({
   pinTtlDays: number;
   /** G36, tweede zin: alleen Brink zelf kent de org_admin-rol toe. */
   canGrantOrgAdmin: boolean;
+  /**
+   * Besluit 2 + 4b: alleen intern maakt organisaties aan, en mag dat in dezelfde handeling
+   * als de PIN-uitgifte. Een externe org_admin komt sinds 3.2a wél op dit scherm en ziet
+   * die mogelijkheid niet eens. Default `false`: vergeten valt de veilige kant op.
+   *
+   * ⚠️ UI-gemak, geen poort — `createOrgAndIssuePinAsActor()` weigert een niet-interne
+   * actor zelf, ook bij een aanroep zonder formulier.
+   */
+  canCreateOrgs?: boolean;
 }) {
   const [justIssued, setJustIssued] = useState<
     Extract<IssuePinResult, { ok: true }> | null
@@ -225,11 +263,14 @@ export function PinBlock({
   const roleOptions = canGrantOrgAdmin
     ? ROLE_OPTIONS
     : ROLE_OPTIONS.filter((r) => r.value !== "org_admin");
+  const nieuweOrg = orgId === NIEUWE_ORG;
   const gekozenOrg = organizations.find((o) => o.id === orgId) ?? null;
   // De eerste persoon in een organisatie wordt haar beheerder (G36, eerste zin). De server
   // doet dat sowieso; dit vinkje zégt het alleen, aangevinkt en vastgezet, zodat de uitgever
-  // niet denkt dat hij het nog kan uitzetten.
-  const orgAdminVastgezet = canGrantOrgAdmin && !!gekozenOrg?.needsOrgAdmin;
+  // niet denkt dat hij het nog kan uitzetten. Bij een nieuwe organisatie geldt dat per
+  // definitie: die heeft nog geen enkel lid, dus deze eerste persoon wordt haar beheerder.
+  const orgAdminVastgezet =
+    canGrantOrgAdmin && (nieuweOrg || !!gekozenOrg?.needsOrgAdmin);
 
   // Ronde-1-critic: het succespaneel verschijnt BOVEN de kaart met de knop die net is
   // ingedrukt — zonder deze focusverplaatsing blijft een toetsenbord-/schermlezergebruiker
@@ -239,12 +280,9 @@ export function PinBlock({
     requestAnimationFrame(() => panelRef.current?.focus());
   }
 
-  async function runIssue(input: {
-    email: string;
-    name?: string;
-    orgId?: string | null;
-    roles?: MembershipRole[];
-  }): Promise<IssuePinResult> {
+  async function runIssue(
+    input: Parameters<IssuePinAction>[0],
+  ): Promise<IssuePinResult> {
     const outcome = await callAction(() => issueAction(input), {
       path: "/admin/users",
     });
@@ -273,10 +311,19 @@ export function PinBlock({
     const fd = new FormData(form);
     const email = String(fd.get("email") ?? "").trim();
     const name = String(fd.get("name") ?? "").trim();
-    const orgId = String(fd.get("orgId") ?? "").trim() || null;
+    const gekozen = String(fd.get("orgId") ?? "").trim() || null;
     const roles = fd.getAll("roles").map(String) as MembershipRole[];
     if (!email) {
       setFormError("Enter an email address.");
+      return;
+    }
+    // Besluit 4b: "+ New organization" is geen organisatie maar een opdracht. De keuze
+    // splitst hier één keer, zodat er nooit een `newOrg` mee kan gaan bij een bestaande
+    // organisatie en andersom.
+    const maaktOrg = gekozen === NIEUWE_ORG;
+    const orgNaam = String(fd.get("newOrgName") ?? "").trim();
+    if (maaktOrg && !orgNaam) {
+      setFormError("Enter a name for the new organization.");
       return;
     }
     setSubmitting(true);
@@ -285,8 +332,15 @@ export function PinBlock({
       const result = await runIssue({
         email,
         name: name || undefined,
-        orgId,
+        orgId: maaktOrg ? null : gekozen,
         roles,
+        newOrg: maaktOrg
+          ? {
+              name: orgNaam,
+              plan: String(fd.get("newOrgPlan") ?? "") || undefined,
+              seatLimit: Number(fd.get("newOrgSeats")),
+            }
+          : undefined,
       });
       if (!result.ok) {
         setFormError(result.error);
@@ -361,6 +415,12 @@ export function PinBlock({
                     {justIssued.userCreated
                       ? "new account created"
                       : "existing account"}
+                    {/* Besluit 4b: één klik deed twee dingen. Dan hoort het paneel ze
+                        allebei te noemen — anders staat er ergens een organisatie waarvan
+                        de uitgever niet meer weet dat hij hem zelf heeft gemaakt. */}
+                    {justIssued.orgCreated && (
+                      <> · organization {justIssued.orgCreated} created</>
+                    )}
                     {/* De rollen zoals ze in de database staan, niet de aangevinkte: de
                         eerste persoon in een organisatie krijgt er org_admin bij (G36,
                         eerste zin). Een toegekende beheerdersrol mag nooit onzichtbaar
@@ -492,8 +552,87 @@ export function PinBlock({
                     {o.name} ({o.type})
                   </option>
                 ))}
+                {/* Besluit 4b: in één handeling de organisatie aanmaken én de PIN uitgeven.
+                    Onderaan, want het is de uitzondering — de gewone gang van zaken is een
+                    bestaande organisatie kiezen. Alleen intern (besluit 2). */}
+                {canCreateOrgs && (
+                  <option value={NIEUWE_ORG}>+ New organization…</option>
+                )}
               </select>
             </div>
+
+            {nieuweOrg && (
+              // Besluit 5: dit is alles-of-niets. Mislukt de PIN, dan wordt de organisatie
+              // óók niet aangemaakt — anders houd je lege organisaties over van mislukte
+              // pogingen, die later in deze dropdown opduiken zonder dat iemand weet waarom
+              // ze bestaan. De server voert dat uit (createOrgAndIssuePinAsActor); deze zin
+              // zegt het, zodat de uitgever weet waar hij aan toe is als het misgaat.
+              <fieldset
+                data-testid="new-org-fields"
+                className="flex flex-col gap-3 rounded-lg border border-input bg-muted/40 p-4 sm:flex-row sm:items-end"
+              >
+                <legend className="px-1 text-sm font-medium">
+                  New organization
+                </legend>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="pin-new-org-name"
+                    className="text-sm font-medium"
+                  >
+                    Name
+                  </label>
+                  <Input
+                    id="pin-new-org-name"
+                    name="newOrgName"
+                    required
+                    placeholder="De Vries Installations"
+                    className="sm:w-64"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="pin-new-org-plan"
+                    className="text-sm font-medium"
+                  >
+                    Plan
+                  </label>
+                  <select
+                    id="pin-new-org-plan"
+                    name="newOrgPlan"
+                    defaultValue="trial"
+                    className={veldClass}
+                  >
+                    {PLAN_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="pin-new-org-seats"
+                    className="text-sm font-medium"
+                  >
+                    Seats
+                  </label>
+                  <Input
+                    id="pin-new-org-seats"
+                    name="newOrgSeats"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    defaultValue={STANDAARD_ZETELS}
+                    className="sm:w-28"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground sm:self-center">
+                  External organization. If the PIN fails, this organization
+                  isn&apos;t created either.
+                </p>
+              </fieldset>
+            )}
 
             <fieldset className="flex flex-col gap-1.5">
               <legend className="text-sm font-medium">Roles</legend>
@@ -544,8 +683,12 @@ export function PinBlock({
               </div>
               {orgAdminVastgezet && (
                 <p className="text-xs text-muted-foreground">
-                  {gekozenOrg?.name} has no admin yet — the first person you
-                  invite becomes its org admin.
+                  {/* Bij "+ New organization" is er nog geen naam om te noemen — die
+                      typt de uitgever hierboven pas in. Zonder deze tak begon de zin met
+                      een leeg gat ("… has no admin yet"). */}
+                  {nieuweOrg
+                    ? "A new organization has no admin yet — this first person becomes its org admin."
+                    : `${gekozenOrg?.name} has no admin yet — the first person you invite becomes its org admin.`}
                 </p>
               )}
             </fieldset>
@@ -596,7 +739,11 @@ export function PinBlock({
                   <div className="min-w-0 sm:flex-1">
                     <p className="truncate font-medium">{u.email}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {u.orgName || "no organization"}
+                      {/* Besluit 8: naam én type, overal waar een organisatie genoemd
+                          wordt. De dropdown hierboven deed dit al; deze lijst niet. */}
+                      {u.orgs.length > 0
+                        ? u.orgs.map((o) => `${o.name} (${o.type})`).join(", ")
+                        : "no organization"}
                       {u.roles.length > 0 ? ` · ${u.roles.join(", ")}` : ""}
                     </p>
                   </div>

@@ -43,11 +43,24 @@
 // Dat is item 3.2a. Deze laag gaat over wie wat mag SCHRIJVEN.
 import { eq, inArray, sql } from "drizzle-orm";
 import * as authSchema from "@/db/auth-schema";
-import { memberships, organizations, type MembershipRole } from "@/db/schema";
+import {
+  memberships,
+  organizations,
+  type MembershipRole,
+  type Organization,
+} from "@/db/schema";
 import { issueActivationPin, type IssuedPin } from "./activation";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
-import { addMembership, removeMembership, setOrgBranding } from "./orgs";
+import {
+  addMembership,
+  countMembers,
+  createOrganization,
+  deleteOrganization,
+  removeMembership,
+  setOrgBranding,
+  setOrgSeatLimit,
+} from "./orgs";
 
 // Overal in dit project worden adressen zo genormaliseerd (zie lib/repo/activation.ts).
 function normalizeEmail(email: string): string {
@@ -84,6 +97,10 @@ export type OrgFacts = {
   id: string;
   /** Heeft deze org al iemand met de org_admin-rol? Zie bootstrapRoles(). */
   hasOrgAdmin: boolean;
+  /** `null` = onbeperkt. Besluit 6 (4 aug): instelbaar bij aanmaken, aanpasbaar in Admin. */
+  seatLimit: number | null;
+  /** Aantal lidmaatschappen op het moment van vragen. */
+  seatsUsed: number;
 };
 
 /**
@@ -99,7 +116,11 @@ export type DenyReason =
   | "vreemd_doeladres" // regel 2: iemand die niet (alleen) van zijn org is
   | "doel_is_org_admin" // regel 2: een collega-beheerder overnemen mag niet
   | "geen_org" // regel 2: nieuw adres zonder organisatie
-  | "rollen_zonder_org"; // rollen gevraagd zonder org — daar wordt niets van geschreven
+  | "rollen_zonder_org" // rollen gevraagd zonder org — daar wordt niets van geschreven
+  | "geen_plek" // besluit 6: de zetellimiet van deze organisatie is bereikt
+  | "geen_orgmaker" // besluit 2: alleen intern maakt organisaties aan
+  | "org_zonder_naam" // een nieuwe organisatie zonder naam
+  | "ongeldige_limiet"; // een zetellimiet die geen positief geheel getal is
 
 export type Denial = { allowed: false; reason: DenyReason; message: string };
 
@@ -116,6 +137,23 @@ const MSG_INVALID_EMAIL = "Enter a valid email address.";
 const MSG_UNKNOWN_ORG =
   "That organization no longer exists — refresh the page and try again.";
 const MSG_ROLES_NEED_ORG = "Pick an organization for those roles.";
+// Besluit 2: organisaties aanmaken is intern werk. Zelfde neutrale vorm als MSG_DENIED —
+// de UI biedt het een externe beheerder niet eens aan, dus wie deze tekst ziet, omzeilde
+// het formulier.
+const MSG_NO_ORG_CREATE =
+  "You can't create organizations here. Ask Brink if you think you should be able to.";
+const MSG_ORG_NEEDS_NAME = "Enter a name for the new organization.";
+const MSG_BAD_SEAT_LIMIT = "Enter a seat limit of 1 or more.";
+
+/**
+ * De zetel-weigering is bewust WÉL specifiek, anders dan MSG_DENIED. Twee redenen:
+ * hij komt pas nadat alle bevoegdheidscontroles zijn gepasseerd (wie hem ziet, mag in deze
+ * organisatie schrijven en kent haar dus al), en hij is alleen bruikbaar als hij zegt wát
+ * er moet gebeuren. "Kon geen PIN uitgeven" laat Brink zoeken; dit zegt waar de knop zit.
+ */
+function msgSeats(used: number, limit: number): string {
+  return `This organization has used all its seats (${used} of ${limit}). Raise the seat limit to add someone.`;
+}
 
 function deny(reason: DenyReason, message: string): Denial {
   return { allowed: false, reason, message };
@@ -141,6 +179,11 @@ export function decideMembershipAuthority(input: {
   orgId: string | null;
   org: OrgFacts | null;
   roles: readonly MembershipRole[];
+  /**
+   * Kost deze handeling een zetel? Toevoegen wel, verwijderen niet. Default `true`, want
+   * dat is de kant waar vergeten veilig uitpakt (ijzeren regel 4).
+   */
+  neemtZetel?: boolean;
 }): { allowed: true } | Denial {
   const { authority, target, orgId, org } = input;
   const roles = uniqueRoles(input.roles);
@@ -159,7 +202,7 @@ export function decideMembershipAuthority(input: {
     if (orgId !== null && org === null) {
       return deny("onbekende_org", MSG_UNKNOWN_ORG);
     }
-    return { allowed: true };
+    return zetelPoort(input);
   }
 
   // Regel 2: org_admin. Alles hieronder is een weigering met dezelfde neutrale tekst.
@@ -197,7 +240,58 @@ export function decideMembershipAuthority(input: {
     if (orgId === null) return deny("geen_org", MSG_DENIED);
   }
 
-  return { allowed: true };
+  return zetelPoort(input);
+}
+
+/**
+ * De zetellimiet (besluit 6, Timo 4 aug): "vanaf het begin kunnen we dit controleren."
+ * Controleren betekent dat het effect heeft — een limiet die niemand tegenhoudt is
+ * decoratie, en wekt bovendien de valse indruk dát er een grens is.
+ *
+ * ⚠️ Staat bewust ACHTERAAN, na alle bevoegdheidscontroles. Wie deze weigering ziet, mag
+ * in deze organisatie schrijven en kent haar dus al; de melding mag daarom concreet zijn
+ * (zie `msgSeats`) zonder iets te verraden aan iemand die er niets te zoeken heeft.
+ *
+ * ⚠️ Geldt ook voor INTERN. Dat is geen vergetelheid: Brink geeft in de praktijk élke PIN
+ * uit, dus een uitzondering voor intern zou betekenen dat de limiet nooit ergens bijt.
+ * Brink is óók de enige die hem kan verhogen (besluit 7), dus de weg vooruit staat open.
+ *
+ * ⚠️ En dit is de LEES-kant, die per definitie een moment oud is. De echte grens zit in de
+ * `where` van `addMembership()` (lib/repo/orgs.ts), waar de telling in dezelfde SQL staat
+ * als de insert. Deze functie bestaat om een nette, uitlegbare melding te kunnen geven —
+ * niet om de grens te zíjn.
+ */
+function zetelPoort(input: {
+  target: TargetFacts;
+  orgId: string | null;
+  org: OrgFacts | null;
+  neemtZetel?: boolean;
+}): { allowed: true } | Denial {
+  const { org, orgId, target } = input;
+  if (input.neemtZetel === false) return { allowed: true };
+  if (orgId === null || org === null) return { allowed: true };
+  // Onbeperkt (Brink Licht zelf staat zo op productie).
+  if (org.seatLimit === null) return { allowed: true };
+  // Al lid: rollen bijwerken of een nieuwe PIN kost geen zetel. Zonder deze regel zou
+  // "vergeten wachtwoord = nieuwe PIN" (C10) stuklopen zodra een organisatie vol zit —
+  // precies op het moment dat iemand er wél al in zit.
+  if (target.memberships.some((m) => m.orgId === org.id)) return { allowed: true };
+  if (org.seatsUsed < org.seatLimit) return { allowed: true };
+  return deny("geen_plek", msgSeats(org.seatsUsed, org.seatLimit));
+}
+
+/**
+ * Besluit 2 (Timo, 4 aug): **alleen intern maakt organisaties aan.** Sinds 3.2a komt een
+ * externe org_admin ook op `/admin/users` — de route staat bewust op niveau `org_admin`,
+ * want G36 geeft hem het recht mensen aan te maken. Organisaties aanmaken hoort daar niet
+ * bij: dat is de wortel van het org-model, en aan `organizations.type` hangt of iemand
+ * inkoopprijzen ziet.
+ */
+export function decideOrgCreate(
+  authority: OrgAuthority,
+): { allowed: true } | Denial {
+  if (authority.kind === "intern") return { allowed: true };
+  return deny("geen_orgmaker", MSG_NO_ORG_CREATE);
 }
 
 /**
@@ -286,6 +380,8 @@ export function decideMembershipChange(input: {
     orgId: input.orgId,
     org: input.org,
     roles,
+    // Verwijderen maakt een zetel vrij; die kan de zetellimiet dus nooit tegenhouden.
+    neemtZetel: input.operation === "set",
   });
   if (!kern.allowed) return kern;
   return {
@@ -376,19 +472,27 @@ async function readOrgFacts(db: AppDb, orgId: string): Promise<OrgFacts | null> 
   const id = orgId.trim();
   if (!UUID_RE.test(id)) return null;
   const [org] = await db
-    .select({ id: organizations.id })
+    .select({ id: organizations.id, seatLimit: organizations.seatLimit })
     .from(organizations)
     .where(eq(organizations.id, id))
     .limit(1);
   if (!org) return null;
-  const admins = await db
-    .select({ orgId: memberships.orgId })
-    .from(memberships)
-    .where(
-      sql`${memberships.orgId} = ${org.id} and 'org_admin' = ANY(${memberships.roles})`,
-    )
-    .limit(1);
-  return { id: org.id, hasOrgAdmin: admins.length > 0 };
+  const [admins, seatsUsed] = await Promise.all([
+    db
+      .select({ orgId: memberships.orgId })
+      .from(memberships)
+      .where(
+        sql`${memberships.orgId} = ${org.id} and 'org_admin' = ANY(${memberships.roles})`,
+      )
+      .limit(1),
+    countMembers(db, org.id),
+  ]);
+  return {
+    id: org.id,
+    hasOrgAdmin: admins.length > 0,
+    seatLimit: org.seatLimit,
+    seatsUsed,
+  };
 }
 
 async function logDenial(
@@ -530,13 +634,265 @@ export async function changeMembershipAsActor(
     return { ok: true, email: verdict.email, roles: [] };
   }
 
-  await addMembership(db, {
+  const geschreven = await addMembership(db, {
     orgId: verdict.orgId!,
     email: verdict.email,
     roles: verdict.roles,
     actor: authority.email,
   });
+  // `false` = de zetellimiet hield hem tegen in de `where` van de insert zelf. De poort
+  // hierboven keek al naar de zetels, dus dit is het racevenster tussen die lezing en deze
+  // schrijfactie — zeldzaam, maar het is precies het geval waarvoor de telling in de SQL
+  // staat. Verse cijfers voor de melding, want de gelezen feiten zijn nu per definitie oud.
+  if (!geschreven) {
+    const vers = await countMembers(db, verdict.orgId!);
+    const denial = deny("geen_plek", msgSeats(vers, org?.seatLimit ?? vers));
+    await logDenial(db, authority, "membership_change_denied", denial, {
+      email: verdict.email,
+      orgId: verdict.orgId,
+      operation: "set",
+    });
+    return { ok: false, reason: denial.reason, message: denial.message };
+  }
   return { ok: true, email: verdict.email, roles: verdict.roles };
+}
+
+export type CreateOrgOutcome =
+  | { ok: true; org: Organization }
+  | { ok: false; reason: DenyReason; message: string };
+
+/**
+ * De vierde deur (sprint 3.2c, besluiten 1–3): een organisatie aanmaken.
+ *
+ * Tot 3.2c stond dit als `createOrgAction` op `/settings/organization` en riep die action
+ * `createOrganization()` rechtstreeks aan, met alleen `bewaakNiveau("intern")` ervoor. Dat
+ * hield, maar het was de enige schrijfweg naar de organisatietabel die niet dezelfde vorm
+ * had als de rest van G39 — en `organizations` is juist de tabel waar `type` in staat.
+ * Nu dezelfde vorm als de andere drie: autoriseren en schrijven in één aanroep, actor uit
+ * de sessie, rechten vers uit de database.
+ *
+ * Het TYPE is hier geen parameter en komt ook niet uit de invoer: `createOrganization()`
+ * zet 'extern', altijd (besluit 3 + G42).
+ */
+export async function createOrgAsActor(
+  db: AppDb,
+  input: {
+    actorEmail: string | null | undefined;
+    name: string;
+    plan?: string;
+    seatLimit?: number | null;
+  },
+): Promise<CreateOrgOutcome> {
+  const authority = await resolveOrgAuthority(db, input.actorEmail);
+  const verdict = decideOrgCreate(authority);
+  if (!verdict.allowed) {
+    await logDenial(db, authority, "org_create_denied", verdict, {
+      name: input.name,
+    });
+    return { ok: false, reason: verdict.reason, message: verdict.message };
+  }
+
+  const name = input.name.trim();
+  if (!name) {
+    return {
+      ok: false,
+      reason: "org_zonder_naam",
+      message: MSG_ORG_NEEDS_NAME,
+    };
+  }
+  const zetels = normaliseerZetels(input.seatLimit);
+  if (!zetels.ok) return zetels;
+
+  const org = await createOrganization(db, {
+    name,
+    plan: input.plan,
+    seatLimit: zetels.waarde,
+    actor: authority.email,
+  });
+  return { ok: true, org };
+}
+
+/**
+ * Een zetellimiet uit de invoer. `undefined` = niet meegegeven → de standaardwaarde;
+ * `null` = expliciet onbeperkt (bestaat vandaag niet in de interface, wél in de data:
+ * Brink Licht staat zo op productie). Alles wat geen positief geheel getal is, is een
+ * fout — niet stil terugvallen op een default, want dan zou een typefout van de uitgever
+ * een andere limiet opleveren dan hij intikte.
+ */
+function normaliseerZetels(
+  waarde: number | null | undefined,
+):
+  | { ok: true; waarde: number | null | undefined }
+  | { ok: false; reason: DenyReason; message: string } {
+  if (waarde === undefined) return { ok: true, waarde: undefined };
+  if (waarde === null) return { ok: true, waarde: null };
+  if (!Number.isInteger(waarde) || waarde < 1) {
+    return {
+      ok: false,
+      reason: "ongeldige_limiet",
+      message: MSG_BAD_SEAT_LIMIT,
+    };
+  }
+  return { ok: true, waarde };
+}
+
+export type SeatLimitOutcome =
+  | { ok: true; orgId: string; seatLimit: number | null }
+  | { ok: false; reason: DenyReason; message: string };
+
+/**
+ * Besluit 7: de zetellimiet is later aan te passen, in Admin, naast de organisatie in de
+ * lijst. **Alleen intern** — een org_admin die zijn eigen limiet mag verhogen, heeft geen
+ * limiet. Dat is dezelfde lijn als besluit 2: organisatiebeheer is Brink-werk.
+ *
+ * Raakt uitsluitend `seat_limit`. G42: er is geen weg, ook niet zijdelings, om het type
+ * van een bestaande organisatie te veranderen.
+ */
+export async function setSeatLimitAsActor(
+  db: AppDb,
+  input: {
+    actorEmail: string | null | undefined;
+    orgId: string;
+    seatLimit: number | null;
+  },
+): Promise<SeatLimitOutcome> {
+  const authority = await resolveOrgAuthority(db, input.actorEmail);
+  const verdict = decideOrgCreate(authority);
+  if (!verdict.allowed) {
+    await logDenial(db, authority, "org_seat_limit_denied", verdict, {
+      orgId: input.orgId,
+    });
+    return { ok: false, reason: verdict.reason, message: verdict.message };
+  }
+
+  const zetels = normaliseerZetels(input.seatLimit);
+  if (!zetels.ok) return zetels;
+
+  const orgId = input.orgId.trim();
+  if (!UUID_RE.test(orgId) || !(await readOrgFacts(db, orgId))) {
+    return { ok: false, reason: "onbekende_org", message: MSG_UNKNOWN_ORG };
+  }
+
+  // `undefined` bestaat hier niet: `seatLimit` is een verplicht argument van deze functie.
+  const seatLimit = zetels.waarde ?? null;
+  await setOrgSeatLimit(db, { orgId, seatLimit, actor: authority.email });
+  return { ok: true, orgId, seatLimit };
+}
+
+export type CreateOrgAndPinOutcome =
+  | {
+      ok: true;
+      org: Organization;
+      issued: IssuedPin;
+      roles: MembershipRole[];
+    }
+  | { ok: false; reason: DenyReason; message: string };
+
+/**
+ * Besluit 4b + 5 (Timo, 4 aug): in ÉÉN handeling een organisatie aanmaken én de PIN
+ * uitgeven — en dat is **alles-of-niets**. Mislukt de PIN, dan wordt de organisatie óók
+ * niet aangemaakt. Anders houd je lege organisaties over van mislukte pogingen, die later
+ * in de dropdown opduiken zonder dat iemand nog weet waarom ze bestaan.
+ *
+ * ⚠️ HOE "ALLES-OF-NIETS" HIER WERKT, want het is geen transactie en dat kan niet. De
+ * neon-http-driver kent er geen (`lib/repo/activation.ts:157` legt dat uit voor precies
+ * dezelfde reeks schrijfacties). In plaats daarvan twee dingen:
+ *
+ *   1. **Droogloop vooraf.** Alles wat je kunt weten vóór er iets bestaat, wordt hier
+ *      beslist: mag deze actor überhaupt organisaties aanmaken, heeft de nieuwe
+ *      organisatie een naam, is het doeladres bruikbaar, kloppen de rollen. De verreweg
+ *      meest voorkomende mislukking (een vertypt e-mailadres) haalt de database dus niet
+ *      eens. De feiten van de nog niet bestaande organisatie zijn hier exact bekend: nul
+ *      leden, nog geen beheerder, de zetellimiet die de uitgever zojuist koos.
+ *   2. **Compensatie achteraf.** Gaat het daarna alsnog mis — een weigering die pas met de
+ *      echte organisatie zichtbaar wordt, of een storing halverwege — dan wordt de zojuist
+ *      aangemaakte organisatie weer verwijderd (`ON DELETE CASCADE` neemt een eventueel
+ *      lidmaatschap mee). Ook als het verwijderen zélf faalt: dan gooit het door, en dan
+ *      is er tenminste een luide fout in plaats van een stille lege organisatie.
+ */
+export async function createOrgAndIssuePinAsActor(
+  db: AppDb,
+  input: {
+    actorEmail: string | null | undefined;
+    orgName: string;
+    plan?: string;
+    seatLimit?: number | null;
+    email: string;
+    name?: string;
+    roles?: MembershipRole[];
+    now?: Date;
+  },
+): Promise<CreateOrgAndPinOutcome> {
+  const authority = await resolveOrgAuthority(db, input.actorEmail);
+  const magAanmaken = decideOrgCreate(authority);
+  if (!magAanmaken.allowed) {
+    await logDenial(db, authority, "org_create_denied", magAanmaken, {
+      name: input.orgName,
+      email: normalizeEmail(input.email),
+    });
+    return { ok: false, reason: magAanmaken.reason, message: magAanmaken.message };
+  }
+
+  const orgName = input.orgName.trim();
+  if (!orgName) {
+    return { ok: false, reason: "org_zonder_naam", message: MSG_ORG_NEEDS_NAME };
+  }
+  const zetels = normaliseerZetels(input.seatLimit);
+  if (!zetels.ok) return zetels;
+
+  // Droogloop (1). De organisatie bestaat nog niet, maar haar feiten wel: nul leden, geen
+  // beheerder, de gekozen limiet. Het placeholder-id komt nergens in de database terecht —
+  // het dient alleen om `orgId !== null` te zijn, zodat de kernregel dezelfde takken loopt
+  // als straks met de echte organisatie.
+  const NOG_NIET_AANGEMAAKT = "00000000-0000-4000-8000-000000000000";
+  const target = await readTargetFacts(db, input.email);
+  const droogloop = decidePinIssue({
+    authority,
+    target,
+    orgId: NOG_NIET_AANGEMAAKT,
+    org: {
+      id: NOG_NIET_AANGEMAAKT,
+      hasOrgAdmin: false,
+      seatLimit: zetels.waarde ?? null,
+      seatsUsed: 0,
+    },
+    roles: input.roles,
+  });
+  if (!droogloop.allowed) {
+    await logDenial(db, authority, "activation_pin_denied", droogloop, {
+      email: normalizeEmail(input.email),
+      orgName,
+      roles: uniqueRoles(input.roles),
+    });
+    return { ok: false, reason: droogloop.reason, message: droogloop.message };
+  }
+
+  const org = await createOrganization(db, {
+    name: orgName,
+    plan: input.plan,
+    seatLimit: zetels.waarde,
+    actor: authority.email,
+  });
+
+  // Vanaf hier bestaat er iets dat opgeruimd moet worden als het misgaat (2).
+  try {
+    const uitgifte = await issuePinAsActor(db, {
+      actorEmail: input.actorEmail,
+      email: input.email,
+      name: input.name,
+      orgId: org.id,
+      roles: input.roles,
+      now: input.now,
+    });
+    if (!uitgifte.ok) {
+      await deleteOrganization(db, org.id, authority.email);
+      return uitgifte;
+    }
+    return { ok: true, org, issued: uitgifte.issued, roles: uitgifte.roles };
+  } catch (fout) {
+    await deleteOrganization(db, org.id, authority.email);
+    throw fout;
+  }
 }
 
 export type BrandingOutcome =
@@ -627,6 +983,12 @@ export type ScopeOrg = {
   type: string;
   /** Nog geen beheerder: de eerste die hier een PIN krijgt wordt het (G36, eerste zin). */
   needsOrgAdmin: boolean;
+  /** Prijsmodel (trial/abonnement/per-dossier) — de organisatielijst in Admin toont het. */
+  plan: string;
+  /** `null` = onbeperkt. Besluit 6/7: instelbaar bij aanmaken, aanpasbaar in Admin. */
+  seatLimit: number | null;
+  /** Bezette zetels op dit moment — de teller van "3/5 seats". */
+  seatsUsed: number;
 };
 
 export type IssueScope = {
@@ -635,6 +997,12 @@ export type IssueScope = {
   orgs: ScopeOrg[];
   /** Mag hij de org_admin-rol toekennen? Alleen intern (G36, tweede zin). */
   canGrantOrgAdmin: boolean;
+  /**
+   * Mag hij organisaties aanmaken en hun zetellimiet aanpassen? Alleen intern (besluiten
+   * 2 en 7). Een externe org_admin komt sinds 3.2a wél op `/admin/users` — hij ziet deze
+   * mogelijkheid daar niet eens.
+   */
+  canCreateOrgs: boolean;
 };
 
 /**
@@ -648,8 +1016,14 @@ export async function describeIssueScope(
   actorEmail: string | null | undefined,
 ): Promise<IssueScope> {
   const authority = await resolveOrgAuthority(db, actorEmail);
+  const intern = authority.kind === "intern";
   if (authority.kind === "geen") {
-    return { authority, orgs: [], canGrantOrgAdmin: false };
+    return {
+      authority,
+      orgs: [],
+      canGrantOrgAdmin: false,
+      canCreateOrgs: false,
+    };
   }
 
   const alle = await db
@@ -657,27 +1031,46 @@ export async function describeIssueScope(
       id: organizations.id,
       name: organizations.name,
       type: organizations.type,
+      plan: organizations.plan,
+      seatLimit: organizations.seatLimit,
     })
     .from(organizations)
     .orderBy(organizations.name);
-  const zichtbaar =
-    authority.kind === "intern"
-      ? alle
-      : alle.filter((o) => authority.orgIds.includes(o.id));
+  const zichtbaar = intern
+    ? alle
+    : alle.filter((o) => authority.orgIds.includes(o.id));
   if (zichtbaar.length === 0) {
-    return { authority, orgs: [], canGrantOrgAdmin: authority.kind === "intern" };
+    return {
+      authority,
+      orgs: [],
+      canGrantOrgAdmin: intern,
+      canCreateOrgs: intern,
+    };
   }
 
-  const beheerders = await db
-    .select({ orgId: memberships.orgId })
-    .from(memberships)
-    .where(
-      sql`${inArray(
-        memberships.orgId,
-        zichtbaar.map((o) => o.id),
-      )} and 'org_admin' = ANY(${memberships.roles})`,
-    );
+  const zichtbareIds = zichtbaar.map((o) => o.id);
+  const [beheerders, tellingen] = await Promise.all([
+    db
+      .select({ orgId: memberships.orgId })
+      .from(memberships)
+      .where(
+        sql`${inArray(memberships.orgId, zichtbareIds)} and 'org_admin' = ANY(${
+          memberships.roles
+        })`,
+      ),
+    // Bezette zetels per organisatie, in één query — de lijst toont ze naast élke
+    // organisatie ("3/5 seats"), dus één telling per org zou n+1 queries opleveren.
+    db
+      .select({
+        orgId: memberships.orgId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(memberships)
+      .where(inArray(memberships.orgId, zichtbareIds))
+      .groupBy(memberships.orgId),
+  ]);
   const metBeheerder = new Set(beheerders.map((b) => b.orgId));
+  const bezet = new Map(tellingen.map((t) => [t.orgId, Number(t.n)]));
 
   return {
     authority,
@@ -686,7 +1079,11 @@ export async function describeIssueScope(
       name: o.name,
       type: o.type,
       needsOrgAdmin: !metBeheerder.has(o.id),
+      plan: o.plan,
+      seatLimit: o.seatLimit,
+      seatsUsed: bezet.get(o.id) ?? 0,
     })),
-    canGrantOrgAdmin: authority.kind === "intern",
+    canGrantOrgAdmin: intern,
+    canCreateOrgs: intern,
   };
 }

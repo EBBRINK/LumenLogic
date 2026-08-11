@@ -171,6 +171,28 @@ export const SUPPLIER_COLUMNS: KolomToewijzing[] = [
     alleenGeintegreerdeLed: false,
   },
 
+  // ── Northern — de schoonste ingang van de tabel, en de eerste die echt draait ─
+  {
+    merk: "Northern",
+    kolom: "IP code",
+    veld: "ipValue",
+    beschrijft: "armatuur",
+    normalisator: "ip",
+    alleenGeintegreerdeLed: false,
+    bewijs:
+      "Gemeten op de export brink_northern_raw.ndjson (838 rijen, sha256 7a909c02…, 4 aug 2026). " +
+      "Over ALLE 838 rijen bestaan er precies twee niet-lege celvormen: 'IP20' (271×) en " +
+      "'IP44' (21×) — nul plaatshouders, nul bereiken, nul spellingsvarianten, geen spaties of " +
+      "kleinletters. klasseerIp zet er dus niets om (genormaliseerd=false op alle 282). " +
+      "De kolom hangt aan het blad, niet aan de omschrijving: source_sheet Lighting draagt " +
+      "282 van de 309 IP-codes, Furniture (346) en Accessories (111) nul, Spare parts 10 op 72. " +
+      "Die 10 onderdelen matchen aantoonbaar GEEN enkel catalogusproduct (gemeten: 309/309 " +
+      "catalogusmatches liggen alle op blad Lighting), dus het onderdelenrisico is hier nul en " +
+      "een rijfilter is niet nodig. Kruiscontrole uit het zwerm-onderzoek: IP44 komt voor bij " +
+      "zowel E27 als geïntegreerde LED, dus de waarde varieert per armatuur en niet per fitting " +
+      "— het is de behuizingsklasse. Northern heeft geen Schutzklasse-achtige buurkolom.",
+  },
+
   // ── Muuto — de tegenhanger, letterlijk nagekeken in de bron ────────────────
   // 100 % gevuld en over het verkeerde ding. Deze drie regels zijn de vastlegging van val 2.
   {
