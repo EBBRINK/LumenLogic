@@ -26,6 +26,7 @@ import eigenVeldenEngelsSql from "./migrations/0016_eigen_velden_engels.sql?raw"
 import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
 import analyticsMerkgatSql from "./migrations/0018_analytics_merkgat_index.sql?raw";
 import orgTypeActivatieSql from "./migrations/0019_org_type_activatie.sql?raw";
+import gevraagdArtikelnummerSql from "./migrations/0020_gevraagd_artikelnummer.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -73,6 +74,9 @@ export async function createTestDb(): Promise<TestDb> {
   // kon zonder gevolgen. Twee bestanden met hetzelfde nummer laten staan zou de volgorde
   // dubbelzinnig maken, en dít bestand is wat die volgorde bepaalt.
   await client.exec(orgTypeActivatieSql);
+  // 0020: spec_lines.req_article_code — het gevraagde leveranciersartikelnummer, het veld
+  // waarop de matcher als eerste matcht (docs/goal-artikelnummer-matching.md).
+  await client.exec(gevraagdArtikelnummerSql);
   return drizzle(client, { schema });
 }
 

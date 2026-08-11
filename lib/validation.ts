@@ -48,6 +48,15 @@ const numFromForm = z
 
 export const zOptionalNumber = numFromForm;
 
+// Een optioneel GEHEEL getal — de vorm voor kelvin, cri, lumen, aantal: kolommen die in
+// Postgres `integer` zijn en leeg mogen blijven. Bewust géén stille afronding: 2700,5 is
+// invoerfout, geen 2700. `zBoundedInt` blijft de vorm zodra er een echte boven- of
+// ondergrens is (pagina's, tegels); dit is de ongebonden variant die null toelaat.
+export const zOptionalInt = numFromForm
+  .refine((n) => n == null || Number.isInteger(n), "moet een heel getal zijn")
+  .optional()
+  .default(null);
+
 // Geld. Nooit negatief (C4) en nooit NaN/Infinity. Bedragen gaan als numeric(12,2) de
 // database in, dus een absurd groot getal is óók invoerfout en geen afrondingsprobleem.
 export const MAX_PRICE = 9_999_999.99;

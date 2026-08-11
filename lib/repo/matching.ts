@@ -25,7 +25,12 @@ export function specRequestFromLine(l: typeof specLines.$inferSelect): SpecReque
   return {
     brandText: l.brandText,
     productText: l.productText,
-    sku: null,
+    // Het gevraagde leveranciersartikelnummer is het eerste en hardste signaal van de
+    // matcher (goal-artikelnummer-matching, B3). Stond hier tot 11 aug hard op null —
+    // de exacte-SKU-route van de engine was daardoor een dood pad, en een regel die
+    // "21012 0298" vroeg kreeg twee verkeerde drivers voorgeschoteld terwijl dat
+    // artikel gewoon in de catalogus staat.
+    sku: l.reqArticleCode,
     specs: {
       kelvin: l.reqKelvin,
       cri: l.reqCri,
@@ -56,6 +61,28 @@ export async function runMatcher(
   if (!line) throw new Error(`spec line ${specLineId} not found`);
 
   const outcome = await evaluateSpecLine(db, specRequestFromLine(line));
+
+  // De regel vroeg een artikelnummer dat niets opleverde. Dat blokkeert niets — de
+  // tekstroute heeft gewoon gedraaid (besluit Timo, B5) — maar het wordt vastgelegd,
+  // want zo'n code wijst meestal op een gat in de catalogus in plaats van op een
+  // vergissing van de klant. Gemeten voorbeeld: `32812 9220 BRBB` bestaat bij Delta
+  // Light, maar de hele LUNELLE-familie ontbreekt in onze import, en de tekstroute
+  // bood er acht SPY 52 CLIP-varianten voor in de plaats aan.
+  if (outcome.articleCodeMiss) {
+    await logEvent(db, {
+      entity: "spec_line",
+      entityId: specLineId,
+      action: "article_code_not_found",
+      actor,
+      payload: {
+        articleCode: outcome.articleCodeMiss,
+        brandText: line.brandText,
+        // Wat de tekstroute er wél van maakte — zonder dit is het event niet te duiden.
+        status: outcome.status,
+        candidates: outcome.provable.length + outcome.incomplete.length,
+      },
+    });
+  }
 
   // oude kandidaten weg (idempotent)
   await db

@@ -121,6 +121,7 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       description: specLines.description,
       brandText: specLines.brandText,
       productText: specLines.productText,
+      reqArticleCode: specLines.reqArticleCode,
       reqKelvin: specLines.reqKelvin,
       reqCri: specLines.reqCri,
       reqIp: specLines.reqIp,
@@ -183,6 +184,7 @@ export type SpecLineInput = {
   description?: string | null;
   brandText?: string | null;
   productText?: string | null;
+  reqArticleCode?: string | null;
   reqKelvin?: number | null;
   reqCri?: number | null;
   reqIp?: string | null;
@@ -218,6 +220,7 @@ export async function addSpecLines(
     description: l.description ?? null,
     brandText: l.brandText ?? null,
     productText: l.productText ?? null,
+    reqArticleCode: l.reqArticleCode ?? null,
     reqKelvin: l.reqKelvin ?? null,
     reqCri: l.reqCri ?? null,
     reqIp: l.reqIp ?? null,
@@ -708,6 +711,7 @@ export async function updateSpecLine(
   set("zone", fields.zone ?? null);
   set("brandText", fields.brandText ?? null);
   set("productText", fields.productText ?? null);
+  set("reqArticleCode", fields.reqArticleCode ?? null);
   set("reqKelvin", fields.reqKelvin ?? null);
   set("reqCri", fields.reqCri ?? null);
   set("reqIp", fields.reqIp ?? null);

@@ -86,6 +86,7 @@ export async function recordPdfImport(
     quantity: l.quantity ?? null,
     brandText: l.brandText ?? null,
     productText: l.productText ?? null,
+    reqArticleCode: l.reqArticleCode ?? null,
     zone: l.zone ?? null,
     specs: {
       ...(l.reqKelvin != null ? { kelvin: l.reqKelvin } : {}),
@@ -174,6 +175,7 @@ function rowToSpecLine(
     zone: row.zone ?? null,
     brandText: row.brandText ?? null,
     productText: row.productText ?? null,
+    reqArticleCode: row.reqArticleCode ?? null,
     reqKelvin: s.kelvin ?? null,
     reqCri: s.cri ?? null,
     reqIp: s.ip ?? null,
