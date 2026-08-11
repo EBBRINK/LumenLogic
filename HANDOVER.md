@@ -5276,3 +5276,44 @@ staat vóór en ná op 8/8.
 **Run op de testkopie, NIET gepubliceerd, geen steekproefoordeel gezet:**
 `37b62ebd-ecbc-4c86-abe3-7fac8e5ac6ea` — 18.263 producten, 29.609 voorstellen, steekproef 100.
 Beoordeelblokken per leesregel: `bun --env-file=.env.branch scripts/toon-flos-leesregels.ts <runId>`.
+
+## 2026-08-11 — Template-upload wordt directe import (vervang-semantiek)
+
+Besluiten in `docs/goal-template-upload-direct-import.md` (hoofdcheckout; meting in
+`docs/probleem-template-upload-grote-bestanden.md`). Gebouwd in deze sessie:
+
+- **`lib/repo/template-import.ts`** — `importTemplateDirect`: validator-uitvoer → diff-engine
+  (ongewijzigd hergebruikt) → alles in batches toepassen. Nieuwe waarden, gewijzigde waarden
+  én leeggemaakte velden winnen; onverwerkbaar/niet-opslagbaar wordt geteld en gelogd
+  (`skippedFieldsSample` in het samenvattende event), nooit stil weggegooid.
+- **Archiveerfuncties eindelijk aangesloten**: `replacePriceList` archiveert de oude lijst
+  (regels → `archive.prices_archive`, event `price_list_archived`) en de nieuwe regels gaan
+  in bulk op de verse lijst. Daarbij een schaalbug in `archivePriceList` gerepareerd: één
+  multi-row INSERT van 18.659 archiefregels klapte op de Postgres-parameterlimiet → chunks
+  van 1.000.
+- **Upload-kaart** vraagt prijslijstnaam + geldig-van + geldig-tot uit (verplicht), knop
+  zegt "Check & import", kaarttekst benoemt de vervang-semantiek. Action op het
+  parseForm()-zod-patroon. Rij-cap 60.000 als transportgrens in `template-upload-limits.ts`
+  (server-only; rijen zijn pas na validatie bekend). `maxDuration = 300` op de
+  merkrelatie-detailpagina. Samenvatting na afloop via `import-summary.tsx`
+  (querystring-model van apply-summary).
+- **Events**: `template_import_started`/`…_finished` (tellingen) + bestaande per-veld-events
+  (`product_fields_applied` met old/new, óók wissingen), per-veld-events in batch-inserts.
+
+**Aanname (door Claude, niet expliciet door Timo bevestigd):** producten die in het nieuwe
+bestand ontbreken verdwijnen uit de catalogus doordat ze géén regel op de nieuwe prijslijst
+krijgen — onzichtbaar via `visible_products` (regel 3), geen delete, data en events blijven.
+Geteld als `goneProducts` en op het scherm gemeld ("Products no longer listed").
+Tweede vangrail: een bestand zonder één verwerkbare prijs wordt vóór de eerste schrijf
+geweigerd (`TemplateImportError "no_prices"`), anders zou de lijst-wissel het hele merk
+onzichtbaar maken.
+
+**Bewust laten staan voor 4.B:** het hele staging/voorstel-pad (`template-return.ts`,
+voorstel-scherm, approve/reject-actions, `upload/[uploadId]`-route). Interne uploads maken
+geen staging-rijen meer; oude staging-rijen blijven via dat pad afhandelbaar.
+
+**Gemeten** (PGlite, `deltalight-branddata-2026-08-11.xlsx`, 18.667 rijen × 66 kolommen):
+validatie 0,4 s, import 2,9 s (18.667 producten + 18.659 prijsregels), tweede run
+convergeert (0 writes op producten) in 1,3 s. Repo-tests: `lib/repo/template-import.test.ts`;
+scherm: `components/data/template-upload-card.test.tsx` (screenshots light/dark ×
+mobile/desktop).

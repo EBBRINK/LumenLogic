@@ -28,21 +28,27 @@ export async function archivePriceList(
     .where(eq(prices.priceListId, priceListId));
 
   if (rows.length > 0) {
-    await db.insert(pricesArchive).values(
-      rows.map((p) => ({
-        originalPriceId: p.id,
-        productId: p.productId,
-        priceListId: list.id,
-        priceListName: list.name,
-        brandId: list.brandId,
-        grossPrice: p.grossPrice,
-        purchasePrice: p.purchasePrice,
-        currency: p.currency,
-        validFrom: list.validFrom,
-        validUntil: list.validUntil,
-        archivedBy: actor ?? null,
-      })),
-    );
+    // In chunks: een catalogus-formaat lijst (18.659 regels gemeten, 11 aug 2026) zou in
+    // één multi-row INSERT de Postgres-parameterlimiet (65.535) overschrijden — ~11
+    // parameters per rij, dus 1.000 rijen ≈ 11.000 parameters, ruim eronder.
+    const CHUNK = 1000;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await db.insert(pricesArchive).values(
+        rows.slice(i, i + CHUNK).map((p) => ({
+          originalPriceId: p.id,
+          productId: p.productId,
+          priceListId: list.id,
+          priceListName: list.name,
+          brandId: list.brandId,
+          grossPrice: p.grossPrice,
+          purchasePrice: p.purchasePrice,
+          currency: p.currency,
+          validFrom: list.validFrom,
+          validUntil: list.validUntil,
+          archivedBy: actor ?? null,
+        })),
+      );
+    }
     await db.delete(prices).where(eq(prices.priceListId, priceListId));
   }
 

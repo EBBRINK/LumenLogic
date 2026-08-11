@@ -1,8 +1,11 @@
 "use server";
 
-// De drie server-actions van het retour-pad (sprint 1.2, docs/plan-1-2-retourpad.md):
-// uploaden → voorstel → goedkeuren/afwijzen. Patroon: app/projects/[id]/import/actions.ts
-// (sessie eisen, FormData uitlezen, repo-laag laten schrijven, redirecten).
+// De server-actions van het template-pad. Sinds de koerswijziging van 11 aug 2026
+// (docs/goal-template-upload-direct-import.md) is uploaden een DIRECTE import met
+// vervang-semantiek: valideren (1.1, ongewijzigd) en meteen in batches toepassen — geen
+// staging, geen voorstel-scherm. De goedkeur-/afwijs-actions eronder horen bij het oude
+// staging-pad; dat blijft bewust staan voor 4.B (merkportaal) en bedient uploads die
+// vóór de koerswijziging al op staging stonden.
 //
 // DEZE LAAG SCHRIJFT NIETS ZELF. Hij leest FormData, bewaakt de grenzen die alleen hier te
 // bewaken zijn (sessie, cap) en geeft het door aan lib/repo/template-return.ts. Elke event
@@ -12,7 +15,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import type { TemplateUploadState } from "@/components/data/template-upload-card";
-import { MAX_TEMPLATE_UPLOAD_BYTES, templateCapMelding } from "@/components/data/template-upload-limits";
+import {
+  MAX_TEMPLATE_UPLOAD_BYTES,
+  MAX_TEMPLATE_UPLOAD_ROWS,
+  templateCapMelding,
+  templateRijCapMelding,
+} from "@/components/data/template-upload-limits";
 import { validateFilledTemplateXlsx } from "@/lib/excel-validate";
 import { afwijzingsTekst } from "@/lib/excel-validate-messages";
 import { laadCatalogus } from "@/lib/repo/custom-fields";
@@ -21,16 +29,18 @@ import {
   applyTemplateProposal,
   loadBestaandeProducten,
   rejectTemplateProposal,
-  stageTemplateReturn,
   type PriceListInput,
 } from "@/lib/repo/template-return";
-import type { ApplySelection, TemplateReturnPayload } from "@/lib/template-diff";
+import {
+  importTemplateDirect,
+  TemplateImportError,
+} from "@/lib/repo/template-import";
+import type { ApplySelection } from "@/lib/template-diff";
 import { getActor } from "@/lib/session";
+import { parseForm, z, zTrimmed, zUuid } from "@/lib/validation";
 import { applySummaryQuery } from "./apply-summary";
+import { importSummaryQuery } from "./import-summary";
 import { bewaakNiveau } from "@/lib/route-toegang";
-
-const voorstelPad = (brandId: string, uploadId: string) =>
-  `/data/brand-relations/${brandId}/upload/${uploadId}`;
 
 /** Na een schrijf: het merkrelatie-scherm toont de open uploads en de relatiestatus, het
  *  overzicht telt de statussen, /data draagt de badge. Zelfde set als actions.ts. */
@@ -40,29 +50,60 @@ function herlaadMerkschermen(brandId: string) {
   revalidatePath("/data");
 }
 
-// ── 1. Uploaden ─────────────────────────────────────────────────────────────
+// ── 1. Uploaden = importeren ────────────────────────────────────────────────
+
+/** 'YYYY-MM-DD' én een bestaande kalenderdatum — zelfde strengheid als
+ *  extendPriceListValidity: '2026-02-30' zou anders stil doorrollen naar 03-02. */
+const zIsoDatum = zTrimmed.refine((s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}, "geen geldige datum (YYYY-MM-DD)");
+
+/** De vier invoervelden van de upload-kaart. Het bestand zelf blijft File; de inhoud
+ *  beoordeelt de 1.1-validator, niet zod. */
+const uploadSchema = z.object({
+  brandId: zUuid,
+  priceListName: zTrimmed.min(1, "verplicht"),
+  priceListValidFrom: zIsoDatum,
+  priceListValidUntil: zIsoDatum,
+  template: z.instanceof(File),
+});
 
 /**
- * Valideert een ingevulde template en zet hem bij succes op staging. Komt nooit met een
- * "ok" terug: bij een geldig bestand redirect hij naar het voorstel-scherm (zie
- * TemplateUploadState — een geslaagde upload is geen melding maar een scherm).
+ * Valideert een ingevulde template en past hem bij succes DIRECT toe (vervang-semantiek,
+ * docs/goal-template-upload-direct-import.md): geen staging-rij, geen voorstel-scherm.
+ * Komt nooit met een "ok" terug: bij een geslaagde import redirect hij naar het merkscherm
+ * met de tellingen in de querystring (import-summary.tsx).
  */
 export async function uploadTemplateAction(
   _prev: TemplateUploadState,
   formData: FormData,
 ): Promise<TemplateUploadState> {
   await bewaakNiveau("intern", "/data/brand-relations/[brandId]");
-  const brandId = String(formData.get("brandId") ?? "").trim();
-  if (!brandId) return { status: "error", message: "Unknown brand." };
 
-  const file = formData.get("template");
-  if (!(file instanceof File) || file.size === 0) {
+  const parsed = parseForm(uploadSchema, formData);
+  if (!parsed.ok) return { status: "error", message: parsed.error };
+  const { brandId, template: file } = parsed.data;
+  const newList = {
+    name: parsed.data.priceListName,
+    validFrom: parsed.data.priceListValidFrom,
+    validUntil: parsed.data.priceListValidUntil,
+  };
+  if (file.size === 0) {
     return { status: "error", message: "Choose the filled template (.xlsx) first." };
   }
+  if (newList.validUntil < newList.validFrom) {
+    // Datums als tekst vergelijken mag: 'YYYY-MM-DD' is lexicografisch = chronologisch.
+    return {
+      status: "error",
+      message: "The price list end date is before its start date.",
+    };
+  }
 
-  // DE CAP IS DE EERSTE CHECK EN DE GEZAGHEBBENDE (besluit 7). De kaart checkt hem ook,
-  // maar dat is een dienst aan de gebruiker, geen grens: een request komt hier ook zonder
-  // die kaart binnen. Vóór arrayBuffer(), want die trekt het hele bestand het geheugen in.
+  // DE BYTE-CAP IS DE EERSTE BESTANDSCHECK EN DE GEZAGHEBBENDE (besluit 7). De kaart checkt
+  // hem ook, maar dat is een dienst aan de gebruiker, geen grens: een request komt hier ook
+  // zonder die kaart binnen. Vóór arrayBuffer(), want die trekt het bestand het geheugen in.
   if (file.size > MAX_TEMPLATE_UPLOAD_BYTES) {
     await logEvent(db, {
       entity: "brand",
@@ -118,34 +159,52 @@ export async function uploadTemplateAction(
     };
   }
 
-  // De VALIDATOR-snapshot, niet de diff: die wordt bij élke render vers herberekend
-  // (besluit 2). Rauwe xlsx-bytes bewaren we niet — deze snapshot is verliesvrij voor
-  // alles wat wij ermee doen.
-  const payload: TemplateReturnPayload = {
-    v: 1,
-    filename: file.name,
-    fileSize: file.size,
-    werkblad: resultaat.werkblad,
-    rijen: resultaat.rijen,
-    waarschuwingen: resultaat.waarschuwingen,
-    kolommen: resultaat.kolommen.map((k) => k.fieldKey),
-    onbekendeKolommen: resultaat.onbekendeKolommen,
-    ontbrekendeOptioneleKolommen: resultaat.ontbrekendeOptioneleKolommen.map(
-      (k) => k.fieldKey,
-    ),
-    artikelcodesGecontroleerd: resultaat.artikelcodesGecontroleerd,
-  };
+  // RIJ-CAP: een transportgrens naast de validator, geen format-oordeel — zie
+  // template-upload-limits.ts. Pas ná de validatie te checken, want de validator kent het
+  // rijental als eerste (alleen écht ingevulde rijen tellen).
+  if (resultaat.rijen.length > MAX_TEMPLATE_UPLOAD_ROWS) {
+    await logEvent(db, {
+      entity: "brand",
+      entityId: brandId,
+      action: "template_upload_too_many_rows",
+      actor: await getActor(),
+      payload: {
+        filename: file.name,
+        rijen: resultaat.rijen.length,
+        cap: MAX_TEMPLATE_UPLOAD_ROWS,
+      },
+    });
+    return { status: "error", message: templateRijCapMelding(resultaat.rijen.length) };
+  }
 
-  // stageTemplateReturn zet de relatiestatus op 'data_ontvangen' en logt
-  // template_upload_staged (besluit 6 + 8) — één schrijver, zoals K2 het wil.
-  const { uploadId } = await stageTemplateReturn(db, {
-    brandId,
-    payload,
-    actor: await getActor(),
-  });
+  // DIRECT TOEPASSEN — geen staging-jsonb, geen voorstel-scherm. De repo-laag logt zelf
+  // (template_import_started/…_finished + per-veld-events) en zet de relatiestatus.
+  let uitkomst;
+  try {
+    uitkomst = await importTemplateDirect(db, {
+      brandId,
+      rijen: resultaat.rijen,
+      waarschuwingen: resultaat.waarschuwingen,
+      filename: file.name,
+      fileSize: file.size,
+      newList,
+      actor: await getActor(),
+    });
+  } catch (e) {
+    if (e instanceof TemplateImportError && e.code === "no_prices") {
+      // Voorspelbare invoerfout, vóór de eerste schrijf geweigerd: zonder één verwerkbare
+      // prijs zou de lijst-wissel het hele merk onzichtbaar maken.
+      return {
+        status: "error",
+        message:
+          "This file contains no usable prices. Replacing the price list would hide every product of this brand, so nothing has been imported. Check the 'List price (excl. VAT)' column.",
+      };
+    }
+    throw e;
+  }
 
   herlaadMerkschermen(brandId);
-  redirect(voorstelPad(brandId, uploadId));
+  redirect(`/data/brand-relations/${brandId}?${importSummaryQuery(uitkomst)}`);
 }
 
 // ── 2. Goedkeuren ───────────────────────────────────────────────────────────

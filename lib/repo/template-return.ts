@@ -317,7 +317,7 @@ function toepasbaar(
  * precedentie en associëren links, dus zonder haakjes verandert de betekenis zodra er zowel
  * gezet als gewist wordt.
  */
-function customValuesExpr(
+export function customValuesExpr(
   patch: Record<string, string>,
   wissen: readonly string[],
 ): SQL<unknown> {

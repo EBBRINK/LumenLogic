@@ -32,7 +32,13 @@ import {
 } from "../actions";
 import { uploadTemplateAction } from "./upload-actions";
 import { readApplySummary, TemplateApplySummary } from "./apply-summary";
+import { readImportSummary, TemplateImportSummary } from "./import-summary";
 import { bewaakRoute } from "@/lib/route-toegang";
+
+// Vangnet voor de directe template-import (patroon app/projects/[id]/page.tsx): de
+// upload-action POST landt op deze route, en een catalogus-formaat bestand mag niet op de
+// default function-timeout van Vercel sterven.
+export const maxDuration = 300;
 
 export default async function MerkrelatieDetailPage({
   params,
@@ -68,7 +74,10 @@ export default async function MerkrelatieDetailPage({
   // C8: de uitkomst van een zojuist goedgekeurd template. Alleen aanwezig direct ná de
   // redirect uit approveTemplateProposalAction; verder null. Puur weergave — er wordt
   // niets uit de querystring gelezen dat de pagina stuurt of iets schrijft.
-  const applySummary = readApplySummary(await searchParams);
+  const sp = await searchParams;
+  const applySummary = readApplySummary(sp);
+  // De uitkomst van een directe template-import — zelfde model, eigen tellingen.
+  const importSummary = readImportSummary(sp);
 
   const completeness = await getBrandCompleteness(db, brandId);
   // Eén merk → geen N+1 (in tegenstelling tot de oude /admin/brands-lijst).
@@ -125,6 +134,7 @@ export default async function MerkrelatieDetailPage({
       {/* Bovenaan, vóór de rest: dit is het antwoord op de handeling die de gebruiker
           zojuist deed. Daaronder staat het scherm zoals het altijd al stond. */}
       {applySummary && <TemplateApplySummary summary={applySummary} />}
+      {importSummary && <TemplateImportSummary summary={importSummary} />}
 
       <section className="mb-8 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
         <h2 className="mb-3 font-medium">Relationship</h2>
