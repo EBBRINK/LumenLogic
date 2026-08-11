@@ -31,6 +31,20 @@ Verplichte leesstof vóór je iets bouwt: `CLAUDE.md` (wortels van de repo),
 
 ## 2. Schone checkout → werkende lokale omgeving
 
+### Vereisten (eenmalig op je machine)
+
+- **Bun** — de package manager én runtime van dit project
+  (https://bun.sh; `curl -fsSL https://bun.sh/install | bash`). Controleer met
+  `bun --version`.
+- **Node.js** — óók nodig naast Bun: de postinstall draait
+  `node scripts/link-typescript6.mjs`. Controleer met `node --version`.
+- **Vercel CLI** — nodig voor §4 (productie-logs) en §7:
+  `bun install -g vercel`, dan `vercel login`, en in de projectmap eenmalig
+  `vercel link` om de map aan het Vercel-project `lumenlogic` te koppelen.
+  Controleer met `vercel whoami`.
+
+### Stappen
+
 1. **Clone de repo.**
    ```
    git clone <repo-URL> lumenlogic && cd lumenlogic
@@ -64,7 +78,10 @@ Verplichte leesstof vóór je iets bouwt: `CLAUDE.md` (wortels van de repo),
    - `DATABASE_URL` — de Neon-connection-string (verplicht)
    - `BETTER_AUTH_SECRET` — **zelfde waarde als in de Vercel-env**, anders werkt
      de magic-link niet
-   - `BETTER_AUTH_URL` — optioneel; valt op Vercel terug op `VERCEL_URL`
+   - `BETTER_AUTH_URL` — lokaal mag je deze **weglaten** of op
+     `http://localhost:3000` zetten; `lib/auth-factory.ts` valt zonder deze key
+     terug op `https://<VERCEL_URL>` (op Vercel) en lokaal — waar `VERCEL_URL`
+     ook ontbreekt — op de Better Auth-default (localhost)
    - `ANTHROPIC_API_KEY` — optioneel lokaal; zonder deze key doet de app alles
      behalve de AI-routes
 
@@ -79,11 +96,26 @@ Verplichte leesstof vóór je iets bouwt: `CLAUDE.md` (wortels van de repo),
    `http://localhost:3000`).
 
 6. **Log in via magic link.** Ga naar `http://localhost:3000/login`, vul een
-   e-mailadres in dat op de allowlist staat (beheer via `/instellingen` in de
-   app). Er wordt géén mail verstuurd: **de magic link verschijnt als
-   `console.log` in de terminal waar `bun dev` draait.** Kopieer die URL naar de
-   browser binnen **5 minuten** (daarna is hij verlopen; vraag dan gewoon een
-   nieuwe aan). Je ziet nu de ingelogde app.
+   e-mailadres in dat op de allowlist staat. Er wordt géén mail verstuurd:
+   **de magic link verschijnt als `console.log` in de terminal waar `bun dev`
+   draait.** Kopieer die URL naar de browser binnen **5 minuten** (daarna is
+   hij verlopen; vraag dan gewoon een nieuwe aan). Je ziet nu de ingelogde app.
+
+   *Kip-ei bij de allowlist:* het allowlistbeheer zit op `/settings` en dus
+   **achter de login**. De overdracht levert daarom een reeds-allowlisted
+   beheerdersaccount op (staat in de overdrachtsafspraken); daarmee log je in
+   en voeg je verdere adressen toe op `/settings`. Kom je er tóch niet in, dan
+   is er het **beheerdersnoodluik** `scripts/zet-wachtwoord.ts` (zet direct een
+   wachtwoord op een **bestaand** account — het maakt er geen aan; accounts
+   ontstaan uitsluitend via `/admin/users`):
+   ```
+   bun --env-file=.env.local scripts/zet-wachtwoord.ts <e-mail> [wachtwoord]
+   ```
+   Zonder wachtwoord-argument genereert het script er een van 24 tekens en
+   drukt hem **één keer** af — daarna staat alleen de hash in de database.
+   Wachtwoord-login gaat daarna gewoon via `/login`. Het normale pad blijft de
+   PIN via `/admin/users` + `/activate`; dit script is alleen voor de
+   bootstrap-situatie zonder logtoegang.
 
 ## 3. Tests, typecheck en lint
 
@@ -91,9 +123,18 @@ Verplichte leesstof vóór je iets bouwt: `CLAUDE.md` (wortels van de repo),
    ```
    bun run typecheck
    ```
-   Je ziet nu `tsc --noEmit` en daarna niets — geen output betekent schoon.
+   Je ziet nu exact één regel, `$ tsc --noEmit`, en daarna niets — geen verdere
+   output betekent schoon.
 
-2. **Tests:**
+2. **Playwright-browser installeren** (eenmalig; de RSC-tests draaien headless
+   in Chromium via `@vitest/browser-playwright`, zie `vitest.config.ts`):
+   ```
+   bunx playwright install chromium
+   ```
+   Je ziet nu een download van de Chromium-build (of niets, als hij er al
+   staat).
+
+3. **Tests:**
    ```
    bun vitest run
    ```
@@ -102,7 +143,7 @@ Verplichte leesstof vóór je iets bouwt: `CLAUDE.md` (wortels van de repo),
    bekijk die na wijzigingen aan schermen; ze zijn onderdeel van de definitie
    van "af".
 
-3. **Lint:**
+4. **Lint:**
    ```
    bun run lint
    ```
@@ -191,10 +232,14 @@ een productie-ingreep: eerst typecheck en tests groen, dan pas migreren.
 
 - **Merk-prijslijsten (de brandportal-route):** nieuwe of bijgewerkte
   prijslijsten van een merk gaan **niet** via `bun run import` maar via de
-  brandportal in de app (`/brand`, met o.a. het prijslijsten-scherm). Een merk
-  levert het ingevulde brand-Excel (66 velden) aan; het omzetten van een ruwe
-  leveranciers-prijslijst naar dat Excel is een begeleid proces (zie de
-  `prijslijst`-verwerking en `docs/brand/`). Kernregel daarbij: een **verlopen
+  brandportal in de app: `/brand` met daaronder het prijslijsten-scherm
+  (`app/brand/price-lists/`), dashboard en data-schermen; de repolaag zit in
+  `lib/repo/brand-portal.ts`. Een merk levert het ingevulde brand-Excel
+  (66 velden) aan en uploadt dat daar. Het omzetten van een ruwe
+  leveranciers-prijslijst (willekeurig Excel/CSV/PDF) naar dat 66-velden-Excel
+  is een voorbewerkingsstap die **buiten deze repo** leeft (tot nu toe een
+  AI-geassisteerd proces in de omgeving van de vorige ontwikkelaar) — bij de
+  overdracht afspreken hoe Brink dat voortaan doet. Kernregel: een **verlopen
   prijslijst maakt het product onzichtbaar in álle zoekresultaten** — dat wordt
   centraal afgedwongen, dus houd geldigheidsdatums bij.
 
@@ -210,7 +255,7 @@ een productie-ingreep: eerst typecheck en tests groen, dan pas migreren.
   alleen `search`-events hardcoderen de actor `ai:vangnet` (zie `HANDOVER.md`).
 - **AI-budgetcap:** de uitgavengrens voor de Anthropic-routes leeft als
   app-setting **`llm_budget_eur`** in de `app_settings`-tabel (instelbaar via
-  `/instellingen`). Uitgaven staan in `llm_usage` (`cost_eur`). Cap bereikt →
+  `/settings`). Uitgaven staan in `llm_usage` (`cost_eur`). Cap bereikt →
   de app logt `ai_vangnet_skipped_budget` en draait AI-loos verder; budget `0`
   is een echt plafond, alleen `null` betekent "geen cap". Loopt AI-verbruik uit
   de hand: zet de cap laag of verwijder de key uit de Vercel-env — de app
