@@ -133,6 +133,7 @@ test("happy path: 2 regels uit de tool-output, codeValid, echte kosten en event"
       ruweTekst: "Lp301 XAL SASSO 100 3000K IP44",
       codeValid: true,
       aantal: null, // O6: geen aantal geleverd → null (nooit geraden)
+      artikelnummer: null, // een armaturenboek heeft geen artikelnummerkolom
     },
     {
       armatuurcode: "Ls004-a",
@@ -141,6 +142,7 @@ test("happy path: 2 regels uit de tool-output, codeValid, echte kosten en event"
       ruweTekst: "Ls004-a",
       codeValid: true,
       aantal: null,
+      artikelnummer: null,
     },
   ]);
   expect(result.inputTokens).toBe(USAGE.input_tokens);

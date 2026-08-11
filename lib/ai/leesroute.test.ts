@@ -115,6 +115,11 @@ test("vision-SYSTEM_PROMPT is byte-identiek aan de vastgelegde literal", () => {
   // bewuste, gemotiveerde testwijziging. Historie: stap 2 perkte de lege-lijst-
   // regel in; stap 6 (O6) voegde de aantal-regel toe (aantallen alleen als ze
   // er létterlijk staan — Dordrecht-pen-aantallen; nooit raden of 1 defaulten).
+  // 11 aug: de artikelnummer-regel erbij. Gemeten aanleiding — een offerte-
+  // aanvraag heeft géén positiecodes maar wél een kolom 'Artikelnummer', en van
+  // de drie nummers mét spatie kwam er nul heel binnen: "21012 0298" werd
+  // "21012", "32812 9220 BRBB" werd "92730" (een getal uit de omschrijving).
+  // Zie docs/probleem-artikelnummer-matching.md, meting 1.
   const VASTGELEGDE_LITERAL =
     "You read one page image from a luminaire schedule ('armaturenboek'). " +
     "Extract the luminaire rows and deliver them with the lever_regels tool.\n" +
@@ -123,6 +128,14 @@ test("vision-SYSTEM_PROMPT is byte-identiek aan de vastgelegde literal", () => {
     "complete or normalise codes, brands or types.\n" +
     "- A row typically starts with a fixture code such as Lp301, Ls004 or Lw201-a, " +
     "followed by a brand and a product type.\n" +
+    "- Some documents are not luminaire schedules but order requests: a table per " +
+    "brand with the columns description, article number ('Artikelnummer') and " +
+    "quantity, and no fixture codes at all. There the article number is the last " +
+    "field of the row, it belongs to the manufacturer, and it may contain spaces " +
+    "('21012 0298', '32812 9220 BRBB'). Deliver it complete in artikelnummer — " +
+    "never only its first part, and never a number you took from the description. " +
+    "When such a row has no fixture code, use that same complete article number as " +
+    "armatuurcode.\n" +
     "- Put the complete literal row text in ruwe_tekst.\n" +
     "- Only if the page truly contains no luminaire rows at all (a cover, a photo " +
     "page, a floor plan, a completely blank page), deliver an empty list.\n" +
@@ -186,6 +199,15 @@ test("LEVER_REGELS_TOOL_TEKST eist pagina; het OCR-schema bleef byte-gelijk", ()
                 type: "string",
                 description:
                   "The full row text exactly as printed on the page",
+              },
+              artikelnummer: {
+                type: ["string", "null"],
+                description:
+                  "The supplier/manufacturer article number for this row, " +
+                  "complete and exactly as printed INCLUDING any spaces " +
+                  "(e.g. '21012 0298', '32812 9220 BRBB'). Only from an article " +
+                  "number column or label — never a number taken from the " +
+                  "description text. Null if the row has none.",
               },
               aantal: {
                 type: ["number", "null"],
@@ -297,6 +319,7 @@ test("KvK-stijl: tekstblok met PAGE-marker, geen image, geen prijs; L004 komt do
       ruweTekst: "boven de balie een ronde pendelreeks, aangeduid als L004",
       codeValid: false,
       aantal: null, // O6: geen aantal geleverd → null (nooit geraden)
+      artikelnummer: null, // geen artikelnummerkolom in dit document
       pagina: 1,
     },
   ]);

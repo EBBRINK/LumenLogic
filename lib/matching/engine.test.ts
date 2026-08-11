@@ -938,3 +938,173 @@ test("A2: dezelfde gele kandidaat mét bevestigde herkomst gaat wél automatisch
   expect(out.status).toBe("geel");
   expect(out.unambiguousYellow?.name).toContain("SASSO 100");
 });
+
+// ── Matchen op het gevraagde artikelnummer (goal-artikelnummer-matching) ────
+// Gemeten aanleiding: de regel "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8"
+// van Delta Light kreeg twee verkeerde IP68-drivers aangeboden (17 W en 24 W),
+// terwijl het gevraagde artikel 21012 0298 exact in de catalogus staat. De code
+// stond wél in het document maar bereikte de matcher nooit.
+// Zie docs/probleem-artikelnummer-matching.md.
+
+test("B3: de exacte codetreffer wint van de tekstroute", async () => {
+  const db = await createTestDb();
+  // De catalogus schrijft dezelfde productsoort op twee manieren: het juiste
+  // artikel heet "[LPS] …", de verkeerde beginnen met "LED POWER SUPPLY …" —
+  // precies de tokens waar de aanvraag mee begint. Op tekst verliest het juiste
+  // artikel daardoor; op code wint het.
+  const { brandId, priceListId } = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "LED POWER SUPPLY 350mA-DC / 17W IP68",
+    supplierArticleCode: "21012 0480",
+    ip: "IP68",
+    maxWattage: 17,
+  });
+  await addProductToBrand(db, {
+    brandId,
+    priceListId,
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    supplierArticleCode: "21012 0298",
+    ip: "IP20",
+    maxWattage: 20,
+  });
+
+  const zonderCode = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8",
+      specs: { watt: 20 },
+    }),
+  );
+  const alleZonder = [...zonderCode.provable, ...zonderCode.incomplete];
+  expect(alleZonder[0].name).toBe("LED POWER SUPPLY 350mA-DC / 17W IP68");
+
+  const metCode = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8",
+      sku: "21012 0298",
+      specs: { watt: 20 },
+    }),
+  );
+  const alleMet = [...metCode.provable, ...metCode.incomplete];
+  expect(alleMet).toHaveLength(1);
+  expect(alleMet[0].name).toBe("[LPS] MULTI POWER 250-900 / 20W DIM8");
+  expect(metCode.viaArticleCode).toBe("21012 0298");
+  expect(metCode.status).toBe("groen");
+});
+
+test("B3: spaties in het artikelnummer zijn de normale vorm, geen randgeval", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "LUNELLE 52 CLIP 92730 BRBB",
+    supplierArticleCode: "32812 9220 BRBB",
+    kelvin: 2700,
+  });
+  // Zelfde code, andere schrijfwijze aan beide kanten — normalizeSku strikt alles
+  // behalve [a-z0-9] weg, dus dit hóórt te matchen.
+  for (const gevraagd of ["32812 9220 BRBB", "32812-9220-brbb", "328129220BRBB"]) {
+    const out = await evaluateSpecLine(
+      db,
+      req({ brandText: "Delta Light", productText: "LUNELLE", sku: gevraagd }),
+    );
+    expect(out.viaArticleCode).toBe(gevraagd);
+    expect(out.status).toBe("groen");
+  }
+});
+
+test("B7: een codetreffer met één afwijking blijft groen — nooit rood", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    supplierArticleCode: "21012 0298",
+    ip: "IP20",
+    maxWattage: 20,
+  });
+  // IP50 gevraagd, IP20 geleverd = een ROOD veld. Vóór B7 verwierp de engine de
+  // kandidaat dan volledig en werd de regel rood: "niets gevonden", terwijl we
+  // exact het gevraagde artikelnummer in huis hebben.
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER",
+      sku: "21012 0298",
+      specs: { ip: "IP50", watt: 20 },
+    }),
+  );
+  expect(out.status).toBe("groen");
+  expect(out.provable).toHaveLength(1);
+  // De afwijking verdwijnt niet — hij wordt getoond, alleen niet dodelijk.
+  const ip = out.topDeviations.find((d) => d.field === "ip");
+  expect(ip?.verdict).toBe("rood");
+});
+
+test("B7: is élk beoordeeld veld rood, dan beslist een mens (open, niet groen)", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    supplierArticleCode: "21012 0298",
+    ip: "IP20",
+    kelvin: 2700,
+    maxWattage: 20,
+  });
+  // Alles spreekt elkaar tegen: dan wijst de code vermoedelijk niet naar dit
+  // product (verkeerd overgetypt, code van een ander merk) en is groen een leugen.
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "iets heel anders",
+      sku: "21012 0298",
+      specs: { ip: "IP65", kelvin: 4000, watt: 200 },
+    }),
+  );
+  expect(out.status).toBe("open");
+  expect(out.provable).toHaveLength(0);
+  // De kandidaat blijft wél zichtbaar — de mens moet kunnen zien wát er gevonden is.
+  expect(out.incomplete).toHaveLength(1);
+});
+
+test("B5: een code die niets oplevert stopt niets, maar wordt wel vastgelegd", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "SPY 52 CLIP 92730 B-B",
+    supplierArticleCode: "19820 9220 B",
+    kelvin: 2700,
+  });
+  // De gevraagde code bestaat bij de fabrikant, maar niet in ónze catalogus: de
+  // hele LUNELLE-familie ontbreekt in de import. Besluit Timo: dat is geen fout,
+  // de tekstroute draait gewoon door.
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LUNELLE 52 Clip SPY",
+      sku: "32812 9220 BRBB",
+      specs: { kelvin: 2700 },
+    }),
+  );
+  expect(out.articleCodeMiss).toBe("32812 9220 BRBB");
+  expect(out.viaArticleCode).toBeUndefined();
+  expect([...out.provable, ...out.incomplete].length).toBeGreaterThan(0);
+});
+
+test("B3: een regel met alleen een artikelnummer strandt niet meer op 'te weinig gevraagd'", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    supplierArticleCode: "21012 0298",
+  });
+  // Geen merk, geen specs — alleen het nummer dat de klant opschreef. Dat is de
+  // scherpste eis die er is, dus stap 1b mag hier niet meer afkappen.
+  const out = await evaluateSpecLine(db, req({ sku: "21012 0298" }));
+  expect(out.status).toBe("groen");
+  expect(out.provable[0].name).toBe("[LPS] MULTI POWER 250-900 / 20W DIM8");
+});

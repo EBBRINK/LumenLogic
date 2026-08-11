@@ -772,6 +772,10 @@ export function regelToSpecLine(
     quantity: regel.aantal ?? null,
     brandText: brand,
     productText: productTextVoorMatcher(regel, brand, type, brandNames),
+    // Het gevraagde artikelnummer gaat als eigen veld mee — dit is wat de matcher
+    // als eerste signaal gebruikt (docs/goal-artikelnummer-matching.md, B3). Levert
+    // het model niets, dan blijft het leeg en gedraagt de matcher zich als vandaag.
+    reqArticleCode: regel.artikelnummer ?? null,
     reqKelvin: specs.kelvin ?? null,
     reqCri: specs.cri ?? null,
     reqIp: specs.ipValue ?? null,

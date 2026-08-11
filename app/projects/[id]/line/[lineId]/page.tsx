@@ -8,6 +8,7 @@ import {
   MatchCandidates,
   type RegelCandidate,
 } from "@/components/dossier/match-candidates";
+import { RequestedArticleCode } from "@/components/dossier/requested-article-code";
 import { StatusBadge } from "@/components/dossier/status-badge";
 import { IconUnlock } from "@/components/dossier/icons";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import type { Deviation, MatchStatus } from "@/components/dossier/types";
 import { getOpenSuggestionsForLine } from "@/lib/repo/ai-suggestions";
 import { getDossier, getSpecLine } from "@/lib/repo/dossiers";
 import { getCandidates } from "@/lib/repo/matching";
-import { getVisibleProduct } from "@/lib/repo/products";
+import { articleCodeExists, getVisibleProduct } from "@/lib/repo/products";
 import { formatEur } from "@/lib/format";
 import { requireUuid } from "@/lib/uuid";
 import {
@@ -97,6 +98,15 @@ export default async function RegelDetailPage({
   // de review-kaarten, met dezelfde tender-render-guard in het component.
   const aiSuggestions = await getOpenSuggestionsForLine(db, specLine.id);
 
+  // Vroeg de klant een artikelnummer dat wij niet kennen? Dan blijft de tekstroute
+  // gewoon zijn kandidaten tonen (besluit Timo, B5), maar de gebruiker hoort te zien
+  // dat die kandidaten NIET het gevraagde artikel zijn. Zonder deze melding leek een
+  // ontbrekende import op een geslaagde match: gemeten leverde `32812 9220 BRBB` acht
+  // SPY 52 CLIP-varianten op terwijl de hele LUNELLE-familie in de catalogus ontbreekt.
+  const codeOnbekend =
+    specLine.reqArticleCode != null &&
+    !(await articleCodeExists(db, specLine.reqArticleCode));
+
   // Gevraagde kernvelden: alleen wat is ingevuld is een matcheis (B-09).
   const requested: { label: string; value: string | number }[] = [];
   if (specLine.reqKelvin != null)
@@ -151,6 +161,12 @@ export default async function RegelDetailPage({
                 ["zone", "Zone", specLine.zone ?? "", "text"],
                 ["brandText", "Brand", specLine.brandText ?? "", "text"],
                 ["productText", "Type", specLine.productText ?? "", "text"],
+                [
+                  "reqArticleCode",
+                  "Article number",
+                  specLine.reqArticleCode ?? "",
+                  "text",
+                ],
                 ["reqKelvin", "Kelvin", specLine.reqKelvin ?? "", "number"],
                 ["reqCri", "CRI", specLine.reqCri ?? "", "number"],
                 ["reqIp", "IP", specLine.reqIp ?? "", "text"],
@@ -201,6 +217,10 @@ export default async function RegelDetailPage({
               {specLine.productText ?? specLine.fixtureCode}
             </span>
           </p>
+          <RequestedArticleCode
+            code={specLine.reqArticleCode}
+            known={!codeOnbekend}
+          />
           {requested.length > 0 ? (
             <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
               {requested.map((r) => (

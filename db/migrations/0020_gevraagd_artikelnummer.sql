@@ -1,0 +1,11 @@
+-- Het GEVRAAGDE leveranciersartikelnummer als eigen kolom op spec_lines.
+--
+-- Aanleiding, gemeten (docs/probleem-artikelnummer-matching.md): een offerteaanvraag zet het
+-- artikelnummer in een eigen kolom ("21012 0298", "32812 9220 BRBB"), maar het had nergens
+-- heen. Het belandde verminkt in fixture_code — dat is de POSITIEcode uit een armaturenboek
+-- ("Lp301"), een ander begrip — en de matcher kreeg het nooit te zien: specRequestFromLine
+-- zette `sku` hard op null, waardoor de exacte-SKU-route van de engine dood pad was.
+--
+-- Nullable, want een armaturenboek kent dit veld niet: daar staat een positiecode en géén
+-- leveranciersnummer. Leeg = "niet gevraagd", en dan gedraagt de matcher zich als vandaag.
+ALTER TABLE spec_lines ADD COLUMN IF NOT EXISTS req_article_code text;

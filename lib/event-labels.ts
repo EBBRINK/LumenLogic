@@ -27,6 +27,9 @@ export const ACTION_LABEL: Record<string, string> = {
   // Nieuwe event-acties uit de vijfstatussen-/matcherlaag — nette labels.
   matched_status: "Status set",
   product_considered: "Product considered",
+  // De gevraagde artikelcode leverde geen treffer op; de tekstroute draaide door.
+  // Meestal een gat in de catalogus, geen vergissing van de klant.
+  article_code_not_found: "Article number not found",
   spec_line_matched: "Line matched",
   spec_line_no_match: "Line without match",
   review_decided: "Review decided",

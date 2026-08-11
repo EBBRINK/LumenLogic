@@ -10,8 +10,11 @@ import {
   parseForm,
   z,
   zEnumFrom,
+  zOptionalInt,
+  zOptionalNumber,
   zOptionalText,
   zPrice,
+  zTrimmed,
   zUuid,
 } from "@/lib/validation";
 import { isUuid } from "@/lib/uuid";
@@ -118,33 +121,51 @@ export async function createDossierAction(formData: FormData) {
   redirect(`/projects/${dossier.id}`);
 }
 
+// De gevraagde velden van één spec-regel. Gedeeld door toevoegen en bewerken: het zijn
+// letterlijk dezelfde velden, en één schema betekent dat er geen twee ideeën over
+// "wat is een geldige regel" kunnen ontstaan. Alles optioneel behalve de fixtureCode —
+// een regel mag half ingevuld zijn, dat is de werkelijkheid van een aanvraag.
+//
+// reqArticleCode is het gevraagde leveranciersartikelnummer ("21012 0298") en gaat als
+// eerste signaal naar de matcher (docs/goal-artikelnummer-matching.md). Hij wordt
+// getrimd maar verder ONGEMOEID gelaten: spaties en streepjes horen bij de code zoals de
+// klant hem opschreef, en normaliseren gebeurt pas in de matcher (`normalizeSku`).
+const specLineFieldsSchema = z.object({
+  fixtureCode: zTrimmed.min(1),
+  quantity: zOptionalInt,
+  zone: zOptionalText.optional().default(null),
+  brandText: zOptionalText.optional().default(null),
+  productText: zOptionalText.optional().default(null),
+  reqArticleCode: zOptionalText.optional().default(null),
+  reqKelvin: zOptionalInt,
+  reqCri: zOptionalInt,
+  reqIp: zOptionalText.optional().default(null),
+  reqWatt: zOptionalNumber.optional().default(null),
+  reqLumen: zOptionalInt,
+  reqBeamAngle: zOptionalNumber.optional().default(null),
+  reqSizeCm: zOptionalNumber.optional().default(null),
+  reqShape: zOptionalText.optional().default(null),
+  reqColor: zOptionalText.optional().default(null),
+  reqDimmable: zOptionalText.optional().default(null),
+});
+
+const addSpecLineSchema = specLineFieldsSchema.extend({ dossierId: zUuid });
+
 // Handmatige regel toevoegen → matcher draait direct (functioneel ontwerp 3.4-5).
 export async function addSpecLineAction(formData: FormData) {
   const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
-  const dossierId = String(formData.get("dossierId"));
-  const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
-  if (!dossierId || !fixtureCode) return;
-  const [row] = await addSpecLines(db, dossierId, [
-    {
-      fixtureCode,
-      quantity: intOrNull(formData.get("quantity")),
-      zone: strOrNull(formData.get("zone")),
-      brandText: strOrNull(formData.get("brandText")),
-      productText: strOrNull(formData.get("productText")),
-      reqKelvin: intOrNull(formData.get("reqKelvin")),
-      reqCri: intOrNull(formData.get("reqCri")),
-      reqIp: strOrNull(formData.get("reqIp")),
-      reqWatt: numOrNull(formData.get("reqWatt")),
-      reqLumen: intOrNull(formData.get("reqLumen")),
-      reqBeamAngle: numOrNull(formData.get("reqBeamAngle")),
-      reqSizeCm: numOrNull(formData.get("reqSizeCm")),
-      reqShape: strOrNull(formData.get("reqShape")),
-      reqColor: strOrNull(formData.get("reqColor")),
-      reqDimmable: strOrNull(formData.get("reqDimmable")),
-      source: "manual",
-    },
-  ]);
+  const parsed = parseForm(addSpecLineSchema, formData);
+  // Ongeldige invoer voegt niets toe (regel 3): terug naar het dossier, geen 500. Zonder
+  // bruikbaar dossier-id is er geen plek om naar terug te keren.
+  if (!parsed.ok) {
+    const dossierId = String(formData.get("dossierId") ?? "");
+    if (!isUuid(dossierId)) notFound();
+    revalidatePath(`/projects/${dossierId}`);
+    return;
+  }
+  const { dossierId, ...velden } = parsed.data;
+  const [row] = await addSpecLines(db, dossierId, [{ ...velden, source: "manual" }]);
   if (row) await runMatcher(db, row.id, actor);
   revalidatePath(`/projects/${dossierId}`);
 }
@@ -735,36 +756,26 @@ export async function saveQuoteHeaderAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}/quote`);
 }
 
+const editSpecLineSchema = specLineFieldsSchema.extend({
+  dossierId: zUuid,
+  specLineId: zUuid,
+});
+
 // B-10: een spec-regel bewerken → daarna de matcher opnieuw draaien.
 export async function editSpecLineAction(formData: FormData) {
   const { toegang, scope } = await bewaakProject(formData);
   const actor = await getActor();
-  const dossierId = String(formData.get("dossierId"));
-  const specLineId = String(formData.get("specLineId"));
-  const fixtureCode = String(formData.get("fixtureCode") ?? "").trim();
-  if (!specLineId || !fixtureCode) return;
-  await updateSpecLine(
-    db,
-    specLineId,
-    {
-      fixtureCode,
-      quantity: intOrNull(formData.get("quantity")),
-      zone: strOrNull(formData.get("zone")),
-      brandText: strOrNull(formData.get("brandText")),
-      productText: strOrNull(formData.get("productText")),
-      reqKelvin: intOrNull(formData.get("reqKelvin")),
-      reqCri: intOrNull(formData.get("reqCri")),
-      reqIp: strOrNull(formData.get("reqIp")),
-      reqWatt: numOrNull(formData.get("reqWatt")),
-      reqLumen: intOrNull(formData.get("reqLumen")),
-      reqBeamAngle: numOrNull(formData.get("reqBeamAngle")),
-      reqSizeCm: numOrNull(formData.get("reqSizeCm")),
-      reqShape: strOrNull(formData.get("reqShape")),
-      reqColor: strOrNull(formData.get("reqColor")),
-      reqDimmable: strOrNull(formData.get("reqDimmable")),
-    },
-    actor,
-  );
+  const parsed = parseForm(editSpecLineSchema, formData);
+  // Ongeldige invoer laat de regel zoals hij was; de gebruiker komt terug op dezelfde
+  // pagina en ziet de oude waarden nog staan (regel 3).
+  if (!parsed.ok) {
+    const dossierId = String(formData.get("dossierId") ?? "");
+    const specLineId = String(formData.get("specLineId") ?? "");
+    if (!isUuid(dossierId) || !isUuid(specLineId)) notFound();
+    redirect(`/projects/${dossierId}/line/${specLineId}`);
+  }
+  const { dossierId, specLineId, ...velden } = parsed.data;
+  await updateSpecLine(db, specLineId, velden, actor);
   // merk/type/specs kunnen de match veranderen → opnieuw matchen
   await runMatcher(db, specLineId, actor);
   // AI-vangnet (stap 8) na de hermatch: via after() ná de response (de edit wacht er

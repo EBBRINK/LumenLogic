@@ -138,3 +138,99 @@ test("code niet in de paginatekst → geen segment, regel blijft ongemoeid", () 
   const segmenten = vindRijSegmenten(PAGINA, ["Zz123"]);
   expect(segmenten.has("Zz123")).toBe(false);
 });
+
+// ── Code achteraan de rij (offerteaanvraag) ─────────────────────────────────
+// Gemeten in docs/probleem-artikelnummer-matching.md, meting 3: bij een
+// offerteaanvraag (kolommen omschrijving · artikelnummer · aantal) staat de
+// code ACHTERAAN, en dan levert "van de code tot het volgende anker" de staart
+// van de eigen rij plus de omschrijving van de vólgende. De Delta Light-
+// driverregel kreeg zo IP50 van een Trizo21-regel en 2700K van de regel erboven.
+//
+// Deze pagina is letterlijk de tekstlaag van scripts/gen-test-offerteaanvraag.ts,
+// pagina 2 — de fixture waar de meting op draaide.
+const AANVRAAG =
+  "Deltalight\n" +
+  "Omschrijving Artikelnummer Aantal\n" +
+  "Plafond semi-recessed LUNELLE 52 Clip LED6W 2700K Bruin Brons 92730 BRBB 32812 9220 BRBB 14\n" +
+  "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar 21012 0298 14\n" +
+  "Trizo21\n" +
+  "Omschrijving Artikelnummer Aantal\n" +
+  "Wand opbouw Trizo21 BOULO W in MATT Glass LED9W 2700K IP50 (voor betonnen wand) BLWIM 1122 6\n" +
+  "LED Driver Triac 230V D 3WT 6";
+
+test("code achteraan: een segment blijft binnen zijn eigen rij", () => {
+  const segmenten = vindRijSegmenten(AANVRAAG, [
+    "32812 9220 BRBB",
+    "21012 0298",
+    "BLWIM 1122",
+  ]);
+  // De driver heeft in zijn eigen regel géén kleurtemperatuur en géén IP staan.
+  // Vóór deze fix stond hier kelvin 2700 (van de regel erboven) en IP50 (van
+  // Trizo21, twee blokken lager) — de gemeten oorzaak van een foute match.
+  const driver = segmenten.get("21012 0298")!;
+  expect(driver).not.toContain("Trizo21");
+  expect(parseProductName(driver)).toEqual({ maxWattage: 20 });
+  // De buurregels houden hun éigen specs — er gaat niets verloren.
+  expect(parseProductName(segmenten.get("32812 9220 BRBB")!)).toMatchObject({
+    maxWattage: 6,
+    kelvin: 2700,
+  });
+  expect(parseProductName(segmenten.get("BLWIM 1122")!)).toMatchObject({
+    maxWattage: 9,
+    kelvin: 2700,
+    ipValue: "IP50",
+  });
+});
+
+test("code vooraan blijft de oude snede houden — ook met één afwijkend anker", () => {
+  // De layout-toets is een meerderheid over de héle pagina, geen regel per code.
+  // Zonder die meerderheid zou één code midden in een zin het armaturenboek-pad
+  // omzetten, en daar loopt een rij over veel tekstregels: gemeten verliezen dan
+  // 108 van 108 segmenten al hun specvelden.
+  const pagina = PAGINA.replace("Lr301 Raadzaal", "Lr301 Raadzaal") + "\nzie ook Lw001 in de legenda";
+  const segmenten = vindRijSegmenten(pagina, ["Lr301", "Lw001"]);
+  expect(segmenten.get("Lr301")!.startsWith("Lr301 ")).toBe(true);
+  expect(parseProductName(segmenten.get("Lr301")!)).toMatchObject({
+    maxWattage: 27,
+    kelvin: 3000,
+    ipValue: "IP20",
+  });
+});
+
+test("offerteaanvraag: het artikelnummer komt heel mee en de specs blijven eigen", async () => {
+  // De hele keten van modelregel → SpecLineInput, met een code die spaties draagt.
+  // Vóór 11 aug hield `fixture_code` er "21012" van over en verdween "0298"; de specs
+  // kwamen deels van een regel van een ánder merk.
+  const modelregels = [
+    {
+      armatuurcode: "21012 0298",
+      merk: "Deltalight",
+      type: "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar",
+      ruweTekst:
+        "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar 21012 0298 14",
+      codeValid: false,
+      artikelnummer: "21012 0298",
+      pagina: 2,
+    },
+  ];
+  const verrijkt = verrijkRegelsMetSegment(
+    modelregels.map((r) => ({ ...r, pagina: 2 })),
+    [{ pageNumber: 2, text: AANVRAAG }],
+  );
+  const regel = regelToSpecLine(
+    modelregels[0] as OcrRegel,
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    verrijkt[0].segmentTekst,
+  );
+
+  // De code compleet, in beide velden — fixture_code is in dit documenttype de
+  // identificatie van de regel (besluit Timo), req_article_code is wat de matcher leest.
+  expect(regel.fixtureCode).toBe("21012 0298");
+  expect(regel.reqArticleCode).toBe("21012 0298");
+  // Zijn eigen 20 W, en géén kleurtemperatuur of IP van de buren.
+  expect(regel.reqWatt).toBe(20);
+  expect(regel.reqKelvin).toBeNull();
+  expect(regel.reqIp).toBeNull();
+});

@@ -488,6 +488,13 @@ export const specLines = pgTable("spec_lines", {
   description: text("description"),
   brandText: text("brand_text"), // gevraagd merk (vrije tekst; "merk hebben we altijd")
   productText: text("product_text"), // gevraagd type (vrije tekst)
+  // Het gevraagde LEVERANCIERSARTIKELNUMMER, letterlijk zoals de klant het opschreef
+  // ("21012 0298", "32812 9220 BRBB") — spaties incluis. Bewust een eigen kolom naast
+  // fixture_code: dat is de POSITIEcode uit een armaturenboek ("Lp301"). In een
+  // offerteaanvraag zonder positiecodes dragen beide velden het artikelnummer, maar
+  // alleen dit veld betekent overal hetzelfde en gaat als `sku` naar de matcher.
+  // Zie docs/goal-artikelnummer-matching.md (B1).
+  reqArticleCode: text("req_article_code"),
   // B-09: de tien gevraagde kernvelden — wat gevuld is wordt matcheis.
   reqKelvin: integer("req_kelvin"),
   reqCri: integer("req_cri"),
@@ -645,6 +652,9 @@ export type ImportRow = {
   quantity: number | null;
   brandText: string | null;
   productText: string | null;
+  // Het gevraagde leveranciersartikelnummer (zie spec_lines.req_article_code). Optioneel:
+  // bestaande rows-snapshots in de kolom kennen het veld niet en blijven geldig.
+  reqArticleCode?: string | null;
   zone?: string | null;
   specs?: Partial<{
     kelvin: number;

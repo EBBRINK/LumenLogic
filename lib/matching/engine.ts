@@ -73,6 +73,16 @@ export type MatchOutcome = {
   // een schoon-geel oordeel (zie pickUnambiguousYellow). Alle andere gevallen: undefined.
   // Puur en deterministisch — geen LLM, geen fase; het persisteren beslist de repo.
   unambiguousYellow?: ScoredCandidate;
+  // De kandidaten kwamen uit de exacte-codetreffer (3a), niet uit de tekstroute. De
+  // gevraagde artikelcode ís dan de scherpste eis die er is en het oordeel volgt daaruit
+  // (goal-artikelnummer-matching, B7). Voor de aanroeper zichtbaar omdat het uitlegt
+  // waaróm een kandidaat met een afwijking tóch groen staat.
+  viaArticleCode?: string;
+  // De regel vroeg een artikelcode die NIETS opleverde. De tekstroute heeft daarna
+  // gewoon gedraaid (besluit Timo, B5) — dit is dus geen fout en blokkeert niets, maar
+  // het wordt wel vastgelegd: een code die nergens op slaat is meestal een gat in de
+  // catalogus, en dat hoort niet weg te vallen achter kandidaten uit een andere serie.
+  articleCodeMiss?: string;
 };
 
 export type SpecRequest = {
@@ -411,11 +421,15 @@ async function fetchCandidates(
   db: AppDb,
   req: SpecRequest,
   limit: number,
-): Promise<Record<string, unknown>[]> {
+): Promise<{ rows: Record<string, unknown>[]; viaSku: boolean }> {
   const brand = (req.brandText ?? "").trim();
   const productText = (req.productText ?? "").trim();
 
   // 3a. Exacte SKU-match (genormaliseerd) als de regel een code draagt.
+  //
+  // `normalizeSku` strikt alles behalve [a-z0-9] aan BEIDE kanten weg, dus de spaties in
+  // "21012 0298" en in de kolom supplier_article_code vallen tegen elkaar weg — een
+  // artikelnummer met spaties is hier geen randgeval maar de normale vorm.
   if (req.sku && req.sku.trim()) {
     const nsku = normalizeSku(req.sku);
     const exact = await db
@@ -428,7 +442,9 @@ async function fetchCandidates(
         ),
       )
       .limit(limit);
-    if (exact.length) return exact;
+    // Geen treffer → gewoon door naar de tekstroute hieronder (besluit Timo, B5): een
+    // code die niets oplevert betekent niet dat de regel fout is.
+    if (exact.length) return { rows: exact, viaSku: true };
   }
 
   // 3b. Parametrisch binnen merk + fuzzy op producttekst.
@@ -438,7 +454,7 @@ async function fetchCandidates(
   // de constante-nul sorteertermen renderden als `ORDER BY 0` — een positionele
   // verwijzing voor Postgres). Bereikbaar sinds de AI-leesroute regels met alleen
   // een armatuurcode kan leveren (stap 3); de regel wordt dan rood → review/mens.
-  if (brand.length === 0 && productText.length === 0) return [];
+  if (brand.length === 0 && productText.length === 0) return { rows: [], viaSku: false };
 
   const conditions = [];
   if (brand.length > 0) {
@@ -568,12 +584,13 @@ async function fetchCandidates(
       ...tailTerms,
     ];
   }
-  return db
+  const rows = await db
     .select({ ...SELECTION, score, matchCount })
     .from(visibleProducts)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(...orderTerms)
     .limit(limit);
+  return { rows, viaSku: false };
 }
 
 // De volledige beslisboom voor één spec-regel.
@@ -606,7 +623,15 @@ export async function evaluateSpecLine(
   // Merk blijft een ECHTE eis (fetchCandidates dwingt hem af, ook zonder specs) —
   // dus dit raakt uitsluitend de combinatie merk=leeg + specs=leeg; een regel met
   // alléén een merk blijft ongemoeid.
-  if (brand.length === 0 && !hasAnyRequestedSpec(req.specs)) {
+  // Een artikelnummer telt hier wél als "genoeg gevraagd": het is de meest specifieke
+  // eis die een regel kan dragen en stap 3a kan hem exact opzoeken. Zonder deze
+  // uitzondering zou een regel met alleen een artikelnummer al vóór de kandidatenstap
+  // op 'open' stranden (goal-artikelnummer-matching, B3).
+  if (
+    brand.length === 0 &&
+    !hasAnyRequestedSpec(req.specs) &&
+    !(req.sku ?? "").trim()
+  ) {
     return {
       status: "open",
       reason: "te weinig gevraagd om gelijkwaardigheid aan te tonen (geen merk, geen specs)",
@@ -644,7 +669,14 @@ export async function evaluateSpecLine(
     : req;
 
   // Stap 3 — kandidaten zoeken.
-  let rows = await fetchCandidates(db, effectiveReq, limit);
+  const eerste = await fetchCandidates(db, effectiveReq, limit);
+  let rows = eerste.rows;
+  const viaSku = eerste.viaSku;
+  // Wél een code gevraagd, maar hij leverde geen exacte treffer. De tekstroute heeft
+  // hieronder gewoon zijn werk gedaan — dit blokkeert niets (besluit Timo, B5) — maar
+  // het gaat mee naar buiten zodat de aanroeper het kan vastleggen.
+  const gevraagdeCode = (req.sku ?? "").trim();
+  const codeMiss = gevraagdeCode.length > 0 && !viaSku ? gevraagdeCode : undefined;
 
   // Stap 3-fallback (C-09): geen kandidaten → deeltermen uit de producttekst proberen
   // vóór "rood". Deterministisch (langste tokens eerst); LLM-hypotheses zijn een latere
@@ -655,7 +687,7 @@ export async function evaluateSpecLine(
       .filter((t) => t.length >= 3)
       .sort((a, b) => b.length - a.length);
     for (const t of tokens) {
-      rows = await fetchCandidates(db, { ...effectiveReq, productText: t }, limit);
+      rows = (await fetchCandidates(db, { ...effectiveReq, productText: t }, limit)).rows;
       if (rows.length > 0) break;
     }
   }
@@ -665,6 +697,7 @@ export async function evaluateSpecLine(
     return {
       status: "rood",
       reason: "brand in catalog, but no matching product found",
+      ...(codeMiss ? { articleCodeMiss: codeMiss } : {}),
       provable: [],
       incomplete: [],
       topDeviations: [],
@@ -711,6 +744,26 @@ export async function evaluateSpecLine(
   // Bewust NIET aangeraakt: de deviations zelf. De waarde matcht echt, en dat mag zichtbaar
   // blijven; alleen de belofte "aantoonbaar" vervalt. En de RANKING blijft ongemoeid —
   // dit zit ná fetchCandidates en verandert geen enkele sorteersleutel.
+  // ── B7: de exacte codetreffer ───────────────────────────────────────────────
+  // Besluit Timo (11 aug): is het artikelnummer hetzelfde, dan altijd groen — zolang
+  // niet álle specs compleet anders zijn. De klant heeft dit nummer zélf opgeschreven;
+  // dat is de scherpste eis die er bestaat, scherper dan elk afzonderlijk specveld.
+  // Dit activeert de uitzondering die de sku-notitie bij Gat A hierboven al aankondigt.
+  //
+  // Waarom dit nodig is, gemeten (docs/probleem-artikelnummer-matching.md, meting 4):
+  // zonder deze regel vond de engine op de Delta Light-driverregel het júiste artikel
+  // en verwierp het vervolgens — de regel werd ROOD op een IP-eis die niet eens in het
+  // document stond. "Wij hebben precies wat u vroeg" mag nooit als rood eindigen.
+  //
+  // De uitzondering: is élk beoordeeld veld rood — geen enkel groen of geel — dan is de
+  // code vermoedelijk verkeerd overgetypt of van een ander merk, en gaat de regel naar
+  // 'open' zodat een mens kijkt. Velden zonder data tellen daarin niet mee (besluit 4:
+  // geen-data is neutraal, nooit een argument tegen).
+  const allesRood = (devs: MatchDeviation[]): boolean => {
+    const beoordeeld = devs.filter((d) => d.verdict !== "onbekend");
+    return beoordeeld.length > 0 && beoordeeld.every((d) => d.verdict === "rood");
+  };
+
   const specless = !hasAnyRequestedSpec(req.specs);
   const scored: ScoredCandidate[] = rows.map((r, i) => {
     const deviations = judgeCandidate(req.specs, toDelivered(r));
@@ -721,8 +774,15 @@ export async function evaluateSpecLine(
     // (maar geen verkeerde waarde — die sluit uit, C-08). Kandidaten met een rood veld
     // horen in geen van beide "voldoet"-lijsten, maar we tonen ze niet weg (ze bepalen
     // hooguit de rode status van de regel als er niets beters is).
-    const list: "aantoonbaar" | "onvolledig" =
-      !specless && !red && !unknown && !unconfirmed ? "aantoonbaar" : "onvolledig";
+    // Bij een exacte codetreffer geldt die weging niet: de code ís het bewijs, dus de
+    // kandidaat staat op lijst 1 tenzij de uitzondering hierboven aanslaat.
+    const list: "aantoonbaar" | "onvolledig" = viaSku
+      ? allesRood(deviations)
+        ? "onvolledig"
+        : "aantoonbaar"
+      : !specless && !red && !unknown && !unconfirmed
+        ? "aantoonbaar"
+        : "onvolledig";
     return {
       productId: String(r.id),
       name: String(r.name ?? ""),
@@ -743,9 +803,16 @@ export async function evaluateSpecLine(
 
   // C-08: lijst 1 = geen rood, geen onbekend. Verkeerde waarde (rood) is uitgesloten
   // uit beide "voldoet"-lijsten; ontbrekend veld → lijst 2.
+  //
+  // Uitzondering bij een exacte codetreffer (B7): de kandidaat blijft altijd staan, ook
+  // met een rood veld. Hem wegfilteren zou betekenen dat de regel "niets gevonden" meldt
+  // terwijl we exact het gevraagde artikelnummer in huis hebben — precies de uitkomst
+  // die meting 4 als absurd aanwees.
   const provable = scored.filter((c) => c.list === "aantoonbaar");
   const incomplete = scored.filter(
-    (c) => c.list === "onvolledig" && !(c as ScoredCandidate & { _red: boolean })._red,
+    (c) =>
+      c.list === "onvolledig" &&
+      (viaSku || !(c as ScoredCandidate & { _red: boolean })._red),
   );
 
   // Regelstatus = beste haalbare uitkomst over de kandidaten (strengste-telt geldt per
@@ -763,7 +830,13 @@ export async function evaluateSpecLine(
   });
 
   let status: MatchStatus;
-  if (anyGreen) status = "groen";
+  if (viaSku) {
+    // B7: het gevraagde artikelnummer is gevonden. Groen, ook met een afwijking — die
+    // wordt gewoon getoond, hij verdwijnt niet. Alleen als élk beoordeeld veld van élke
+    // treffer rood is (lijst 1 leeg) gaat de regel naar 'open': dan wijst de code
+    // vermoedelijk niet naar dit product en beslist een mens.
+    status = provable.length > 0 ? "groen" : "open";
+  } else if (anyGreen) status = "groen";
   else if (anyYellow) status = "geel";
   else if (incomplete.length > 0) status = "open"; // alleen data-onvolledige kandidaten → mens kiest met reden
   else status = "rood"; // alle kandidaten hebben een verkeerde (rode) waarde
@@ -779,13 +852,15 @@ export async function evaluateSpecLine(
     status,
     // Gat A: benoem wáárom een specloze regel open blijft (NB: outcome.reason
     // wordt nog niet per regel gepersisteerd — opvolgpunt 2.5, commit 2c29fa8).
-    ...(specless
+    ...(specless && !viaSku
       ? { reason: "merk gevraagd maar geen toetsbare specs — niets aantoonbaar" }
       : {}),
     provable: provable.map(strip),
     incomplete: incomplete.map(strip),
     topDeviations: top ? top.deviations : [],
     unambiguousYellow: unambiguousYellow ? strip(unambiguousYellow) : undefined,
+    ...(viaSku && gevraagdeCode ? { viaArticleCode: gevraagdeCode } : {}),
+    ...(codeMiss ? { articleCodeMiss: codeMiss } : {}),
   };
 }
 

@@ -191,6 +191,21 @@ export const LEVER_REGELS_TOOL: OcrToolDef = {
               type: "string",
               description: "The full row text exactly as printed on the page",
             },
+            // Het LEVERANCIERSARTIKELNUMMER — een ander begrip dan armatuurcode.
+            // Een armaturenboek kent alleen positiecodes (Lp301); een offerte-
+            // aanvraag heeft een kolom 'Artikelnummer' met het nummer van de
+            // fabrikant ("21012 0298"). Gemeten: die nummers dragen spaties, en
+            // het eerste-token-gedrag maakte er "21012" van — of pakte een getal
+            // uit de omschrijving. Zie docs/probleem-artikelnummer-matching.md.
+            artikelnummer: {
+              type: ["string", "null"],
+              description:
+                "The supplier/manufacturer article number for this row, " +
+                "complete and exactly as printed INCLUDING any spaces " +
+                "(e.g. '21012 0298', '32812 9220 BRBB'). Only from an article " +
+                "number column or label — never a number taken from the " +
+                "description text. Null if the row has none.",
+            },
             // O6 (stap 6): aantallen bestaan wél — Dordrecht heeft ze met pen in
             // de kantlijn. Alleen wat er letterlijk staat; ontbreekt het → null
             // (A-07 stukprijs-modus blijft de fallback, niet meer de aanname).
@@ -222,6 +237,14 @@ export const SYSTEM_PROMPT_KERN =
   "complete or normalise codes, brands or types.\n" +
   "- A row typically starts with a fixture code such as Lp301, Ls004 or Lw201-a, " +
   "followed by a brand and a product type.\n" +
+  "- Some documents are not luminaire schedules but order requests: a table per " +
+  "brand with the columns description, article number ('Artikelnummer') and " +
+  "quantity, and no fixture codes at all. There the article number is the last " +
+  "field of the row, it belongs to the manufacturer, and it may contain spaces " +
+  "('21012 0298', '32812 9220 BRBB'). Deliver it complete in artikelnummer — " +
+  "never only its first part, and never a number you took from the description. " +
+  "When such a row has no fixture code, use that same complete article number as " +
+  "armatuurcode.\n" +
   "- Put the complete literal row text in ruwe_tekst.\n" +
   "- Only if the page truly contains no luminaire rows at all (a cover, a photo " +
   "page, a floor plan, a completely blank page), deliver an empty list.\n" +
@@ -263,6 +286,10 @@ export type OcrRegel = {
   // Optioneel zodat bestaande OcrRegel-constructies (tests) geldig blijven;
   // parseLeverRegels zet het veld altijd.
   aantal?: number | null;
+  // Het leveranciersartikelnummer, compleet en met spaties ("21012 0298"). Een
+  // ander begrip dan armatuurcode: dát is de positiecode uit een armaturenboek.
+  // Optioneel om dezelfde reden als `aantal`; parseLeverRegels zet hem altijd.
+  artikelnummer?: string | null;
 };
 
 // Defensieve parser over de tool-output: ongeldige of ontbrekende structuur levert
@@ -309,6 +336,13 @@ export function parseLeverRegels(content: OcrContentBlock[]): OcrRegel[] {
       row.aantal > 0
         ? row.aantal
         : null;
+    // Artikelnummer: letterlijk overnemen, alleen trimmen. Geen normalisatie —
+    // spaties en streepjes hóren bij de code zoals de klant hem opschreef; de
+    // matcher normaliseert pas bij het vergelijken (normalizeSku).
+    const artikelnummer =
+      typeof row.artikelnummer === "string" && row.artikelnummer.trim().length > 0
+        ? row.artikelnummer.trim()
+        : null;
     out.push({
       armatuurcode: code,
       merk,
@@ -316,6 +350,7 @@ export function parseLeverRegels(content: OcrContentBlock[]): OcrRegel[] {
       ruweTekst,
       codeValid: CODE.test(code),
       aantal,
+      artikelnummer,
       ...(pagina != null ? { pagina } : {}),
     });
   }

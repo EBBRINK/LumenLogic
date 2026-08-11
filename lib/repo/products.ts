@@ -195,6 +195,37 @@ export async function getVisibleProduct(db: AppDb, id: string) {
   return rows[0] ?? null;
 }
 
+// Staat een gevraagd leveranciersartikelnummer in de zichtbare catalogus?
+//
+// Zelfde normalisatie en dezelfde twee kolommen als de exacte-codetreffer van de matcher
+// (engine.ts, stap 3a) — één waarheid over "kennen wij deze code", zodat het scherm nooit
+// iets anders beweert dan de matcher deed. Strikt `visible_products`: een verlopen
+// prijslijst maakt een product onzichtbaar in álle zoekresultaten (ijzeren regel 3), en
+// een code die alléén een onzichtbaar product raakt is voor de gebruiker terecht "niet
+// gevonden".
+//
+// Bewust bij élke weergave opnieuw gevraagd in plaats van bij de match vastgelegd: vult
+// een latere import het gat, dan verdwijnt de melding vanzelf. Een bevroren vlag zou
+// blijven liegen tot iemand de regel hermatcht.
+export async function articleCodeExists(
+  db: AppDb,
+  code: string,
+): Promise<boolean> {
+  const n = code.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!n) return false;
+  const rows = await db
+    .select({ id: visibleProducts.id })
+    .from(visibleProducts)
+    .where(
+      or(
+        sql`regexp_replace(lower(${visibleProducts.articleCode}), '[^a-z0-9]', '', 'g') = ${n}`,
+        sql`regexp_replace(lower(${visibleProducts.supplierArticleCode}), '[^a-z0-9]', '', 'g') = ${n}`,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 // Ijzeren regel 4: value-engineering-/duurzaamheidssuggesties bestaan UITSLUITEND in de
 // gegund-stand. In tender-stand geeft de poort altijd een lege lijst. De echte rangschikking
 // zit in de gelijkwaardigheidsengine (lib/repo/equivalence.ts); deze wrapper levert een
