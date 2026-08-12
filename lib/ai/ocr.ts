@@ -239,12 +239,16 @@ export const SYSTEM_PROMPT_KERN =
   "followed by a brand and a product type.\n" +
   "- Some documents are not luminaire schedules but order requests: a table per " +
   "brand with the columns description, article number ('Artikelnummer') and " +
-  "quantity, and no fixture codes at all. There the article number is the last " +
-  "field of the row, it belongs to the manufacturer, and it may contain spaces " +
-  "('21012 0298', '32812 9220 BRBB'). Deliver it complete in artikelnummer — " +
-  "never only its first part, and never a number you took from the description. " +
-  "When such a row has no fixture code, use that same complete article number as " +
-  "armatuurcode.\n" +
+  "quantity, and no fixture codes at all. There the article number sits between " +
+  "the description and the quantity, and it belongs to the manufacturer.\n" +
+  "- Such an article number is ONE field even when it contains spaces, and it may " +
+  "begin with letters, with digits, or with a single letter: shapes like " +
+  "'12345 6789', 'AB 1234', 'ABCDE 1234', 'X 12YZ' and 'PQ 45 RS' are all one " +
+  "article number. Deliver the WHOLE field in artikelnummer: never split it at a " +
+  "space, never deliver only its first or only its last part, never leave part of " +
+  "it behind in the description, and never take a number out of the description " +
+  "text. When such a row has no fixture code, use that same complete article " +
+  "number as armatuurcode.\n" +
   "- Put the complete literal row text in ruwe_tekst.\n" +
   "- Only if the page truly contains no luminaire rows at all (a cover, a photo " +
   "page, a floor plan, a completely blank page), deliver an empty list.\n" +
