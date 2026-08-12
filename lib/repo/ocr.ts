@@ -712,6 +712,51 @@ function productTextVoorMatcher(
   return staart.length > 0 ? staart : type || null;
 }
 
+// Het artikelnummer compleet maken tot aan het aantal — de RECHTERgrens, deterministisch.
+//
+// Waarom dit bestaat: het model levert het nummer soms half. Gemeten op de fixture kwam
+// "21012 0298" binnen als "21012" en "BLWIM 1122" als "BLWIM"; twee promptrondes kregen
+// dat niet betrouwbaar dicht. De rechtergrens is wél hard af te leiden: in een
+// offerteaanvraag is het aantal het laatste veld van de rij, en dát nummer levert het
+// model apart (`aantal`). Alles tussen het anker en het aantal hoort dus bij de code.
+//
+// ⚠️ De LINKERgrens is bewust NIET geraden, en dat is een meting, geen voorzichtigheid.
+// De LUNELLE-regel luidt:
+//   "… LED6W 2700K Bruin Brons 92730 BRBB 32812 9220 BRBB 14"
+// De omschrijving eindigt zelf op "92730 BRBB" — qua vorm niet te onderscheiden van het
+// artikelnummer erachter. Elke regel die vanaf het aantal naar links loopt tot "dit lijkt
+// geen code meer" slikt dat mee en sloopt precies de regel die nu goed gaat. Alleen de
+// kolomgrens in de originele PDF weet het, en die is in de tekstlaag verdwenen.
+// Levert het model dus alleen het LAATSTE deel ("1122" van "BLWIM 1122"), dan blijft de
+// code half — die regel gaat naar de verplichte OCR-review, waar een mens hem ziet.
+//
+// PUUR: geen DB, geen I/O. Zonder rijtekst of zonder anker verandert er niets.
+function volledigArtikelnummer(
+  regel: OcrRegel,
+  rijTekst?: string | null,
+): string | null {
+  const anker = regel.artikelnummer?.trim();
+  if (!anker) return null;
+  if (!rijTekst) return anker;
+
+  // De rechtergrens is het aantal, en die moet BEWIJSBAAR zijn: het model moet een
+  // aantal geleverd hebben én de rij moet er ook echt op eindigen. Kan dat niet worden
+  // aangetoond, dan verlengen we niet — een halve code is beter dan een code met de
+  // staart van de rij eraan. (Zonder deze poort werd "21012 0298" ooit "21012 0298 14".)
+  const rijRuw = rijTekst.trim();
+  const staart = regel.aantal != null ? String(regel.aantal) : null;
+  if (!staart || !rijRuw.endsWith(staart)) return anker;
+  const rij = rijRuw.slice(0, -staart.length).trimEnd();
+
+  const start = rij.lastIndexOf(anker);
+  if (start === -1) return anker; // anker staat niet in deze rij → niets te verlengen
+  const verlengd = rij.slice(start).trim();
+  // Alleen verlengen, nooit inkorten of iets anders opleveren.
+  return verlengd.startsWith(anker) && verlengd.length >= anker.length
+    ? verlengd
+    : anker;
+}
+
 // Eén gelezen regel → SpecLineInput, met de bestaande deterministische helpers:
 // gaf vision geen merk, dan knipt splitBrandType het uit de typetekst (zelfde
 // helper als de tekstlaag-import); specs komen uit parseProductName (nooit geraden).
@@ -767,15 +812,24 @@ export function regelToSpecLine(
     .filter(Boolean)
     .join(" ");
   const specs = parseInput ? parseProductName(parseInput) : {};
+  const artikelnummer = volledigArtikelnummer(regel, segmentTekst);
   return {
-    fixtureCode: regel.armatuurcode,
+    // ⚠️ Eén bron voor de code. Dit veld stond hier op `regel.armatuurcode`, en dat gaf
+    // in een offerteaanvraag twee velden die elkaar tegenspreken: gemeten leverde het
+    // model bij de LUNELLE-regel `artikelnummer: "32812 9220 BRBB"` (juist) én
+    // `armatuurcode: "92730 BRBB"` (een stuk uit de omschrijving), en bij "BLWIM 1122"
+    // verdeelde het de twee helften over de twee velden. Het model vraagt twee keer
+    // hetzelfde en beantwoordt het twee keer verschillend; de prompt kreeg dat niet
+    // dicht. Hier is het één regel code: is er een artikelnummer, dan is dát de code.
+    // Een armaturenboek levert geen artikelnummer en houdt dus zijn positiecode.
+    fixtureCode: artikelnummer ?? regel.armatuurcode,
     quantity: regel.aantal ?? null,
     brandText: brand,
     productText: productTextVoorMatcher(regel, brand, type, brandNames),
     // Het gevraagde artikelnummer gaat als eigen veld mee — dit is wat de matcher
     // als eerste signaal gebruikt (docs/goal-artikelnummer-matching.md, B3). Levert
     // het model niets, dan blijft het leeg en gedraagt de matcher zich als vandaag.
-    reqArticleCode: regel.artikelnummer ?? null,
+    reqArticleCode: artikelnummer,
     reqKelvin: specs.kelvin ?? null,
     reqCri: specs.cri ?? null,
     reqIp: specs.ipValue ?? null,

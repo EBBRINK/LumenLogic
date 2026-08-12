@@ -234,3 +234,120 @@ test("offerteaanvraag: het artikelnummer komt heel mee en de specs blijven eigen
   expect(regel.reqKelvin).toBeNull();
   expect(regel.reqIp).toBeNull();
 });
+
+// ── Het artikelnummer compleet maken (rechtergrens) ─────────────────────────
+// Gemeten: het model levert het nummer soms half. "21012 0298" kwam binnen als
+// "21012", "BLWIM 1122" als "BLWIM". Twee promptrondes kregen dat niet dicht;
+// de rechtergrens is wél hard — het aantal is het laatste veld van de rij.
+
+function aanvraagRegel(over: Partial<OcrRegel> = {}): OcrRegel {
+  return {
+    armatuurcode: "21012 0298",
+    merk: "Deltalight",
+    type: "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar",
+    ruweTekst:
+      "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar 21012 0298 14",
+    codeValid: false,
+    aantal: 14,
+    artikelnummer: "21012 0298",
+    ...over,
+  } as OcrRegel;
+}
+
+const DRIVERREGEL =
+  "LED POWER SUPPLY MULTI POWER 250-900 / 20W DIM8 fase-afsnij dimbaar 21012 0298 14";
+
+test("half geleverd artikelnummer wordt aangevuld tot aan het aantal", () => {
+  const regel = regelToSpecLine(
+    aanvraagRegel({ artikelnummer: "21012" }),
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    DRIVERREGEL,
+  );
+  expect(regel.reqArticleCode).toBe("21012 0298");
+  // Eén bron: de code op de regel komt uit hetzelfde veld, nooit meer twee waarheden.
+  expect(regel.fixtureCode).toBe("21012 0298");
+});
+
+test("een compleet artikelnummer blijft ongemoeid — nooit het aantal erbij", () => {
+  const regel = regelToSpecLine(
+    aanvraagRegel(),
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    DRIVERREGEL,
+  );
+  expect(regel.reqArticleCode).toBe("21012 0298");
+});
+
+test("het model spreekt zichzelf tegen → het artikelnummer wint van de armatuurcode", () => {
+  // Gemeten op de LUNELLE-regel: artikelnummer juist, armatuurcode een stuk uit de
+  // omschrijving. Vóór deze fix stond dat verkeerde stuk op het scherm.
+  const rij =
+    "Plafond semi-recessed LUNELLE 52 Clip LED6W 2700K Bruin Brons 92730 BRBB 32812 9220 BRBB 14";
+  const regel = regelToSpecLine(
+    aanvraagRegel({
+      armatuurcode: "92730 BRBB",
+      artikelnummer: "32812 9220 BRBB",
+      type: "Plafond semi-recessed LUNELLE 52 Clip LED6W 2700K Bruin Brons",
+      ruweTekst: rij,
+    }),
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    rij,
+  );
+  expect(regel.fixtureCode).toBe("32812 9220 BRBB");
+  expect(regel.reqArticleCode).toBe("32812 9220 BRBB");
+  // ⚠️ De linkergrens wordt NIET geraden: de omschrijving eindigt hier zelf op
+  // "92730 BRBB", dus naar links doorlopen zou dat meeslikken.
+  expect(regel.reqArticleCode).not.toContain("92730");
+});
+
+test("een armaturenboek levert geen artikelnummer en houdt zijn positiecode", () => {
+  const regel = regelToSpecLine(
+    regel301(),
+    1,
+    crypto.randomUUID(),
+    ["XAL"],
+    undefined,
+  );
+  expect(regel.fixtureCode).toBe("Lr301");
+  expect(regel.reqArticleCode).toBeNull();
+});
+
+function regel301(): OcrRegel {
+  return {
+    armatuurcode: "Lr301",
+    merk: "XAL",
+    type: "SASSO PRO 100",
+    ruweTekst: "Lr301 XAL SASSO PRO 100 3000K IP20",
+    codeValid: true,
+    aantal: null,
+  } as OcrRegel;
+}
+
+test("geen bewijsbare rechtergrens → niets verlengen", () => {
+  // Geen aantal gelezen: dan weten we niet waar het veld ophoudt. Een halve code is
+  // beter dan een code met de staart van de rij eraan geplakt.
+  const regel = regelToSpecLine(
+    aanvraagRegel({ artikelnummer: "21012", aantal: null }),
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    DRIVERREGEL,
+  );
+  expect(regel.reqArticleCode).toBe("21012");
+});
+
+test("aantal klopt niet met de staart van de rij → niets verlengen", () => {
+  const regel = regelToSpecLine(
+    aanvraagRegel({ artikelnummer: "21012", aantal: 7 }),
+    2,
+    crypto.randomUUID(),
+    ["Deltalight"],
+    DRIVERREGEL, // eindigt op "14", niet op "7"
+  );
+  expect(regel.reqArticleCode).toBe("21012");
+});
