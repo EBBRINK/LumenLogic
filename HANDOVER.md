@@ -5403,17 +5403,21 @@ _→ **Besluit Timo, 13 aug (via sprintmaster matchstation): (b) — de reconstr
 machine leest wat de app ook las._
 
 _2. **Vercel Cron op Hobby draait hooguit 1×/dag — geverifieerd via de OIDC-token in
-`.env.local` (`"plan":"hobby"`), niet aangenomen.** `vercel.json` staat op `*/5 * * * *`
-(de bedoelde cadans voor de dood-melding), maar Hobby degradeert dat stilzwijgend naar
-1×/dag — dan meldt de dood-melding een stilgevallen machine tot 24 uur te laat, precies
-het scenario dat Henk's review "zonder dit niet live" noemde. Twee routes: Pro-upgrade,
-of een externe cron (cron-job.org, GitHub Actions, UptimeRobot — wat dan ook) die elke
-5 min `GET /api/matchstation/healthcheck` aanroept met
-`Authorization: Bearer $CRON_SECRET`. De endpoint zelf en zijn logica zijn gebouwd en
-getest; alleen de 5-minuten-trigger op Vercel zelf is een blokkade./_
+`.env.local` (`"plan":"hobby"`), niet aangenomen.** `vercel.json` stond op
+`*/5 * * * *` (de bedoelde cadans voor de dood-melding). **Correctie op de eerste versie
+van deze aanname:** Hobby degradeert een te frequent cron-schema NIET stilzwijgend naar
+1×/dag — hij weigert de hele DEPLOYMENT. Gemeten na de push van 13 aug: het GitHub
+check-suite van Vercel bleef `queued` zonder één check-run, en er verscheen geen nieuwe
+deployment in `vercel ls` — geen platformstoring, gewoon een geweigerde build zonder
+zichtbare foutmelding in GitHub (bevestigd tegen Vercel's eigen documentatie over dit
+gedrag). `vercel.json` is daarom weer VERWIJDERD — er stond toch niets anders in — en
+de dood-melding leunt uitsluitend op een externe trigger. De endpoint zelf en zijn
+logica (`findDeadAlerts`/`sendDeadAlert`, `GET /api/matchstation/healthcheck`) zijn
+ongewijzigd gebouwd en getest; alleen de Vercel-cron-route is geschrapt./_
 _→ **Besluit Timo, 13 aug (via sprintmaster matchstation): externe gratis cron**
 (bijv. cron-job.org) die elke 5 min het healthcheck-endpoint aanroept met het
-cron-secret. Inrichten hoort bij de livegang-checklist van M2._
+cron-secret (`Authorization: Bearer $CRON_SECRET`). Inrichten hoort bij de
+livegang-checklist van M2 — er is geen `vercel.json` meer die dit zelf regelt._
 
 _3. **Twee brondocumenten sluiten niet naadloos op elkaar aan, en `applyMatchstationResult`
 kiest een kant.** `goal-agent-matching.md`s antwoordcontract is geschreven voor een agent
