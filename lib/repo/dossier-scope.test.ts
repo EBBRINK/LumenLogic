@@ -62,6 +62,18 @@ const DEUREN = [
  */
 const VERVOLGSTAPPEN = ["/lib/ai/vangnet.ts"];
 
+/**
+ * Sprint M1 (docs/plan-matchstation-eigen-machine.md): het matchstation is een intern
+ * SYSTEEMaccount (machine-sleutel, lib/machine-auth.ts), geen mensensessie en dus ook
+ * geen `Toegang`/`DossierScope` — die begrippen bestaan voor organisatie-lidmaatschap,
+ * en een machine is van geen enkele organisatie lid. `getDossierForMatchstation` ziet
+ * daarom elk dossier dat in de wachtrij staat, by design en niet per ongeluk. Dit is
+ * geen vervolgstap op al bewezen toegang (VERVOLGSTAPPEN hierboven) — het is een
+ * ANDER toegangsmodel, met zijn eigen poort (machine-sleutel vóór elke databaseaanraking,
+ * geverifieerd in app/api/matchstation/*.test.ts).
+ */
+const MACHINE_TOEGANG = ["/lib/repo/matchstation.ts"];
+
 function isTestinfrastructuur(pad: string): boolean {
   if (/\.test\.tsx?$/.test(pad)) return true;
   if (/-stubs\.tsx?$/.test(pad) && !pad.startsWith("/app/")) return true;
@@ -76,9 +88,15 @@ export function scopeOvertredingenIn(pad: string, bron: string): string[] {
 
   const isDeur = DEUREN.some((d) => pad.endsWith(d));
   const isVervolg = VERVOLGSTAPPEN.some((d) => pad.endsWith(d));
+  const isMachine = MACHINE_TOEGANG.some((d) => pad.endsWith(d));
 
   // 1. Een vijfde deur: rechtstreeks van de tabel lezen buiten de scoping-laag om.
-  if (!isDeur && !isVervolg && /\.\s*from\s*\(\s*projectDossiers\s*[),]/.test(bron)) {
+  if (
+    !isDeur &&
+    !isVervolg &&
+    !isMachine &&
+    /\.\s*from\s*\(\s*projectDossiers\s*[),]/.test(bron)
+  ) {
     gevonden.push("leest rechtstreeks uit projectDossiers");
   }
 

@@ -35,6 +35,10 @@ export type EstimateLine = {
   // B3: match gekozen door het systeem (chosenBy='system:auto') → label
   // "automatisch geaccepteerde bijna-match" bij de afwijkingsnotitie (scherm + PDF).
   autoAccepted?: boolean;
+  // Sprint M1: match gekozen door het matchstation (chosenBy='system:matchstation') →
+  // eigen label, geen mensenkeuze. Zie de kop van spec-line-table.tsx voor dezelfde fix
+  // op de regeltabel — gemeten tijdens de M1-af-toets (HANDOVER.md).
+  matchstationChosen?: boolean;
   // Stap 7 (herontwerp 2026-07-14): match gekozen door een mens (review-keuze,
   // kandidaat of handmatige link) → merkteken "handmatig gekozen" (scherm + PDF).
   manuallyChosen?: boolean;
@@ -383,7 +387,11 @@ export async function getEstimateData(
       brandText: r.brandText,
       productText: r.productText,
       autoAccepted: r.chosenBy === "system:auto",
-      manuallyChosen: r.chosenBy != null && r.chosenBy !== "system:auto",
+      matchstationChosen: r.chosenBy === "system:matchstation",
+      manuallyChosen:
+        r.chosenBy != null &&
+        r.chosenBy !== "system:auto" &&
+        r.chosenBy !== "system:matchstation",
     };
   });
 

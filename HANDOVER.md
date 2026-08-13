@@ -5361,3 +5361,149 @@ _5. **Gepusht via `scripts/safe-push.sh`** (12 aug, op akkoord van Timo). De eer
 botste: `origin/main` was intussen verschoven en `HANDOVER.md` gaf een append/append-conflict
 met de template-upload-sessie. Beide blokken staan er nu; er is niets van die sessie
 overschreven._
+
+---
+
+_2026-08-13. **Sprint M1 — matchstation-endpoints (app-kant).**
+`docs/plan-matchstation-eigen-machine.md` + `docs/goal-agent-matching.md`. Gebouwd: een
+wachtrij met claim/lease (`matchstation_queue`, migratie 0022), een ophaal-endpoint
+(`GET /api/matchstation/werk`) en een terugstuur-endpoint
+(`POST /api/matchstation/resultaat`) — machine-sleutel-auth (`lib/machine-auth.ts`,
+constant-time via Web Crypto, niet `node:crypto` — de testsuite draait in de browser),
+statusmapping volgens het contract + het besluit van 13 aug (`meerdere` → geel, niet
+open), eigen kostenplafond (`MATCHSTATION_MAX_EUR_PER_RUN`, purpose-gefilterd, los van
+`OCR_MAX_EUR_PER_RUN`), heartbeat + dood-melding
+(`GET /api/matchstation/healthcheck`, cron-secret-auth). Nieuwe repo-laag
+`lib/repo/matchstation.ts`, 25 tests (PGlite) + 23 route-tests
+(`app/api/matchstation/**/*.test.ts`, harnas = PGlite achter een proxy op `@/db/client`,
+zelfde vorm als `app/projects/actions-validation.test.ts`). Eén UI-toevoeging: een
+intern-only "Matchstation"-kaart op de projectpagina
+(`components/dossier/matchstation-card.tsx`, met screenshot-test) om een dossier in de
+wachtrij te zetten — actie `enqueueForMatchstationAction`.
+
+**Aannames en open eindes (belangrijkste bovenaan):**
+
+_1. **Het originele geüploade bestand (PDF/Excel/Word) bestaat NERGENS in de app —
+geverifieerd, geen aanname.** `app/projects/actions.ts:236-241` (413-fix): de PDF wordt
+in de BROWSER geparst en de bytes gaan nooit naar de server. Een Excel/Word-uploadpad
+bestaat niet. Het ophaal-endpoint geeft daarom niet "het document" terug maar de beste
+reconstructie die er wél is: de markdown-tekstlaag (`import_runs.raw_markdown`) bij een
+tekst-PDF, of de gerenderde OCR-paginabeelden (`ocr_page_images`, via een nieuw
+machine-auth-endpoint `GET /api/matchstation/document/[runId]/[page]/[tile]`) bij een
+beeld-PDF — plus een `warning`-veld in elk antwoord dat dit met zoveel woorden zegt.
+Geen enkele van de twee bestaat voor een dossier zonder eerdere import (CSV/handmatig).
+**Dit raakt M2 fundamenteel**: het plan zegt letterlijk "Claude leest het document zelf",
+maar er ís voor M2 geen bestand om te lezen tenzij er eerst een importstap heeft
+gedraaid. Besluit nodig van Timo: (a) alsnog byte-opslag bouwen voor het
+matchstation-pad specifiek (raakt de 413-fix-afweging, een nieuwe, kleinere upload los
+van de bestaande pijplijn), of (b) M2 ontwerpen op de markdown/paginabeelden in plaats
+van het originele bestand._
+
+_2. **Vercel Cron op Hobby draait hooguit 1×/dag — geverifieerd via de OIDC-token in
+`.env.local` (`"plan":"hobby"`), niet aangenomen.** `vercel.json` staat op `*/5 * * * *`
+(de bedoelde cadans voor de dood-melding), maar Hobby degradeert dat stilzwijgend naar
+1×/dag — dan meldt de dood-melding een stilgevallen machine tot 24 uur te laat, precies
+het scenario dat Henk's review "zonder dit niet live" noemde. Twee routes: Pro-upgrade,
+of een externe cron (cron-job.org, GitHub Actions, UptimeRobot — wat dan ook) die elke
+5 min `GET /api/matchstation/healthcheck` aanroept met
+`Authorization: Bearer $CRON_SECRET`. De endpoint zelf en zijn logica zijn gebouwd en
+getest; alleen de 5-minuten-trigger op Vercel zelf is een blokkade./_
+
+_3. **Twee brondocumenten sluiten niet naadloos op elkaar aan, en `applyMatchstationResult`
+kiest een kant.** `goal-agent-matching.md`s antwoordcontract is geschreven voor een agent
+DIE AL IN `runMatcher(db, specLineId, …)` zit — er bestaat dus altijd al een spec-regel.
+Het matchstation-plan zegt daarentegen "geen parse-stap die eerst spec-regels moet
+maken". De POST-body ondersteunt daarom BEIDE: `spec_line_id` (bestaande regel vullen)
+óf `fixture_code` (regel ter plekke aanmaken, `source: "llm"`). Welke van de twee M2
+gaat gebruiken is niet mijn beslissing — zie de kop van `lib/repo/matchstation.ts`._
+
+_4. **`review_kind` kreeg twee nieuwe pg-enum-waarden** (`onzeker`, `niet_beoordeeld`,
+via `ALTER TYPE … ADD VALUE` in migratie 0022) in plaats van een aparte tekstkolom.
+Precedent in migratie 0006 koos destijds bewust "geen ALTER TYPE ADD VALUE, alles
+nieuw" — maar dat was voor twee GEHEEL NIEUWE kolommen zonder bestaande data;
+`review_kind` heeft al rijen en code die op de vier oude waarden matcht. `ALTER TYPE …
+ADD VALUE` is op Postgres 12+ een gewone, niet-blokkerende operatie. Wie een aparte
+tekstkolom had verwacht: dat kan alsnog, dit was de kleinere ingreep. Zie de motivering
+in `db/migrations/0022_matchstation.sql`._
+
+_5. **Geen mailprovider, dus geen echte mail/push.** Zelfde open punt als de magic-link
+(`lib/auth-factory.ts`, "geen e-mailprovider in deze fase"). De dood-melding
+(`sendDeadAlert`) post naar `MATCHSTATION_ALERT_WEBHOOK_URL` als die gezet is (generiek —
+Slack/Discord/ntfy/Zapier, wat dan ook een webhook aanneemt); zonder die env-var valt hij
+terug op `console.error` + een `events`-rij, zodat een melding nooit spoorloos is, maar
+"iemand kijkt in de Vercel-logs" is geen actieve melding. Openstaand besluit: een
+webhook-URL kiezen, of alsnog een mailprovider._
+
+_6. **Een bug gevonden ÉN gerepareerd tijdens de af-toets** (niet alleen gemeld — dit
+raakte de eigen deliverable van deze sprint rechtstreeks): `components/dossier/
+spec-line-table.tsx`, `lib/repo/estimate.ts` en de vier renderpaden die daarvan afhangen
+(`quote-view.tsx`, `quote-view-extern.tsx`, `lib/pdf/estimate.ts`,
+`lib/pdf/estimate-extern.ts`) gingen ervan uit dat `chosenBy` maar twee waarden kent:
+`"system:auto"` of een mensen-e-mailadres → "manually chosen". Met
+`chosenBy: "system:matchstation"` viel een machinematch dus ten onrechte in de
+"manually chosen"-tak. Gemeten op het estimate-scherm tijdens de af-toets hieronder
+(AT-001 toonde "manually chosen" voor een match die het matchstation zonet had gezet).
+Gerepareerd: een derde tak `matchstationChosen` op alle vijf plekken, met het label
+"matched by the matchstation". Alle bestaande tests (estimate, pdf, screens) bleven
+groen; geen nieuwe testfout blootgelegd door de reparatie._
+
+_7. **`.env.local` is een symlink naar de hoofdrepo** (gedeeld over alle worktrees). Ik
+heb er `MATCHSTATION_MACHINE_KEY` en `CRON_SECRET` aan toegevoegd (test-waarden, puur
+lokaal, nooit gecommit) voor de af-toets hieronder. Vóór livegang moeten de ECHTE
+sleutels als Vercel-project-env (Production + Preview) gezet worden — niet in dit
+bestand._
+
+_8. **Volle testsuite: twee bestanden falen soms onder volle load, geen van beide door
+mijn wijzigingen.** `components/data/custom-fields.test.tsx` en (wisselend, één van)
+`components/dossier/review.test.tsx` / `lib/repo/dossier-scope.test.ts` gaven een
+timeout in de volledige `vitest run` (drie keer gedraaid, telkens twee andere
+bestanden), maar draaien foutloos in isolatie. Geen van beide bestanden is door deze
+sprint aangeraakt — resource-contentie in deze sandbox onder de volle browser-suite
+(2086 tests), geen regressie. `typecheck` is schoon; alle matchstation-tests (25 repo +
+23 route + 10 screenshot) zijn stabiel groen, ook binnen de volle run._
+
+**Af-toets, zoals uitgevoerd (naspeelbaar):**
+
+1. Migratie toegepast op de dev-Neon: `bun run db:migrate` (0022 toegepast, 21
+   voorgaande al aanwezig).
+2. Testdossier + twee regels + enqueue via een wegwerpscript
+   (`lib/repo/dossiers.ts#createDossier/addSpecLines` +
+   `lib/repo/matchstation.ts#enqueueDossierForMatching`) — dossier-id
+   `188c3be5-edc4-451e-9665-723a7998f2b4` ("M1 af-toets — 13 aug 2026", staat nog in de
+   dev-database; gerust op te ruimen).
+3. Ophalen + claimen:
+   ```
+   curl -i http://localhost:3000/api/matchstation/werk \
+     -H "x-matchstation-key: lokale-test-sleutel-niet-voor-productie"
+   ```
+   → 200, met `job.queueId`, dossier, `existingLines` en het `document`-blok (leeg +
+   de eerlijkheids-`warning`, want dit dossier heeft geen import). Zonder sleutel → 401.
+   Nogmaals aanroepen tijdens de geldige lease → 204 (geen tweede claim).
+4. Terugsturen — regel 1 `gevonden` (een echt zichtbaar product, Flos Bellhop Glass C2),
+   regel 2 `merk_ontbreekt`:
+   ```
+   curl -i -X POST http://localhost:3000/api/matchstation/resultaat \
+     -H "x-matchstation-key: lokale-test-sleutel-niet-voor-productie" \
+     -H "content-type: application/json" \
+     -d '{"queue_id":"<queueId>","regels":[
+       {"spec_line_id":"<lineA>","uitkomst":"gevonden","product_id":"<productId>",
+        "prijs":"845.00","prijs_vast":true,"toelichting":"Exacte naam- en merktreffer.",
+        "bewijs":{"merk_bevestigd":"Flos","naam_treffer":"exact","kandidaten_over":1}},
+       {"spec_line_id":"<lineB>","uitkomst":"merk_ontbreekt",
+        "toelichting":"Onbekend Merk XYZ staat niet in de catalogus."}
+     ]}'
+   ```
+   → 200, `verwerkt: 2`.
+5. Gecontroleerd, ingelogd als `timo@jouwainstein.com` (magic link via de dev-console):
+   - Lijst-tab: regel 1 groen, Flos Bellhop Glass C2, "matched by the matchstation";
+     regel 2 blauw. (Dit is waar de chosenBy-bug in punt 6 hierboven zichtbaar werd en
+     gerepareerd is.)
+   - Estimate-tab: regel 1 telt mee (€ 845,00), regel 2 staat op "p.m." (niet
+     meegeteld) — precies de estimate-filter uit dossiers.ts:524-528.
+   - Events (directe query): `matchstation_enqueued`, `matchstation_auth_denied` (van de
+     401-test), twee× `matchstation_result_applied` met het volledige `bewijs`.
+   - `brand_load_queue`: "Onbekend Merk XYZ" staat erop (frequency 1) — het
+     inkoopsignaal werkt via dit pad net als via de deterministische matcher.
+6. Cron-check: `GET /api/matchstation/healthcheck` met `Authorization: Bearer
+   lokale-cron-test-sleutel-niet-voor-productie` → `{"alerted":0}` (de job is 'verwerkt',
+   geen stille alarm)._

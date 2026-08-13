@@ -27,6 +27,11 @@ import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
 import analyticsMerkgatSql from "./migrations/0018_analytics_merkgat_index.sql?raw";
 import orgTypeActivatieSql from "./migrations/0019_org_type_activatie.sql?raw";
 import gevraagdArtikelnummerSql from "./migrations/0020_gevraagd_artikelnummer.sql?raw";
+// 0021 (alias Tekna Nautic) zaait via een SELECT-gebonden INSERT niets in een verse
+// test-DB en levert geen schema-verschil op — daarom hier bewust niet meegenomen (zelfde
+// afweging als 0010/0012 hierboven). 0022 verandert wél het schema (matchstation_queue,
+// llm_usage.matchstation_job_id, review_kind + 2 waarden) en moet dus wel mee.
+import matchstationSql from "./migrations/0022_matchstation.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -77,6 +82,9 @@ export async function createTestDb(): Promise<TestDb> {
   // 0020: spec_lines.req_article_code — het gevraagde leveranciersartikelnummer, het veld
   // waarop de matcher als eerste matcht (docs/goal-artikelnummer-matching.md).
   await client.exec(gevraagdArtikelnummerSql);
+  // 0022: matchstation_queue + llm_usage.matchstation_job_id + review_kind uitgebreid
+  // met 'onzeker'/'niet_beoordeeld' (sprint M1, docs/plan-matchstation-eigen-machine.md).
+  await client.exec(matchstationSql);
   return drizzle(client, { schema });
 }
 

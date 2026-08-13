@@ -60,9 +60,15 @@ export function SpecLineTable({
           );
           // B3: door het systeem geaccepteerde bijna-match → subtiel label bij de notitie.
           const autoAccepted = l.chosenBy === "system:auto";
+          // Sprint M1: het matchstation is ook een systeem, geen mens — zonder deze tak
+          // viel "system:matchstation" in de manuallyChosen-vangnet hieronder en toonde
+          // de regel "manually chosen" voor een machinematch (gemeten tijdens de
+          // af-toets van M1, zie HANDOVER.md).
+          const matchstationChosen = l.chosenBy === "system:matchstation";
           // Stap 7 (herontwerp 2026-07-14): een mens koos de match (review-keuze,
           // kandidaat of handmatige link) → merkteken "handmatig gekozen".
-          const manuallyChosen = l.chosenBy != null && l.chosenBy !== "system:auto";
+          const manuallyChosen =
+            l.chosenBy != null && l.chosenBy !== "system:auto" && !matchstationChosen;
           return (
             <Fragment key={l.id}>
               <TableRow>
@@ -124,7 +130,10 @@ export function SpecLineTable({
                   </div>
                 </TableCell>
               </TableRow>
-              {(notable.length > 0 || autoAccepted || manuallyChosen) && (
+              {(notable.length > 0 ||
+                autoAccepted ||
+                matchstationChosen ||
+                manuallyChosen) && (
                 <TableRow className="border-0">
                   <TableCell />
                   <TableCell colSpan={6} className="pt-0 text-xs text-muted-foreground">
@@ -153,6 +162,12 @@ export function SpecLineTable({
                       <span className="italic">
                         {notable.length > 0 && " — "}
                         automatically accepted near-match
+                      </span>
+                    )}
+                    {matchstationChosen && (
+                      <span className="italic">
+                        {notable.length > 0 && " — "}
+                        matched by the matchstation
                       </span>
                     )}
                     {manuallyChosen && (

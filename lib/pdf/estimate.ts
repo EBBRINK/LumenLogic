@@ -248,6 +248,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         const hasSubLine =
           notable.length > 0 ||
           !!line.autoAccepted ||
+          !!line.matchstationChosen ||
           !!line.manuallyChosen ||
           expiredNote != null;
         const rowH = 13 + (hasSubLine ? 10 : 0);
@@ -294,6 +295,7 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
           if (notable.length > 0)
             parts.push(`deviation: ${notable.map((d) => d.note).join(" · ")}`);
           if (line.autoAccepted) parts.push("automatically accepted near-match");
+          if (line.matchstationChosen) parts.push("matched by the matchstation");
           if (line.manuallyChosen) parts.push("manually chosen");
           const note = parts.join(" — ");
           text(fit(note, CONTENT_W - (COL.name.x - MARGIN), regular, 7.5), COL.name.x, {

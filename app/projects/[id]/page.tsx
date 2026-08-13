@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { AddSpecLineForm } from "@/components/dossier/add-spec-line-form";
+import { MatchstationCard } from "@/components/dossier/matchstation-card";
 import { PdfUploadCard } from "@/components/dossier/pdf-upload-card";
 import { SpecLineTable } from "@/components/dossier/spec-line-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDossier, getSpecLines } from "@/lib/repo/dossiers";
 import { getOpenOcrRun } from "@/lib/repo/ocr";
+import { getLatestQueueEntry } from "@/lib/repo/matchstation";
 import type { SpecLineRow } from "@/components/dossier/types";
 import { requireUuid } from "@/lib/uuid";
 import {
@@ -15,6 +17,7 @@ import {
   addSpecLineAction,
   deleteLineAction,
   finishOcrAction,
+  enqueueForMatchstationAction,
   importArmaturenboekPagesAction,
   linkBestekAction,
   ocrPageAction,
@@ -61,6 +64,11 @@ export default async function RegelsTab({
   // B5: een OCR-run die 'bezig' bleef (tab dichtgeklapt) → de upload-kaart toont
   // een hervat-knop. Bytes-vrije query (B2) — dit draait op elke paginaweergave.
   const pendingOcr = await getOpenOcrRun(db, id);
+  // Sprint M1: het matchstation-blok is intern-only (Brink's eigen werkvoorraad, geen
+  // klanthandeling) — dus ook de query alleen voor intern, geen zinloze lookup voor
+  // elke externe paginaweergave.
+  const matchstationQueueEntry =
+    toegang.soort === "intern" ? await getLatestQueueEntry(db, id) : null;
 
   return (
     <>
@@ -186,6 +194,16 @@ export default async function RegelsTab({
           </form>
         </CardContent>
       </Card>
+
+      {/* Sprint M1 (docs/plan-matchstation-eigen-machine.md): intern-only blok, zelfde
+          conventie als de interne blokken op /settings ("intern? toon"). */}
+      {toegang.soort === "intern" && (
+        <MatchstationCard
+          dossierId={dossier.id}
+          entry={matchstationQueueEntry}
+          enqueueAction={enqueueForMatchstationAction}
+        />
+      )}
     </>
   );
 }

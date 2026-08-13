@@ -199,7 +199,10 @@ function LineRows({ line, nr }: { line: PricelessLine; nr: number }) {
   const displayName = line.productName ?? (requestedText(line) || "—");
   const notable = notableDeviations(line);
   const hasMarks =
-    notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
+    notable.length > 0 ||
+    !!line.autoAccepted ||
+    !!line.matchstationChosen ||
+    !!line.manuallyChosen;
 
   return (
     <>
@@ -249,6 +252,12 @@ function LineRows({ line, nr }: { line: PricelessLine; nr: number }) {
               <span className="italic">
                 {notable.length > 0 && " — "}
                 automatically accepted near-match
+              </span>
+            )}
+            {line.matchstationChosen && (
+              <span className="italic">
+                {notable.length > 0 && " — "}
+                matched by the matchstation
               </span>
             )}
             {line.manuallyChosen && (

@@ -113,11 +113,20 @@ export const specSource = pgEnum("spec_source", [
   "llm",
 ]);
 // Review-soorten (D-01): wat voor mensenkeuze een regel nodig heeft.
+// 'onzeker' en 'niet_beoordeeld' (migratie 0022): de twee nieuwe review-redenen die het
+// matchstation toevoegt naast de vier van de deterministische engine —
+// docs/goal-agent-matching.md, contract-tabel. 'onzeker' = de agent kon geen van de
+// harde uitkomsten hard maken; 'niet_beoordeeld' = het kostenplafond is geraakt vóór de
+// regel aan de beurt kwam. Beide zijn eigen waarden en geen hergebruik van 'geel': een
+// mens moet ze anders behandelen (opnieuw laten draaien vs. een budgetbesluit), en de
+// review-wachtrij zou anders niet kunnen onderscheiden waaróm een regel er ligt.
 export const reviewKind = pgEnum("review_kind", [
   "geel",
   "variant",
   "onvolledig",
   "ocr",
+  "onzeker",
+  "niet_beoordeeld",
 ]);
 // Rollen als "petten" (L-03/04): meerdere per persoon. Rol bepaalt de default-view,
 // nooit wat de engine toont (dat is de fase). org_admin beheert leden.
@@ -689,6 +698,52 @@ export const brandLoadQueue = pgTable(
   (t) => [uniqueIndex("brand_load_queue_key_uniq").on(t.brandKey)],
 );
 
+// ── Matchstation (sprint M1, plan-matchstation-eigen-machine.md) ─────────────
+// De wachtrij + claim/heartbeat-toestand voor het externe matchstation (een Claude
+// Code-sessie op een eigen machine, M2 — nog niet gebouwd). Bewust een EIGEN tabel en
+// geen extra project_status-waarde: project_status stuurt al offertegeneratie,
+// derivePhase en de XIS-fase, en "in de wachtrij voor het matchstation" is daar
+// orthogonaal aan (een dossier blijft gewoon 'concept' terwijl het wacht). Zelfde
+// keuze als brand_load_queue hierboven: een losse werkvoorraad-tabel in plaats van een
+// vijfde betekenis in een enum die overal anders gelezen wordt.
+//
+// `status` is bewust text en geen pg-enum, zelfde reden als import_runs.ocr_status
+// (regel daarboven): dit is interne voortgang, geen klantzichtbare waarde, en een
+// enum-wijziging kost op Neon een aparte ALTER TYPE. 'wachtend' | 'geclaimd' | 'verwerkt'.
+//
+// Claim/verval (M1-eis: nooit twee machines hetzelfde dossier, claim verloopt na een
+// redelijke termijn): `claimedAt` + `leaseUntil` samen zijn de lease. Het ophaal-endpoint
+// verlengt niet — hij zet in één atomaire SQL-instructie (CTE) de oudste 'wachtend'-rij
+// (of een verlopen 'geclaimd'-rij) om naar 'geclaimd' met een nieuwe lease. Zie
+// lib/repo/matchstation.ts (`claimNextDossier`).
+//
+// `deadAlertSentAt` voorkomt dat de dood-melding (Henk, plandocument) bij elke cron-tik
+// opnieuw afgaat zolang dezelfde claim blijft hangen — één melding per stilgevallen job,
+// niet één per 5 minuten.
+export const matchstationQueue = pgTable(
+  "matchstation_queue",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dossierId: uuid("dossier_id")
+      .notNull()
+      .references(() => projectDossiers.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("wachtend"),
+    enqueuedAt: timestamp("enqueued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    enqueuedBy: text("enqueued_by"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    resultReceivedAt: timestamp("result_received_at", { withTimezone: true }),
+    deadAlertSentAt: timestamp("dead_alert_sent_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("matchstation_queue_status_idx").on(t.status, t.enqueuedAt),
+    index("matchstation_queue_dossier_idx").on(t.dossierId),
+  ],
+);
+
 export const quotes = pgTable("quotes", {
   id: uuid("id").primaryKey().defaultRandom(),
   dossierId: uuid("dossier_id")
@@ -921,6 +976,16 @@ export const llmUsage = pgTable("llm_usage", {
   importRunId: uuid("import_run_id").references(() => importRuns.id, {
     onDelete: "set null",
   }),
+  // M1: eigen kostenplafond voor het matchstation, los van OCR_MAX_EUR_PER_RUN — dat
+  // plafond somt vandaag ALLE llm_usage van een import_run_id zonder purpose-filter
+  // (lib/ai/ocr.ts:557-566, geverifieerd; zie HANDOVER.md), dus meetellen op dezelfde
+  // kolom zou de twee plafonds laten interfereren. matchstationJobId wijst naar de
+  // wachtrijrij (matchstation_queue.id) die de kosten maakte; het plafond in
+  // lib/repo/matchstation.ts telt hierop, gefilterd op purpose = 'matching'.
+  matchstationJobId: uuid("matchstation_job_id").references(
+    () => matchstationQueue.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

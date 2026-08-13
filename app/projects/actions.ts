@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { brands, reviewKind } from "@/db/schema";
+import { brands } from "@/db/schema";
 // Invoervalidatie: elke action die hier wordt aangeraakt gaat om naar een schema-parse.
 // De conventie staat in docs/INVOERVALIDATIE.md.
 import {
@@ -64,6 +64,7 @@ import { parseSpecLinesFromPages } from "@/lib/pdf/armaturenboek";
 import { logEvent } from "@/lib/repo/events";
 import { getActor } from "@/lib/session";
 import { bewaakProject } from "@/lib/project-poort";
+import { enqueueDossierForMatching } from "@/lib/repo/matchstation";
 
 function intOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
@@ -568,6 +569,23 @@ export async function runMatchAction(formData: FormData) {
   revalidatePath(`/projects/${dossierId}`);
 }
 
+// Sprint M1 (docs/plan-matchstation-eigen-machine.md): dossier in de wachtrij zetten
+// voor het matchstation (de EliteDesk, M2 — nog niet gebouwd). Intern-only: dit is
+// Brink's eigen werkvoorraad, geen klanthandeling — vergelijkbaar met de andere
+// interne blokken op /settings ("intern? toon", niet "extern? verberg"). Idempotent
+// (enqueueDossierForMatching wijst een dubbele wachtrij-entry zelf af); geen foutmelding
+// nodig bij een dubbelklik, gewoon revalidaten.
+export async function enqueueForMatchstationAction(formData: FormData) {
+  const { toegang, scope } = await bewaakProject(formData);
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  if (!dossierId || toegang.soort !== "intern") {
+    revalidatePath(`/projects/${dossierId}`);
+    return;
+  }
+  await enqueueDossierForMatching(db, dossierId, await getActor());
+  revalidatePath(`/projects/${dossierId}`);
+}
+
 // Kandidaat kiezen (regel-detail 3.6). Uit lijst 2 is een reden verplicht.
 export async function chooseCandidateAction(formData: FormData) {
   const { toegang, scope } = await bewaakProject(formData);
@@ -706,12 +724,18 @@ export async function linkManualProductAction(formData: FormData) {
 // 500. De UPDATE faalde netjes atomair en app/error.tsx ving hem af, dus er ging niets
 // stuk — maar een 500 is nooit het goede antwoord op slechte invoer. Nu een schema-parse
 // volgens docs/INVOERVALIDATIE.md; onbekende invoer verandert simpelweg niets.
-// De toegestane waarden komen uit de pgEnum zelf (db/schema.ts), niet uit een
-// handgeschreven lijst: één bron, dus een nieuwe review-soort kan hier niet vergeten worden.
+//
+// ⚠️ Sinds sprint M1 (docs/goal-agent-matching.md) heeft review_kind twee extra waarden,
+// 'onzeker' en 'niet_beoordeeld' — maar die zijn UITSLUITEND een uitkomst van het
+// matchstation (lib/repo/matchstation.ts, applyMatchstationResult), nooit een keuze die
+// een mens hier handmatig zet. Vandaar een vaste lijst en niet langer
+// `reviewKind.enumValues`: de oude "één bron"-redenering ging op zolang de enum alleen
+// mensen-triggerbare soorten had, en dat is niet meer zo.
+const HUMAN_REVIEW_KINDS = ["geel", "variant", "onvolledig", "ocr"] as const;
 const flagReviewSchema = z.object({
   dossierId: zUuid,
   specLineId: zUuid,
-  kind: zEnumFrom(reviewKind.enumValues),
+  kind: zEnumFrom(HUMAN_REVIEW_KINDS),
 });
 
 export async function flagReviewAction(formData: FormData) {

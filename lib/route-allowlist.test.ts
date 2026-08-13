@@ -116,7 +116,7 @@ test("elke niet-open route bewaakt zichzelf, met precies zijn eigen route", () =
   ).toEqual([]);
 });
 
-test("de open routes zijn er precies vier, en ze staan hier met naam", () => {
+test("de open routes zijn er precies acht, en ze staan hier met naam", () => {
   // Dit is de uitzonderingslijst, en die hoort niet stilletjes te groeien. `/login` en
   // `/activate` móéten zonder sessie werken (je komt er juist om er een te krijgen) en
   // `/api/auth/[...all]` ís het auth-endpoint zelf — die drie kunnen per definitie niet
@@ -128,6 +128,12 @@ test("de open routes zijn er precies vier, en ze staan hier met naam", () => {
   // gehouden — hij raakt de database aan maar geeft alleen `{"status":"ok"}` terug, en
   // `app/api/health/health.test.ts` pint vast dat er geen tabelnaam, adres of
   // foutmelding in het antwoord kan lekken.
+  //
+  // Vier matchstation-routes erbij (sprint M1, docs/plan-matchstation-eigen-machine.md):
+  // zelfde soort als /api/health — geen mensensessie, want het is een machine-account.
+  // "open" is hier dus NIET "onbewaakt": elke route controleert zelf een machine-
+  // sleutel (of cron-secret) vóór er iets van de database gelezen wordt, zie
+  // lib/machine-auth.ts en lib/repo/matchstation.test.ts.
   const open = Object.entries(ROUTE_NIVEAUS)
     .filter(([, n]) => n === "open")
     .map(([r]) => r)
@@ -136,6 +142,10 @@ test("de open routes zijn er precies vier, en ze staan hier met naam", () => {
     "/activate",
     "/api/auth/[...all]",
     "/api/health",
+    "/api/matchstation/document/[runId]/[page]/[tile]",
+    "/api/matchstation/healthcheck",
+    "/api/matchstation/resultaat",
+    "/api/matchstation/werk",
     "/login",
   ]);
 });

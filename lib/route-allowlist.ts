@@ -84,6 +84,15 @@ export const ROUTE_NIVEAUS = {
   // De uptime-monitor logt niet in. Geeft alleen {"status":"ok"} terug — geen data,
   // geen versie, geen foutreden; zie de kop van app/api/health/route.ts.
   "/api/health": "open",
+  // Sprint M1 (docs/plan-matchstation-eigen-machine.md): het matchstation is een
+  // machine-account, geen mensensessie — "open" betekent hier dus NIET onbewaakt,
+  // net zoals /api/health hierboven. De echte poort is de machine-sleutel
+  // (lib/machine-auth.ts, verifyMachineKey) resp. de cron-secret (verifyCronSecret),
+  // gecontroleerd IN elke route zelf, vóór er iets van de database gelezen wordt.
+  "/api/matchstation/werk": "open",
+  "/api/matchstation/resultaat": "open",
+  "/api/matchstation/healthcheck": "open",
+  "/api/matchstation/document/[runId]/[page]/[tile]": "open",
 
   // ── Iedereen: projecten (org-gescoped), catalogus, eigen instellingen ───────
   "/": "iedereen", // redirect naar /projects; leest zelf niets

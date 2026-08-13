@@ -345,7 +345,10 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
   // die toont dan de catalogusprijs, of "—" als er niets is om op terug te vallen.
   const expiredNote = dayPriceExpiredNote(line);
   const hasOtherMarks =
-    notable.length > 0 || !!line.autoAccepted || !!line.manuallyChosen;
+    notable.length > 0 ||
+    !!line.autoAccepted ||
+    !!line.matchstationChosen ||
+    !!line.manuallyChosen;
 
   return (
     <>
@@ -412,6 +415,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
               <span className="italic">
                 {notable.length > 0 && " — "}
                 automatically accepted near-match
+              </span>
+            )}
+            {line.matchstationChosen && (
+              <span className="italic">
+                {notable.length > 0 && " — "}
+                matched by the matchstation
               </span>
             )}
             {line.manuallyChosen && (

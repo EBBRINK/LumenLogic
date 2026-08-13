@@ -125,4 +125,17 @@ export function parseForm<T>(
   return { ok: false, error: `${pad}: ${eerste?.message ?? "ongeldig"}` };
 }
 
+// De JSON-tegenhanger van parseForm (M1, matchstation-endpoints): dezelfde belofte —
+// nooit throwen, nooit de ingezonden waarde in de foutmelding — maar voor route-handlers
+// die een JSON-body ontvangen (machine-naar-machine) in plaats van FormData. `raw` is
+// bewust `unknown`: de aanroeper heeft `await request.json()` vaak al in een eigen
+// try/catch (een kapotte JSON-body is geen zod-fout maar een parse-fout, zie de routes).
+export function parseJson<T>(schema: z.ZodType<T>, raw: unknown): ParseResult<T> {
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  const eerste = parsed.error.issues[0];
+  const pad = eerste?.path.join(".") || "invoer";
+  return { ok: false, error: `${pad}: ${eerste?.message ?? "ongeldig"}` };
+}
+
 export { z };

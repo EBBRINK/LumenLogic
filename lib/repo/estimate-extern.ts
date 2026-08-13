@@ -82,6 +82,7 @@ function stripLine(line: EstimateLine): PricelessLine {
     brandText: line.brandText,
     productText: line.productText,
     autoAccepted: line.autoAccepted,
+    matchstationChosen: line.matchstationChosen,
     manuallyChosen: line.manuallyChosen,
   };
 }
