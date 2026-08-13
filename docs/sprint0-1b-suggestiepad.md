@@ -3,7 +3,7 @@
 > **Status: klaar om uit te voeren, nog niet uitgevoerd.** Opgesteld 2026-07-16 door de
 > sprintmaster-sessie, op basis van navraag bij de 0.1-sessie. Dit document is de volledige
 > briefing. Bron van waarheid voor de eindstand blijft `HANDOVER.md`; het plan staat in de
-> vault (`timo-vault/projects/lumenlogic/sprintplan.md`), technische aanvulling in
+> vault (het sprintplan dat Timo buiten deze repo beheert), technische aanvulling in
 > `docs/lumenlogic-sprintplan-augustus.md`.
 >
 > Voorganger: `docs/sprint0-1-ai-vangnet-live.md` (0.1 — vangnet live, hoofddoel gehaald).

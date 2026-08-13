@@ -17,7 +17,7 @@ const viewports = {
 } as const;
 
 const emails: AllowedEmailRow[] = [
-  { email: "hello@noplasticfloralfoam.com", addedBy: "migratie-0004" },
+  { email: "tester@voorbeeld.nl", addedBy: "migratie-0004" },
   { email: "eduard@brink.nl", addedBy: "timo" },
 ];
 
@@ -79,7 +79,7 @@ test("gebruikers: adressen zichtbaar, verwijderen kan bij meer dan één adres",
     </Screen>,
   );
   await expect
-    .element(page.getByText("hello@noplasticfloralfoam.com"))
+    .element(page.getByText("tester@voorbeeld.nl"))
     .toBeInTheDocument();
   await expect.element(page.getByText("eduard@brink.nl")).toBeInTheDocument();
   const removeBtn = document.querySelector<HTMLButtonElement>(
@@ -100,10 +100,10 @@ test("gebruikers: het laatste adres is NIET te verwijderen (fail-safe)", async (
     </Screen>,
   );
   await expect
-    .element(page.getByText("hello@noplasticfloralfoam.com"))
+    .element(page.getByText("tester@voorbeeld.nl"))
     .toBeInTheDocument();
   const removeBtn = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
+    'button[aria-label="Remove tester@voorbeeld.nl"]',
   );
   expect(removeBtn).not.toBeNull();
   expect(removeBtn?.disabled).toBe(true);
@@ -150,7 +150,7 @@ test("je eigen adres is niet te verwijderen, ook niet met meerdere adressen", as
         emails={emails}
         addAction={noopAction}
         removeAction={noopAction}
-        sessionEmail="hello@noplasticfloralfoam.com"
+        sessionEmail="tester@voorbeeld.nl"
       />
     </Screen>,
   );
@@ -158,7 +158,7 @@ test("je eigen adres is niet te verwijderen, ook niet met meerdere adressen", as
     .element(page.getByText("eduard@brink.nl"))
     .toBeInTheDocument();
   const eigen = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
+    'button[aria-label="Remove tester@voorbeeld.nl"]',
   );
   expect(eigen).not.toBeNull();
   expect(eigen?.disabled).toBe(true);
@@ -180,7 +180,7 @@ test("eigen adres wordt hoofdletter-ongevoelig herkend", async () => {
         emails={emails}
         addAction={noopAction}
         removeAction={noopAction}
-        sessionEmail="  Hello@NoPlasticFloralFoam.com "
+        sessionEmail="  Tester@Voorbeeld.NL "
       />
     </Screen>,
   );
@@ -188,7 +188,7 @@ test("eigen adres wordt hoofdletter-ongevoelig herkend", async () => {
     .element(page.getByText("eduard@brink.nl"))
     .toBeInTheDocument();
   const eigen = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="Remove hello@noplasticfloralfoam.com"]',
+    'button[aria-label="Remove tester@voorbeeld.nl"]',
   );
   expect(eigen?.disabled).toBe(true);
 });
@@ -204,7 +204,7 @@ for (const theme of ["light", "dark"] as const) {
             emails={emails}
             addAction={noopAction}
             removeAction={noopAction}
-            sessionEmail="hello@noplasticfloralfoam.com"
+            sessionEmail="tester@voorbeeld.nl"
           />
         </Screen>,
       );

@@ -36,7 +36,7 @@ async function loginPage() {
 }
 
 test("ingelogd: /login rendert niets meer maar stuurt door naar /projects", async () => {
-  sessie.value = { user: { email: "hello@noplasticfloralfoam.com" } };
+  sessie.value = { user: { email: "tester@voorbeeld.nl" } };
   const LoginPage = await loginPage();
 
   // redirect() gooit NEXT_REDIRECT met de bestemming in de digest — dát is het bewijs

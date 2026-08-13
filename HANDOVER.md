@@ -335,7 +335,7 @@ te maken. **Deploy 2 (magic link eruit) mag pas ná stap 10 hieronder.**
 ### Vóór de push — één minuut, voorkomt een kapotte migratie
 1. **Tel de gebruikers na.** `select email from "user";` op productie. Migratie
    `0019_org_type_activatie.sql:61-63` noemt drie adressen **letterlijk**
-   (`hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
+   (`tester@voorbeeld.nl`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
    geeft precies díé een `org_admin`-membership in de Brink-org. Staat er inmiddels een
    vierde adres, dan krijgt dat géén membership en kan het na deploy 2 niet meer inloggen.
    Dat is de veilige kant om op te falen, maar je wilt het wéten, niet ontdekken.
@@ -488,7 +488,7 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
    poort onder het wachtwoordpad is dat je een PIN van Brink nodig hebt om er één te kúnnen
    zetten. **Gevolg voor deploy 2 (G27):** als de magic link eruit gaat, verliest de
    allowlist zijn enige gebruiker. Bewuste keuze van Timo nodig: weghalen of herbestemmen.
-2. **`hello@noplasticfloralfoam.com`** krijgt via 0019 een `org_admin`-membership in de
+2. **`tester@voorbeeld.nl`** krijgt via 0019 een `org_admin`-membership in de
    Brink-org, net als de andere twee users — het is Timo's eigen tweede adres. Er is
    **niets** aan de allowlist veranderd. Het account kan dus pas inloggen zodra Brink er een
    PIN voor aanmaakt; via magic link kan het (op productie) niet. Bewust zo gelaten.
@@ -630,7 +630,7 @@ zijn naam belooft**:
   de aanroepende `useAiSuggestionAction` — en concludeert dat er een hook conditioneel wordt
   aangeroepen. Laat staan. `bun run lint` geeft verder 19 errors + 12 warnings, alle in
   bestanden die dit item niet aanraakt.
-- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `hello@noplasticfloralfoam.com` en
+- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `tester@voorbeeld.nl` en
   `timo@jouwainstein.com` in de allowlist, terwijl productie `timo@jouwainstein.com` en
   `e.brink@brinklicht.nl` heeft. Elke verse database (en dus elke test) draait een ándere
   allowlist dan productie.
@@ -4943,7 +4943,7 @@ mobiel/desktop, alle acht bekeken (23–39 KB, geen blanco captures).
 
 - **`components/dossier/quote-view.tsx:79-87`** — het kopblok (`<dl>` met `grid-cols-2` op
   mobiel) laat een lang e-mailadres tegen de buurcel aanlopen: op 375px leest de screenshot
-  `hello@noplasticfloralfoam.com2026-08-07`, zonder spatie tussen "Author" en "Valid until".
+  `tester@voorbeeld.nl2026-08-07`, zonder spatie tussen "Author" en "Valid until".
   Zichtbaar in `components/dossier/estimate-leeg.dark.mobile.test.png`. Pre-existent, raakt de
   lege toestand niet.
 - **`components/admin/brands-list-block.tsx`** — de lege toestand kent het verschil niet tussen

@@ -129,7 +129,7 @@ CREATE TABLE allowed_emails (
 );
 --> statement-breakpoint
 INSERT INTO allowed_emails (email, added_by) VALUES
-  ('hello@noplasticfloralfoam.com', 'migratie-0004'),
+  ('tester@voorbeeld.nl', 'migratie-0004'),
   ('timo@jouwainstein.com', 'migratie-0004')
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint

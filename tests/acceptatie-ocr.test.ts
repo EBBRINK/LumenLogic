@@ -47,7 +47,7 @@ import { finishOcrRun, processOcrPage, startOcrRun } from "@/lib/repo/ocr";
 import { decideReview, getRedLinkLines, getReviewQueue } from "@/lib/repo/review";
 import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
-const ACTOR = "hello@noplasticfloralfoam.com";
+const ACTOR = "tester@voorbeeld.nl";
 // 2000 in + 300 uit per pagina → (2000×€1 + 300×€5)/1M = €0,0035 (EUR≈USD-aanname).
 const USAGE = { input_tokens: 2000, output_tokens: 300 };
 const PAGE_COST = 0.0035;

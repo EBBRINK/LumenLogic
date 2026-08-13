@@ -204,7 +204,7 @@ merk, product, artikelcode, kleurtemp/CRI/IP, status. **Print / PDF**.
 
 ### Context bij deze besluiten
 
-- **Geldig sprintplan:** `timo-vault/projects/lumenlogic/sprintplan.md` (vijf weken, klaar op
+- **Geldig sprintplan:** het sprintplan dat Timo buiten deze repo beheert (vijf weken, klaar op
   **14 augustus**). Het repo-document `docs/lumenlogic-sprintplan-augustus.md` (tot 28 aug,
   sprints 0–4) is **verouderd** — de 0.4-sessie werkte daar aantoonbaar uit tot het ontdekt werd.
 - **Einddemo: 17 augustus.** Het "runbook blind volgen" is geen aparte afspraak — het ís de

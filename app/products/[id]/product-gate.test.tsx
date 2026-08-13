@@ -68,7 +68,7 @@ vi.mock("@/lib/session", async () => {
 const { default: ProductPage } = await import("./page");
 const { requestPriceAction } = await import("./actions");
 
-const INGELOGD = { user: { email: "hello@noplasticfloralfoam.com" } };
+const INGELOGD = { user: { email: "tester@voorbeeld.nl" } };
 
 // De digest van redirect()/notFound() uitlezen: dát is het bewijs dat de poort dichtstaat.
 async function digestVan(fn: () => Promise<unknown>): Promise<string> {

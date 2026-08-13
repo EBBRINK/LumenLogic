@@ -24,7 +24,7 @@ import { seedExternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
-  email: "hello@noplasticfloralfoam.com",
+  email: "tester@voorbeeld.nl",
   // Schakelaar voor de sessiepoort-test onderaan: `true` = geen sessie, en de mock
   // hieronder gedraagt zich dan als de ECHTE requireSession (redirect naar /login).
   uitgelogd: false,

@@ -35,7 +35,7 @@ zijn eigen organisatie. Uitdrukkelijk niet: een echte installateur die er die we
 |---|---|---|
 | Organisaties | **0** | productie-Neon, `select count(*) from organizations` |
 | Memberships | **0** | idem |
-| Users | **3** | `hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl` |
+| Users | **3** | `tester@voorbeeld.nl`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl` |
 | Accounts mét wachtwoord | **0 van 3** | `account.password is not null` |
 | Allowlist | **2** adressen | `timo@jouwainstein.com`, `e.brink@brinklicht.nl` |
 | Projecten | **13**, allemaal `org_id IS NULL` | `project_dossiers` |
@@ -43,7 +43,7 @@ zijn eigen organisatie. Uitdrukkelijk niet: een echte installateur die er die we
 | `input-otp` in het project | **nee** | staat niet in `package.json`; `components/ui/` heeft er 6 |
 
 Twee dingen die hieruit volgen en die je niet mag vergeten:
-1. `hello@noplasticfloralfoam.com` heeft wél een user-record maar staat **niet** in de allowlist.
+1. `tester@voorbeeld.nl` heeft wél een user-record maar staat **niet** in de allowlist.
    Onder de huidige magic-link-poort (`lib/auth.ts`, `isAllowed`) kan dat account dus niet
    inloggen. Beslis bewust wat er met dat account gebeurt en meld het — repareer het niet stil.
 2. `db/schema.ts:457` declareert `orgId: uuid("org_id")` op `project_dossiers` **zonder**

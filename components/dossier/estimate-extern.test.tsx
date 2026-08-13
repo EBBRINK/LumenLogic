@@ -26,7 +26,7 @@ const header: EstimateHeader = {
   quoteDate: "2026-07-07",
   customer: "Deerns",
   projectRef: "PRJ-42",
-  author: "hello@noplasticfloralfoam.com",
+  author: "tester@voorbeeld.nl",
   validUntil: "2026-08-07",
 };
 

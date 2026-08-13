@@ -79,7 +79,7 @@ import {
 } from "@/lib/repo/review";
 import { ALLE_DOSSIERS } from "@/lib/repo/toegang";
 
-const ACTOR = "hello@noplasticfloralfoam.com";
+const ACTOR = "tester@voorbeeld.nl";
 
 // ── Gedeelde toestand van het verhaal ────────────────────────────────────────
 let db: TestDb;
