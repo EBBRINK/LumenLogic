@@ -5398,6 +5398,9 @@ gedraaid. Besluit nodig van Timo: (a) alsnog byte-opslag bouwen voor het
 matchstation-pad specifiek (raakt de 413-fix-afweging, een nieuwe, kleinere upload los
 van de bestaande pijplijn), of (b) M2 ontwerpen op de markdown/paginabeelden in plaats
 van het originele bestand._
+_→ **Besluit Timo, 13 aug (via sprintmaster matchstation): (b) — de reconstructie
+(markdown/OCR-paginabeelden) is goed genoeg voor M2.** Geen byte-opslag bouwen; de
+machine leest wat de app ook las._
 
 _2. **Vercel Cron op Hobby draait hooguit 1×/dag — geverifieerd via de OIDC-token in
 `.env.local` (`"plan":"hobby"`), niet aangenomen.** `vercel.json` staat op `*/5 * * * *`
@@ -5408,6 +5411,9 @@ of een externe cron (cron-job.org, GitHub Actions, UptimeRobot — wat dan ook) 
 5 min `GET /api/matchstation/healthcheck` aanroept met
 `Authorization: Bearer $CRON_SECRET`. De endpoint zelf en zijn logica zijn gebouwd en
 getest; alleen de 5-minuten-trigger op Vercel zelf is een blokkade./_
+_→ **Besluit Timo, 13 aug (via sprintmaster matchstation): externe gratis cron**
+(bijv. cron-job.org) die elke 5 min het healthcheck-endpoint aanroept met het
+cron-secret. Inrichten hoort bij de livegang-checklist van M2._
 
 _3. **Twee brondocumenten sluiten niet naadloos op elkaar aan, en `applyMatchstationResult`
 kiest een kant.** `goal-agent-matching.md`s antwoordcontract is geschreven voor een agent
