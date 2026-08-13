@@ -1308,3 +1308,38 @@ test("groen=zeker: alleen onvolledige kandidaten blijven open, ongewijzigd", asy
   expect(out.status).toBe("open");
   expect(out.certainGreen).toBeUndefined();
 });
+
+test("groen=zeker: code raakt één passend én één alles-rood product → geel, mens beslist", async () => {
+  const db = await createTestDb();
+  // Randgeval van besluit 3: de code is niet uniek en wijst twee zichtbare
+  // producten aan, waarvan er één élk gevraagd veld tegenspreekt. Er is dan wel
+  // één plausibele kandidaat, maar de code zelf is dubbelzinnig in onze
+  // catalogus — en dubbelzinnigheid gaat naar de mens (ijzeren regel 4).
+  const seeded = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    articleCode: "21012 0298",
+    ip: "IP65",
+    maxWattage: 20,
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "[LPS] MULTI POWER MINI",
+    articleCode: "21012 0298",
+    ip: "IP20", // gevraagd IP65 → lager = altijd rood
+    maxWattage: 200, // > 40% → rood
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER",
+      sku: "21012 0298",
+      specs: { ip: "IP65", watt: 20 },
+    }),
+  );
+  expect(out.status).toBe("geel");
+  expect(out.certainGreen).toBeUndefined();
+  expect(out.unambiguousYellow).toBeUndefined();
+});

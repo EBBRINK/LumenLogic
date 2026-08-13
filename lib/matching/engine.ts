@@ -877,7 +877,9 @@ export async function evaluateSpecLine(
   // of één code op twee producten) gaat nooit automatisch door. Anders zou een regel met
   // twee groene kandidaten én één schoon-gele daarnaast automatisch díé gele kiezen —
   // terwijl er twee bétere liggen waarover juist een mens moet beslissen.
-  const gedegradeerd = greens.length > 1 || viaSku;
+  // NB: `codeHitProducts` alleen binnen de viaSku-tak — in de tekstroute telt hij
+  // simpelweg de kandidaten en zou hij het auto-door overal blokkeren.
+  const gedegradeerd = greens.length > 1 || (viaSku && codeHitProducts > 1);
   const unambiguousYellow = gedegradeerd
     ? undefined
     : pickUnambiguousYellow(status, scored);

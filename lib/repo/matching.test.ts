@@ -324,7 +324,10 @@ test("groen=klaar: openstaande leescheck blokkeert het vastzetten, ook bij groen
   expect(evts.length).toBe(0);
 });
 
-test("groen=klaar: hermatch blijft idempotent — één keuze, één event", async () => {
+// NB: één KEUZE, niet één event. Een hermatch is een nieuwe match en wordt
+// opnieuw gelogd (ijzeren regel 5) — de events-tabel is een audittrail, geen
+// toestand. Wat idempotent moet zijn, is de keuze zelf.
+test("groen=klaar: hermatch laat één gekozen kandidaat achter, niet twee", async () => {
   const db = await createTestDb();
   const { productId, line } = await seedZekerGroeneLijn(db);
 

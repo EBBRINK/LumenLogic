@@ -5317,3 +5317,47 @@ validatie 0,4 s, import 2,9 s (18.667 producten + 18.659 prijsregels), tweede ru
 convergeert (0 writes op producten) in 1,3 s. Repo-tests: `lib/repo/template-import.test.ts`;
 scherm: `components/data/template-upload-card.test.tsx` (screenshots light/dark ×
 mobile/desktop).
+
+---
+
+_2026-08-12. **Groen betekent "dit is hét product"** (punt 3 uit de Brink-demo van 12 aug).
+Probleem + metingen: `docs/probleem-groen-betekent-zeker.md`; spec, besluiten en de
+vóór/ná-metingen: `docs/goal-groen-betekent-zeker.md`. Kort: groen was een uitspraak over
+SPECS (`provable.some(...)` — minstens één kandidaat sprak niets tegen) en kon dus over
+acht kandidaten tegelijk waar zijn; nu is het een uitspraak over IDENTITEIT (precies één
+groene kandidaat, of een codetreffer op precies één product). Twee of meer → geel, Brink
+kiest. Wat groen is, zet `runMatcher` zelf vast met `chosenBy: "system:auto"` en een eigen
+event `certain_match_auto_accepted`._
+
+_**Aannames en open eindes:**_
+
+_1. **Bestaande dossiers draaien niet vanzelf mee.** De statusbepaling zit in
+`evaluateSpecLine`; regels die vóór deze commit gematcht zijn houden hun oude oordeel
+(en een oude groene regel houdt zijn lege `matchedProductId`) tot er een hermatch over
+gaat. Er is bewust géén migratie of backfill gedraaid — dat zou stilzwijgend
+klantdocumenten wijzigen. Wil je een bestaand dossier omzetten, dan is dat een hermatch,
+en dat is een bewuste handeling._
+
+_2. **`docs/matching-regelset.md` is meegewijzigd** (de GROEN-definitie, beslisvolgorde
+stap 4 en de harde regel over cosmetische varianten). Die regelset is de AI-instructieset
+en zei letterlijk het tegenovergestelde: "Eén of meerdere varianten met dezelfde prijs" en
+"cosmetische varianten bij gelijke prijs mag Brink zelf kiezen". Dat botste frontaal met
+het besluit van Timo (twee NEST-kleurvarianten = kiezen, dus geel), dus de regelset is
+mee-omgezet. Wie de menselijke regelset buiten deze repo beheert, moet hem daar óók
+bijwerken — anders lopen de twee uit elkaar._
+
+_3. **kvk en dordrecht ontbreken in de vóór/ná-meting.** `scripts/eval-testset.ts` bereikt
+voor die twee de matcher niet zonder `--ai` (leesroute resp. OCR). Dat mét `--ai` draaien
+kost echte API-calls op de productiedatabase; die budgetbeslissing ligt bij Timo en is
+niet stilzwijgend genomen. Raadhuis en tno zijn wél volledig gemeten: exact één regel
+verschuift (tno `Ls002`, groen → geel)._
+
+_4. **Eén code die zowel een passend als een alles-rood product raakt, wordt geel.** Er is
+dan één plausibele identiteit, maar de code is dubbelzinnig in onze catalogus. Bewust de
+veilige kant (ijzeren regel 4), vastgepind in een test. Blijkt dit in de praktijk te
+streng, dan is het één regel: tellen over `provable` in plaats van over `scored`._
+
+_5. **Gepusht via `scripts/safe-push.sh`** (12 aug, op akkoord van Timo). De eerste poging
+botste: `origin/main` was intussen verschoven en `HANDOVER.md` gaf een append/append-conflict
+met de template-upload-sessie. Beide blokken staan er nu; er is niets van die sessie
+overschreven._

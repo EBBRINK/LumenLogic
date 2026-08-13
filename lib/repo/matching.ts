@@ -128,10 +128,10 @@ export async function runMatcher(
   // elkaar uit — een regel is groen of geel, nooit allebei. Een bewaarde review-flag
   // blokkeert het automatisch accepteren, ook bij groen: staat de OCR-leescheck nog open,
   // dan kiest het systeem niets (een verhallucineerd merk mag geen product vastzetten).
+  const autoZeker = !preservedKind && outcome.certainGreen != null;
   const auto = preservedKind
     ? undefined
     : (outcome.certainGreen ?? outcome.unambiguousYellow);
-  const autoZeker = auto != null && auto === outcome.certainGreen;
 
   // status + afwijkingen op de regel schrijven; matched blijft leeg tot een keuze,
   // BEHALVE bij auto-door: dan wordt de aangewezen kandidaat direct gezet, zónder review.

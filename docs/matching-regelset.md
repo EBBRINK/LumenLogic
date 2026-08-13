@@ -49,10 +49,15 @@ bepaalt mede de status (zie hieronder).
 
 Elke armatuur krijgt precies één status:
 
-GROEN  — Product hebben we. Eén of meerdere varianten met dezelfde prijs,
-         alle specs binnen de tolerantie. Actie: direct in de offerte.
-         Cosmetische varianten (kleur, optiek) bij gelijke prijs mag Brink
-         zelf kiezen.
+GROEN  — Dit is HÉT product. Precies één variant voldoet aan alles wat
+         gevraagd is (of het gevraagde artikelnummer wijst precies één
+         product aan). Actie: gaat direct de offerte in — het systeem zet
+         hem zelf vast, er komt geen mens meer aan te pas.
+         Zijn er TWEE of meer varianten die allemaal voldoen — ook als het
+         verschil alleen cosmetisch is (kleur, optiek) en de prijs gelijk —
+         dan is het GEEL: gelijkwaardige kandidaten zijn een keuze, en die
+         keuze maakt Brink. (Besluit Timo 12 aug 2026, punt 3 uit de
+         Brink-demo; zie docs/goal-groen-betekent-zeker.md.)
 
 GEEL   — Vergelijkbaar product van hetzelfde merk. Zelfde productlijn-DNA,
          kleine afwijking in vermogen, optiek of formaat (binnen de gele
@@ -97,10 +102,13 @@ product = ROOD (klant beslist).
    - Eén of meer specs in ROOD-marge, of IP lager dan gevraagd
         -> ROOD.
    - Alle specs binnen GROEN-marge
-        -> GROEN.
+        -> GROEN, maar alleen als PRECIES ÉÉN kandidaat dat haalt.
+          Halen er twee of meer het, dan zijn ze gelijkwaardig
+        -> GEEL (Brink kiest welke).
    - Geen enkele spec in rood, maar minstens één in de gele marge
         -> GEEL.
-   De strengste afwijking telt: rood > geel > groen.
+   De strengste afwijking telt: rood > geel > groen. En groen telt
+   bovendien de kandidaten: één is groen, meer is geel.
 
 Belangrijk bij stap 2-3: draai minstens 3 tot 5 zoek-hypotheses voordat je
 "niet gevonden" concludeert. Productnamen in complexe catalogi coderen de
@@ -147,8 +155,9 @@ volgen zodra de aantallen er zijn.
 - Lager IP dan gevraagd is altijd rood. Geen tolerantie.
 - Verzin nooit een SKU, prijs of spec. Niet zeker = benoem de onzekerheid.
 - Status volgt het ons-versus-match onderscheid (zie kernonderscheid).
-- Bij gelijke prijs mag Brink cosmetische varianten zelf kiezen; bij
-  prijsverschil leg je de keuze bij de klant.
+- Twee of meer kandidaten die allemaal voldoen = GEEL, ook bij gelijke
+  prijs en een puur cosmetisch verschil (kleur, optiek): Brink kiest er
+  één. Bij prijsverschil leg je de keuze bij de klant.
 
 == OUTPUT ==
 

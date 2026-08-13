@@ -146,6 +146,12 @@ gevraagde code twee of meer **verschillende zichtbare producten**, dan is er wel
 codetreffer maar geen enkelvoudige identiteit → **geel**, dezelfde regel als twee groene
 kandidaten. Dit was het open punt uit het probleemdocument; hiermee is het beantwoord.
 
+Dat telt over **alle** codetreffers, ook een treffer waarvan élk beoordeeld veld rood is.
+Zo'n treffer is op zichzelf geen plausibele identiteit — maar de code is dan wél
+dubbelzinnig in onze catalogus, en dubbelzinnigheid gaat naar de mens (IJzeren regel 4).
+Beide reviewassen wezen dit randgeval aan; het is bewust zo en staat vastgepind in een
+eigen test.
+
 ### 4. Degradatie-slot op het geel-auto-door
 
 Het bestaande auto-door voor geel (B3) zet de enige schoon-gele kandidaat automatisch vast.
@@ -180,7 +186,10 @@ of alleen afrondde. Payload in dezelfde vorm: het gekozen product plus de afwijk
   het AI-vangnet blijft eraan hangen.
 - De kandidatenlijsten (aantoonbaar / onvolledig), de ordening, de tekstscore en de
   spec-toetsing blijven ongemoeid; alleen de **statusbepaling** en het **vastzetten**
-  veranderen.
+  veranderen. Eén gevolg daarvan raakt wél de weergave: de getoonde afwijkingen van een
+  groene regel komen voortaan van de aangewezen kandidaat in plaats van van de
+  best-scorende. Dat repareert een scheefstand — stond er een gele kandidaat bovenaan bij
+  een groene regel, dan toonde die regel diens afwijkingen.
 - De offerteregel-filter (status groen/geel + geldige stuksprijs) blijft zoals hij is — hij
   gaat vanzelf goed zodra een groene regel een product heeft.
 - Blauw, paars, rood en open veranderen niet.
@@ -219,7 +228,9 @@ system:auto, reviewKind null, event gelogd") — de groene variant is daarvan de
 - groene regel → `matchedProductId` gezet, kandidaat `chosen` met `chosenBy: "system:auto"`,
   event `certain_match_auto_accepted` gelogd, geen geel-reviewvlag;
 - groene regel met een bewaarde `ocr`-flag → flag blijft staan én blokkeert het vastzetten;
-- hermatch is idempotent: dezelfde uitkomst geeft dezelfde keuze, geen dubbele events.
+- hermatch laat één gekozen kandidaat achter (de keuze is idempotent). Het évent wordt
+  wél opnieuw geschreven: een hermatch ís een nieuwe match en ijzeren regel 5 wil elke
+  match in het audittrail. Dat is bestaand gedrag van het geel-auto-door en verandert niet.
 
 ### Naad 3 — end-to-end tot in de offerte
 
