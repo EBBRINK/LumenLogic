@@ -424,10 +424,13 @@ test("generateQuote + estimate-PDF: OCR-regels zichtbaar (p/st, p.m. voor rood)"
   const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, ACTOR);
   expect(quote.quoteNumber).toBe(`BL-${year}-0001`);
 
-  // Alleen de gekozen matches dragen een prijsregel: Lw102 (NEST WHITE) en Lp301
-  // is groen zónder gekozen match (kiezen blijft menswerk) → geen quote-regel.
+  // Beide gematchte regels dragen een prijsregel: Lw102 (NEST WHITE, door de mens
+  // gekozen) én Lp301. Die laatste is groen mét precies één kandidaat en werd tot
+  // 12 aug 2026 nooit vastgezet — hij viel uit de offerte tot een mens klikte
+  // (goal-groen-betekent-zeker). De OCR-leescheck heeft dat vastzetten wél
+  // uitgesteld: pas ná het afronden van de bron-review zet het systeem hem vast.
   const quoteData = await getQuote(db, dossierId);
-  expect(quoteData?.lines.map((l) => l.fixtureCode)).toEqual(["Lw102"]);
+  expect(quoteData?.lines.map((l) => l.fixtureCode)).toEqual(["Lp301", "Lw102"]);
   // OCR levert geen aantallen (een boekpagina noemt ze niet) → stukprijs-modus (A-07).
   expect(quoteData?.lines[0].quantity).toBe(0);
 

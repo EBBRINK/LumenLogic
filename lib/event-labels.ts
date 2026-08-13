@@ -119,6 +119,7 @@ export const ACTION_LABEL: Record<string, string> = {
   // Matcher en spec-regels.
   match_unlinked: "Match removed",
   near_match_auto_accepted: "Near match auto-accepted",
+  certain_match_auto_accepted: "Certain match auto-accepted",
   spec_line_edited: "Line edited",
   quantity_changed: "Quantity changed",
   status_changed: "Status changed",

@@ -1108,3 +1108,203 @@ test("B3: een regel met alleen een artikelnummer strandt niet meer op 'te weinig
   expect(out.status).toBe("groen");
   expect(out.provable[0].name).toBe("[LPS] MULTI POWER 250-900 / 20W DIM8");
 });
+
+// ── Groen betekent "dit is hét product" (docs/goal-groen-betekent-zeker.md) ──
+// Punt 3 uit de Brink-demo van 12 aug 2026. Groen was een uitspraak over SPECS
+// ("minstens één kandidaat spreekt niets tegen") en wordt een uitspraak over
+// IDENTITEIT ("dit is hem, één stuk"). Twee of meer kandidaten die állebei aan
+// alles voldoen zijn gelijkwaardig → geel, Brink kiest.
+
+test("groen=zeker: precies één groene kandidaat → groen mét de zekere kandidaat erbij", async () => {
+  const db = await createTestDb();
+  const { productId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12,
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("groen");
+  expect(out.certainGreen?.productId).toBe(productId);
+  // groen en geel sluiten elkaar uit: nooit twee automatische keuzes tegelijk
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+test("groen=zeker: twee even groene kandidaten → geel, niemand wordt aangewezen", async () => {
+  const db = await createTestDb();
+  const seeded = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12,
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 12,
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  // vóór deze ingreep: groen op grond van 'some' — een greep uit twee.
+  expect(out.status).toBe("geel");
+  expect(out.certainGreen).toBeUndefined();
+  expect(out.provable).toHaveLength(2);
+  // en Brink krijgt de keuze, niet het systeem
+  expect(out.unambiguousYellow).toBeUndefined();
+});
+
+test("groen=zeker: één groene naast een gele kandidaat blijft groen", async () => {
+  const db = await createTestDb();
+  const seeded = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12, // exact → groen
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 14, // 16,7% → geel
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  // maar één kandidaat voldoet aan álles; de ander wijkt aantoonbaar af.
+  expect(out.status).toBe("groen");
+  expect(out.certainGreen?.name).toBe("VELA ROUND 600");
+});
+
+test("groen=zeker: degradatie-slot — twee groene kandidaten kapen het geel-auto-door niet", async () => {
+  const db = await createTestDb();
+  const seeded = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12, // groen
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "VELA ROUND 900",
+    kelvin: 3000,
+    maxWattage: 12, // ook groen
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "VELA ROUND 1200",
+    kelvin: 3000,
+    maxWattage: 14, // de enige schoon-gele
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("geel");
+  // zonder slot zou B3 hier de énige schoon-gele automatisch vastzetten —
+  // terwijl er twee bétere kandidaten liggen waar een mens over moet beslissen.
+  expect(out.unambiguousYellow).toBeUndefined();
+  expect(out.certainGreen).toBeUndefined();
+});
+
+test("groen=zeker: een codetreffer op precies één product is groen en wijst dat product aan", async () => {
+  const db = await createTestDb();
+  const { productId } = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    supplierArticleCode: "21012 0298",
+    ip: "IP20",
+    maxWattage: 20,
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER",
+      sku: "21012 0298",
+      specs: { ip: "IP50", watt: 20 }, // B7: de afwijking blijft, groen blijft
+    }),
+  );
+  expect(out.status).toBe("groen");
+  expect(out.certainGreen?.productId).toBe(productId);
+});
+
+test("groen=zeker: één artikelnummer op twéé zichtbare producten → geel, Brink kiest", async () => {
+  const db = await createTestDb();
+  // article_code is niet uniek (alleen brand_id + supplier_article_code is dat):
+  // twee producten van hetzelfde merk kunnen dezelfde interne code dragen.
+  const seeded = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8",
+    articleCode: "21012 0298",
+    maxWattage: 20,
+  });
+  await addProductToBrand(db, {
+    brandId: seeded.brandId,
+    priceListId: seeded.priceListId,
+    name: "[LPS] MULTI POWER 250-900 / 20W DIM8 (2024)",
+    articleCode: "21012 0298",
+    maxWattage: 20,
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "Delta Light",
+      productText: "LED POWER SUPPLY MULTI POWER",
+      sku: "21012 0298",
+      specs: { watt: 20 },
+    }),
+  );
+  // wel een codetreffer, geen enkelvoudige identiteit.
+  expect(out.viaArticleCode).toBe("21012 0298");
+  expect(out.status).toBe("geel");
+  expect(out.certainGreen).toBeUndefined();
+  expect(out.unambiguousYellow).toBeUndefined();
+  expect([...out.provable, ...out.incomplete]).toHaveLength(2);
+});
+
+test("groen=zeker: alleen onvolledige kandidaten blijven open, ongewijzigd", async () => {
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: null, // gevraagd veld ontbreekt → lijst 2
+    maxWattage: 12,
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      specs: { watt: 12, kelvin: 3000 },
+    }),
+  );
+  expect(out.status).toBe("open");
+  expect(out.certainGreen).toBeUndefined();
+});

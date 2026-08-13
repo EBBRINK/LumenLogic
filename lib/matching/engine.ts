@@ -73,6 +73,10 @@ export type MatchOutcome = {
   // een schoon-geel oordeel (zie pickUnambiguousYellow). Alle andere gevallen: undefined.
   // Puur en deterministisch — geen LLM, geen fase; het persisteren beslist de repo.
   unambiguousYellow?: ScoredCandidate;
+  // Groen = "dit is hét product" (goal-groen-betekent-zeker). Gezet als en alleen als de
+  // regel groen is, en dan altijd: groen bestaat sindsdien uitsluitend als er precies één
+  // aanwijsbare kandidaat is. Zelfde belofte als unambiguousYellow — de repo zet hem vast.
+  certainGreen?: ScoredCandidate;
   // De kandidaten kwamen uit de exacte-codetreffer (3a), niet uit de tekstroute. De
   // gevraagde artikelcode ís dan de scherpste eis die er is en het oordeel volgt daaruit
   // (goal-artikelnummer-matching, B7). Voor de aanroeper zichtbaar omdat het uitlegt
@@ -817,36 +821,66 @@ export async function evaluateSpecLine(
 
   // Regelstatus = beste haalbare uitkomst over de kandidaten (strengste-telt geldt per
   // kandidaat; over kandidaten heen nemen we de gunstigste beschikbare match).
-  // • is er een groene kandidaat (lijst 1, alles groen) → GROEN
+  //
+  // GROEN is een uitspraak over IDENTITEIT, niet over specs (goal-groen-betekent-zeker,
+  // punt 3 uit de Brink-demo van 12 aug 2026): het systeem wijst één product aan en zegt
+  // "dit is hem". Tot die datum stond hier `provable.some(...)` — één groene kandidaat
+  // maakte de hele regel groen, ongeacht hoeveel er nog naast stonden (tot `limit`, 8).
+  // Brink las dat als "klaar" terwijl het een greep uit acht kon zijn. Twee kandidaten
+  // die állebei aan alles voldoen zijn gelijkwaardig; daar kiest een mens (geel).
+  // • precies één groene kandidaat → GROEN, en die kandidaat is de zekere
+  // • twee of meer groene kandidaten → GEEL (Brink kiest, "welke van deze N")
   // • anders een gele (lijst 1-achtig maar met gele velden) → GEEL
   // • anders alleen onvolledige → GROEN noch GEEL; de regel blijft 'open' tot review
   //   (lijst 2 kiezen gebeurt met reden), maar de kleur toont het beste dat er is.
-  const anyGreen = provable.some(
+  const greens = provable.filter(
     (c) => worstVerdict(c.deviations) === "groen",
   );
   const anyYellow = scored.some((c) => {
     const w = worstVerdict(c.deviations);
     return w === "geel" && !hasRed(c.deviations);
   });
+  // Bij een codetreffer telt het aantal ONDERSCHEIDEN producten: `article_code` is niet
+  // uniek (alleen brand_id + supplier_article_code is dat) en stap 3a dedupliceert niet.
+  const codeHitProducts = new Set(scored.map((c) => c.productId)).size;
 
   let status: MatchStatus;
+  let certain: ScoredCandidate | undefined;
   if (viaSku) {
     // B7: het gevraagde artikelnummer is gevonden. Groen, ook met een afwijking — die
     // wordt gewoon getoond, hij verdwijnt niet. Alleen als élk beoordeeld veld van élke
     // treffer rood is (lijst 1 leeg) gaat de regel naar 'open': dan wijst de code
     // vermoedelijk niet naar dit product en beslist een mens.
-    status = provable.length > 0 ? "groen" : "open";
-  } else if (anyGreen) status = "groen";
+    // Raakt de code twee of meer zichtbare producten, dan is er wél een treffer maar geen
+    // enkelvoudige identiteit — zelfde oordeel als twee groene kandidaten: GEEL.
+    if (provable.length === 0) status = "open";
+    else if (codeHitProducts > 1) status = "geel";
+    else {
+      status = "groen";
+      certain = provable[0];
+    }
+  } else if (greens.length === 1) {
+    status = "groen";
+    certain = greens[0];
+  } else if (greens.length > 1) status = "geel";
   else if (anyYellow) status = "geel";
   else if (incomplete.length > 0) status = "open"; // alleen data-onvolledige kandidaten → mens kiest met reden
   else status = "rood"; // alle kandidaten hebben een verkeerde (rode) waarde
 
-  // top-afwijkingen: van de best passende kandidaat (eerste in de relevante lijst).
+  // top-afwijkingen: van de aangewezen kandidaat, anders van de best passende.
   const top =
-    provable[0] ?? incomplete[0] ?? scored[0];
+    certain ?? provable[0] ?? incomplete[0] ?? scored[0];
 
   // B3: de ondubbelzinnige bijna-match (alleen bij geel, zie pickUnambiguousYellow).
-  const unambiguousYellow = pickUnambiguousYellow(status, scored);
+  //
+  // Degradatie-slot: geel dat ontstáát uit een groen-degradatie (twee groene kandidaten,
+  // of één code op twee producten) gaat nooit automatisch door. Anders zou een regel met
+  // twee groene kandidaten én één schoon-gele daarnaast automatisch díé gele kiezen —
+  // terwijl er twee bétere liggen waarover juist een mens moet beslissen.
+  const gedegradeerd = greens.length > 1 || viaSku;
+  const unambiguousYellow = gedegradeerd
+    ? undefined
+    : pickUnambiguousYellow(status, scored);
 
   return {
     status,
@@ -859,6 +893,7 @@ export async function evaluateSpecLine(
     incomplete: incomplete.map(strip),
     topDeviations: top ? top.deviations : [],
     unambiguousYellow: unambiguousYellow ? strip(unambiguousYellow) : undefined,
+    certainGreen: certain ? strip(certain) : undefined,
     ...(viaSku && gevraagdeCode ? { viaArticleCode: gevraagdeCode } : {}),
     ...(codeMiss ? { articleCodeMiss: codeMiss } : {}),
   };

@@ -14,17 +14,21 @@
 // deze test draagt zijn eigen, kleinere evenbeeld daarvan). Verwachte verdeling
 // direct na import — gedocumenteerd conform scripts/gen-test-armaturenboek.ts:
 //
-//   groen  5× — Lp301, Ld201, Lw101, Lp501, Ld105 (elk mét een getoetste kelvin-eis)
+//   groen  4× — Lp301, Ld201, Lp501, Ld105 (elk mét een getoetste kelvin-eis, en elk
+//               met precies ÉÉN groene kandidaat) → het systeem zet ze zélf vast:
+//               chosenBy 'system:auto' + event certain_match_auto_accepted
 //   open   4× — Lp302 (SCAVA), Ls001 (Bellhop), Lp401 (TAGLIO), Ls010 (MELAMPO):
 //               hun boekregel draagt géén toetsbare spec — sinds gat A (20 jul)
 //               is "aantoonbaar voldoet" zonder één getoetste eis onmogelijk; de
 //               merk-gescoopte kandidaten staan als lijst 2, de mens kiest met reden
-//   geel   5× — waarvan:
+//   geel   6× — waarvan:
 //     • 3× AUTO-DOOR (B3: precies één schoon-gele kandidaat, geen keuzeveld):
 //       Ld202 (watt 40→32 = 20%), Ld106 (30→24 = 20%), Ld107 (28→24 = 14%)
 //       → chosenBy 'system:auto' + event near_match_auto_accepted
-//     • 2× IN REVIEW (twee schoon-gele kandidaten → ambigu, geen auto-door):
-//       Lw102 (watt 8→10 = 25%), Lw103 (9→10 = 11%) — twee NEST-kleurvarianten
+//     • 3× IN REVIEW (twee kandidaten → ambigu, geen auto-door):
+//       Lw102 (watt 8→10 = 25%), Lw103 (9→10 = 11%) — twee schoon-gele
+//       NEST-kleurvarianten; en Lw101, die twee even GROENE NEST-kandidaten heeft
+//       en tot 12 aug 2026 groen heette (goal-groen-betekent-zeker)
 //   rood   2× — Lp601, Lr701 (merk wél in catalogus, product niet)
 //   blauw  2× — Lp801, Ls802 (merkrij zonder producten geseed — zie beforeAll; sinds
 //               stap 4/O5 toetst de engine op prodúcten in de basistabel: een kale
@@ -276,13 +280,17 @@ test("PDF-import: importrun bevestigd, rawMarkdown met '## Pagina', 20 regels", 
 }, 120_000);
 
 // ── Stap 3 — matcher-uitkomsten (verdeling zoals bovenaan gedocumenteerd) ────
-test("matcher: 5 groen · 4 open (gat A) · 5 geel (3 auto-door + 2 review) · 2 rood · 2 blauw (O5) · 2 paars", async () => {
+test("matcher: 4 groen (vastgezet) · 4 open (gat A) · 6 geel (3 auto-door + 3 review) · 2 rood · 2 blauw (O5) · 2 paars", async () => {
   const rows = await getSpecLines(db, dossierId);
   const byStatus = (s: string) =>
     rows.filter((r) => r.status === s).map((r) => r.fixtureCode).sort();
 
+  // Lw101 stond hier tot 12 aug 2026 bij groen. Hij heeft twee even groene
+  // kandidaten (NEST wit + NEST zwart) en is daarmee precies het geval dat Brink
+  // in de demo aanwees: "groen" was een greep uit twee. Sinds
+  // goal-groen-betekent-zeker is dat geel — Brink kiest.
   expect(byStatus("groen")).toEqual(
-    ["Lp301", "Ld201", "Lw101", "Lp501", "Ld105"].sort(),
+    ["Lp301", "Ld201", "Lp501", "Ld105"].sort(),
   );
   // Gat A (20 jul): deze vier boekregels dragen géén toetsbare spec — hun
   // merk-gescoopte kandidaten zijn lijst 2 ("mogelijk — data onvolledig") en de
@@ -291,7 +299,7 @@ test("matcher: 5 groen · 4 open (gat A) · 5 geel (3 auto-door + 2 review) · 2
     ["Lp302", "Ls001", "Lp401", "Ls010"].sort(),
   );
   expect(byStatus("geel")).toEqual(
-    ["Ld202", "Lw102", "Ld106", "Lw103", "Ld107"].sort(),
+    ["Ld202", "Lw101", "Lw102", "Ld106", "Lw103", "Ld107"].sort(),
   );
   expect(byStatus("rood")).toEqual(["Lp601", "Lr701"].sort());
   // Blauw is per docs/matching-regelset.md:77-79 het correcte antwoord op een merk
@@ -315,19 +323,30 @@ test("matcher: 5 groen · 4 open (gat A) · 5 geel (3 auto-door + 2 review) · 2
   expect(autoEvents).toHaveLength(3);
 
   // Lw102/Lw103: twee schoon-gele kandidaten (NEST wit + zwart) → ambigu, dus
-  // GEEN auto-door; ze staan in de review-wachtrij.
-  for (const code of ["Lw102", "Lw103"]) {
+  // GEEN auto-door; ze staan in de review-wachtrij. Lw101 staat er sinds
+  // goal-groen-betekent-zeker naast: twee even GROENE kandidaten, zelfde oordeel.
+  for (const code of ["Lw101", "Lw102", "Lw103"]) {
     const l = await lineByCode(code);
     expect(l.matchedProductId).toBeNull();
     expect(l.reviewKind).toBe("geel");
   }
   const queue = await getReviewQueue(db, dossierId);
-  expect(queue.pending.map((p) => p.fixtureCode).sort()).toEqual(["Lw102", "Lw103"]);
+  expect(queue.pending.map((p) => p.fixtureCode).sort()).toEqual([
+    "Lw101",
+    "Lw102",
+    "Lw103",
+  ]);
 
-  // Groene regels: status wél, match nog níét gezet (kiezen blijft menswerk;
-  // alleen B3-auto-door zet een match).
-  const lp301 = await lineByCode("Lp301");
-  expect(lp301.matchedProductId).toBeNull();
+  // Groen = "dit is hét product": het systeem zet hem zelf vast, met zichzelf als
+  // kiezer. Vóór 12 aug bleef matchedProductId hier leeg en viel de regel uit de
+  // offerte tot een mens op "Choose" klikte — punt 3 uit de Brink-demo.
+  for (const code of ["Lp301", "Ld201", "Lp501", "Ld105"]) {
+    const l = await lineByCode(code);
+    expect(l.matchedProductId).not.toBeNull();
+    expect(l.chosenBy).toBe("system:auto");
+    expect(l.reviewKind).toBeNull();
+  }
+  expect(await eventsByAction("certain_match_auto_accepted")).toHaveLength(4);
 
   // H-08 is terug (O5): beide productloze merken staan op de inlaadwachtrij, met
   // hun genormaliseerde key, en elk blauw is als brand_load_requested gelogd.
@@ -342,14 +361,14 @@ test("matcher: 5 groen · 4 open (gat A) · 5 geel (3 auto-door + 2 review) · 2
 // ── Stap 4 — AI-vangnet met gemockte client (suggesties, nooit beslissingen) ─
 // De mock doet per regel één brede zoekactie (input {} — in tender vergrendelt de
 // server de zoektocht toch op het gevraagde merk) en suggereert het eerste
-// toolresultaat. Restregels = geel-in-review (Lw102, Lw103) + rood (Lp601, Lr701)
+// toolresultaat. Restregels = geel-in-review (Lw101, Lw102, Lw103) + rood (Lp601, Lr701)
 // + de vier open-regels van gat A (Lp302, Ls001, Lp401, Ls010) — het vangnet
 // selecteert rood/open/geel-in-review, en open is sinds gat A het eerlijke
 // antwoord op merk-zonder-specs, dus die gaan nu mee (bestaand open-gedrag).
 // Blauw (Lp801/Ls802) selecteert het vangnet in tender bewust NIET (regel 4: een
-// blauw-suggestie is per definitie een ander merk). Alle acht de gecheckte regels
-// vinden binnen hun merk een kandidaat → 8 suggesties.
-test("vangnet (mock): 8 restregels gecheckt, 8 suggesties, statussen onaangetast", async () => {
+// blauw-suggestie is per definitie een ander merk). Alle negen de gecheckte regels
+// vinden binnen hun merk een kandidaat → 9 suggesties.
+test("vangnet (mock): 9 restregels gecheckt, 9 suggesties, statussen onaangetast", async () => {
   const mockClient: VangnetClient = {
     async createMessage(params) {
       if (params.messages.length === 1) {
@@ -393,15 +412,15 @@ test("vangnet (mock): 8 restregels gecheckt, 8 suggesties, statussen onaangetast
 
   const result = await runVangnet(db, dossierId, { client: mockClient, actor: ACTOR });
   expect(result.skipped).toBeUndefined();
-  // Lw102, Lw103, Lp601, Lr701 + de vier gat-A-open-regels (blauw doet niet mee)
-  expect(result.checked).toHaveLength(8);
-  expect(result.suggested).toBe(8); // elk vindt binnen zijn merk een kandidaat
+  // Lw101, Lw102, Lw103, Lp601, Lr701 + de vier gat-A-open-regels (blauw doet niet mee)
+  expect(result.checked).toHaveLength(9);
+  expect(result.suggested).toBe(9); // elk vindt binnen zijn merk een kandidaat
   expect(result.discarded).toBe(0);
 
   // Suggesties zijn opgeslagen, met model + rationale — en het zijn SUGGESTIES:
   // geen enkele regel is van status/match/review-flag veranderd.
   const suggestions = await db.select().from(aiSuggestions);
-  expect(suggestions).toHaveLength(8);
+  expect(suggestions).toHaveLength(9);
   for (const s of suggestions) expect(s.model).toBe(VANGNET_MODEL);
 
   const after = await getSpecLines(db, dossierId);
@@ -413,17 +432,17 @@ test("vangnet (mock): 8 restregels gecheckt, 8 suggesties, statussen onaangetast
   }
 
   // Audit (regel 5): zoekacties herkenbaar als vangnet, suggesties gelogd,
-  // run-samenvatting aanwezig. Tokens tellen mee in llm_usage (2 calls × 8 regels).
+  // run-samenvatting aanwezig. Tokens tellen mee in llm_usage (2 calls × 9 regels).
   const searches = await eventsByAction("search");
   const vangnetSearches = searches.filter(
     (e) => (e.payload as { bron?: string } | null)?.bron === "ai_vangnet",
   );
-  expect(vangnetSearches).toHaveLength(8);
-  expect(await eventsByAction("ai_suggestion_created")).toHaveLength(8);
+  expect(vangnetSearches).toHaveLength(9);
+  expect(await eventsByAction("ai_suggestion_created")).toHaveLength(9);
   const runs = await eventsByAction("ai_vangnet_run");
   expect(runs).toHaveLength(1);
-  expect((runs[0].payload as { checked: number }).checked).toBe(8);
-  expect(await db.select().from(llmUsage)).toHaveLength(16); // 2 calls × 8 regels
+  expect((runs[0].payload as { checked: number }).checked).toBe(9);
+  expect(await db.select().from(llmUsage)).toHaveLength(18); // 2 calls × 9 regels
 }, 60_000);
 
 // ── Stap 5 — review afronden ─────────────────────────────────────────────────
@@ -469,20 +488,35 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
   expect(lp601Na.matchedProductId).toBe(sassoId);
   expect(lp601Na.chosenBy).toBe(ACTOR);
 
+  // 5c-bis. Lw101 is het nieuwe geval uit de Brink-demo: twee kandidaten die
+  // állebei aan alles voldoen. Het systeem kiest daar niet — Brink wel, en dan is
+  // het groen mét merkteken.
+  const lw101 = await lineByCode("Lw101");
+  await decideReview(db, {
+    specLineId: lw101.id,
+    decision: "accepteer",
+    actor: ACTOR,
+  });
+  const lw101Na = await lineByCode("Lw101");
+  expect(lw101Na.status).toBe("groen");
+  expect(lw101Na.matchedProductId).not.toBeNull();
+  expect(lw101Na.chosenBy).toBe(ACTOR);
+
   // 5d. De rest blijft bewust staan: Lr701 rood (p.m. back to customer), Lp801/Ls802
   // blauw (merkrij zonder producten → inlaadwachtrij, O5 — onze actie, niet die van
   // de klant); paars onveranderd. De review-wachtrij is leeg.
   expect((await lineByCode("Lr701")).status).toBe("rood");
   const queue = await getReviewQueue(db, dossierId);
   expect(queue.pending).toHaveLength(0);
-  expect(queue.done).toHaveLength(2);
+  expect(queue.done).toHaveLength(3);
 
-  expect(await eventsByAction("review_decided")).toHaveLength(2);
+  expect(await eventsByAction("review_decided")).toHaveLength(3);
   expect(await eventsByAction("manual_link")).toHaveLength(1);
 
   // Eindverdeling na review: 8 groen · 4 open (gat A, onaangeroerd in de review —
   // ze staan niet in de wachtrij: open zet geen reviewKind) · 3 geel (auto-door) ·
-  // 1 rood · 2 blauw · 2 paars.
+  // 1 rood · 2 blauw · 2 paars. Zelfde eindstand als vóór 12 aug 2026 — maar vier
+  // van die acht groene regels heeft het systeem zélf vastgezet in plaats van een mens.
   const rows = await getSpecLines(db, dossierId);
   const tally = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
@@ -493,22 +527,25 @@ test("review: accepteer → groen + merkteken; variant kiezen; rood handmatig li
 
 // ── Stap 6 — estimate: offertenummer, totalen, PDF terugleesbaar ─────────────
 // Tellende regels (aantal = 1 per regel, uit de inhoudsopgave):
-//   groen: Lw102 (NEST 180) + Lw103 (NEST 180) + Lp601 (SASSO 300) = 660
+//   groen, door het systeem vastgezet (goal-groen-betekent-zeker): Lp301 (SASSO 300)
+//     + Ld201 (Holon 250) + Lp501 (STAR MAXI 160) + Ld105 (UNICO 120) = 830
+//   groen, door Brink gekozen: Lw101 + Lw102 + Lw103 (NEST 180 elk) + Lp601 (SASSO 300) = 840
 //   geel (auto-door): Ld202 (Holon 250) + Ld106 (UNICO 120) + Ld107 (UNICO 120) = 490
-//   samen 1.150 — de 5 groene + 4 open regels zónder gekozen match tellen bewust niet mee
-//   (geen matchedProductId → geen prijs; kiezen blijft menswerk).
-test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens in de PDF", async () => {
+//   samen 2.160. Tot 12 aug 2026 was dit 660/490/1.150: de vier systeem-groene regels
+//   hadden géén gekozen product en vielen uit de offerte — punt 3 uit de Brink-demo.
+//   De 4 open regels tellen nog steeds niet mee (nooit gematcht → p.m.).
+test("estimate: offertenummer, totalen 830+840/490/2.160, p.m.-posten en merktekens in de PDF", async () => {
   const year = new Date().getFullYear();
   const quote = await generateQuote(db, ALLE_DOSSIERS, dossierId, ACTOR);
   expect(quote.quoteNumber).toBe(`BL-${year}-0001`);
 
   const quoteData = await getQuote(db, dossierId);
-  expect(quoteData?.lines).toHaveLength(6); // alleen groen/geel mét prijs
-  expect(quoteData?.total).toBe(1150);
+  expect(quoteData?.lines).toHaveLength(11); // alleen groen/geel mét prijs
+  expect(quoteData?.total).toBe(2160);
 
   const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   expect(data.lines).toHaveLength(20); // álle regels — niets stilzwijgend weg
-  expect(data.computed.totals).toEqual({ groen: 660, geel: 490, samen: 1150 });
+  expect(data.computed.totals).toEqual({ groen: 1670, geel: 490, samen: 2160 });
   // p.m.-verdeling sinds O5: de twee productloze merken zijn blauw (inladen — onze
   // actie), niet rood. Sinds A4 tellen de 4 open regels (gat A, nooit gematcht) hier
   // óók mee: ze kregen wél "p.m." in de regeltotaalkolom van de PDF en stonden in geen
@@ -534,9 +571,9 @@ test("estimate: offertenummer, totalen 660/490/1.150, p.m.-posten en merktekens 
   expect(text).toContain("Deerns Nederland B.V.");
 
   // totalen per kleur + eindtotaal
-  expect(text).toContain("660,00"); // groen
+  expect(text).toContain("1.670,00"); // groen
   expect(text).toContain("490,00"); // geel
-  expect(text).toContain("1.150,00"); // samen
+  expect(text).toContain("2.160,00"); // samen
   expect(text).toContain("Combined (green + yellow)");
 
   // p.m.-posten: getoond, nooit opgeteld — en élke niet-tellende status staat erbij,
@@ -594,12 +631,13 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
   expect(count("import_run_created")).toBe(1); // import
   expect(count("matched_status")).toBe(20); // matcher over élke regel
   expect(count("product_considered")).toBeGreaterThanOrEqual(17); // kandidaten-goud (K-02)
-  expect(count("near_match_auto_accepted")).toBe(3); // B3 auto-door
+  expect(count("near_match_auto_accepted")).toBe(3); // B3 auto-door (geel)
+  expect(count("certain_match_auto_accepted")).toBe(4); // zeker groen, zelf vastgezet
   expect(count("brand_load_requested")).toBe(2); // blauw is terug (O5): Zumtobel + Trilux
   expect(count("ai_vangnet_skipped_no_key")).toBe(1); // import zonder key: skip, geen fout
-  expect(count("ai_suggestion_created")).toBe(8); // AI-suggesties (mock-run, incl. 4 open)
+  expect(count("ai_suggestion_created")).toBe(9); // AI-suggesties (mock-run, incl. 4 open)
   expect(count("ai_vangnet_run")).toBe(1);
-  expect(count("review_decided")).toBe(2); // accepteer + variant
+  expect(count("review_decided")).toBe(3); // 2× accepteer + variant
   expect(count("manual_link")).toBe(1); // rood handmatig gelinkt
   expect(count("quote_generated")).toBe(1); // offertegeneratie
   // NB: `estimate_pdf_generated` wordt in de downloadroute gelogd
@@ -613,5 +651,5 @@ test("events-audittrail: import, matches, auto-door, ai, review, generatie, stat
       e.action === "search" &&
       (e.payload as { bron?: string } | null)?.bron === "ai_vangnet",
   );
-  expect(vangnetSearch).toHaveLength(8); // 8 gecheckte restregels (blauw doet niet mee)
+  expect(vangnetSearch).toHaveLength(9); // 9 gecheckte restregels (blauw doet niet mee)
 }, 30_000);

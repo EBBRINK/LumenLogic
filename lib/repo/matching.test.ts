@@ -228,3 +228,119 @@ test("A2: gele kandidaat op een onbevestigde bron wordt niet auto-geaccepteerd m
     .where(eq(events.action, "near_match_auto_accepted"));
   expect(evts.length).toBe(0);
 });
+
+// ── Groen betekent klaar (docs/goal-groen-betekent-zeker.md) ─────────────────
+// De persistente kant: wat groen is, zet het systeem zelf vast — zelfde pad als
+// het geel-auto-door, met een eigen event zodat "zeker" en "afgerond" in het
+// audittrail te scheiden zijn.
+
+// Eén product, exact wat gevraagd wordt: de zekere groene kandidaat.
+async function seedZekerGroeneLijn(
+  db: TestDb,
+  extra: Partial<typeof specLines.$inferInsert> = {},
+) {
+  const { productId } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "VELA ROUND 600",
+    kelvin: 3000,
+    maxWattage: 12,
+  });
+  const [dossier] = await db
+    .insert(projectDossiers)
+    .values({ name: "Zeker groen" })
+    .returning();
+  const [line] = await db
+    .insert(specLines)
+    .values({
+      dossierId: dossier.id,
+      fixtureCode: "Lk411",
+      brandText: "XAL",
+      productText: "VELA ROUND",
+      reqWatt: "12",
+      reqKelvin: 3000,
+      ...extra,
+    })
+    .returning();
+  return { productId, line };
+}
+
+test("groen=klaar: groene regel krijgt direct een product, chosenBy system:auto, eigen event", async () => {
+  const db = await createTestDb();
+  const { productId, line } = await seedZekerGroeneLijn(db);
+
+  const outcome = await runMatcher(db as TestDb, line.id, "tester");
+  expect(outcome.status).toBe("groen");
+  expect(outcome.certainGreen?.productId).toBe(productId);
+
+  // zonder dit valt een groene regel uit de offerte (dossiers.ts: groen/geel
+  // MÉT een geldige stuksprijs, en die hangt aan matchedProductId)
+  const [saved] = await db.select().from(specLines).where(eq(specLines.id, line.id));
+  expect(saved.matchedProductId).toBe(productId);
+  expect(saved.status).toBe("groen");
+  expect(saved.reviewKind).toBeNull(); // geen wachtrij op grond van de match
+
+  const [cand] = await db
+    .select()
+    .from(specLineCandidates)
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, line.id),
+        eq(specLineCandidates.chosen, true),
+      ),
+    );
+  expect(cand?.productId).toBe(productId);
+  expect(cand?.chosenBy).toBe("system:auto");
+
+  // ijzeren regel 5 — en een EIGEN actie: zeker ≠ afgerond
+  const zeker = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "certain_match_auto_accepted"));
+  expect(zeker.length).toBe(1);
+  expect((zeker[0].payload as { productId: string }).productId).toBe(productId);
+  const bijna = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "near_match_auto_accepted"));
+  expect(bijna.length).toBe(0);
+});
+
+test("groen=klaar: openstaande leescheck blokkeert het vastzetten, ook bij groen", async () => {
+  const db = await createTestDb();
+  // De OCR-leescheck gaat over de BRON, niet over de match (vangnet.ts) en blijft
+  // staan — en zolang hij open staat kiest het systeem niets.
+  const { line } = await seedZekerGroeneLijn(db, { source: "ocr", reviewKind: "ocr" });
+
+  const outcome = await runMatcher(db as TestDb, line.id, "tester");
+  expect(outcome.status).toBe("groen");
+
+  const [saved] = await db.select().from(specLines).where(eq(specLines.id, line.id));
+  expect(saved.reviewKind).toBe("ocr");
+  expect(saved.matchedProductId).toBeNull();
+  const evts = await db
+    .select()
+    .from(events)
+    .where(eq(events.action, "certain_match_auto_accepted"));
+  expect(evts.length).toBe(0);
+});
+
+test("groen=klaar: hermatch blijft idempotent — één keuze, één event", async () => {
+  const db = await createTestDb();
+  const { productId, line } = await seedZekerGroeneLijn(db);
+
+  await runMatcher(db as TestDb, line.id, "tester");
+  await runMatcher(db as TestDb, line.id, "tester");
+
+  const [saved] = await db.select().from(specLines).where(eq(specLines.id, line.id));
+  expect(saved.matchedProductId).toBe(productId);
+  const chosen = await db
+    .select()
+    .from(specLineCandidates)
+    .where(
+      and(
+        eq(specLineCandidates.specLineId, line.id),
+        eq(specLineCandidates.chosen, true),
+      ),
+    );
+  expect(chosen.length).toBe(1);
+});

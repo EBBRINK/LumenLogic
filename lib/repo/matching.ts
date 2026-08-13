@@ -122,13 +122,19 @@ export async function runMatcher(
   const preservedKind =
     line.reviewKind && line.reviewKind !== "geel" ? line.reviewKind : null;
 
-  // B3 (geel auto-door): de engine markeerde de ondubbelzinnige bijna-match (precies
-  // één schoon-gele kandidaat, geen keuzeveld-afwijking). Een bewaarde andere
-  // review-flag blokkeert het automatisch accepteren — dan eerst de mens.
-  const auto = preservedKind ? undefined : outcome.unambiguousYellow;
+  // Twee soorten automatisme, één pad. De engine markeert óf de zekere groene kandidaat
+  // ("dit is hét product", goal-groen-betekent-zeker) óf de ondubbelzinnige bijna-match
+  // (B3, geel: precies één schoon-gele kandidaat zonder keuzeveld-afwijking). Ze sluiten
+  // elkaar uit — een regel is groen of geel, nooit allebei. Een bewaarde review-flag
+  // blokkeert het automatisch accepteren, ook bij groen: staat de OCR-leescheck nog open,
+  // dan kiest het systeem niets (een verhallucineerd merk mag geen product vastzetten).
+  const auto = preservedKind
+    ? undefined
+    : (outcome.certainGreen ?? outcome.unambiguousYellow);
+  const autoZeker = auto != null && auto === outcome.certainGreen;
 
   // status + afwijkingen op de regel schrijven; matched blijft leeg tot een keuze,
-  // BEHALVE bij auto-door (B3): dan wordt de bijna-match direct gezet, zónder review.
+  // BEHALVE bij auto-door: dan wordt de aangewezen kandidaat direct gezet, zónder review.
   // Geel = "Brink reviewt of de afwijking acceptabel is" (regelset) → automatisch in de
   // review-wachtrij. Andere statussen resetten de geel-flag zodat een hermatch de
   // wachtrij opschoont; bewaarde flags (zie hierboven) gaan altijd voor.
@@ -145,9 +151,11 @@ export async function runMatcher(
     })
     .where(eq(specLines.id, specLineId));
 
-  // B3: de auto-geaccepteerde kandidaat markeren — zelfde velden als chooseCandidate
+  // De auto-geaccepteerde kandidaat markeren — zelfde velden als chooseCandidate
   // (chosen/chosenBy), maar met het systeem als kiezer. Event mét de afwijkingen in de
-  // payload (ijzeren regel 5: elke match wordt gelogd).
+  // payload (ijzeren regel 5: elke match wordt gelogd). Zeker groen en de gele
+  // bijna-match loggen onder een EIGEN actie: in het audittrail en in de analytics moet
+  // te scheiden zijn of het systeem zeker was of alleen afrondde.
   if (auto) {
     await db
       .update(specLineCandidates)
@@ -161,7 +169,9 @@ export async function runMatcher(
     await logEvent(db, {
       entity: "spec_line",
       entityId: specLineId,
-      action: "near_match_auto_accepted",
+      action: autoZeker
+        ? "certain_match_auto_accepted"
+        : "near_match_auto_accepted",
       actor,
       payload: { productId: auto.productId, deviations: auto.deviations },
     });
