@@ -22,3 +22,18 @@ const mb = (bytes: number): string => (bytes / 1024 / 1024).toFixed(1);
 export function templateCapMelding(bytes: number): string {
   return `This file is ${mb(bytes)} MB — larger than the ${mb(MAX_TEMPLATE_UPLOAD_BYTES)} MB limit for a filled template. A filled template is a few hundred KB, so a file this size is usually a different document, or the template with images pasted into it. Nothing has been uploaded.`;
 }
+
+/**
+ * Rij-cap: een TRANSPORTgrens naast de validator, geen format-oordeel (zelfde redenering
+ * als de byte-cap hierboven — daarom leeft hij hier en niet in lib/excel-validate.ts).
+ * Ruim gekozen: catalogus-formaat bestanden (18.670 rijen gemeten op 11 aug 2026, zie
+ * docs/probleem-template-upload-grote-bestanden.md) zijn sinds de directe import juist
+ * het doel. De cap vangt alleen het pathologische geval — een bestand dat geen catalogus
+ * meer is maar een export-ongeluk. Alleen serverside te checken: de rijen zijn pas na de
+ * validatie bekend, dus er is geen client-laag zoals bij de byte-cap.
+ */
+export const MAX_TEMPLATE_UPLOAD_ROWS = 60_000;
+
+export function templateRijCapMelding(rijen: number): string {
+  return `This file contains ${rijen.toLocaleString("en-US")} filled rows — more than the ${MAX_TEMPLATE_UPLOAD_ROWS.toLocaleString("en-US")} row limit. Even a full brand catalogue stays well below this, so a file this size is usually an export accident. Nothing has been imported.`;
+}

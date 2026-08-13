@@ -6,9 +6,12 @@
 import { expect, test } from "vitest";
 import {
   klasseerCri,
+  klasseerDimbaarJaNee,
   klasseerDimprotocol,
   klasseerIp,
   klasseerKelvin,
+  klasseerLandcode,
+  klasseerLumen,
   klasseerWatt,
   NORMALISATOREN,
 } from "./supplier-cell";
@@ -255,6 +258,77 @@ test("Regelung: SENSORIK en INTEGR. (118 rijen) zijn geen dimgegeven en zwijgen"
 test("Regelung: '-' (391) en null (51) leveren nooit een voorstel", () => {
   expect(klasseerDimprotocol("-").soort).toBe("plaatshouder");
   expect(klasseerDimprotocol(null).soort).toBe("plaatshouder");
+});
+
+// ── Northern (brink_northern_raw.ndjson, 838 rijen, sha256 7a909c02…, 11 aug 2026) ──
+test("Northern kelvin: '2700k' (52×) wordt 2700 genormaliseerd, '2700' (9×) ongenormaliseerd", () => {
+  expect(klasseerKelvin("2700k")).toMatchObject({
+    soort: "waarde",
+    waarde: "2700",
+    genormaliseerd: true,
+  });
+  expect(klasseerKelvin("2700")).toMatchObject({
+    soort: "waarde",
+    waarde: "2700",
+    genormaliseerd: false,
+  });
+});
+
+test("Northern watt: alle 13 eenletterige W-vormen worden waarde; de samengestelde cel zwijgt", () => {
+  for (const [cel, w] of [
+    ["6W", "6"],
+    ["60W", "60"],
+    ["100W", "100"],
+    ["8 W", "8"], // de spatie-variant (4×)
+  ] as const) {
+    expect(klasseerWatt(cel), cel).toMatchObject({
+      soort: "waarde",
+      waarde: w,
+      genormaliseerd: true,
+    });
+  }
+  // Twee getallen voor één veld is een muntworp, geen meting (1×).
+  expect(klasseerWatt("7W base E27/5.5W E14 horns").soort).toBe("onbekend");
+  // Serien blijft werken: kale getallen ongenormaliseerd.
+  expect(klasseerWatt("20")).toMatchObject({ soort: "waarde", waarde: "20", genormaliseerd: false });
+});
+
+test("Northern lumen: '<n> lm' (78×) en kaal '<n>' (13×) worden waarde; buiten bereik zwijgt", () => {
+  expect(klasseerLumen("1600 lm")).toMatchObject({
+    soort: "waarde",
+    waarde: "1600",
+    genormaliseerd: true,
+  });
+  expect(klasseerLumen("800")).toMatchObject({ soort: "waarde", waarde: "800", genormaliseerd: false });
+  expect(klasseerLumen("0").soort).toBe("onbekend");
+  expect(klasseerLumen("999999").soort).toBe("onbekend");
+  expect(klasseerLumen("1600 lm warm").soort).toBe("onbekend");
+});
+
+test("Northern dimbaar: 'Yes' (240×) wordt DIM; 'No' (57×) zwijgt als plaatshouder", () => {
+  expect(klasseerDimbaarJaNee("Yes")).toMatchObject({
+    soort: "waarde",
+    waarde: "DIM",
+    genormaliseerd: true,
+  });
+  // Zelfde besluit als Serien's ON/OFF: niet-dimbaar is niet uitdrukbaar zonder judgeDimmable
+  // te misleiden — plaatshouder, geteld in het runrapport.
+  expect(klasseerDimbaarJaNee("No").soort).toBe("plaatshouder");
+  expect(klasseerDimbaarJaNee("maybe").soort).toBe("onbekend");
+});
+
+test("Northern herkomst: alle negen gemeten landcodes worden waarde; rommel zwijgt", () => {
+  for (const code of ["CN", "LV", "LT", "IT", "EE", "PL", "SE", "IN", "NO"]) {
+    expect(klasseerLandcode(code), code).toEqual({
+      soort: "waarde",
+      waarde: code,
+      genormaliseerd: false,
+      uitleg: undefined,
+    });
+  }
+  expect(klasseerLandcode("cn")).toMatchObject({ soort: "waarde", waarde: "CN", genormaliseerd: true });
+  expect(klasseerLandcode("China").soort).toBe("onbekend");
+  expect(klasseerLandcode("E U").soort).toBe("onbekend");
 });
 
 // ── Volledigheid: de partitie moet kloppen ───────────────────────────────────

@@ -46,10 +46,15 @@ export type Beschrijft =
   | "commercieel" // prijs/verpakking/logistiek — buiten de matcher
   | "onbekend"; // gezien, niet begrepen → nooit een voorstel
 
+// Doelvelden buiten de zeven matchvelden die de publiceerroute wél kent (APPLY_FIELDS in
+// lib/repo/enrichment.ts). De matcher en de naam-parser blijven er blind voor; alleen
+// publishRun kan ze vullen.
+export const EXTRA_DOELVELDEN = ["countryOfOrigin"] as const;
+
 export type KolomToewijzing = {
   merk: string;
   kolom: string;
-  veld: (typeof FIELDS)[number] | null;
+  veld: (typeof FIELDS)[number] | (typeof EXTRA_DOELVELDEN)[number] | null;
   beschrijft: Beschrijft;
   normalisator: NormalisatorNaam | null;
   // Alleen voorstellen waar `Leuchtmittel` een geïntegreerde LED aanwijst. Zie het bewijs per
@@ -191,6 +196,119 @@ export const SUPPLIER_COLUMNS: KolomToewijzing[] = [
       "een rijfilter is niet nodig. Kruiscontrole uit het zwerm-onderzoek: IP44 komt voor bij " +
       "zowel E27 als geïntegreerde LED, dus de waarde varieert per armatuur en niet per fitting " +
       "— het is de behuizingsklasse. Northern heeft geen Schutzklasse-achtige buurkolom.",
+  },
+  // De overige Northern-kolommen, gemeten op dezelfde export (838 rijen, sha256 7a909c02…,
+  // 11 aug 2026). De kruistabel met `fitting` is per kolom het beslissende bewijs: Northern
+  // vult de meeste cellen óók bij verwisselbare fittingen, en dan beschrijft de cel de LAMP
+  // (of de maximale fittingbelasting), niet het armatuur.
+  {
+    merk: "Northern",
+    kolom: "watt",
+    veld: "maxWattage",
+    beschrijft: "armatuur",
+    normalisator: "watt",
+    alleenGeintegreerdeLed: true,
+    bewijs:
+      "298 gevuld (290 op blad Lighting), 14 vormen — alle '<n>W', één keer met spatie '8 W' " +
+      "(4×), één samengestelde cel '7W base E27/5.5W E14 horns' (1×, zwijgt als onbekend). " +
+      "De LED-restrictie is hier gemeten NOODZAKELIJK: de kruistabel fitting × watt toont " +
+      "'E27 | 100W' (34×) en 'null | 100W' (7×) — dat is de maximale fittingbelasting van een " +
+      "hanglamp, geen opgenomen vermogen. Op de 67 Integrated-LED-rijen loopt watt 3–21W en is " +
+      "het wél het armatuurvermogen. Zelfde besluit als Serien's Systemleistung.",
+  },
+  {
+    merk: "Northern",
+    kolom: "kelvin",
+    veld: "kelvin",
+    beschrijft: "armatuur",
+    normalisator: "kelvin",
+    alleenGeintegreerdeLed: true,
+    bewijs:
+      "61 gevuld, twee vormen: '2700k' (52×) en '2700' (9×) — één kleurtemperatuur in het " +
+      "hele merk. Kruistabel: ALLE 61 cellen liggen op een rij met fitting 'Integrated LED', " +
+      "nul op een verwisselbare fitting — Northern laat de kolom leeg zodra de kelvin niet van " +
+      "hún LED is, hetzelfde patroon als Serien's CCT K. De restrictie is dus gratis (filtert " +
+      "vandaag 0 rijen) en staat er als slot voor een toekomstige export die dat patroon breekt.",
+  },
+  {
+    merk: "Northern",
+    kolom: "lumen",
+    veld: "lumenOutput",
+    beschrijft: "armatuur",
+    normalisator: "lumen",
+    alleenGeintegreerdeLed: true,
+    bewijs:
+      "91 gevuld, 11 vormen: '<n> lm' (78×) en kaal '<n>' (13×), bereik 200–2635. De " +
+      "LED-restrictie is gemeten NOODZAKELIJK: 36 van de 91 cellen liggen op een G9-rij — daar " +
+      "is de lumen die van de (mee)geleverde G9-lamp, niet van het armatuur. De 55 op " +
+      "Integrated LED zijn de armatuuropbrengst en mogen door.",
+  },
+  {
+    merk: "Northern",
+    kolom: "dimbaar",
+    veld: "dimmable",
+    beschrijft: "armatuur",
+    normalisator: "dimbaarJaNee",
+    alleenGeintegreerdeLed: true,
+    bewijs:
+      "297 gevuld, exact twee vormen: 'Yes' (240×) en 'No' (57×) — geen protocol. 'Yes' wordt " +
+      "'DIM' (de bestaande generieke waarde, 901× in productie via de naam-parser); 'No' " +
+      "zwijgt als plaatshouder, zelfde besluit als Serien's ON/OFF. LED-restrictie omdat " +
+      "dimbaar bij een E27/G9/GU10-armatuur (216 van de 283 Lighting-cellen) van de LAMP " +
+      "afhangt die de klant erin draait; alleen bij de 67 Integrated-LED-rijen is het een " +
+      "eigenschap van het armatuur zelf.",
+  },
+  {
+    merk: "Northern",
+    kolom: "herkomst",
+    veld: "countryOfOrigin",
+    beschrijft: "armatuur",
+    normalisator: "landcode",
+    alleenGeintegreerdeLed: false,
+    bewijs:
+      "838/838 gevuld, negen vormen, alle ISO-3166 alpha-2: CN 409 · LV 228 · LT 72 · IT 42 · " +
+      "EE 23 · PL 21 · SE 19 · IN 19 · NO 5. Op blad Lighting: CN 283 · IT 14 · SE 6 · NO 5 · " +
+      "PL 1 = 309/309. Geen matchveld — products.country_of_origin (db/schema.ts:298) is een " +
+      "productfeit; daarom via EXTRA_DOELVELDEN alleen aan de publiceerroute bekend.",
+  },
+  // Gezien en afgewezen:
+  {
+    merk: "Northern",
+    kolom: "garantie",
+    veld: null,
+    beschrijft: "commercieel",
+    normalisator: null,
+    alleenGeintegreerdeLed: false,
+    bewijs:
+      "807 gevuld, ÉÉN vorm: '1 Yr. Production guarantee'. Naar warranty_months (integer) zou " +
+      "een tekstparse vergen ('1 Yr.' → 12) en warranty_months zit niet in APPLY_FIELDS — de " +
+      "publiceerroute kent hem niet. Bovendien is één identieke waarde voor het hele merk eerder " +
+      "een merkvoorwaarde dan een productveld. Niet overzetbaar via deze route; aparte klus als " +
+      "Timo hem wil.",
+  },
+  {
+    merk: "Northern",
+    kolom: "cat",
+    veld: null,
+    beschrijft: "commercieel",
+    normalisator: null,
+    alleenGeintegreerdeLed: false,
+    bewijs:
+      "Categorielabel van het verkoopblad (Lighting/Furniture/…-indeling), geen armatuurspec.",
+  },
+  {
+    merk: "Northern",
+    kolom: "fitting",
+    veld: null,
+    beschrijft: "lichtbron",
+    normalisator: null,
+    alleenGeintegreerdeLed: false,
+    bewijs:
+      "E27 (144×) · Integrated LED (67×) · G9 (37×) · GU10 (27×) · null (26×) · E14 (7×) · " +
+      "'E27, E14' (1×) op blad Lighting. Beschrijft de lichtbron; wordt NIET overgezet maar is " +
+      "wél de voorwaarde-kolom voor alleenGeintegreerdeLed op watt/kelvin/lumen/dimbaar — " +
+      "zelfde rol als Serien's Leuchtmittel. Ons schema heeft hiervoor lightSource/lampFoot; " +
+      "aparte klus.",
   },
 
   // ── Muuto — de tegenhanger, letterlijk nagekeken in de bron ────────────────

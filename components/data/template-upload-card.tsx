@@ -1,13 +1,16 @@
 "use client";
-// De ingang van het retour-pad (sprint 1.2): Brink krijgt een ingevulde template van een
-// merk terug en zet hem hier neer. Niets van dit bestand komt in de catalogus — de action
-// valideert (lib/excel-validate.ts, 1.1, ongewijzigd) en zet bij succes een staging-rij
-// neer; de mens beoordeelt daarna het voorstel-scherm.
+// De ingang van het template-pad. Sinds de koerswijziging van 11 aug 2026
+// (docs/goal-template-upload-direct-import.md) is dit een DIRECTE import met
+// vervang-semantiek: de action valideert (lib/excel-validate.ts, 1.1, ongewijzigd) en past
+// het bestand daarna meteen toe — het bestand is integraal leidend, de oude prijslijst
+// gaat op archief. Daarom vraagt de kaart de nieuwe prijslijst-metadata (naam + geldigheid)
+// hier uit: dit is de enige menselijke invoer, er komt geen goedkeurstap meer.
 //
-// TWEE LAGEN VOOR DE CAP (besluit 7): de client-check hieronder scheelt een kansloze
+// TWEE LAGEN VOOR DE BYTE-CAP (besluit 7): de client-check hieronder scheelt een kansloze
 // request van megabytes; de server-check in uploadTemplateAction is de gezaghebbende.
 // De clientcheck zit IN de useActionState-wrapper en niet in een onSubmit-handler: zo
 // blijft er één pad naar de state en kan de melding nooit uit de pas lopen met pending.
+// (De RIJ-cap is server-only: rijen zijn pas na de validatie bekend.)
 //
 // GEEN EIGEN VALIDATIEPROZA. Een format-afwijzing komt als getypeerde `reden` terug plus
 // de tekst die lib/excel-validate-messages.ts ervan maakte. Die tekst wordt bewust
@@ -18,6 +21,7 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import type { AfwijzingsReden } from "@/lib/excel-validate";
 import {
   MAX_TEMPLATE_UPLOAD_BYTES,
@@ -27,9 +31,8 @@ import {
 /**
  * Uitkomst van uploadTemplateAction zoals de kaart hem toont.
  *
- * Er is geen "ok"-variant: bij een geldig bestand redirect de action naar het
- * voorstel-scherm en komt deze kaart nooit meer aan bod. Dat is het punt van het pad —
- * een geslaagde upload is geen melding maar een scherm.
+ * Er is geen "ok"-variant: bij een geslaagde import redirect de action naar het merkscherm
+ * met de tellingen (import-summary.tsx) en komt deze kaart nooit meer aan bod.
  */
 export type TemplateUploadState =
   | { status: "idle" }
@@ -37,7 +40,8 @@ export type TemplateUploadState =
    *  kan er per code op differentiëren zonder de tekst te parsen); `tekst` is wat
    *  afwijzingsTekst(reden) ervan maakte. */
   | { status: "rejected"; reden: AfwijzingsReden; tekst: string }
-  /** Cap-overschrijding of een lege/kapotte keuze — geen format-oordeel. */
+  /** Cap-overschrijding, ontbrekend formulierveld of een geweigerde import (bijv. geen
+   *  prijzen in het bestand) — geen format-oordeel. */
   | { status: "error"; message: string };
 
 export type TemplateUploadAction = (
@@ -64,7 +68,7 @@ export function TemplateUploadCard({
           message: "Choose the filled template (.xlsx) first.",
         };
       }
-      // Client-laag van de cap: dit kost geen request en geen wachttijd.
+      // Client-laag van de byte-cap: dit kost geen request en geen wachttijd.
       if (file.size > MAX_TEMPLATE_UPLOAD_BYTES) {
         return { status: "error", message: templateCapMelding(file.size) };
       }
@@ -80,40 +84,78 @@ export function TemplateUploadCard({
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-sm text-muted-foreground">
-          Received the filled template from this brand? Upload it here. Nothing
-          is saved yet: we check the format first and then show you a proposal of
-          what would change — you decide field by field.
+          Received a filled template from this brand? Upload it here. The file
+          replaces this brand&apos;s data: after the format check every value in
+          it is imported — including cleared fields — and the previous price
+          list is archived. Products that are not in the file disappear from
+          search results.
         </p>
-        <form action={formAction} className="flex flex-wrap items-center gap-3">
+        <form action={formAction} className="space-y-3">
           <input type="hidden" name="brandId" value={brandId} />
-          <input
-            type="file"
-            name="template"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            required
-            disabled={pending}
-            aria-label="Choose filled template (.xlsx)"
-            className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
-          />
-          {/* Outline, geen navy vlak. Deze knop slaat niets op — de kaarttekst hierboven
-              zegt het zelf ("Nothing is saved yet") — en op dit scherm is Save in het
-              relatieformulier de zwaarste actie. DESIGN.md §6 kent maar drie
-              uitzonderingen op één-primary-per-scherm (dialoog, herhaalde beslis-kaart,
-              filterchip) en een eenmalige sectiekaart is geen van drieën. */}
-          <Button type="submit" variant="outline" disabled={pending}>
-            {pending ? "Checking…" : "Check template"}
-          </Button>
+          {/* De nieuwe prijslijst: naam + geldigheid, alle drie verplicht — een lijst
+              zonder einddatum voedt ijzeren regel 3 niet. Dit is de enige menselijke
+              invoer van de import. */}
+          <div className="flex flex-wrap gap-3">
+            <label className="flex w-56 flex-col gap-1 text-sm">
+              <span className="text-xs text-muted-foreground">
+                Price list name
+              </span>
+              <Input
+                type="text"
+                name="priceListName"
+                required
+                disabled={pending}
+                placeholder="e.g. Price list 2026"
+              />
+            </label>
+            <label className="flex w-44 flex-col gap-1 text-sm">
+              <span className="text-xs text-muted-foreground">Valid from</span>
+              <Input
+                type="date"
+                name="priceListValidFrom"
+                required
+                disabled={pending}
+              />
+            </label>
+            <label className="flex w-44 flex-col gap-1 text-sm">
+              <span className="text-xs text-muted-foreground">Valid until</span>
+              <Input
+                type="date"
+                name="priceListValidUntil"
+                required
+                disabled={pending}
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="file"
+              name="template"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              required
+              disabled={pending}
+              aria-label="Choose filled template (.xlsx)"
+              className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
+            />
+            {/* Outline, geen navy vlak — op dit scherm is Save in het relatieformulier de
+                zwaarste actie (DESIGN.md §6, één primary per scherm). De knoptekst dekt
+                wat hij ECHT doet: checken én importeren, in één klik. */}
+            <Button type="submit" variant="outline" disabled={pending}>
+              {pending ? "Checking & importing…" : "Check & import"}
+            </Button>
+          </div>
         </form>
 
         {pending && (
           <p role="status" className="mt-2 text-sm text-muted-foreground">
-            Reading the file and comparing it with what we already know…
+            Checking the format and importing the file — a full catalogue takes
+            a moment, keep this page open…
           </p>
         )}
 
         {/* Format-afwijzing: de zin van de 1.1-renderer, letterlijk. Geen alarmrood —
             een afgewezen bestand is geen fout van de lezer, het is iets om terug te
-            koppelen aan het merk. Wel duidelijk: er is niets opgeslagen. */}
+            koppelen aan het merk. Wel duidelijk: er is niets geïmporteerd. */}
         {state.status === "rejected" && !pending && (
           <div
             role="alert"
@@ -125,7 +167,8 @@ export function TemplateUploadCard({
             </p>
             <p className="mt-1">{state.tekst}</p>
             <p className="mt-1 text-muted-foreground">
-              Nothing has been saved. The brand relationship status is unchanged.
+              Nothing has been imported. The brand relationship status is
+              unchanged.
             </p>
           </div>
         )}

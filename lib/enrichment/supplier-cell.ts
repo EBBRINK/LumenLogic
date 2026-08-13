@@ -50,7 +50,10 @@ function plaatshouder(cel: string | null | undefined): CelUitkomst | null {
 // naam-parser (lib/enrichment/parser.ts:79); twee bronnen die hetzelfde veld vullen horen niet
 // twee verschillende opvattingen te hebben over wat een geldige kelvin is.
 // Gemeten in Serien's `CCT K`: 2700 (540×), 3000 (531×), 4000 (212×) = 1.283 schone waarden.
-const KELVIN_SCHOON = /^(\d{4})$/;
+// Northern schrijft de eenheid erachter: "2700k" (52×) naast kaal "2700" (9×) — gemeten op
+// brink_northern_raw.ndjson (838 rijen, sha256 7a909c02…, 11 aug 2026). De k-suffix is dus
+// toegestaan en telt als normalisatie.
+const KELVIN_SCHOON = /^(\d{4})\s*[kK]?$/;
 
 // De bereikvormen, gemeten: vijf spellingen van hetzelfde begrip plus twee afkortingen.
 //   DIM2WARM 2200-3000 (46) · TUNABLE WHITE 2200-5000 (44) · D2W (23) ·
@@ -74,7 +77,13 @@ export function klasseerKelvin(cel: string | null | undefined): CelUitkomst {
     const k = parseInt(schoon[1], 10);
     if (k < 2000 || k > 8000)
       return { soort: "onbekend", reden: `${k} K valt buiten 2000–8000` };
-    return { soort: "waarde", waarde: String(k), genormaliseerd: false };
+    const genormaliseerd = t !== String(k);
+    return {
+      soort: "waarde",
+      waarde: String(k),
+      genormaliseerd,
+      uitleg: genormaliseerd ? `"${t}" → ${k} (eenheid gestript)` : undefined,
+    };
   }
 
   // Een bereik herkennen we aan het LABEL, niet aan de getallen: "TW" en "D2W" dragen geen
@@ -177,7 +186,13 @@ export function klasseerIp(cel: string | null | undefined): CelUitkomst {
 // 40, …), 1.422 gevuld en nul plaatshouders. "Systemleistung" is het opgenomen vermogen van het
 // hele armatuur inclusief driver — dus een armatuureigenschap, niet die van een losse lamp.
 // Komma-decimaal → punt, want de kolom is numeric.
-const WATT_SCHOON = /^(\d+(?:[.,]\d+)?)$/;
+//
+// Northern schrijft de eenheid erachter — "6W" (81×), "60W" (49×), … en één keer met spatie
+// "8 W" (4×); gemeten op brink_northern_raw.ndjson (838 rijen, sha256 7a909c02…, 11 aug 2026).
+// De W-suffix is dus toegestaan en telt als normalisatie. De ene samengestelde cel
+// "7W base E27/5.5W E14 horns" (1×) past niet op het anker en zwijgt — twee getallen voor één
+// veld is een muntworp, geen meting.
+const WATT_SCHOON = /^(\d+(?:[.,]\d+)?)(\s*(?:W|watt))?$/i;
 
 export function klasseerWatt(cel: string | null | undefined): CelUitkomst {
   const ph = plaatshouder(cel);
@@ -185,7 +200,7 @@ export function klasseerWatt(cel: string | null | undefined): CelUitkomst {
   const t = cel!.trim();
   const m = WATT_SCHOON.exec(t);
   if (!m) return { soort: "onbekend", reden: `geen wattage te herkennen in "${t}"` };
-  const genormaliseerd = m[1].includes(",");
+  const genormaliseerd = m[1].includes(",") || m[2] != null;
   const w = parseFloat(m[1].replace(",", "."));
   if (!Number.isFinite(w) || w <= 0)
     return { soort: "onbekend", reden: `wattage "${t}" is niet positief` };
@@ -193,7 +208,7 @@ export function klasseerWatt(cel: string | null | undefined): CelUitkomst {
     soort: "waarde",
     waarde: String(w),
     genormaliseerd,
-    uitleg: genormaliseerd ? `"${t}" → ${w} (komma-decimaal)` : undefined,
+    uitleg: genormaliseerd ? `"${t}" → ${w} (eenheid/komma genormaliseerd)` : undefined,
   };
 }
 
@@ -250,6 +265,78 @@ export function klasseerDimprotocol(cel: string | null | undefined): CelUitkomst
   return { soort: "onbekend", reden: `geen dimprotocol te herkennen in "${t}"` };
 }
 
+// ── Lumen ────────────────────────────────────────────────────────────────────
+// Gemeten in Northern's `lumen` (brink_northern_raw.ndjson, sha256 7a909c02…, 11 aug 2026):
+// 11 vormen, 91 gevuld — "1600 lm" (36×), "527 lm" (18×), … en kaal "800"/"200"/"2400" (9×).
+// De lm-suffix is dus toegestaan en telt als normalisatie. Bovengrens 100.000: de sterkste
+// armaturen in de catalogus zitten ver daaronder; een groter getal is een leesfout.
+const LUMEN_SCHOON = /^(\d{1,6})(\s*(?:lm|lumen))?$/i;
+
+export function klasseerLumen(cel: string | null | undefined): CelUitkomst {
+  const ph = plaatshouder(cel);
+  if (ph) return ph;
+  const t = cel!.trim();
+  const m = LUMEN_SCHOON.exec(t);
+  if (!m) return { soort: "onbekend", reden: `geen lumen te herkennen in "${t}"` };
+  const n = parseInt(m[1], 10);
+  if (n <= 0 || n > 100_000)
+    return { soort: "onbekend", reden: `${n} lm valt buiten 1–100000` };
+  const genormaliseerd = m[2] != null;
+  return {
+    soort: "waarde",
+    waarde: String(n),
+    genormaliseerd,
+    uitleg: genormaliseerd ? `"${t}" → ${n} (eenheid gestript)` : undefined,
+  };
+}
+
+// ── Dimbaar als ja/nee ───────────────────────────────────────────────────────
+// Gemeten in Northern's `dimbaar`: precies twee vormen — "Yes" (240×) en "No" (57×). Geen
+// protocol, alleen het feit. "Yes" wordt "DIM": dat is de bestaande generieke waarde in
+// products.dimmable (901× in productie, uit de naam-parser — parser.ts:404) en judgeDimmable
+// leest hem als "dimbaar, protocol onbekend" (substring-toets: DIM-eis → groen, DALI-eis →
+// geel). "No" is de AFWEZIGHEID van dimmen — zelfde besluit als Serien's "ON/OFF": onze kolom
+// kan dat niet uitdrukken zonder judgeDimmable te misleiden, dus plaatshouder + rapport.
+export function klasseerDimbaarJaNee(cel: string | null | undefined): CelUitkomst {
+  const ph = plaatshouder(cel);
+  if (ph) return ph;
+  const t = cel!.trim();
+  if (/^yes$/i.test(t))
+    return { soort: "waarde", waarde: "DIM", genormaliseerd: true, uitleg: `"${t}" → DIM` };
+  if (/^no$/i.test(t))
+    return {
+      soort: "plaatshouder",
+      reden: `"${t}" zegt niet-dimbaar; onze dimmable-kolom kan dat niet uitdrukken zonder judgeDimmable te misleiden`,
+    };
+  return { soort: "onbekend", reden: `geen ja/nee te herkennen in "${t}"` };
+}
+
+// ── Landcode ─────────────────────────────────────────────────────────────────
+// Gemeten in Northern's `herkomst`: 838/838 gevuld, negen vormen, alle ISO-3166 alpha-2
+// (CN 409 · LV 228 · LT 72 · IT 42 · EE 23 · PL 21 · SE 19 · IN 19 · NO 5). De poort is de
+// gecureerde kolomtoewijzing — een twee-lettercel in een herkomst-kolom ís een landcode; wij
+// eisen alleen de vorm en normaliseren naar hoofdletters. Alles anders (een landnaam, "EU",
+// een streep) zwijgt fail-closed. Randgeval: "NA" staat in PLAATSHOUDERS, dus Namibië zou als
+// plaatshouder zwijgen in plaats van als waarde landen — Northern produceert daar niet; duikt
+// de code ooit op, dan is dat in het runrapport zichtbaar als celPlaatshouder en geen stil gat.
+const LANDCODE_SCHOON = /^[A-Za-z]{2}$/;
+
+export function klasseerLandcode(cel: string | null | undefined): CelUitkomst {
+  const ph = plaatshouder(cel);
+  if (ph) return ph;
+  const t = cel!.trim();
+  if (!LANDCODE_SCHOON.test(t))
+    return { soort: "onbekend", reden: `geen landcode te herkennen in "${t}"` };
+  const code = t.toUpperCase();
+  const genormaliseerd = code !== t;
+  return {
+    soort: "waarde",
+    waarde: code,
+    genormaliseerd,
+    uitleg: genormaliseerd ? `"${t}" → ${code}` : undefined,
+  };
+}
+
 // De normalisatoren als benoemde verzameling, zodat de toewijzingstabel er per kolom naar kan
 // verwijzen en een test kan afdwingen dat elke 'armatuur'-kolom er precies één noemt.
 export const NORMALISATOREN = {
@@ -258,6 +345,9 @@ export const NORMALISATOREN = {
   ip: klasseerIp,
   watt: klasseerWatt,
   dimprotocol: klasseerDimprotocol,
+  lumen: klasseerLumen,
+  dimbaarJaNee: klasseerDimbaarJaNee,
+  landcode: klasseerLandcode,
 } as const;
 
 export type NormalisatorNaam = keyof typeof NORMALISATOREN;

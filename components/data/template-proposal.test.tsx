@@ -610,13 +610,18 @@ test("upload-kaart toont bij een format-afwijzing de zin van de 1.1-renderer", a
   const invoer = page.getByLabelText("Choose filled template (.xlsx)");
   await expect.element(invoer).toBeInTheDocument();
 
+  // Sinds de directe import (goal-doc 11 aug 2026) zijn de prijslijst-velden verplicht:
+  // zonder invulling blokkeert de native `required`-validatie de submit.
+  await userEvent.type(page.getByLabelText("Price list name"), "Price list 2026");
+  await userEvent.fill(page.getByLabelText("Valid from"), "2026-01-01");
+  await userEvent.fill(page.getByLabelText("Valid until"), "2026-12-31");
   await userEvent.upload(
     invoer,
     new File([new Uint8Array([1, 2, 3, 4])], "occhio-eigen-lijst.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
   );
-  await page.getByRole("button", { name: "Check template" }).click();
+  await page.getByRole("button", { name: "Check & import" }).click();
 
   await expect.element(page.getByText("This file was not accepted")).toBeInTheDocument();
   // Letterlijk afwijzingsTekst(reden) — geen overgetypte kopie die stil kan afwijken.

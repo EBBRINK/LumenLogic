@@ -1549,9 +1549,29 @@ gevuld terwijl schema en C-14/K-03 het beloven. Beide bevestigd op de live datab
 **3.2b — Prijsloze estimate voor externen** (~4 u)
 - *Given* fase 0, *when* een extern account een estimate opent of de PDF downloadt, *then* bevatten scherm én PDF **géén prijzen/bedragen/totalen** — wel regels, aantallen, statussen en kleuren (eigen render-pad + sjabloonvariant, met screenshottest); intern blijft alles zichtbaar.
 
-**3.3 — (alleen als XIS-keys binnen zijn) Lead-seintje** (optioneel)
+**3.3 — ~~(alleen als XIS-keys binnen zijn) Lead-seintje~~ (optioneel)** → **GESCHRAPT, zie G46**
 - *Given* de Lynx-keys, *when* de installateur **de estimate bekijkt of downloadt** (trigger, besluit C1), *then* schiet er idempotent een lead in XIS.
 - ⚠️ **Vóórwerk:** het "estimate bekeken/gedownload"-event bestaat nog niet en moet gebouwd worden vóór deze trigger kan werken. Geen keys → export-stub blijft, geen weekrisico; beginfase mag handmatig.
+
+**Besluit G46 (Timo, 5 aug) — 3.3 gaat uit week 3; het handmatige pad blijft.** Timo verwacht de
+API "binnenkort" maar wil er nu niet op wachten: *"dat hoeft voorlopig niet, dit halen we eruit."*
+Dat kan zonder gevolgen, want het plan B stond al beschreven en werkt: XIS-koppelen gebeurt vandaag
+met de hand.
+
+**Wat er al ligt** (nagemeten 5 aug, groter dan het plan suggereert): `lib/repo/xis.ts` met tests,
+de push-dialoog `components/dossier/xis-push-dialog.tsx`, het sleutelblok
+`components/settings/xis-block.tsx` en een attributen-overzicht in
+`docs/xis-post-api-attributes.md`. Een dossier is dus nú al naar XIS te duwen — alleen met de hand.
+
+**Wat 3.3 daar nog aan toevoegt, voor wie het later oppakt:** (1) een event dat vastlegt dat een
+estimate *bekeken of gedownload* is — dat bestaat niet en is het echte vóórwerk, want zonder dat
+moment is er niets om de trigger aan te hangen; (2) de bestaande push automatisch én **idempotent**
+maken. Dat tweede is het eigenlijke werk: een verkoper die vijf keer dezelfde lead in zijn CRM ziet
+omdat de installateur zijn estimate vijf keer opende, vertrouwt het systeem daarna niet meer.
+
+**Als de API binnenkomt:** eerst meten of de endpoints van de echte XIS-API overeenkomen met wat
+`lib/repo/xis.ts` en `docs/xis-post-api-attributes.md` aannemen. Die zijn gebouwd op documentatie,
+niet op een werkende koppeling.
 
 **Risico's & plan B:** ~~onboarding-mechanisme niet op tijd gekozen~~ → **opgelost 16 jul met besluit C10** (PIN → wachtwoord); het resterende risico is de omvang van de Better-Auth-wissel, niet de keuze · org-scoping raakt meer queries dan gedacht → de route-allowlist beperkt de blootgestelde oppervlakte al; scoping begint bij de projecten-keten · XIS-keys niet binnen (waarschijnlijk) → 3.3 vervalt zonder gevolgen.
 
@@ -1617,6 +1637,120 @@ organisatie bestond was dat theoretisch. Zodra Timo de tweede aanmaakt om 3.2b t
 tweede de branding van Brink overschrijven. Daarom: **3.2a eerst, dan 3.2c** — tenzij er eerder een
 externe installateur uitgenodigd moet worden, dan draait die volgorde om en gaat de schuld mee als
 bewust risico.
+
+---
+
+### Week 3 afgerond (3–4 aug) — wat er live staat en wat er nog ligt
+
+**De "klaar wanneer" van deze week is gehaald.** Het plan eiste "de *mogelijkheid* staat er,
+aangetoond met een **testaccount** dat het hele rondje zelfstandig doorloopt". Dat is op 4 aug
+gebeurd, op productie, door Timo zelf — zie de acceptatietest onderaan deze sectie.
+
+| onderdeel | stand |
+|---|---|
+| 3.1 onboarding externen (PIN → wachtwoord) | live, `21f84c3` |
+| 3.2a route-allowlist + org-scoping | live, `1e66f37` |
+| 3.2b prijsloze estimate | live, en in de praktijk bewezen |
+| 3.2c onboarding op één scherm | live, `0a232b8` |
+| monitoring (health-endpoint + uptime + deploy-alerts) | live, `5d96dca` |
+| 3.3 lead-seintje XIS | **geschrapt** (G46, 5 aug) — handmatig pad blijft |
+
+#### Besluiten G43–G45 (Timo, 3 aug) — de drie keuzes van de 3.2a-bouwsessie, geratificeerd
+
+De bouwsessie nam deze drie zelf en legde ze mét reden voor; de sprintmaster heeft ze tegen de
+code nagemeten en Timo heeft ze bekrachtigd. Alle drie zijn één regel terug te draaien.
+
+**G43 — `/admin/users` staat op `org_admin`, niet op `intern`.** Dit wijkt af van acceptatie-eis 1,
+die `/admin` letterlijk bij de geweigerde routes noemt. Die eis is echter geschreven vóór G36, en
+G36 geeft een externe org_admin juist het recht mensen aan te maken; eis 3 zegt met zoveel woorden
+*"uitnodigen alleen admin"*. Volledig dichtzetten maakte die hele tak onbereikbaar, inclusief de
+veertien aanvals-tests in `app/admin/users/issue-pin-authz.test.ts`. **De testsuite wees dit aan,
+niet de bouwer.** Wat een externe beheerder daar ziet is wél gescoped: `describeIssueScope()`
+toont alleen zijn eigen organisatie(s) — nagemeten in `app/admin/users/page.tsx`. De rest van
+`/admin` is onveranderd intern.
+
+**G44 — `/settings` staat op `iedereen`.** Externen daar weigeren betekent dat ze hun eigen
+wachtwoord niet kunnen wijzigen, en dat is precies wat 3.1 opleverde. De interne blokken
+(toegelaten adressen, LLM-budget, XIS-sleutel) renderen alleen voor intern.
+
+**G45 — een project zónder `org_id` is alleen voor intern zichtbaar**, en `createDossier()` zet
+voortaan de organisatie van de maker. Dit repareert een echt gat: migratie 0019 koppelde de 13
+bestaande dossiers aan Brink, maar het veertiende zou er weer buiten vallen.
+
+#### 3.2c opgeleverd — negen besluiten, allemaal afgedwongen in code
+
+Timo heeft de negen keuzes op 4 aug punt voor punt doorgenomen (organisatiebeheer volledig naar
+Admin · alleen intern maakt organisaties aan · via het scherm uitsluitend *extern* · zowel los
+aanmaken als in één klik · die één-klik alles-of-niets · zetellimiet instelbaar bij aanmaken en
+later aanpasbaar in Admin · type overal zichtbaar · type vast na aanmaken). Nagemeten door de
+sprintmaster, niet op woord aangenomen:
+
+- `createOrganization()` zet `type: 'extern'` **hardgecodeerd, zonder parameter**, en er is in heel
+  `app/` en `lib/` geen enkele `update` op `organizations.type`. Er bestaat dus geen code-pad naar
+  een tweede interne organisatie (G42).
+- De zetellimiet is **atomair**: één `insert … select … where` met de telling in de SQL zelf, dus
+  twee gelijktijdige uitnodigingen kunnen niet samen door de limiet glippen. Zelfde vorm als de
+  pogingenteller in `lib/repo/activation.ts`. Standaard `STANDAARD_ZETELS = 5`; Brink Licht houdt
+  `null` (onbeperkt).
+- Een externe org_admin ziet het aanmaakblok niet: `OrgsBlock` rendert alleen voor intern **én** de
+  acties eronder staan zelf op `bewaakNiveau("intern")`. Twee sloten, niet één.
+
+⚠️ **"Alles-of-niets" is compensatie, geen transactie.** De neon-http-driver kent geen transacties
+(`drizzle-orm/neon-http/session.js` gooit "No transactions support"). De één-klik-variant maakt de
+organisatie aan, geeft de PIN uit, en **verwijdert de organisatie weer** als dat mislukt — met
+`ON DELETE CASCADE` zodat een half lidmaatschap meegaat, en logging vóór het verwijderen zodat
+terug te zien is wát weg is. Dat is de juiste oplossing binnen deze driver, maar het is geen
+atomaire garantie: valt het proces precies tussen die twee stappen stil, dan blijft er een lege
+organisatie staan.
+
+#### Monitoring staat aan (technische schuld week 3, afgerond)
+
+`/api/health` doet een echte databasequery met een grens van 5 s en antwoordt **503** als hij niet
+doorkomt — een monitor die `/login` zou pingen meet alleen of Vercel HTML serveert, niet of de app
+werkt. Het antwoord is `{"status":"ok"}` en verder niets: geen tabelnaam, geen intern adres, geen
+foutreden, met een test die dat vastpint op precies het scenario dat het meest voor de hand ligt
+(een migratie die niet gedraaid heeft). Er wordt **niet** gelogd — ijzeren regel 5 gaat over
+zoekacties, matches en offertes; een ping per minuut zou de events-tabel in een week met ~10.000
+lege rijen vullen. De route staat als vierde in de open-tak van de allowlist, expliciet erkend in
+de vastpin-test. UptimeRobot pingt elke 5 minuten naar `timo@jouwainstein.com`;
+*Deployment Failures* stond in Vercel al aan, *Deployment Ready* bewust uit (ruis).
+
+#### De acceptatietest, uitgevoerd op productie (4 aug)
+
+Timo maakte "TEST 123" aan (automatisch `extern`), gaf `tpw.wittkamp+extern@gmail.com` een PIN,
+activeerde die en keek rond. Vijf bewijzen:
+
+| bewijs | uitkomst |
+|---|---|
+| balk toont alleen Projects, Catalog, Settings | ✓ |
+| projectenlijst leeg terwijl Brink 13 dossiers heeft | ✓ |
+| directe URL naar een bestaand Brink-project | ✓ 404 |
+| `/data`, `/admin`, `/analytics` | ✓ 404 |
+| specs wél (3000 K, 2350 lm, Ra 90), bedragen niet | ✓ intern € 56,00 · extern "op aanvraag" |
+
+⚠️ **Correctie op een tussenconclusie van de sprintmaster.** Bij de eerste prijstest (Flos, tier1)
+concludeerde ik dat de test niets bewees omdat `disclosure_tier = 'tier1'` de prijs voor iedereen
+zou verbergen. Dat was **fout**: intern verscheen wél € 845,00. De prijs hing dus aan prijszicht en
+niet aan de tier. Les: een productkeuze voor een acceptatietest eerst nameten, niet beredeneren.
+
+#### Wat er ná week 3 nog ligt
+
+- ~~**3.3 lead-seintje XIS**~~ — **geschrapt op 5 aug (G46).** Timo verwacht de API binnenkort maar
+  wacht er niet op; XIS-koppelen gaat voorlopig met de hand, en dat werkt. Wie het oppakt: eerst
+  het event "estimate bekeken/gedownload" bouwen, dan de push idempotent maken.
+- **GitHub-repo-transfer naar de Brink-org** — bufferuren, staat op Timo's account.
+- **`recentEvents` sorteert alleen op `created_at`.** Twee events in dezelfde milliseconde komen in
+  willekeurige volgorde terug; de test hierop faalt ongeveer één op de drie keer, óók op een kale
+  `origin/main` (nagemeten: 2 van 6 rood op main, 2 van 4 op de branch — het is dus geen regressie
+  van 3.2a of 3.2c). Een tie-break op `id` in de `ORDER BY` maakt hem deterministisch en verbetert
+  meteen het event-logscherm.
+- **TEST 123 zit vol** (`seat_limit = 1`, één lid) sinds de 3.2c-deploy de limiet handhaaft. De
+  melding zegt wat je eraan doet en de verhoog-knop staat ernaast; verhogen of opruimen.
+- **De suite-flakiness is erger dan in week 2 gedacht.** Op een kale `origin/main` gaf run 1 één
+  rode test en run 2 **drieëntwintig**, op identieke code. Week 3 voegt ~94 tests toe, dus de
+  belasting waaronder de screenshot-tests omvallen is toegenomen. Constant rood is alleen
+  `components/data/custom-fields.test.tsx > "archiveren zonder VERSE telling"`. Wie hier een rode
+  test ziet die niet zo heet: eerst in isolatie draaien. Dit verdient een eigen item.
 
 ### Week 4 (10–14 aug) — alles op naam van Brink
 

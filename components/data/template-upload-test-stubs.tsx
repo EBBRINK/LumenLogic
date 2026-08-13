@@ -19,6 +19,17 @@
 import type { AfwijzingsReden } from "@/lib/excel-validate";
 import { TemplateUploadCard } from "./template-upload-card";
 
+/** Kale kaart met een action die niets doet ("idle" blijft): voor tests die alleen de
+ *  FORMULIERVORM en de teksten van de kaart bekijken (template-upload-card.test.tsx). */
+export function KaleKaart({ brandId }: { brandId: string }) {
+  return (
+    <TemplateUploadCard
+      brandId={brandId}
+      uploadAction={async () => ({ status: "idle" })}
+    />
+  );
+}
+
 export function KaartMetFormatAfwijzing({
   reden,
   tekst,
