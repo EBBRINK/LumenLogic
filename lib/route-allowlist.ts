@@ -80,6 +80,11 @@ export const ROUTE_NIVEAUS = {
   // ── Open: geen sessie ───────────────────────────────────────────────────────
   "/login": "open",
   "/activate": "open",
+  // Wachtwoord-reset (docs/goal-wachtwoord-reset.md): zelfde soort als /login en
+  // /activate — je komt er juist omdat je geen (werkende) sessie hebt. Het token in de
+  // resetlink is de echte poort, gecontroleerd door Better Auth in de action zelf.
+  "/forgot-password": "open",
+  "/reset-password": "open",
   "/api/auth/[...all]": "open",
   // De uptime-monitor logt niet in. Geeft alleen {"status":"ok"} terug — geen data,
   // geen versie, geen foutreden; zie de kop van app/api/health/route.ts.

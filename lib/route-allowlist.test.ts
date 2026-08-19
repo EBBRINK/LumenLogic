@@ -116,7 +116,7 @@ test("elke niet-open route bewaakt zichzelf, met precies zijn eigen route", () =
   ).toEqual([]);
 });
 
-test("de open routes zijn er precies acht, en ze staan hier met naam", () => {
+test("de open routes zijn er precies tien, en ze staan hier met naam", () => {
   // Dit is de uitzonderingslijst, en die hoort niet stilletjes te groeien. `/login` en
   // `/activate` móéten zonder sessie werken (je komt er juist om er een te krijgen) en
   // `/api/auth/[...all]` ís het auth-endpoint zelf — die drie kunnen per definitie niet
@@ -134,6 +134,11 @@ test("de open routes zijn er precies acht, en ze staan hier met naam", () => {
   // "open" is hier dus NIET "onbewaakt": elke route controleert zelf een machine-
   // sleutel (of cron-secret) vóór er iets van de database gelezen wordt, zie
   // lib/machine-auth.ts en lib/repo/matchstation.test.ts.
+  //
+  // /forgot-password en /reset-password (docs/goal-wachtwoord-reset.md) zijn van
+  // dezelfde soort als /login en /activate: je komt er juist omdat je geen (werkende)
+  // sessie hebt. De echte poort is het resettoken, dat Better Auth in de action
+  // controleert — zie lib/auth-password-reset.test.ts.
   const open = Object.entries(ROUTE_NIVEAUS)
     .filter(([, n]) => n === "open")
     .map(([r]) => r)
@@ -146,7 +151,9 @@ test("de open routes zijn er precies acht, en ze staan hier met naam", () => {
     "/api/matchstation/healthcheck",
     "/api/matchstation/resultaat",
     "/api/matchstation/werk",
+    "/forgot-password",
     "/login",
+    "/reset-password",
   ]);
 });
 
