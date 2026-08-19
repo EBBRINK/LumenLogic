@@ -42,7 +42,7 @@ const crashScreen = (
   </LoginChrome>
 );
 
-const SENT_TEKST = "a reset link is now in the server console";
+const SENT_TEKST = "a reset link has been sent";
 
 afterEach(() => {
   document.documentElement.classList.remove("dark");
