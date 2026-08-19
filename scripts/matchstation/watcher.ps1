@@ -118,7 +118,12 @@ function Invoke-Sessie([string]$DossierDir) {
   $uitvoer = Join-Path $DossierDir "sessie-uitvoer.txt"
   $env:DATABASE_URL_RO = $Config["DATABASE_URL_RO"]
 
-  $claudeArgs = '/c claude -p --output-format text --allowed-tools "Bash(psql:*) Read Glob Grep Write" < prompt.md > sessie-uitvoer.txt 2>&1'
+  # Volledig pad naar de wrapper, niet kaal `claude`: een Taakplanner-proces krijgt
+  # een bevroren PATH van vóór de installatie (gemeten bij de af-toets 19 aug: twee
+  # instant-mislukkingen omdat cmd.exe `claude` niet kon vinden).
+  $claudeCmd = Join-Path $Root "bin\claude.cmd"
+  if (-not (Test-Path $claudeCmd)) { $claudeCmd = "claude" }
+  $claudeArgs = "/c `"$claudeCmd`" -p --output-format text --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1"
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList $claudeArgs `
     -WorkingDirectory $DossierDir -PassThru -WindowStyle Hidden
   $timeoutMs = $SessionTimeoutMinutes * 60 * 1000
