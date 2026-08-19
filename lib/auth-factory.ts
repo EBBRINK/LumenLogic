@@ -20,6 +20,7 @@ import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import * as authSchema from "@/db/auth-schema";
 import type { AppDb } from "@/lib/repo/db";
+import { logEvent } from "@/lib/repo/events";
 import { isAllowed } from "@/lib/repo/settings";
 
 // Wachtwoordbeleid volgens NIST SP 800-63B §5.1.1.2: een ondergrens afdwingen, géén
@@ -93,6 +94,40 @@ export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
       // deze applicatie alleen na een bewuste inlogactie (§3a: nooit bij het invoeren van
       // de PIN, altijd pas ná het zetten van het wachtwoord).
       autoSignIn: false,
+      // Wachtwoord-vergeten-flow (docs/goal-wachtwoord-reset.md). Better Auth core:
+      // /request-password-reset + /reset-password; het token landt in de bestaande
+      // verification-tabel, dus geen migratie.
+      //
+      // Deze callback vuurt UITSLUITEND voor bestaande accounts — voor een onbekend adres
+      // antwoordt Better Auth identiek zonder hier langs te komen (anti-enumeratie zit dus
+      // in de laag eronder, niet hier). Bewust GEEN allowlist-check: die poort geldt alleen
+      // voor de magic link; het wachtwoordpad is voor externe installateurs, en wie hier
+      // komt hééft al een account (via een PIN van Brink).
+      sendResetPassword: async ({ user, url }) => {
+        // Geen e-mailprovider in deze fase (besluit 6) — zelfde route als de magic link:
+        // de link verschijnt in de serverconsole/Vercel-logs.
+        console.log(`[auth] password reset voor ${user.email}: ${url}`);
+        await logEvent(database, {
+          entity: "user",
+          entityId: user.id,
+          action: "password_reset_requested",
+          actor: user.email,
+        });
+      },
+      // ⚠️ Default staat UIT. Zonder dit blijft een gekaapte sessie gewoon leven na een
+      // reset — dan is de reset aantoonbaar geen remedie (NIST SP 800-63B §5.1.1.2).
+      revokeSessionsOnPasswordReset: true,
+      onPasswordReset: async ({ user }) => {
+        await logEvent(database, {
+          entity: "user",
+          entityId: user.id,
+          action: "password_reset_completed",
+          actor: user.email,
+        });
+      },
+      // 15 minuten in plaats van het uur default: de link staat in productie-logs en de
+      // operator plukt hem er toch direct uit.
+      resetPasswordTokenExpiresIn: 60 * 15,
     },
     plugins: options.nextCookies
       ? [magicLinkPlugin, nextCookies()]

@@ -148,6 +148,9 @@ export const ACTION_LABEL: Record<string, string> = {
   org_created: "Organization created",
   org_removed: "Organization removed",
   user_removed: "User removed",
+  // Wachtwoord-resetflow (docs/goal-wachtwoord-reset.md).
+  password_reset_requested: "Password reset requested",
+  password_reset_completed: "Password reset completed",
   xis_phase_changed: "XIS phase changed",
 };
 
@@ -183,6 +186,7 @@ const ENTITY_LABEL: Record<string, string> = {
   quote: "Quote",
   search: "Search",
   spec_line: "Line",
+  user: "User",
   xis_export: "XIS export",
 };
 

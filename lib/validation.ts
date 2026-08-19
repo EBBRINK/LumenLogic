@@ -27,6 +27,7 @@
 // De volgorde is niet vrijblijvend: de SESSIEPOORT staat vóór de parse. Een beller die
 // niet binnen mag, hoort niet te weten of zijn invoer goed was.
 import { z } from "zod";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth-factory";
 import { isUuid } from "@/lib/uuid";
 
 // ── Bouwstenen ───────────────────────────────────────────────────────────────
@@ -38,6 +39,17 @@ export const zUuid = z.string().refine(isUuid, "geen geldige uuid");
 // FormData geeft altijd strings; een leeg of whitespace-veld betekent "niet ingevuld".
 export const zTrimmed = z.string().trim();
 export const zOptionalText = zTrimmed.transform((s) => (s.length > 0 ? s : null));
+
+// E-mailadres uit een formulier: trim + e-mailvorm. Normalisatie naar lowercase doet
+// Better Auth zelf; dit is alleen de vormcontrole aan de invoerlaag.
+export const zEmail = zTrimmed.pipe(z.email("geen geldig e-mailadres"));
+
+// Wachtwoord, gebonden aan het beleid uit lib/auth-factory.ts (12–128, NIST SP 800-63B).
+// Bewust GEEN trim: spaties zijn legitieme wachtwoordtekens, ook aan de randen.
+export const zPassword = z
+  .string()
+  .min(MIN_PASSWORD_LENGTH, `wachtwoord moet minstens ${MIN_PASSWORD_LENGTH} tekens zijn`)
+  .max(MAX_PASSWORD_LENGTH, `wachtwoord mag hoogstens ${MAX_PASSWORD_LENGTH} tekens zijn`);
 
 // Een getal uit een formulier: Nederlandse komma toegestaan, lege waarde → null.
 const numFromForm = z
