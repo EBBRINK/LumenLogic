@@ -14,7 +14,7 @@ import { acronymWord, capitalizeFirst, splitIdentifier } from "@/lib/acronyms";
 //
 // Correctie 30 jul: de commit die dit aanvulde schreef "~120 labels". Nageteld zijn het er
 // **102**. Wat wél klopt: van de 97 verschillende acties die de codebase logt ontbreekt er
-// geen enkele.
+// geen enkele. Aug '26: +2 (auth_mail_sent / auth_mail_failed, goal-auth-mail) → 104.
 export const ACTION_LABEL: Record<string, string> = {
   search: "Search",
   match: "Match",
@@ -151,6 +151,10 @@ export const ACTION_LABEL: Record<string, string> = {
   // Wachtwoord-resetflow (docs/goal-wachtwoord-reset.md).
   password_reset_requested: "Password reset requested",
   password_reset_completed: "Password reset completed",
+  // Auth-mails via Resend (docs/goal-auth-mail.md): de verzending zelf, los van de
+  // aanleiding (reset of magic link — die staat als `kind` in de payload).
+  auth_mail_sent: "Auth email sent",
+  auth_mail_failed: "Auth email failed",
   xis_phase_changed: "XIS phase changed",
 };
 
