@@ -118,12 +118,14 @@ function Invoke-Sessie([string]$DossierDir) {
   $uitvoer = Join-Path $DossierDir "sessie-uitvoer.txt"
   $env:DATABASE_URL_RO = $Config["DATABASE_URL_RO"]
 
-  # Volledig pad naar de wrapper, niet kaal `claude`: een Taakplanner-proces krijgt
-  # een bevroren PATH van vóór de installatie (gemeten bij de af-toets 19 aug: twee
-  # instant-mislukkingen omdat cmd.exe `claude` niet kon vinden).
+  # Volledig pad naar de wrapper (C:\matchstation\bin\claude.cmd, aangemaakt bij de
+  # installatie — zie RUNBOOK-A4.md), én de hele /c-regel in een EXTRA paar quotes:
+  # cmd.exe's quote-stripping kapt anders de programmanaam mid-string af zodra er
+  # meerdere gequote delen op één regel staan (gemeten bij de af-toets 19 aug; het
+  # bekende `cmd /c ""prog" args"`-quirk).
   $claudeCmd = Join-Path $Root "bin\claude.cmd"
   if (-not (Test-Path $claudeCmd)) { $claudeCmd = "claude" }
-  $claudeArgs = "/c `"$claudeCmd`" -p --output-format text --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1"
+  $claudeArgs = "/c `"`"$claudeCmd`" -p --output-format text --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1`""
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList $claudeArgs `
     -WorkingDirectory $DossierDir -PassThru -WindowStyle Hidden
   $timeoutMs = $SessionTimeoutMinutes * 60 * 1000
