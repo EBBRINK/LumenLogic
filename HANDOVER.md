@@ -317,6 +317,34 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## Wachtwoord-reset — backend (bouwer 1, 19 aug 2026, branch wachtwoord-reset)
+
+Better Auth core-resetflow aangezet (docs/goal-wachtwoord-reset.md, bouwstappen 1–4 + 6):
+`sendResetPassword` (console.log + event), `revokeSessionsOnPasswordReset: true`,
+`onPasswordReset`-event, token 15 min. `zEmail`/`zPassword` in lib/validation.ts,
+event-labels, anonieme server actions in `app/forgot-password/actions.ts` en
+`app/reset-password/actions.ts`, PGlite-test `lib/auth-password-reset.test.ts` (6 tests).
+
+**Aannames / open eindes voor bouwer 2 (UI):**
+- `/forgot-password` en `/reset-password` staan nog NIET in `lib/route-allowlist.ts`:
+  de guard-tests eisen dat elke allowlist-regel een bestaand `page.tsx` heeft én tellen
+  de open routes met naam ("precies acht"). Bouwer 2 zet beide op `"open"` en werkt de
+  verwachte lijst in `lib/route-allowlist.test.ts` bij (acht → tien) zodra de pagina's
+  bestaan.
+- Beide actions nemen **FormData** aan (conform de parseForm-conventie), anders dan
+  `signInAction`/`activateAction` die een object nemen. Client-forms: `new FormData(form)`
+  en aanroepen via `callAction()`.
+- `requestPasswordResetAction` antwoordt áltijd `{ ok: true }` — ook bij ongeldige invoer
+  of een interne fout (anti-enumeratie). De UI toont dus altijd de neutrale sent-melding.
+- `resetPasswordAction` redirect bij succes naar `/login` (geen auto-login); elke
+  tokenfout geeft één generieke melding.
+- Bekende eigenschap van Better Auth core: een reset op een **magic-link-only** account
+  (user zonder credential-rij) máákt een credential-account aan. Bewust zo gelaten — het
+  token bewijst het postvak, zoals een PIN dat doet; getest in het randgeval-blok van
+  `lib/auth-password-reset.test.ts`.
+- Token staat in serverconsole/Vercel-logs (fase zonder mailprovider) — geaccepteerd
+  restrisico uit het goal-doc; mailprovider later.
+
 ## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
 
 *Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
