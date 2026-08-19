@@ -5,7 +5,10 @@ import { events } from "@/db/schema";
 import type { AppDb } from "./db";
 
 export type EventInput = {
-  entity: string; // 'spec_line' | 'product' | 'dossier' | 'quote' | 'search'
+  entity: string; // 'spec_line' | 'product' | 'dossier' | 'quote' | 'search' | 'user'
+  // Het id van de entity-rij, als tekst. Sinds migratie 0023 is events.entity_id een
+  // text-kolom: Better Auth-user-ids zijn 32 alfanumerieke tekens, géén uuid — er is
+  // dus geen uuid-garantie meer op deze waarde.
   entityId?: string | null;
   action: string; // 'search' | 'match' | 'no_match' | 'quote_generated' | 'dossier_created'
   actor?: string;

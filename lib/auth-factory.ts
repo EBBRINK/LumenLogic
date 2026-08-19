@@ -118,12 +118,21 @@ export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
       // reset — dan is de reset aantoonbaar geen remedie (NIST SP 800-63B §5.1.1.2).
       revokeSessionsOnPasswordReset: true,
       onPasswordReset: async ({ user }) => {
-        await logEvent(database, {
-          entity: "user",
-          entityId: user.id,
-          action: "password_reset_completed",
-          actor: user.email,
-        });
+        // Better Auth await deze callback kaal ná updatePassword en vóór
+        // revokeSessionsOnPasswordReset: een throw hier laat gekaapte sessies leven.
+        // Daarom nooit gooien — het event-verlies moet zichtbaar zijn in de logs
+        // in plaats van de security-stap te blokkeren. (sendResetPassword hoeft dit
+        // niet: Better Auth slikt exceptions daar al via runInBackgroundOrAwait.)
+        try {
+          await logEvent(database, {
+            entity: "user",
+            entityId: user.id,
+            action: "password_reset_completed",
+            actor: user.email,
+          });
+        } catch (err) {
+          console.error("[auth] logEvent password_reset_completed faalde:", err);
+        }
       },
       // 15 minuten in plaats van het uur default: de link staat in productie-logs en de
       // operator plukt hem er toch direct uit.

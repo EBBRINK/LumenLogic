@@ -788,7 +788,9 @@ export const quoteLines = pgTable("quote_lines", {
 export const events = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),
   entity: text("entity").notNull(), // 'spec_line' | 'product' | 'dossier' | 'quote'
-  entityId: uuid("entity_id"),
+  // text, geen uuid (migratie 0023): polymorfe verwijzing, en Better Auth-user-ids
+  // zijn 32 alfanumerieke tekens — geen uuid.
+  entityId: text("entity_id"),
   action: text("action").notNull(), // 'search' | 'match' | 'no_match' | 'quote_generated' | ...
   actor: text("actor").notNull().default("system"),
   payload: jsonb("payload").$type<Record<string, unknown>>(),
@@ -1062,8 +1064,9 @@ export const brandFieldVisibility = pgTable(
 
 // ── Eigen velden (sprint 1.8, migratie 0015) ─────────────────────────────────
 // De velddefinities die Stefan zelf aanmaakt, bovenop de 66 catalogusvelden in
-// lib/field-catalog.ts. uuid-PK omdat events.entity_id uuid is; diezelfde uuid is de
-// sleutel in products.custom_values.
+// lib/field-catalog.ts. uuid-PK omdat diezelfde uuid de sleutel is in
+// products.custom_values. (De oorspronkelijke tweede reden — events.entity_id was uuid —
+// verviel met migratie 0023; de PK blijft gewoon uuid.)
 //
 // ⚠️ NIET brand_field_visibility. Die tabel lijkt hierop maar is per-MERK-zichtbaarheid
 // van BESTAANDE velden (J-04), geen velddefinitie. Niet hergebruiken, niet uitbreiden.

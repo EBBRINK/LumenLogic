@@ -10,6 +10,7 @@ import { events } from "@/db/schema";
 import { MIN_PASSWORD_LENGTH, createAuth } from "@/lib/auth-factory";
 import { redeemActivationPin } from "@/lib/auth-activation";
 import { issueActivationPin } from "@/lib/repo/activation";
+import { isUuid } from "@/lib/uuid";
 
 const WACHTWOORD = "zonnigmaandag24";
 const NIEUW_WACHTWOORD = "regenachtigedinsdag";
@@ -115,10 +116,58 @@ test("acceptatie: request → token uit verification → reset → oude sessie d
   });
   expect(opnieuw.response.user.id).toBe(user.userId);
 
-  // 5. Beide events staan in de events-tabel (ijzeren regel 5).
-  const acties = await eventActions(db);
-  expect(acties).toContain("password_reset_requested");
-  expect(acties).toContain("password_reset_completed");
+  // 5. Beide events staan in de events-tabel (ijzeren regel 5), verwijzend naar de user.
+  const rijen = await db.select().from(events);
+  const request = rijen.find((e) => e.action === "password_reset_requested");
+  const completed = rijen.find((e) => e.action === "password_reset_completed");
+  expect(request?.entity).toBe("user");
+  expect(request?.entityId).toBe(user.userId);
+  expect(completed?.entity).toBe("user");
+  expect(completed?.entityId).toBe(user.userId);
+});
+
+test("user met Better Auth-gegenereerd id (géén uuid) — volledige resetflow incl. events", async () => {
+  const db = await createTestDb();
+  const auth = testAuth(db);
+
+  // Laat Better Auth ZELF de user aanmaken — de default-id-generator levert een
+  // 32-teken alfanumeriek id, geen uuid. Precies de productie-realiteit voor
+  // magic-link-users (docs/probleem-events-entity-id-uuid.md).
+  const ctx = await auth.$context;
+  const user = await ctx.internalAdapter.createUser({
+    email: "betterauth-id@extern.nl",
+    name: "ba",
+    emailVerified: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  // Fixture-guard: als dit ooit een uuid wordt, bewijst deze test niets meer.
+  expect(isUuid(user.id)).toBe(false);
+
+  const logs = await captureResetLog(() =>
+    auth.api.requestPasswordReset({
+      body: { email: "betterauth-id@extern.nl", redirectTo: "/reset-password" },
+    }),
+  );
+  expect(logs).toHaveLength(1);
+  const [token] = await resetTokens(db);
+  await auth.api.resetPassword({ body: { token, newPassword: NIEUW_WACHTWOORD } });
+
+  // Beide events staan er, met een bruikbare verwijzing naar déze user.
+  const rijen = await db.select().from(events);
+  const request = rijen.find((e) => e.action === "password_reset_requested");
+  const completed = rijen.find((e) => e.action === "password_reset_completed");
+  expect(request?.entity).toBe("user");
+  expect(request?.entityId).toBe(user.id);
+  expect(completed?.entity).toBe("user");
+  expect(completed?.entityId).toBe(user.id);
+
+  // Geen sessies ontstaan tijdens de reset; inloggen met het nieuwe wachtwoord werkt.
+  expect(await db.select().from(authSchema.session)).toHaveLength(0);
+  const login = await auth.api.signInEmail({
+    body: { email: "betterauth-id@extern.nl", password: NIEUW_WACHTWOORD },
+  });
+  expect(login.user.id).toBe(user.id);
 });
 
 test("anti-enumeratie: onbekend adres geeft identieke respons, geen log, geen token, geen event", async () => {
@@ -234,19 +283,18 @@ test("randgeval: magic-link-only account (geen credential) — reset zet een wac
   const db = await createTestDb();
   const auth = testAuth(db);
 
-  // Een user-rij zoals de magic-link-flow die achterlaat: wel een account in `user`,
-  // géén credential-rij in `account` (er is nooit een wachtwoord gezet).
-  const [magicUser] = await db
-    .insert(authSchema.user)
-    .values({
-      id: crypto.randomUUID(),
-      name: "timo",
-      email: "timo@jouwainstein.com",
-      emailVerified: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .returning();
+  // Een user zoals de magic-link-flow die achterlaat: wel een rij in `user`, géén
+  // credential-rij in `account` (er is nooit een wachtwoord gezet). Via Better Auth
+  // zelf aangemaakt zodat het id de échte vorm heeft (32 alfanumeriek, geen uuid).
+  const ctx = await auth.$context;
+  const magicUser = await ctx.internalAdapter.createUser({
+    name: "timo",
+    email: "timo@jouwainstein.com",
+    emailVerified: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  expect(isUuid(magicUser.id)).toBe(false);
   expect(await db.select().from(authSchema.account)).toHaveLength(0);
 
   // De request werkt óók voor dit account — geen allowlist- of credential-poort.

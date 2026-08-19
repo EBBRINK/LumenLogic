@@ -156,7 +156,10 @@ export async function getAnalyticsTiles(
       ? sql`AND EXISTS (
           SELECT 1 FROM spec_lines sl
           JOIN project_dossiers pd ON pd.id = sl.dossier_id
-          WHERE sl.id = ${sql.raw(alias)}.entity_id AND pd.org_id = ${orgId}::uuid
+          -- entity_id is text sinds migratie 0023 (Better Auth-user-ids zijn geen uuid).
+          -- Cast dus sl.id naar text; entity_id::uuid zou runtime gooien op user-events.
+          -- spec_lines is klein, dus geen expressie-index nodig.
+          WHERE sl.id::text = ${sql.raw(alias)}.entity_id AND pd.org_id = ${orgId}::uuid
         )`
       : LEEG;
 

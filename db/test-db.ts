@@ -32,6 +32,7 @@ import gevraagdArtikelnummerSql from "./migrations/0020_gevraagd_artikelnummer.s
 // afweging als 0010/0012 hierboven). 0022 verandert wél het schema (matchstation_queue,
 // llm_usage.matchstation_job_id, review_kind + 2 waarden) en moet dus wel mee.
 import matchstationSql from "./migrations/0022_matchstation.sql?raw";
+import eventsEntityIdTextSql from "./migrations/0023_events_entity_id_text.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -85,6 +86,9 @@ export async function createTestDb(): Promise<TestDb> {
   // 0022: matchstation_queue + llm_usage.matchstation_job_id + review_kind uitgebreid
   // met 'onzeker'/'niet_beoordeeld' (sprint M1, docs/plan-matchstation-eigen-machine.md).
   await client.exec(matchstationSql);
+  // 0023: events.entity_id uuid → text — Better Auth-user-ids zijn geen uuid
+  // (docs/probleem-events-entity-id-uuid.md).
+  await client.exec(eventsEntityIdTextSql);
   return drizzle(client, { schema });
 }
 

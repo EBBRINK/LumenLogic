@@ -5618,3 +5618,21 @@ _6. **Vereisten op de EliteDesk** naast wat er al staat: `psql` in PATH (Postgre
 client) en het kopiëren van de drie bestanden + `.env`-aanvulling
 (`LUMENLOGIC_BASE_URL`); staat in `RUNBOOK-A4.md`, sectie Installatie. De
 cron-job.org-check (M1, besluit 2) draait al volgens de bouwopdracht._
+
+## 2026-08-19 — Incident: events.entity_id (uuid) weigerde Better Auth-user-ids
+
+Productie-wachtwoordreset faalde op het events-insert: `invalid input syntax for type
+uuid: "EEblFloyGFm4GuZgvym3h23kJVGLJarl"`. Better Auth genereert user-ids van 32
+alfanumerieke tekens (géén uuid); `logEvent(entity: "user", entityId: user.id)` in
+`lib/auth-factory.ts` kon voor magic-link-users dus nooit slagen. Besluit: **migratie
+0023 zet events.entity_id om van uuid naar text** — events verwijzen naar heterogene
+entiteiten en het kolomtype mag geen aanname over de id-vorm afdwingen. Bijvangst:
+`lib/repo/analytics-tiles.ts` cast nu `sl.id::text` in de event-scope-join (nooit
+`entity_id::uuid` — dat gooit runtime op user-events), en `onPasswordReset` slikt een
+logEvent-fout met `console.error` zodat een event-storing nooit meer de
+session-revocation blokkeert.
+
+⚠️ **Openstaande actie**: resets die vóór deze fix zijn uitgevoerd kunnen zijn voltooid
+ZONDER session-revocation en zonder `password_reset_completed`-event (de throw viel ná
+updatePassword, vóór revokeSessionsOnPasswordReset). Vercel-logs nalopen op de
+uuid-fout en getroffen users' sessies handmatig verwijderen.
