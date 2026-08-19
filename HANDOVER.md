@@ -345,6 +345,30 @@ event-labels, anonieme server actions in `app/forgot-password/actions.ts` en
 - Token staat in serverconsole/Vercel-logs (fase zonder mailprovider) — geaccepteerd
   restrisico uit het goal-doc; mailprovider later.
 
+## Wachtwoord-reset — UI (bouwer 2, 19 aug 2026, branch wachtwoord-reset)
+
+Bouwstappen 5–6 uit docs/goal-wachtwoord-reset.md: `app/forgot-password/page.tsx` en
+`app/reset-password/page.tsx` (beide in LoginChrome), client-forms in
+`components/forgot-password/` en `components/reset-password/` (action als FormData-prop,
+callAction(), eigen test-stubs), "Forgot password?"-link onder het wachtwoordveld op
+/login, beide routes op `"open"` in de allowlist (bewakertest: acht → tien).
+
+**Aannames / open eindes:**
+- De neutrale sent-melding op /forgot-password verschijnt óók als de action crasht
+  (netwerkfout/500) — bewust: elk responsverschil is een enumeratiekanaal. Getest in
+  `components/forgot-password/forgot-password.test.tsx`.
+- `/forgot-password` heeft géén sessiecheck-met-redirect zoals /login: een ingelogde
+  gebruiker mag gewoon een resetlink aanvragen (kan toch al via /settings).
+- `InvalidResetLink` gebruikt een gewone `<a>`, geen next/link: de RSC-testharnas
+  weigert de client-referentie van next/link in een servercomponent ("client reference
+  export is called on server").
+- Wachtwoordbeleid en bevestiging worden client-side vóórgecontroleerd (patroon
+  activate-form) zodat de Nederlandstalige parseForm-melding van `zPassword` normaal
+  nooit in de Engelstalige UI belandt; de server parseert alsnog.
+- De "Forgot password?"-link staat in muted-foreground + underline, niet in
+  brand-blue/teal: G37 noemt de summary-kleur "de enige teal-op-donker tekstkleur" en
+  die belofte is hier niet gebroken.
+
 ## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
 
 *Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch
