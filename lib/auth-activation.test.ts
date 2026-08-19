@@ -19,7 +19,6 @@ import {
   getActivationPinStatus,
   issueActivationPin,
 } from "@/lib/repo/activation";
-import type { MailMessage, Mailer } from "@/lib/mail";
 
 const WACHTWOORD = "zonnigmaandag24";
 const NIEUW_WACHTWOORD = "regenachtigedinsdag";
@@ -27,22 +26,11 @@ const NIEUW_WACHTWOORD = "regenachtigedinsdag";
 // nextCookies staat bewust uit: die plugin schrijft in de cookie-jar van een Next-request,
 // en die bestaat hier niet. De tests lezen Set-Cookie zelf uit de response — precies wat de
 // plugin in productie voor je doet.
-function testAuth(db: TestDb, mailer?: Mailer) {
+function testAuth(db: TestDb) {
   return createAuth(db, {
     baseURL: "http://localhost:3000",
     secret: "lumenlogic-test-secret-0123456789abcdef",
-    ...(mailer ? { mailer } : {}),
   });
-}
-
-// De mail-seam uit docs/goal-auth-mail.md: de magic-link-tests injecteren een
-// capture-mailer in plaats van console.log af te luisteren.
-function captureMailer() {
-  const verzonden: MailMessage[] = [];
-  const mailer: Mailer = async (msg) => {
-    verzonden.push(msg);
-  };
-  return { verzonden, mailer };
 }
 
 // Set-Cookie uit een antwoord omzetten naar een Cookie-request-header, zodat een
@@ -464,17 +452,28 @@ test("B1: een nieuwe PIN verzilveren trekt bestaande sessies in (C10 is het éni
 
 test("B5: /magic-link/verify maakt geen account aan voor een onbekend adres", async () => {
   const db = await createTestDb();
-  const { verzonden, mailer } = captureMailer();
-  const auth = testAuth(db, mailer);
+  const auth = testAuth(db);
 
   // timo@ staat in de allowlist (migratie 0004) maar heeft in een verse database géén
   // user-rij. Zonder disableSignUp op de magic-link-plugin zou het uitklikken van de link
   // hem alsnog aanmaken — mét emailVerified: true en meteen een sessie.
-  await auth.api.signInMagicLink({
-    body: { email: "timo@jouwainstein.com", callbackURL: "/" },
-    headers: new Headers(),
-  });
-  const url = verzonden.find((m) => m.kind === "magic_link")?.url;
+  const regels: string[] = [];
+  const echteLog = console.log;
+  console.log = (...args: unknown[]) => {
+    regels.push(args.map(String).join(" "));
+    echteLog(...args);
+  };
+  try {
+    await auth.api.signInMagicLink({
+      body: { email: "timo@jouwainstein.com", callbackURL: "/" },
+      headers: new Headers(),
+    });
+  } finally {
+    console.log = echteLog;
+  }
+  const url = regels
+    .find((r) => r.includes("[auth] magic link"))
+    ?.match(/https?:\/\/\S+/)?.[0];
   expect(url).toBeTruthy();
 
   await auth.handler(new Request(url!, { method: "GET", redirect: "manual" }));
@@ -485,21 +484,30 @@ test("B5: /magic-link/verify maakt geen account aan voor een onbekend adres", as
 
 test("G32: de magic link staat nog náást het wachtwoordpad, mét de allowlist-poort", async () => {
   const db = await createTestDb();
-  const { verzonden, mailer } = captureMailer();
-  const auth = testAuth(db, mailer);
+  const auth = testAuth(db);
 
-  // Adres uit de allowlist (gezaaid door migratie 0004) → er gaat een mail uit.
-  await auth.api.signInMagicLink({
-    body: { email: "timo@jouwainstein.com", callbackURL: "/" },
-    headers: new Headers(),
-  });
-  // Adres buiten de allowlist → de mailer wordt nooit aangeroepen (L-02, fail-closed).
-  await auth.api.signInMagicLink({
-    body: { email: "buitenstaander@extern.nl", callbackURL: "/" },
-    headers: new Headers(),
-  });
+  const regels: string[] = [];
+  const echteLog = console.log;
+  console.log = (...args: unknown[]) => {
+    regels.push(args.map(String).join(" "));
+    echteLog(...args);
+  };
+  try {
+    // Adres uit de allowlist (gezaaid door migratie 0004) → er wordt een link gemaakt.
+    await auth.api.signInMagicLink({
+      body: { email: "timo@jouwainstein.com", callbackURL: "/" },
+      headers: new Headers(),
+    });
+    // Adres buiten de allowlist → geen link, geen log (L-02, fail-closed).
+    await auth.api.signInMagicLink({
+      body: { email: "buitenstaander@extern.nl", callbackURL: "/" },
+      headers: new Headers(),
+    });
+  } finally {
+    console.log = echteLog;
+  }
 
-  expect(verzonden).toHaveLength(1);
-  expect(verzonden[0].to).toBe("timo@jouwainstein.com");
-  expect(verzonden[0].kind).toBe("magic_link");
+  const links = regels.filter((r) => r.includes("[auth] magic link"));
+  expect(links).toHaveLength(1);
+  expect(links[0]).toContain("timo@jouwainstein.com");
 });
