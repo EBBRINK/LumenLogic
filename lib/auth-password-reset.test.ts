@@ -10,14 +10,26 @@ import { events } from "@/db/schema";
 import { MIN_PASSWORD_LENGTH, createAuth } from "@/lib/auth-factory";
 import { redeemActivationPin } from "@/lib/auth-activation";
 import { issueActivationPin } from "@/lib/repo/activation";
+import type { MailMessage, Mailer } from "@/lib/mail";
 
 const WACHTWOORD = "zonnigmaandag24";
 const NIEUW_WACHTWOORD = "regenachtigedinsdag";
 
-function testAuth(db: TestDb) {
+// De mailer is een geïnjecteerde seam (docs/goal-auth-mail.md): geen console-capture
+// meer, de test vangt de berichten zelf op.
+function captureMailer() {
+  const verzonden: MailMessage[] = [];
+  const mailer: Mailer = async (msg) => {
+    verzonden.push(msg);
+  };
+  return { verzonden, mailer };
+}
+
+function testAuth(db: TestDb, mailer?: Mailer) {
   return createAuth(db, {
     baseURL: "http://localhost:3000",
     secret: "lumenlogic-test-secret-0123456789abcdef",
+    ...(mailer ? { mailer } : {}),
   });
 }
 
@@ -39,22 +51,6 @@ async function activatedUser(db: TestDb, auth: ReturnType<typeof testAuth>, emai
   return resultaat;
 }
 
-// De resetlink verschijnt (fase zonder mailprovider) als console.log; vang hem daar.
-async function captureResetLog(fn: () => Promise<unknown>): Promise<string[]> {
-  const regels: string[] = [];
-  const echteLog = console.log;
-  console.log = (...args: unknown[]) => {
-    regels.push(args.map(String).join(" "));
-    echteLog(...args);
-  };
-  try {
-    await fn();
-  } finally {
-    console.log = echteLog;
-  }
-  return regels.filter((r) => r.includes("[auth] password reset"));
-}
-
 // Het token zoals de server action het uit ?token= zou halen — hier rechtstreeks uit de
 // verification-tabel (identifier `reset-password:<token>`), want er draait geen browser
 // om de callback-redirect te volgen.
@@ -72,7 +68,8 @@ async function eventActions(db: TestDb): Promise<string[]> {
 
 test("acceptatie: request → token uit verification → reset → oude sessie dood, nieuw wachtwoord werkt, oud faalt — mét events", async () => {
   const db = await createTestDb();
-  const auth = testAuth(db);
+  const { verzonden, mailer } = captureMailer();
+  const auth = testAuth(db, mailer);
   const user = await activatedUser(db, auth, "reset@extern.nl");
 
   // De 'gestolen' sessie die een reset juist moet doden.
@@ -83,18 +80,18 @@ test("acceptatie: request → token uit verification → reset → oude sessie d
   const gestolenHeaders = cookieHeaders(gestolen.headers);
   expect(await auth.api.getSession({ headers: gestolenHeaders })).not.toBeNull();
 
-  // 1. Request: link naar de serverconsole, token in de verification-tabel.
-  const logs = await captureResetLog(() =>
-    auth.api.requestPasswordReset({
-      body: { email: "reset@extern.nl", redirectTo: "/reset-password" },
-    }),
-  );
-  expect(logs).toHaveLength(1);
-  expect(logs[0]).toContain("reset@extern.nl");
+  // 1. Request: mail via de geïnjecteerde mailer, token in de verification-tabel.
+  await auth.api.requestPasswordReset({
+    body: { email: "reset@extern.nl", redirectTo: "/reset-password" },
+  });
+  expect(verzonden).toHaveLength(1);
+  expect(verzonden[0].to).toBe("reset@extern.nl");
+  expect(verzonden[0].kind).toBe("password_reset");
   const tokens = await resetTokens(db);
   expect(tokens).toHaveLength(1);
-  // De link in de log draagt hetzelfde token.
-  expect(logs[0]).toContain(tokens[0]);
+  // De mail draagt hetzelfde token als de verification-rij — in de link én de tekst.
+  expect(verzonden[0].url).toContain(tokens[0]);
+  expect(verzonden[0].text).toContain(tokens[0]);
 
   // 2. Reset met dat token.
   await auth.api.resetPassword({
@@ -115,37 +112,123 @@ test("acceptatie: request → token uit verification → reset → oude sessie d
   });
   expect(opnieuw.response.user.id).toBe(user.userId);
 
-  // 5. Beide events staan in de events-tabel (ijzeren regel 5).
+  // 5. Alle events staan in de events-tabel (ijzeren regel 5) — óók de mailverzending.
   const acties = await eventActions(db);
   expect(acties).toContain("password_reset_requested");
   expect(acties).toContain("password_reset_completed");
+  expect(acties).toContain("auth_mail_sent");
+  // Nooit de URL of het token in een event-payload.
+  const alleEvents = await db.select().from(events);
+  for (const e of alleEvents) {
+    expect(JSON.stringify(e.payload ?? {})).not.toContain(tokens[0]);
+  }
 });
 
-test("anti-enumeratie: onbekend adres geeft identieke respons, geen log, geen token, geen event", async () => {
+test("anti-enumeratie: onbekend adres geeft identieke respons, mailer nooit aangeroepen, geen token, geen event", async () => {
   const db = await createTestDb();
-  const auth = testAuth(db);
+  const { verzonden, mailer } = captureMailer();
+  const auth = testAuth(db, mailer);
   await activatedUser(db, auth, "bestaat@extern.nl");
 
-  let bekend: unknown;
-  let onbekend: unknown;
-  const logs = await captureResetLog(async () => {
-    bekend = await auth.api.requestPasswordReset({
-      body: { email: "bestaat@extern.nl", redirectTo: "/reset-password" },
-    });
-    onbekend = await auth.api.requestPasswordReset({
-      body: { email: "bestaatniet@extern.nl", redirectTo: "/reset-password" },
-    });
+  const bekend = await auth.api.requestPasswordReset({
+    body: { email: "bestaat@extern.nl", redirectTo: "/reset-password" },
+  });
+  const onbekend = await auth.api.requestPasswordReset({
+    body: { email: "bestaatniet@extern.nl", redirectTo: "/reset-password" },
   });
 
   // Byte-identieke respons voor beide adressen.
   expect(onbekend).toEqual(bekend);
-  // Maar de callback vuurde alleen voor het echte account.
-  expect(logs).toHaveLength(1);
-  expect(logs[0]).toContain("bestaat@extern.nl");
+  // Maar de mailer vuurde alléén voor het echte account — voor het onbekende adres is
+  // hij nooit aangeroepen.
+  expect(verzonden).toHaveLength(1);
+  expect(verzonden[0].to).toBe("bestaat@extern.nl");
   expect(await resetTokens(db)).toHaveLength(1);
   expect(
     (await eventActions(db)).filter((a) => a === "password_reset_requested"),
   ).toHaveLength(1);
+});
+
+test("throttle: tweede request binnen 10 minuten wordt stil overgeslagen — geen tweede mail, geen tweede event", async () => {
+  const db = await createTestDb();
+  const { verzonden, mailer } = captureMailer();
+  const auth = testAuth(db, mailer);
+  await activatedUser(db, auth, "ongeduldig@extern.nl");
+
+  const eerste = await auth.api.requestPasswordReset({
+    body: { email: "ongeduldig@extern.nl", redirectTo: "/reset-password" },
+  });
+  const tweede = await auth.api.requestPasswordReset({
+    body: { email: "ongeduldig@extern.nl", redirectTo: "/reset-password" },
+  });
+
+  // Respons identiek (geen lek), maar er ging maar één mail uit en er staat maar één
+  // request-event — de rem leunt op de events-tabel.
+  expect(tweede).toEqual(eerste);
+  expect(verzonden).toHaveLength(1);
+  const acties = await eventActions(db);
+  expect(acties.filter((a) => a === "password_reset_requested")).toHaveLength(1);
+  expect(acties.filter((a) => a === "auth_mail_sent")).toHaveLength(1);
+
+  // Is het request-event ouder dan 10 minuten, dan mag het wél weer.
+  await db
+    .update(events)
+    .set({ createdAt: new Date(Date.now() - 11 * 60 * 1000) })
+    .where(eq(events.action, "password_reset_requested"));
+  await auth.api.requestPasswordReset({
+    body: { email: "ongeduldig@extern.nl", redirectTo: "/reset-password" },
+  });
+  expect(verzonden).toHaveLength(2);
+});
+
+test("falende mailer: flow loopt door, neutrale respons, auth_mail_failed-event en de URL alsnog in de console", async () => {
+  const db = await createTestDb();
+  const kapotteMailer = async () => {
+    throw new Error("Resend antwoordde 500 voor password_reset-mail");
+  };
+  const auth = testAuth(db, kapotteMailer);
+  await activatedUser(db, auth, "pech@extern.nl");
+
+  const regels: string[] = [];
+  const echteLog = console.log;
+  console.log = (...args: unknown[]) => {
+    regels.push(args.map(String).join(" "));
+    echteLog(...args);
+  };
+  let respons: unknown;
+  try {
+    // Nooit throwen naar Better Auth: de aanroep slaagt gewoon.
+    respons = await auth.api.requestPasswordReset({
+      body: { email: "pech@extern.nl", redirectTo: "/reset-password" },
+    });
+  } finally {
+    console.log = echteLog;
+  }
+  expect(respons).toBeTruthy();
+
+  // Het token bestaat en de flow is gewoon af te maken via de console-URL (vangnet).
+  const [token] = await resetTokens(db);
+  expect(token).toBeTruthy();
+  const vangnet = regels.filter((r) => r.includes("[auth] password reset"));
+  expect(vangnet).toHaveLength(1);
+  expect(vangnet[0]).toContain(token);
+
+  // Events: wél requested + failed, géén sent. De payload draagt het soort, nooit de URL.
+  const acties = await eventActions(db);
+  expect(acties).toContain("password_reset_requested");
+  expect(acties).toContain("auth_mail_failed");
+  expect(acties).not.toContain("auth_mail_sent");
+  const [failed] = (await db.select().from(events)).filter(
+    (e) => e.action === "auth_mail_failed",
+  );
+  expect(failed.payload?.kind).toBe("password_reset");
+  expect(JSON.stringify(failed.payload)).not.toContain(token);
+
+  await auth.api.resetPassword({ body: { token, newPassword: NIEUW_WACHTWOORD } });
+  const login = await auth.api.signInEmail({
+    body: { email: "pech@extern.nl", password: NIEUW_WACHTWOORD },
+  });
+  expect(login.user.email).toBe("pech@extern.nl");
 });
 
 test("token-hergebruik faalt: de tweede reset met hetzelfde token gaat niet om", async () => {
@@ -153,11 +236,9 @@ test("token-hergebruik faalt: de tweede reset met hetzelfde token gaat niet om",
   const auth = testAuth(db);
   await activatedUser(db, auth, "tweemaal@extern.nl");
 
-  await captureResetLog(() =>
-    auth.api.requestPasswordReset({
-      body: { email: "tweemaal@extern.nl", redirectTo: "/reset-password" },
-    }),
-  );
+  await auth.api.requestPasswordReset({
+    body: { email: "tweemaal@extern.nl", redirectTo: "/reset-password" },
+  });
   const [token] = await resetTokens(db);
   await auth.api.resetPassword({ body: { token, newPassword: NIEUW_WACHTWOORD } });
 
@@ -181,11 +262,9 @@ test("verlopen token (na 15 min) wordt geweigerd", async () => {
   const auth = testAuth(db);
   await activatedUser(db, auth, "verlopen@extern.nl");
 
-  await captureResetLog(() =>
-    auth.api.requestPasswordReset({
-      body: { email: "verlopen@extern.nl", redirectTo: "/reset-password" },
-    }),
-  );
+  await auth.api.requestPasswordReset({
+    body: { email: "verlopen@extern.nl", redirectTo: "/reset-password" },
+  });
   const [token] = await resetTokens(db);
 
   // resetPasswordTokenExpiresIn staat op 15 minuten; zet de klok 16 minuten verder door
@@ -211,11 +290,9 @@ test("te kort wachtwoord wordt geweigerd en verbruikt het token niet", async () 
   const auth = testAuth(db);
   await activatedUser(db, auth, "kort@extern.nl");
 
-  await captureResetLog(() =>
-    auth.api.requestPasswordReset({
-      body: { email: "kort@extern.nl", redirectTo: "/reset-password" },
-    }),
-  );
+  await auth.api.requestPasswordReset({
+    body: { email: "kort@extern.nl", redirectTo: "/reset-password" },
+  });
   const [token] = await resetTokens(db);
 
   await expect(
@@ -232,7 +309,8 @@ test("te kort wachtwoord wordt geweigerd en verbruikt het token niet", async () 
 
 test("randgeval: magic-link-only account (geen credential) — reset zet een wachtwoord zonder gat", async () => {
   const db = await createTestDb();
-  const auth = testAuth(db);
+  const { verzonden, mailer } = captureMailer();
+  const auth = testAuth(db, mailer);
 
   // Een user-rij zoals de magic-link-flow die achterlaat: wel een account in `user`,
   // géén credential-rij in `account` (er is nooit een wachtwoord gezet).
@@ -250,12 +328,11 @@ test("randgeval: magic-link-only account (geen credential) — reset zet een wac
   expect(await db.select().from(authSchema.account)).toHaveLength(0);
 
   // De request werkt óók voor dit account — geen allowlist- of credential-poort.
-  const logs = await captureResetLog(() =>
-    auth.api.requestPasswordReset({
-      body: { email: "timo@jouwainstein.com", redirectTo: "/reset-password" },
-    }),
-  );
-  expect(logs).toHaveLength(1);
+  await auth.api.requestPasswordReset({
+    body: { email: "timo@jouwainstein.com", redirectTo: "/reset-password" },
+  });
+  expect(verzonden).toHaveLength(1);
+  expect(verzonden[0].kind).toBe("password_reset");
   const [token] = await resetTokens(db);
   await auth.api.resetPassword({ body: { token, newPassword: NIEUW_WACHTWOORD } });
 
