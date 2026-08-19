@@ -86,6 +86,23 @@ test("beide inlogpaden staan er: wachtwoord (hoofdpad) én magic link (secundair
   expect(magicLinkButton?.getAttribute("data-variant")).toBe("outline");
 });
 
+// Wachtwoord-reset (docs/goal-wachtwoord-reset.md, bouwstap 5): de weg ernaartoe begint
+// hier, onder het wachtwoordveld. Zonder deze link bestaat de hele flow voor een
+// gebruiker niet — dit pint vast dat hij er staat én waarheen hij wijst.
+test("de 'Forgot password?'-link staat onder het wachtwoordveld en wijst naar /forgot-password", async () => {
+  const { container } = await renderServer(idleScreen);
+  await expect
+    .element(page.getByRole("heading", { name: "Lumen Logic" }))
+    .toBeInTheDocument();
+  const link = Array.from(container.querySelectorAll("a")).find(
+    (a) => a.textContent === "Forgot password?",
+  );
+  expect(link?.getAttribute("href")).toBe("/forgot-password");
+  // Onder het wachtwoordveld: link en veld delen dezelfde veld-wrapper.
+  const veld = container.querySelector("#login-password");
+  expect(link?.parentElement).toBe(veld?.parentElement);
+});
+
 // De onthulling is een echt bedieningselement (≥44px, DESIGN.md §6/§7): dit meet de
 // werkelijke hoogte van de <summary>, niet alleen dat hij "er is". Golf-2-critic ronde 1
 // mat 20px op productie — dit is de regressietest daarop.

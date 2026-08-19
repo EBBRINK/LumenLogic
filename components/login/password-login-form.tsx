@@ -14,6 +14,7 @@
 // dezelfde generieke melding. signInAction vertaalt Better Auth's foutmelding al naar
 // die ene tekst; dit formulier verzint er zelf nooit een andere bij.
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { callAction } from "@/lib/next-action-result";
@@ -116,6 +117,15 @@ export function PasswordLoginForm({
           aria-invalid={invalid}
           aria-describedby={invalid ? "login-error" : undefined}
         />
+        {/* Onder het wachtwoordveld (goal-doc bouwstap 5). Focus-behandeling volgt de
+            huisnorm uit login-chrome.tsx: transparante rand die op focus --ring wordt,
+            plus de kit-halo — niet de afgeschafte /50-halo (B10-scan). */}
+        <Link
+          href="/forgot-password"
+          className="self-start rounded-sm border border-transparent text-sm text-muted-foreground underline underline-offset-4 outline-none hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/10"
+        >
+          Forgot password?
+        </Link>
       </div>
       {status.kind === "error" && (
         <p id="login-error" role="alert" className="text-sm text-destructive">
