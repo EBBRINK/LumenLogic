@@ -5517,3 +5517,52 @@ sprint aangeraakt — resource-contentie in deze sandbox onder de volle browser-
 6. Cron-check: `GET /api/matchstation/healthcheck` met `Authorization: Bearer
    lokale-cron-test-sleutel-niet-voor-productie` → `{"alerted":0}` (de job is 'verwerkt',
    geen stille alarm)._
+
+---
+
+_2026-08-19. **Sprint M2 — het matchstation op de EliteDesk (machine-kant).**
+Gebouwd in `scripts/matchstation/`: `watcher.ps1` (poll elke 30 s naar
+`GET /api/matchstation/werk`, download naar `C:\matchstation\inbox\<dossier>\`, één
+headless Claude Code-sessie per aanvraag, timeout 10 min + één retry, POST naar
+`/api/matchstation/resultaat`, `done\`/`failed\`, opruimen `done\` >30 dagen +
+logrotatie >14 dagen), `sessieprompt.md` (de sessieprompt), `install-taakplanner.ps1`
+(Taakplanner, trigger bij inloggen — autologin maakt dat "bij opstarten") en
+`RUNBOOK-A4.md` (print voor óp de machine). De machine-sleutel blijft in de watcher en
+gaat nooit de sessie in; de sessie krijgt alleen `DATABASE_URL_RO` (rol
+`matchstation_ro`) en draait met `--allowed-tools "Bash(psql:*) Read Glob Grep Write"`._
+
+_**Aannames en open eindes:**_
+
+_1. **`docs/goal-agent-matching.md` staat niet in git** — alleen los op schijf in de
+hoofd-werkdirectory (bevestigd door de sprintmaster). De sessieprompt is er de neerslag
+van; wijzigt dat document, dan moet `scripts/matchstation/sessieprompt.md` mee. Eén
+bewuste afwijking: dat document sluit prijzen uit de kolomlijst, maar besluit Timo
+13 aug #4 (machine ziet alles, incl. prijzen) wint — de prompt laat prijzen lezen en
+verbiedt ze in de keuze._
+
+_2. **spec_line_id versus fixture_code**: de prompt kiest — zijn er `existingLines`,
+dan vult de sessie die via `spec_line_id`; alleen bij een leeg dossier maakt hij regels
+aan met `fixture_code` (conform de bouwopdracht M2). Het open punt uit M1
+(`lib/repo/matchstation.ts`, kop) is daarmee dicht._
+
+_3. **De PowerShell-scripts zijn op deze Mac niet uitgevoerd of syntax-getest** (geen
+`pwsh` beschikbaar); handmatig gereviewd. Eerste draai op de EliteDesk is onderdeel van
+de begeleide installatie — de af-toets M2 (beide fixtures end-to-end) is dus NOG NIET
+gedraaid en staat gepland samen met Timo._
+
+_4. **Timeout × retry (2 × 10 min) kan de dood-melding laten afgaan**: de claim-lease is
+15 min, dus een trage retry meldt "dossier te lang zonder resultaat" terwijl de watcher
+nog bezig is. Geaccepteerd (alert-cooldown is 30 min; een tweede poging die zó lang
+duurt mag best een oog trekken). Wil Timo dit stiller: timeout naar 7 min of lease
+omhoog._
+
+_5. **Fallback bij een leeg dossier**: twee mislukte pogingen op een dossier zónder
+bestaande regels melden één fixture-regel `STATION-FOUT` met uitkomst `onzeker`, zodat
+het dossier zichtbaar in de reviewwachtrij landt — "nooit stil open". Bij bestaande
+regels krijgt elke regel `onzeker` met een toelichting die naar `failed\<dossier>`
+wijst._
+
+_6. **Vereisten op de EliteDesk** naast wat er al staat: `psql` in PATH (PostgreSQL-
+client) en het kopiëren van de drie bestanden + `.env`-aanvulling
+(`LUMENLOGIC_BASE_URL`); staat in `RUNBOOK-A4.md`, sectie Installatie. De
+cron-job.org-check (M1, besluit 2) draait al volgens de bouwopdracht._
