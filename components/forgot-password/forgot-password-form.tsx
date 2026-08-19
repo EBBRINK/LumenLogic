@@ -23,11 +23,11 @@ export type ForgotPasswordAction = (
   formData: FormData,
 ) => Promise<ForgotPasswordResult>;
 
-// De neutrale sent-melding: zegt niet óf het adres bestaat. Eén formulering die mail- én
-// consolepad dekt (docs/goal-auth-mail.md, bouwstap 5 — de client is niet key-bewust),
-// plus de geldigheidsduur (resetPasswordTokenExpiresIn = 15 min in lib/auth-factory.ts).
+// De neutrale sent-melding: zegt niet óf het adres bestaat, wel waar de link te vinden is
+// (fase zonder mailprovider: serverconsole/Vercel-logs, zie het goal-doc) en hoe lang hij
+// geldig is (resetPasswordTokenExpiresIn = 15 min in lib/auth-factory.ts).
 const SENT_MESSAGE =
-  "If that address has access to Lumen Logic, a reset link has been sent. The link is valid for 15 minutes. (Without a mail key configured, it appears in the server console.)";
+  "If that address has access to Lumen Logic, a reset link is now in the server console. The link is valid for 15 minutes.";
 
 type FormStatus = { kind: "idle" } | { kind: "pending" } | { kind: "sent" };
 

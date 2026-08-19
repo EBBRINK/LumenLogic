@@ -369,39 +369,6 @@ callAction(), eigen test-stubs), "Forgot password?"-link onder het wachtwoordvel
   brand-blue/teal: G37 noemt de summary-kleur "de enige teal-op-donker tekstkleur" en
   die belofte is hier niet gebroken.
 
-## Auth-mails via Resend (19 aug 2026, branch wachtwoord-reset)
-
-`docs/goal-auth-mail.md` gebouwd: `lib/mail.ts` (kale fetch naar Resend, consoleMailer
-als fallback, `defaultMailer()` kiest op env), mailer-injectie in de auth-factory,
-`auth_mail_sent`/`auth_mail_failed`-events, 10-min-throttle op reset-requests, UI-teksten
-en CLAUDE.md bijgewerkt. Zonder key werkt alles zoals voorheen (serverconsole).
-
-**Stappen voor Timo om mail live te krijgen** (account bestaat al; domein
-`mail.brinklicht.nl` is al toegevoegd in Resend, regio eu-west-1):
-
-1. **DNS-records in de DNS van brinklicht.nl** (staan ook in het Resend-dashboard):
-   - DKIM: TXT `resend._domainkey.mail` (waarde uit het dashboard)
-   - MX: `send.mail` → `feedback-smtp.eu-west-1.amazonses.com`, prio 10
-   - SPF: TXT `send.mail` → `v=spf1 include:amazonses.com ~all`
-2. Wachten tot het domein in Resend op **verified** staat.
-3. **Sending-only API-key** aanmaken (scope "Sending access", domein beperken kan).
-4. Env zetten, in Vercel **production** én in `.env.local`:
-   - `RESEND_API_KEY=<de key>`
-   - `MAIL_FROM="Lumen Logic <auth@mail.brinklicht.nl>"`
-   (Allebei nodig — key zónder `MAIL_FROM` geeft een console.error-waarschuwing en valt
-   terug op de console.)
-5. **Proefverzending**: magic link of resetlink naar je eigen adres aanvragen; mail moet
-   binnenkomen.
-6. **`auth_mail_sent`-event checken** in de events-tabel (payload bevat kind +
-   message-id, nooit de URL/token).
-
-**Geaccepteerde restrisico's** (besluit goal-doc, twee planners):
-- **Timing-kanaal**: bij een bestaand account duurt de respons ~100–500 ms langer (de
-  mail-call) — theoretisch enumeratiekanaal, geaccepteerd.
-- **Geen per-IP-rate-limit** op de edge — bestaand open punt, niet nieuw hier.
-- **Throttle leunt op de events-tabel**: wordt de events-tabel geleegd of het loggen
-  omgebouwd, dan valt de 10-min-rem op reset-mails stilletjes weg.
-
 ## ▶ HIER BEGINT DEPLOY 1 — draaiboek voor sprint 3.1
 
 *Alles hieronder is nog niet gebeurd. Sprint 3.1 staat volledig op branch

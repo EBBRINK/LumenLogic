@@ -27,15 +27,11 @@ serverconsole) · Tailwind 4 + shadcn/ui · Bun · Vercel.
   uit `@typescript/typescript6`. Zonder die symlink crasht `bun run lint` vóór de eerste regel.
 Beide mogen weg zodra typescript-eslint de 7.1-API ondersteunt; zie `HANDOVER.md`.
 
-Magic link / resetlink ophalen — auth-mails gaan via Resend (`lib/mail.ts`, kale fetch,
-geen SDK) zodra `RESEND_API_KEY` + `MAIL_FROM` gezet zijn: dan landt de link gewoon in de
-mailbox. Zonder key valt alles terug op de serverconsole — lokaal de `bun dev`-terminal,
-op de deploy de Vercel-logs:
+Magic link ophalen (fase zonder mailprovider) — lokaal staat hij in de `bun dev`-terminal,
+op de deploy in de Vercel-logs:
 - `vercel logs --environment production --since 15m --expand --no-branch`
 - `--expand` is verplicht, anders zie je alleen de POST-regel en blijft de `console.log`
-  eronder verborgen. Magic link 5 min geldig (Better Auth-default), resetlink 15 min.
-- Bij mail-falen wordt de link alsnog geconsole-logd (`auth_mail_failed`-event) — de
-  logs blijven dus áltijd vangnet.
+  eronder verborgen. Link is 5 min geldig (Better Auth-default, geen `expiresIn` gezet).
 
 ## Werkwijze
 Elke feature: white-box RSC-test met screenshots (light/dark × mobile/desktop) vóór hij af

@@ -40,8 +40,8 @@ export function LoginForm() {
       {sent ? (
         <div className="rounded-lg border bg-muted/40 p-4 text-sm">
           If <span className="font-medium">{email}</span> has access, a magic link
-          has been sent. (Without a mail key configured, it appears in the server
-          console.)
+          has been sent. In this phase the link appears in the{" "}
+          <b>server console</b> — open it there.
         </div>
       ) : (
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
