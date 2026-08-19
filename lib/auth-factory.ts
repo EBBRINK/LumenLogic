@@ -18,13 +18,10 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
-import { and, eq, gt } from "drizzle-orm";
 import * as authSchema from "@/db/auth-schema";
-import { events } from "@/db/schema";
 import type { AppDb } from "@/lib/repo/db";
 import { logEvent } from "@/lib/repo/events";
 import { isAllowed } from "@/lib/repo/settings";
-import { defaultMailer, type MailKind, type Mailer } from "@/lib/mail";
 
 // Wachtwoordbeleid volgens NIST SP 800-63B §5.1.1.2: een ondergrens afdwingen, géén
 // samenstellingsregels (geen "minstens één hoofdletter en een leesteken" — dat levert
@@ -49,61 +46,9 @@ export type CreateAuthOptions = {
   // ALTIJD als laatste in de plugin-lijst (Better Auth waarschuwt anders) en staat in tests
   // uit: daar bestaat geen request-scope en lezen de tests Set-Cookie zelf uit de response.
   nextCookies?: boolean;
-  // De mail-seam (docs/goal-auth-mail.md): productie krijgt defaultMailer() — Resend als
-  // key + MAIL_FROM er zijn, anders de serverconsole — en tests injecteren een
-  // capture-mailer, precies zoals de database geïnjecteerd wordt.
-  mailer?: Mailer;
-};
-
-// Hoe lang een tweede reset-request voor dezelfde user stil wordt overgeslagen.
-export const RESET_THROTTLE_MS = 10 * 60 * 1000;
-
-const MAIL_CONSOLE_LABEL: Record<MailKind, string> = {
-  password_reset: "password reset",
-  magic_link: "magic link",
 };
 
 export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
-  const mailer = options.mailer ?? defaultMailer();
-
-  // Eén verzendpad voor beide auth-mails: mail → event → console-vangnet. Eén poging,
-  // geen retry; er wordt hier NOOIT gethrowd — de respons naar de client blijft neutraal
-  // (anti-enumeratie), ook als de mail faalt. De URL/token komt nooit in een
-  // event-payload; bij falen wél alsnog in de serverconsole (Vercel-logs als vangnet).
-  async function sendAuthMail(input: {
-    kind: MailKind;
-    to: string;
-    subject: string;
-    text: string;
-    url: string;
-    entityId: string | null;
-  }) {
-    const { kind, to, subject, text, url, entityId } = input;
-    try {
-      const receipt = await mailer({ to, subject, text, kind, url });
-      await logEvent(database, {
-        entity: "user",
-        entityId,
-        action: "auth_mail_sent",
-        actor: to,
-        payload: {
-          kind,
-          ...(receipt?.id ? { messageId: receipt.id } : {}),
-          ...(receipt?.status ? { status: receipt.status } : {}),
-        },
-      });
-    } catch (fout) {
-      console.log(`[auth] ${MAIL_CONSOLE_LABEL[kind]} voor ${to}: ${url}`);
-      await logEvent(database, {
-        entity: "user",
-        entityId,
-        action: "auth_mail_failed",
-        actor: to,
-        payload: { kind, error: String(fout).slice(0, 500) },
-      });
-    }
-  }
-
   const magicLinkPlugin = magicLink({
     // Tweede slot op dezelfde deur. `/magic-link/verify` maakt bij een onbekend adres
     // anders zélf een user aan, mét emailVerified: true en meteen een sessie
@@ -124,24 +69,9 @@ export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
       // PIN-onboarding zinloos. De poort onder het wachtwoordpad is dat je een PIN
       // van Brink nodig hebt om überhaupt een wachtwoord te kúnnen zetten.
       if (!(await isAllowed(database, email))) return;
-      // Mail via de geïnjecteerde mailer; zonder RESEND_API_KEY + MAIL_FROM valt die
-      // terug op de serverconsole (zelfde regels als vroeger, zie lib/mail.ts).
-      await sendAuthMail({
-        kind: "magic_link",
-        to: email,
-        subject: "Your Lumen Logic sign-in link",
-        text: [
-          "Sign in to Lumen Logic with this link:",
-          "",
-          url,
-          "",
-          "The link is valid for 5 minutes. If you did not request it, you can ignore this email.",
-        ].join("\n"),
-        url,
-        // De magic-link-callback kent alleen het adres, geen user-id (het account kan
-        // zelfs nog niet bestaan) — het adres staat als actor op het event.
-        entityId: null,
-      });
+      // Geen e-mailprovider in deze fase (besluit 6). De magic link verschijnt in de
+      // serverconsole; daar klik je hem uit.
+      console.log(`[auth] magic link voor ${email}: ${url}`);
     },
   });
 
@@ -174,43 +104,14 @@ export function createAuth(database: AppDb, options: CreateAuthOptions = {}) {
       // voor de magic link; het wachtwoordpad is voor externe installateurs, en wie hier
       // komt hééft al een account (via een PIN van Brink).
       sendResetPassword: async ({ user, url }) => {
-        // Throttle: leunt bewust op de events-tabel (geen extra migratie of cache) —
-        // staat er al een password_reset_requested voor deze user jonger dan 10 minuten,
-        // dan stil overslaan: geen mail, geen event, identieke respons. Dit draait
-        // uitsluitend voor échte accounts (onbekende adressen komen hier nooit), dus de
-        // overslag lekt niets.
-        const recent = await database
-          .select({ id: events.id })
-          .from(events)
-          .where(
-            and(
-              eq(events.entityId, user.id),
-              eq(events.action, "password_reset_requested"),
-              gt(events.createdAt, new Date(Date.now() - RESET_THROTTLE_MS)),
-            ),
-          )
-          .limit(1);
-        if (recent.length > 0) return;
-
+        // Geen e-mailprovider in deze fase (besluit 6) — zelfde route als de magic link:
+        // de link verschijnt in de serverconsole/Vercel-logs.
+        console.log(`[auth] password reset voor ${user.email}: ${url}`);
         await logEvent(database, {
           entity: "user",
           entityId: user.id,
           action: "password_reset_requested",
           actor: user.email,
-        });
-        await sendAuthMail({
-          kind: "password_reset",
-          to: user.email,
-          subject: "Reset your Lumen Logic password",
-          text: [
-            "Reset your Lumen Logic password with this link:",
-            "",
-            url,
-            "",
-            "The link is valid for 15 minutes. If you did not request it, you can ignore this email.",
-          ].join("\n"),
-          url,
-          entityId: user.id,
         });
       },
       // ⚠️ Default staat UIT. Zonder dit blijft een gekaapte sessie gewoon leven na een
