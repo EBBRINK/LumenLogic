@@ -70,6 +70,20 @@ naar echte varianten later.
 
 Twee uitvoeringen naast elkaar zetten blijft voorlopig: twee losse dossiers aanmaken.
 
+**"Tabblad met herkenbare data" — aangescherpt tijdens het bouwen (20 aug, akkoord Timo).**
+De spec zei eerst `lines >= 1`. Dat bleek te ruim: een legendablad met alleen de cel
+"Toelichting bij de codes" levert langs het positionele pad één regel op, want daar wordt
+kolom A de armatuurcode. Elk bestand met een toelichtingstabje zou dan een keuzescherm
+krijgen, in strijd met de harde eis dat de keuze géén extra klik mag worden voor de
+meerderheid met één blad. De gebouwde definitie is daarom: **niet verborgen, én koprij
+herkend, én minstens één regel.**
+
+**Eerlijkheid over de dekking.** De feature maakt het niet in álle gevallen zichtbaar. Heeft
+blad A geen koprij maar wel positionele regels, en blad B wél een koprij, dan wint B zonder
+te vragen — er verdwijnt daar dus nog steeds een blad zonder keuze. Wel het slechtere blad,
+en vóór deze feature won A puur omdat hij vooraan stond. Dat is vastgelegd als test en als
+alinea in `docs/goal-meerdere-tabbladen.md`, niet weggepoetst.
+
 ## Aandachtspunten voor de planner
 
 - Het aantal regels per tabblad is pas bekend ná parsing. De keuzelijst moet dus elk blad
