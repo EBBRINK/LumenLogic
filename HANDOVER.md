@@ -5636,3 +5636,63 @@ session-revocation blokkeert.
 ZONDER session-revocation en zonder `password_reset_completed`-event (de throw viel ná
 updatePassword, vóór revokeSessionsOnPasswordReset). Vercel-logs nalopen op de
 uuid-fout en getroffen users' sessies handmatig verwijderen.
+
+---
+
+_2026-08-20. **Sprint M2 — installatie en af-toets op de EliteDesk (vervolg).**
+De keten is end-to-end rond: upload → wachtrij → EliteDesk → statussen in de app,
+7,5 min voor 19 regels, zonder handwerk. Uitkomst run 10:45 (lokaal): 14× groen
+(identieke producten en prijzen als de onafhankelijke referentierun op de Mac),
+C1312/S geel met beide kleurvarianten, LUNELLE rood, 2× Trizo21 blauw, 1× onzeker
+(Tekna LOFT: catalogus 600 mm vs gevraagd 1200 mm — referentie koos 'gevonden met
+kanttekening', het station het voorzichtigere 'onzeker')._
+
+_**Wat er tijdens de installatie gevonden en gefixt is (chronologisch, elk met
+commit):**_
+
+_1. **PowerShell 5.1 leest scripts zonder BOM als ANSI** — watcher.ps1 moet als
+UTF-8-mét-BOM op de machine staan (repo blijft BOM-loos; de kopieerstap zet hem
+erop, zie RUNBOOK)._
+
+_2. **Claude Code is op de EliteDesk een Store-app**: claude.exe leeft (buiten de
+app-context) onder `AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\
+Claude\claude-code\<versie>\`; `%APPDATA%\Claude\...` bestaat alleen ín de
+gevirtualiseerde context. Wrapper `C:\matchstation\bin\claude.cmd` zoekt beide
+roots af (hoogste versie wint) — bij een Claude-update die de structuur wijzigt is
+dit de eerste plek om te kijken._
+
+_3. **cmd /c-quoting**: meerdere gequote delen op één regel vereisen een extra paar
+quotes om de hele /c-regel (commit "cmd /c-quoting gefixt")._
+
+_4. **Timeout 10 → 25 min**: 19 regels kosten ~6-12 min echt werk; 10 min kapte de
+sessie af in zijn eindcontrole. Weesprocessen na een timeout-kill worden opgeruimd
+op de allowlist-cmdline — NOOIT op procesnaam: desktop-app én interactieve sessies
+heten ook claude.exe (bijna-incident 20 aug, correctie door de EliteDesk-sessie)._
+
+_5. **De Bash(psql:*)-allowlist weigert variabele-expansie** — `psql
+"$DATABASE_URL_RO"` kan dus nooit werken in de sessie. De watcher ontleedt de URL
+nu naar PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGSSLMODE/PGCHANNELBINDING zodat een
+kaal `psql -c` werkt; de connectiestring komt zo ook niet in het transcript._
+
+_6. **De terugkerende 400 was één ontbrekende opsomming in de prompt**: de sessie
+schreef 'oranje' als spec-oordeel; het schema kent groen/geel/rood/onbekend. De
+prompt somt nu álle enum-waarden op. Diagnose werd pas mogelijk toen de watcher de
+app-responsbody ging loggen en de POST-body + sessie-uitvoer per poging ging
+bewaren (verstuurd-pN.json, sessie-uitvoer-pN.txt) — die instrumentatie zit er nu
+standaard in._
+
+_7. **De fallback-keten is drie keer in het echt bewezen**: elke mislukte run landde
+als 19× onzeker met reviewvlag en verwijzing naar failed\<dossier> — nooit stil._
+
+_**Open eindes:** (a) wachtwoord van de Neon-leesrol rouleren — de connectiestring
+is één keer als screenshot in een chat langsgekomen; (b) sessieprompt op de machine
+staat nu zonder BOM, met BOM werkt ook maar voegt een onzichtbare U+FEFF toe; (c)
+machine-sleutel is 20 aug geroteerd (oude was als Sensitive niet meer uitleesbaar);
+sleutelbestand op de Mac-desktop is na gebruik weggegooid → verifieer; (d) de
+Write-Log van de watcher schrijft ANSI (é wordt mojibake in het log) — cosmetisch._
+
+_**Besluit Timo, 20 aug (via sprintmaster matchstation): M3 vervalt.** De dagelijkse
+steekproef (5 regels, 10 min) komt er niet. Consequentie, gemeld en geaccepteerd:
+er ontstaat geen gemeten foutpercentage per grond, dus ook geen "na ~50 nagekeken
+regels heroverwegen"-moment. Het matchstation draait op de vangrails die er zijn
+(read-only, bewijs per regel, events, dood-melding) zonder menselijk meetritueel._
