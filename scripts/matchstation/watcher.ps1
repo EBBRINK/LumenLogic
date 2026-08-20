@@ -25,7 +25,11 @@
 param(
   [string]$Root = "C:\matchstation",
   [int]$PollSeconds = 30,
-  [int]$SessionTimeoutMinutes = 10,
+  # 25 min: de af-toets van 20 aug mat ~12 min echte werktijd voor 19 regels (de
+  # sessie zat bij 10 min nog in zijn eindcontrole). Let op: de claim-lease app-zijde
+  # is 15 min, dus een lange run kan de dood-melding één keer laten afgaan — bekend
+  # en geaccepteerd (HANDOVER.md, aanname 4).
+  [int]$SessionTimeoutMinutes = 25,
   [int]$MaxAttempts = 2
 )
 
@@ -125,13 +129,24 @@ function Invoke-Sessie([string]$DossierDir) {
   # bekende `cmd /c ""prog" args"`-quirk).
   $claudeCmd = Join-Path $Root "bin\claude.cmd"
   if (-not (Test-Path $claudeCmd)) { $claudeCmd = "claude" }
-  $claudeArgs = "/c `"`"$claudeCmd`" -p --output-format text --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1`""
+  # stream-json + --verbose: schrijft de uitvoer regel voor regel weg, zodat er ook
+  # bij een timeout-kill iets in sessie-uitvoer.txt staat (gemeten 20 aug: met
+  # --output-format text flusht claude pas bij afsluiten → 0 bytes na een kill).
+  $claudeArgs = "/c `"`"$claudeCmd`" -p --output-format stream-json --verbose --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1`""
+  $sessieStart = Get-Date
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList $claudeArgs `
     -WorkingDirectory $DossierDir -PassThru -WindowStyle Hidden
   $timeoutMs = $SessionTimeoutMinutes * 60 * 1000
   if (-not $p.WaitForExit($timeoutMs)) {
     Write-Log "Sessie-timeout na $SessionTimeoutMinutes min — proces $($p.Id) wordt beëindigd."
     & taskkill /PID $p.Id /T /F 2>$null | Out-Null
+    # taskkill /T mist claude-subprocessen die zich uit de boom losmaken (gemeten
+    # 20 aug: tien wezen na twee timeouts). Ruim alles op dat 'claude' heet en ná de
+    # start van deze poging is begonnen — de interactieve desktop-app heet anders en
+    # draait al langer, die blijft buiten schot.
+    Get-Process -Name "claude" -ErrorAction SilentlyContinue |
+      Where-Object { $_.StartTime -ge $sessieStart } |
+      ForEach-Object { & taskkill /PID $_.Id /T /F 2>$null | Out-Null }
     return $false
   }
   if ($p.ExitCode -ne 0) {
