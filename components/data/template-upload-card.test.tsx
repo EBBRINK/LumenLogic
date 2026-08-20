@@ -66,8 +66,10 @@ test("de knop en de kaarttekst beloven wat het pad echt doet: checken én import
   await expect
     .element(page.getByText(/previous price\s*list is archived/))
     .toBeInTheDocument();
+  // Sinds regel 3 herschreven is (19 aug, migratie 0022) verdwijnen die producten
+  // niet meer — ze blijven vindbaar, rood, zonder prijs. De kaart belooft dat nu ook.
   await expect
-    .element(page.getByText(/not in the file disappear from\s*search results/))
+    .element(page.getByText(/not in the file stay findable/))
     .toBeInTheDocument();
 });
 

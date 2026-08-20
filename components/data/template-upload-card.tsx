@@ -87,8 +87,8 @@ export function TemplateUploadCard({
           Received a filled template from this brand? Upload it here. The file
           replaces this brand&apos;s data: after the format check every value in
           it is imported — including cleared fields — and the previous price
-          list is archived. Products that are not in the file disappear from
-          search results.
+          list is archived. Products that are not in the file stay findable,
+          marked red as “no longer in the price list”, without a price.
         </p>
         <form action={formAction} className="space-y-3">
           <input type="hidden" name="brandId" value={brandId} />
