@@ -110,7 +110,7 @@ het naar de app; jij POST zelf niets). Vorm:
         "merk_bevestigd": "Flos",
         "naam_treffer": "exact | bijna | serie",
         "specs_getoetst": [
-          { "veld": "kelvin", "gevraagd": 3000, "gevonden": 3000, "oordeel": "groen" }
+          { "veld": "kelvin", "gevraagd": 3000, "gevonden": 3000, "oordeel": "groen | geel | rood | onbekend" }
         ],
         "kandidaten_over": 1
       },
@@ -127,6 +127,10 @@ Regels daarbij:
   regels aan met `fixture_code` + `brand_text` + `product_text` + `quantity` uit het
   document.
 - `prijs` is een string met punt als decimaalteken; `quantity` een geheel getal.
+- Enum-velden accepteren UITSLUITEND de genoemde waarden — `oordeel` alleen
+  `groen`/`geel`/`rood`/`onbekend` (een bijna-treffer is `geel`, nooit "oranje"),
+  `naam_treffer` alleen `exact`/`bijna`/`serie`. Eén andere waarde en de app keurt
+  de hele batch af.
 - `alternatieven` maximaal 20; alleen bij `meerdere`. Vul `bewijs` altijd zo volledig
   mogelijk — dit is de controleerbaarheid van je oordeel.
 - Geldige JSON, niets anders in het bestand.
