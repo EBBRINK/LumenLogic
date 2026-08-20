@@ -6116,3 +6116,22 @@ Open eindes:
    constraint-namen naar buiten) en telt als skipped. Check bij elke nieuwe tabel die
    (indirect) aan `project_dossiers` hangt dat de keten cascadet — migratie 0024
    (`import_source_files`, cascadet via `import_runs`) is gecheckt en zit goed.
+
+## 2026-08-20 — Auto-enqueue matchstation na elke geslaagde import
+
+Besluit Timo (20 aug, via knoppen): elke geslaagde "Import file"-upload zet het dossier
+automatisch in de matchstation-wachtrij, óók bij 0 regels (het matchstation leest de bron
+zelf). De "Ready for matching"-knop blijft als handmatige herkansing.
+
+- Eén helper `enqueueNaImport()` in `app/projects/actions.ts`, aangeroepen vóór
+  `redirect()` in alle zes succes-eindes: pdf-leesroute, pdf-deterministisch (incl.
+  no-text-layer), OCR-finish, docx-vrije-tekst, tabel-finish, >15 MB-rijenpad.
+- Hergebruikt exact `enqueueDossierForMatching` (idempotent, wachtend/geclaimd → geen
+  tweede rij); nieuwe optionele parameter `bron: 'handmatig' | 'auto_import'` komt in de
+  payload van het bestaande event `matchstation_enqueued` (regel 5).
+- Aanname: ook een pdf zónder tekstlaag enqueuet — de upload slaagde en er is een run;
+  valt onder "0 regels, AI leest de bron alsnog".
+- Testnaad: repo-tests in `lib/repo/matchstation.test.ts` (bron in event, 0-regels-geval,
+  idempotentie). De dossierpagina-status was al gedekt door de bestaande screenshots in
+  `components/dossier/matchstation-card.test.tsx` (wachtend-stand) — bestaande naad heeft
+  voorrang op een nieuwe, dus geen duplicaat toegevoegd.

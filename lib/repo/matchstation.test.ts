@@ -14,6 +14,7 @@ import {
   registerHeartbeat,
   sendDeadAlert,
 } from "./matchstation";
+import { recordPdfImport } from "./imports";
 
 let db: TestDb;
 
@@ -50,6 +51,42 @@ describe("enqueueDossierForMatching", () => {
     const tweede = await enqueueDossierForMatching(db, dossier.id);
     expect(tweede).toEqual({ queued: false, reason: "already_queued" });
 
+    const rows = await db.select().from(matchstationQueue);
+    expect(rows).toHaveLength(1);
+  });
+
+  // Besluit Timo 20 aug: elke geslaagde import enqueuet automatisch, met bron
+  // 'auto_import' in het event (ijzeren regel 5) — de knop blijft 'handmatig'.
+  test("bron komt in het event: 'auto_import' bij de import, 'handmatig' als default", async () => {
+    const dossier = await seedDossier();
+    await enqueueDossierForMatching(db, dossier.id, "eduard@brinklicht.nl", "auto_import");
+    const [ev] = await db.select().from(events).where(eq(events.action, "matchstation_enqueued"));
+    expect((ev.payload as { bron?: string }).bron).toBe("auto_import");
+
+    const ander = await seedDossier("Ander dossier");
+    await enqueueDossierForMatching(db, ander.id, "eduard@brinklicht.nl");
+    const evs = await db.select().from(events).where(eq(events.action, "matchstation_enqueued"));
+    const evAnder = evs.find((e) => e.entityId === ander.id);
+    expect((evAnder?.payload as { bron?: string }).bron).toBe("handmatig");
+  });
+
+  // Het 0-regels-geval: een import zonder herkende regels (recordPdfImport met een lege
+  // lines-array, run wél 'bevestigd') enqueuet gewoon — het matchstation leest de bron
+  // zelf. En de auto-enqueue is idempotent: een tweede import erna maakt geen tweede rij.
+  test("import met 0 regels enqueuet alsnog, en een tweede import erna niet dubbel", async () => {
+    const dossier = await seedDossier();
+    await recordPdfImport(db, {
+      dossierId: dossier.id,
+      filename: "leeg.pdf",
+      lines: [],
+      rawMarkdown: "",
+      actor: "eduard@brinklicht.nl",
+    });
+    const eerste = await enqueueDossierForMatching(db, dossier.id, "eduard@brinklicht.nl", "auto_import");
+    expect(eerste.queued).toBe(true);
+
+    const tweede = await enqueueDossierForMatching(db, dossier.id, "eduard@brinklicht.nl", "auto_import");
+    expect(tweede).toEqual({ queued: false, reason: "already_queued" });
     const rows = await db.select().from(matchstationQueue);
     expect(rows).toHaveLength(1);
   });

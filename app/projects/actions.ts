@@ -94,6 +94,15 @@ import { getActor } from "@/lib/session";
 import { bewaakProject } from "@/lib/project-poort";
 import { enqueueDossierForMatching } from "@/lib/repo/matchstation";
 
+// Besluit Timo 20 aug: elke geslaagde "Import file"-upload meldt het dossier automatisch
+// aan bij het matchstation — óók een import met 0 regels, want het matchstation leest de
+// bron zelf en kan alsnog regels vinden. Idempotent (enqueueDossierForMatching wijst een
+// dubbele wachtrij-entry zelf af); de "Ready for matching"-knop blijft als handmatige
+// herkansing bestaan. Aanroepen vóór redirect() — die gooit en zou de enqueue overslaan.
+async function enqueueNaImport(dossierId: string, actor?: string) {
+  await enqueueDossierForMatching(db, dossierId, actor, "auto_import");
+}
+
 function intOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
   const n = parseInt(String(v), 10);
@@ -356,6 +365,7 @@ export async function importArmaturenboekPagesAction(input: {
         ...(result.gestopt ? { gestopt: result.gestopt } : {}),
       },
     });
+    await enqueueNaImport(dossierId, actor);
     revalidatePath(`/projects/${dossierId}`);
     redirect(
       `/projects/${dossierId}?pdf=${result.created}&run=${result.run.id}&route=leesroute`,
@@ -395,6 +405,7 @@ export async function importArmaturenboekPagesAction(input: {
       ...routePayload,
     },
   });
+  await enqueueNaImport(dossierId, actor);
   revalidatePath(`/projects/${dossierId}`);
   redirect(
     `/projects/${dossierId}?pdf=${hadText ? String(lines.length) : "no-text-layer"}&run=${run.id}`,
@@ -591,6 +602,7 @@ export async function finishOcrAction(formData: FormData) {
   }
   const finished = await finishOcrRun(db, { runId, actor });
   const counts = (finished.counts ?? {}) as Record<string, number>;
+  await enqueueNaImport(dossierId, actor);
   revalidatePath(`/projects/${dossierId}`);
   redirect(`/projects/${dossierId}?ocr=${counts.checked ?? 0}&run=${runId}`);
 }
@@ -888,6 +900,7 @@ export async function finishTableImportAction(input: {
         ...(vrij.gestopt ? { gestopt: vrij.gestopt } : {}),
       },
     });
+    await enqueueNaImport(dossierId, actor);
     revalidatePath(`/projects/${dossierId}`);
     redirect(
       `/projects/${dossierId}?tabel=${vrij.created.length}&run=${runId}`,
@@ -926,6 +939,7 @@ export async function finishTableImportAction(input: {
     },
   });
 
+  await enqueueNaImport(dossierId, actor);
   revalidatePath(`/projects/${dossierId}`);
   redirect(`/projects/${dossierId}?tabel=${result.created.length}&run=${runId}`);
 }
@@ -996,6 +1010,7 @@ export async function importTabelRowsAction(input: {
     },
   });
 
+  await enqueueNaImport(dossierId, actor);
   revalidatePath(`/projects/${dossierId}`);
   redirect(
     `/projects/${dossierId}?tabel=${result.created.length}&run=${result.run.id}`,

@@ -41,10 +41,16 @@ const ACTOR = "system:matchstation";
 
 // ── Wachtrij: enqueue, claim, opvragen ────────────────────────────────────────
 
+// `bron` (besluit Timo 20 aug): 'handmatig' is de "Ready for matching"-knop, 'auto_import'
+// is de automatische aanmelding na elke geslaagde import — ook een import met 0 regels,
+// want het matchstation leest de bron zelf en kan alsnog regels vinden.
+export type EnqueueBron = "handmatig" | "auto_import";
+
 export async function enqueueDossierForMatching(
   db: AppDb,
   dossierId: string,
   actor?: string,
+  bron: EnqueueBron = "handmatig",
 ): Promise<{ queued: true; id: string } | { queued: false; reason: "already_queued" }> {
   const existing = await db
     .select({ id: matchstationQueue.id })
@@ -67,7 +73,7 @@ export async function enqueueDossierForMatching(
     entityId: dossierId,
     action: "matchstation_enqueued",
     actor,
-    payload: { queueId: row.id },
+    payload: { queueId: row.id, bron },
   });
   return { queued: true, id: row.id };
 }
