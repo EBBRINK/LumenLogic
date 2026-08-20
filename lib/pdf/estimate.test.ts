@@ -115,7 +115,7 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
 test("PDF bevat offertenummer, regel, totalen per kleur, p.m.-post en afwijkingsnotitie", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "tester@voorbeeld.nl");
 
   const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   const bytes = await renderEstimatePdf(data);

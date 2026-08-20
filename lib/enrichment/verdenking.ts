@@ -123,7 +123,10 @@ const ACCESSOIRE = /\b(?:EXCL|INCL|SPARE|ACCESS\w*|DRIVER|CONVERTER|TRAFO|ADAPTE
 //
 // Merken met echte onderdelen: Wever & Ducré 197 · Flos Architectural 110 · Lombardo 82 ·
 // TossB 38 · Marset 21.
-const ONDERDEEL_START =
+// Geëxporteerd (lib/onderdeel-signaal.ts): dezelfde uitdrukking draagt de merk-brede
+// driver-waarschuwing. Eén bron — een tweede woordenlijst zou meteen uit de pas lopen met
+// de meting waarop deze regel gebouwd is (453 echte onderdelen vs. 3.700 valse positieven).
+export const ONDERDEEL_START =
   /^\s*(?:LED\s+)?(?:POW(?:ER)?\.?\s*SUPPLY|ALIM(?:ENT|T)?\.?\s*LED|ALIMENTATOR\w*|ALIMENTATORE|DRIVER|CONVERTER|TRAFO|TRANSF?(?:ORMATOR|ORMER)?\b|NETZTEIL|EQUIPO|REMOTE\s+KIT|VOEDING|POWER\s+FEED)/i;
 
 // ── Twee categorieën die het anker miste, gevonden door de zwerm op W&D ─────

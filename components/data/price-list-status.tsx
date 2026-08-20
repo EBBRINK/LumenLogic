@@ -86,6 +86,17 @@ const STATE_TINT: Record<RowState, string> = {
   ok: "bg-status-green-tint text-status-green-ink",
 };
 
+/**
+ * De badge van één rij: tint + label, uit één bron. Het merk-overzicht op /data/price-lists
+ * (components/data/price-list-urgency-table.tsx) draagt exact dezelfde badge; een tweede
+ * kopie zou het scherm zichzelf laten tegenspreken — dezelfde afweging die `rowState` en
+ * `isCoverageGap` hierboven al geëxporteerd heeft.
+ */
+export function priceListBadge(r: PriceListRow): { label: string; tint: string } {
+  const state = rowState(r);
+  return { label: stateLabel(r, state), tint: STATE_TINT[state] };
+}
+
 function stateLabel(r: PriceListRow, state: RowState): string {
   if (state === "verlopen") return `Expired (${Math.abs(r.daysLeft)} d ago)`;
   // De geldigheid blijft in het label staan: "geldig maar leeg" is een ander probleem dan

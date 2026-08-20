@@ -167,7 +167,7 @@ export async function issuePinAction(input: {
 
 // ── Organisatiebeheer (sprint 3.2c, besluiten 1/2/4a/6/7) ──────────────────────
 //
-// Deze twee actions komen van `/settings/organization` en horen sinds 3.2c hier: iemand
+// Deze twee actions komen van `/admin/organizations` en horen sinds 3.2c hier: iemand
 // toegang geven is in het hoofd van Brink één handeling, en die stond over twee schermen
 // verdeeld. Het aanmaakformulier is dáár weggehaald in plaats van gedupliceerd — twee
 // plekken laten bestaan verdubbelt de versnippering in plaats van hem op te lossen.
@@ -200,7 +200,7 @@ export async function createOrgAction(input: {
     if (!uitkomst.ok) return { ok: false, error: uitkomst.message };
     revalidatePath("/admin/users");
     // De organisatielijst op het organisatiescherm verandert hier ook van.
-    revalidatePath("/settings/organization");
+    revalidatePath("/admin/organizations");
     return { ok: true };
   } catch {
     return {
@@ -228,7 +228,7 @@ export async function setSeatLimitAction(input: {
     });
     if (!uitkomst.ok) return { ok: false, error: uitkomst.message };
     revalidatePath("/admin/users");
-    revalidatePath("/settings/organization");
+    revalidatePath("/admin/organizations");
     return { ok: true };
   } catch {
     return {

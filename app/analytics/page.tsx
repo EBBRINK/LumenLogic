@@ -6,7 +6,7 @@
 //
 // Server component: één query op de server, alles als prop naar de view. Geen "use client".
 // Geen terugkoppel-link: /analytics is een top-level item in components/nav-items.ts en had er
-// ook in 2.0b geen (vgl. /data/event-log, dat als subpagina wél "← Data" draagt).
+// ook in 2.0b geen (vgl. /admin/event-log, dat als subpagina wél "← Data" draagt).
 //
 // Aanroep zonder opties = intern, alles: geen org-scope en geen anonimiseringsgrens. Die twee
 // parameters staan klaar in `getAnalyticsTiles` voor het merkportaal van week 3.

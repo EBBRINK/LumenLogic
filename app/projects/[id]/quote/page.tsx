@@ -1,3 +1,5 @@
+import { isLosOnderdeel } from "@/lib/onderdeel-signaal";
+import { merkenMetLosseOnderdelen } from "@/lib/repo/onderdeel-merken";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { QuoteView } from "@/components/dossier/quote-view";
@@ -123,6 +125,21 @@ export default async function EstimatePage({
   ]);
   const { dossier, quote: q, header, lines } = data;
 
+  // Driver-waarschuwing (demo 12 aug): welke merken op dit stuk voeren losse drivers en
+  // accessoires? Eén melding boven de tabel, met de merken erin genoemd — niet per regel,
+  // want een waarschuwing op elk van veertig regels wordt weggekeken.
+  //
+  // Regels die zélf een los onderdeel zijn tellen niet mee: staat er al een driver op de
+  // offerte, dan is de vraag voor dát merk beantwoord.
+  const driverMerken = [
+    ...(await merkenMetLosseOnderdelen(
+      db,
+      lines
+        .filter((l) => !isLosOnderdeel(l.productName))
+        .map((l) => l.productBrand ?? null),
+    )),
+  ].sort();
+
   const firstExport = exports[0];
   const existing: ExistingExport = firstExport
     ? {
@@ -225,6 +242,7 @@ export default async function EstimatePage({
         actions={actions}
         frozen={frozen}
         headerEditable={headerEditable}
+        driverMerken={driverMerken}
       />
     </>
   );

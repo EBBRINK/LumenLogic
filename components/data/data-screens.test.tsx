@@ -1,61 +1,22 @@
-// White-box render-tests van de data-werkbank-schermen met fixture-data (licht/donker ×
+// White-box render-tests van de werkbank-schermen met fixture-data (licht/donker ×
 // mobiel/desktop). Minimaal: assert op zichtbare tekst/structuur; screenshots als bonus.
+//
+// IA-opschoning 12 aug 2026: de Data-hub, de dekkingsmeter ("Tier 1 coverage 82%") en het
+// verrijkings-steekproefscherm zijn opgeheven, en met hen de tests en opnamen die ze
+// vastpinden. Wat hier staat zijn de schermen die zijn blijven bestaan — inladen,
+// prijslijsten en evaluatie — nu onder /admin respectievelijk /brand-management.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { noopAction } from "@/lib/test-actions";
-import { CoverageMeter } from "./coverage-meter";
-import {
-  BrandPicker,
-  EnrichmentRunsTable,
-  SampleReview,
-  type EnrichBrand,
-  type EnrichRunRow,
-  type SampleItem,
-} from "./enrichment-panels";
 import { BrandLoadQueue, type QueueRow } from "./brand-load-queue";
-import { DATA_CARDS, DataCards } from "./data-cards";
-import {
-  isCoverageGap,
-  PriceListStatusTable,
-  type PriceListRow,
-} from "./price-list-status";
+import { PriceListStatusTable, type PriceListRow } from "./price-list-status";
 import { EvaluationPanel, type EvalLine, type EvalRunRow } from "./evaluation-panel";
 
 const viewports = {
   mobile: { width: 375, height: 812 },
   desktop: { width: 1280, height: 800 },
 } as const;
-
-const brands: EnrichBrand[] = [
-  { id: "b1", name: "Delta Light", productCount: 42, enriched: 10 },
-  { id: "b2", name: "XAL", productCount: 18, enriched: 0 },
-];
-
-const runs: EnrichRunRow[] = [
-  {
-    id: "r1",
-    brandName: "Delta Light",
-    status: "gepubliceerd",
-    counts: { producten: 42, geparsed: 61, steekproef: 20, toegepast: 55 },
-    sampleErrorRate: "0.0500",
-    createdAt: "2026-07-01T10:00:00Z",
-  },
-  {
-    id: "r2",
-    brandName: "XAL",
-    status: "steekproef",
-    counts: { producten: 18, geparsed: 24, steekproef: 8 },
-    sampleErrorRate: null,
-    createdAt: "2026-07-05T12:00:00Z",
-  },
-];
-
-const sampleItems: SampleItem[] = [
-  { id: "i1", productName: "SASSO 100 17,9W 3000K", field: "kelvin", value: "3000", sampleVerdict: "goed" },
-  { id: "i2", productName: "SASSO 100 17,9W 3000K", field: "maxWattage", value: "17.9", sampleVerdict: null },
-  { id: "i3", productName: "SPY 39 IP54 CRI90", field: "cri", value: "90", sampleVerdict: "fout" },
-];
 
 const queue: QueueRow[] = [
   { id: "q1", displayName: "Occhio", frequency: 5, status: "wachtend", loadedAt: null },
@@ -127,27 +88,6 @@ afterEach(() => {
 });
 
 const screens = {
-  "data-overzicht": (
-    <Screen>
-      <CoverageMeter total={120} covered={78} ratio={0.65} />
-      <div className="mt-6">
-        <BrandPicker brands={brands} startAction={noopAction} />
-        <EnrichmentRunsTable runs={runs} />
-      </div>
-    </Screen>
-  ),
-  "verrijking-steekproef": (
-    <Screen>
-      <SampleReview
-        runId="r2"
-        status="steekproef"
-        items={sampleItems}
-        verdictAction={noopAction}
-        publishAction={noopAction}
-        rejectAction={noopAction}
-      />
-    </Screen>
-  ),
   inladen: (
     <Screen>
       <BrandLoadQueue
@@ -173,19 +113,6 @@ const screens = {
       <EvaluationPanel lines={[]} runs={[]} measureAction={noopAction} />
     </Screen>
   ),
-  // UX-audit 30 jul: de hub met zes kaarten, inclusief de nieuwe Loading-ingang.
-  // De badges zijn dezelfde die app/data/page.tsx voedt.
-  "hub-kaarten": (
-    <Screen>
-      <DataCards
-        badge={{
-          "/data/enrichment": 1,
-          "/data/price-lists": 3,
-          "/data/loading": 2,
-        }}
-      />
-    </Screen>
-  ),
 } as const;
 
 for (const [name, ui] of Object.entries(screens)) {
@@ -209,32 +136,8 @@ for (const [name, ui] of Object.entries(screens)) {
   }
 }
 
-test("dekkingsmeter toont het percentage en de telling", async () => {
-  await renderServer(
-    <Screen>
-      <CoverageMeter total={120} covered={78} ratio={0.65} />
-    </Screen>,
-  );
-  await expect.element(page.getByText("65%")).toBeInTheDocument();
-  await expect
-    .element(page.getByText(/78 of 120 products/))
-    .toBeInTheDocument();
-});
-
 // UX-audit 30 jul (bug #9): op productie staan hier zes cijfers ("74608 of 211317") —
 // één ononderbroken brij. De kleine fixture hierboven kon dat niet laten zien, deze wel.
-test("dekkingsmeter: grote tellingen krijgen duizendtalgroepering", async () => {
-  await renderServer(
-    <Screen>
-      <CoverageMeter total={211317} covered={74608} ratio={0.353} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByText(/74\.608 of 211\.317 products/))
-    .toBeInTheDocument();
-  expect(document.body.textContent).not.toContain("74608");
-});
-
 // ── UX-audit 30 jul, bug #12: een eerlijke actie voor rijen die nooit een merk waren ──
 test("inlaadwachtrij: elke wachtende rij biedt óók 'Not a brand'", async () => {
   await renderServer(
@@ -280,7 +183,7 @@ for (const theme of ["light", "dark"] as const) {
         leeg,
         "geen [data-slot=empty-state]: terug op de kale grijze regel",
       ).not.toBeNull();
-      // "framed": op /data/loading staat het blok direct in <main>, zonder <Card>.
+      // "framed": op /admin/loading staat het blok direct in <main>, zonder <Card>.
       expect(leeg!.dataset.variant).toBe("framed");
       expect(leeg!.className).toContain("border-dashed");
       // Bewuste `action={null}`: de wachtrij vult zichzelf vanuit de matcher, er is hier
@@ -359,78 +262,6 @@ test("inlaadwachtrij: zonder dismissAction verschijnt de knop niet", async () =>
   expect(page.getByRole("button", { name: "Not a brand" }).query()).toBeNull();
 });
 
-// De steekproefpoort (20 jul): zolang één rij geen oordeel heeft weigert publishRun, dus de
-// UI zegt dat en zet de knop uit — beter dan de gebruiker tegen een servererror laten lopen.
-// sampleItems bevat bewust één onbeoordeelde rij (i2) én één 'fout' (i3); de openstaande
-// review wint, want die blokkeert.
-test("steekproef met onbeoordeelde rij: publiceren geblokkeerd", async () => {
-  await renderServer(
-    <Screen>
-      <SampleReview
-        runId="r2"
-        status="steekproef"
-        items={sampleItems}
-        verdictAction={noopAction}
-        publishAction={noopAction}
-        rejectAction={noopAction}
-      />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByText(/1 sample row\(s\) still need a verdict/))
-    .toBeInTheDocument();
-  await expect
-    .element(page.getByRole("button", { name: "Publish" }))
-    .toBeDisabled();
-});
-
-// GEWIJZIGD 30 jul: heette "publiceren mag, mét fout-waarschuwing" en eiste een INGESCHAKELDE
-// publiceerknop naast een 'fout'-oordeel. Dat was het oude contract (één fout blokkeert alleen
-// dát item). Sinds de drempel in publishRun blokkeert één fout de hele run, dus het scherm hoort
-// de knop uit te zetten — anders belooft het iets wat de server weigert.
-test("steekproef volledig beoordeeld met één fout: publiceren is geblokkeerd", async () => {
-  const beoordeeld: SampleItem[] = sampleItems.map((it) =>
-    it.sampleVerdict == null ? { ...it, sampleVerdict: "goed" as const } : it,
-  );
-  await renderServer(
-    <Screen>
-      <SampleReview
-        runId="r2"
-        status="steekproef"
-        items={beoordeeld}
-        verdictAction={noopAction}
-        publishAction={noopAction}
-        rejectAction={noopAction}
-      />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByRole("button", { name: "Publish" }))
-    .toBeDisabled();
-  await expect
-    .element(page.getByText(/1 item\(s\) marked incorrect/))
-    .toBeInTheDocument();
-  await expect
-    .element(page.getByText(/reject the run and investigate/i))
-    .toBeInTheDocument();
-});
-
-test("gepubliceerde run toont geen goed/fout-knoppen meer", async () => {
-  await renderServer(
-    <Screen>
-      <SampleReview
-        runId="r1"
-        status="gepubliceerd"
-        items={sampleItems}
-        verdictAction={noopAction}
-        publishAction={noopAction}
-        rejectAction={noopAction}
-      />
-    </Screen>,
-  );
-  expect(page.getByRole("button", { name: "Publish" }).query()).toBeNull();
-});
-
 // Sprint 1.6 (deel B): de "inline"-variant van PriceListExpiryNotice hoort bij de
 // bestaande verlopen-rij (pl1, Occhio) en nergens anders — dit scherm gaat over lijsten,
 // niet over merken, dus bewust geen banner of pil.
@@ -483,87 +314,6 @@ test("prijslijsten: geldig met 0 producten is amber, niet groen", async () => {
     .element(page.getByText(/1 expired · 2 with 0 products — coverage gaps/))
     .toBeInTheDocument();
 });
-
-// UX-audit 30 jul, vervolg op bug #3: de kop mag de badges één regel lager niet tegenspreken.
-// pl5 draagt "Expires in 21 d · 0 products"; zei de kop dan "1 expiring soon" (alleen pl2),
-// dan verdween pl5 uit de verlengplanning terwijl zijn eigen badge zegt dat hij verloopt. De
-// tint van een rij is exclusief, de tellingen zijn dat niet.
-test("prijslijsten: de bijna-verlopen-telling laat een lege lijst niet vallen", async () => {
-  await renderServer(
-    <Screen>
-      <PriceListStatusTable rows={priceLists} />
-    </Screen>,
-  );
-  // pl2 (7 dagen) + pl5 (30 dagen, 0 producten) = 2. Uit `bucket`, niet uit de tint.
-  await expect.element(page.getByText("2 expiring soon")).toBeInTheDocument();
-  expect(page.getByText("1 expiring soon").query()).toBeNull();
-  // ...en die lege bijna-verlopen lijst staat óók bij de dekkingsgaten. Dubbel geteld in de
-  // twee tellers, precies één keer in de tabel — dat is de bedoeling.
-  await expect
-    .element(page.getByText(/2 with 0 products/))
-    .toBeInTheDocument();
-});
-
-// De precedentie in rowState() is dragend en stond tot 30 jul in geen enkele test: geen fixture
-// was verlopen ÉN leeg. Draai de twee ifs om en deze rij wordt 'leeg' — label "Expires in -36 d
-// · 0 products" (negatieve dagen), tint amber i.p.v. grijs, en de colSpan-uitlegregel eronder
-// verdwijnt omdat die op state === "verlopen" hangt. Alle 28 tests bleven daarbij groen.
-test("prijslijsten: verlopen wint van leeg — grijs, dagen positief, uitleg blijft staan", async () => {
-  await renderServer(
-    <Screen>
-      <PriceListStatusTable rows={verlopenEnLeeg} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByText("Expired (36 d ago)")) // niet "Expires in -36 d · 0 products"
-    .toBeInTheDocument();
-  const badge = [...document.querySelectorAll("td span")].find(
-    (el) => el.textContent === "Expired (36 d ago)",
-  );
-  expect(badge?.className).toContain("bg-status-grey-tint");
-  expect(badge?.className).not.toContain("bg-status-amber-tint");
-
-  // De vervolgrij met de gedeelde verloop-uitleg hoort er nog te staan — over de volle breedte.
-  await expect
-    .element(
-      page.getByText(/Kreon delivered prices — the list expired on 01-06-2026/),
-    )
-    .toBeInTheDocument();
-  expect(document.querySelector('td[colspan="5"]')).not.toBeNull();
-
-  // En de kop telt deze rij één keer, als verlopen — niet ook als lege lijst.
-  await expect
-    .element(page.getByText("1 expired — coverage gap"))
-    .toBeInTheDocument();
-});
-
-// UX-audit 30 jul, vervolg op bug #3: /data en /data/price-lists mogen niet uit elkaar lopen.
-// De hub-badge telde alleen `bucket === "verlopen"` en las op productiedata "1", terwijl het
-// scherm waar hij naar linkt 31 dekkingsgaten meldde. Hij gebruikt nu isCoverageGap uit
-// price-list-status.tsx — dezelfde predicate als de tint van de rij, geen tweede kopie.
-test("data-hub: de prijslijst-badge telt élk dekkingsgat, niet alleen de verlopen lijsten", async () => {
-  const gaps = priceLists.filter(isCoverageGap).length;
-  expect(gaps).toBe(3); // pl1 verlopen + pl4/pl5 met 0 producten
-  // De oude, liegende telling — bewijs dat de badge hier echt van afwijkt.
-  expect(priceLists.filter((p) => p.bucket === "verlopen").length).toBe(1);
-
-  await renderServer(
-    <Screen>
-      <DataCards badge={{ "/data/price-lists": gaps }} />
-    </Screen>,
-  );
-  await expect
-    .element(page.getByText("3", { exact: true }))
-    .toBeInTheDocument();
-});
-
-// /data/loading kreeg op 30 jul kortstondig een zesde hub-kaart; die commit is op verzoek
-// van Timo NIET meegegaan naar main (de inlaadwachtrij hoort bij het week-3-navigatiewerk,
-// G21). De tests die de kaart vastpinden stonden per ongeluk in een ándere commit dan de
-// kaart zelf en bleven dus achter op een DATA_CARDS van vijf — drie rode tests op main.
-// Ze zijn hier verwijderd in plaats van de kaart terug te halen: het besluit is dat hij er
-// niet is. Zie docs/rol-schermen-kaart-2.0a.md ("blijft technisch bestaan; niet in de
-// hub-kaarten"). Les: een test hoort in dezelfde commit als de feature die hij bewaakt.
 
 // Eén presentatie voor de levensfase (components/admin/brand-lifecycle-badge.tsx), dezelfde
 // als /admin/brands: 'actief' krijgt géén badge, de afwijking wel.

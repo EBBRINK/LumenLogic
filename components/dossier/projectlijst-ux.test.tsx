@@ -99,8 +99,8 @@ function Projectlijst() {
         </form>
         <StatusFilter active="alle" />
       </div>
-      <StatusLegend className="mb-4" />
       <DossierList dossiers={dossiers} />
+      <StatusLegend className="mt-8" />
     </div>
   );
 }
@@ -125,24 +125,9 @@ for (const theme of ["light", "dark"] as const) {
       });
     });
 
-    // De twee nieuwe standen apart op de foto: de uitgeklapte legenda (dít is wat
-    // vroeger alleen in een `title` zat) en de aanmaakdialoog (die de vaste kolom
-    // naast de lijst vervangt).
-    test(`projectlijst-legenda-open (${theme}, ${device})`, async () => {
-      await page.viewport(viewport.width, viewport.height);
-      if (theme === "dark") document.documentElement.classList.add("dark");
-      await renderServer(
-        <Screen>
-          <Projectlijst />
-        </Screen>,
-      );
-      await expect.element(page.getByText("Dot colours")).toBeInTheDocument();
-      document.querySelector("details")!.open = true;
-      await page.screenshot({
-        path: `./projectlijst-legenda-open.${theme}.${device}.test.png`,
-      });
-    });
-
+    // De aanmaakdialoog apart op de foto (die vervangt de vaste kolom naast de
+    // lijst). De legenda hoeft geen eigen "open"-foto meer: hij stáát open, en zit
+    // dus al op de projectlijst-foto hierboven.
     test(`projectlijst-nieuw-dialoog (${theme}, ${device})`, async () => {
       await page.viewport(viewport.width, viewport.height);
       if (theme === "dark") document.documentElement.classList.add("dark");
@@ -234,29 +219,55 @@ for (const theme of ["light", "dark"] as const) {
 }
 
 // ── 2. De legenda ──────────────────────────────────────────────────────────────────
-test("legenda: dichtgeklapt de zes kleurnamen, uitgeklapt de betekenissen", async () => {
+// Demo Brink Licht 12 aug, twee klachten in één test vastgepind:
+//   • hij was een `<details>` die je moest openklappen → nu altijd open, geen pijltje;
+//   • de kop was de kleurnaam ("Yellow", zegt de gebruiker niets) → nu de betekenis.
+// De beschrijvende zin erachter is onveranderd; dat is de derde assertie.
+test("legenda: altijd open, met de betekenis als kop", async () => {
   await renderServer(
     <Screen>
       <StatusLegend />
     </Screen>,
   );
-  // Dicht: de namen staan er (O13 — de statussen HETEN de kleuren, dus dit zijn de
-  // labels uit status.ts en geen verzonnen synoniemen).
-  for (const naam of ["Green", "Yellow", "Blue", "Red", "Purple", "Open"]) {
+  // Eerst wachten tot de legenda er staat: een `querySelector` die te vroeg draait
+  // vindt niets en zou de "geen <details>"-assertie gratis laten slagen.
+  await expect.element(page.getByText("Dot colours")).toBeInTheDocument();
+  // Geen uitklapper meer — de uitleg is zichtbaar zonder één handeling.
+  expect(document.querySelector("details"), "geen uitklapbare legenda meer").toBe(
+    null,
+  );
+
+  // De koppen zijn de betekenissen (STATUS[...].name), niet de kleurnamen.
+  for (const naam of [
+    "Match",
+    "Attention",
+    "Awaiting brand",
+    "Invalid product",
+    "Out of scope",
+    "Open",
+  ]) {
     await expect
       .element(page.getByText(naam, { exact: true }).first())
       .toBeInTheDocument();
   }
-  const details = document.querySelector("details")!;
-  expect(details.open, "legenda staat dichtgeklapt").toBe(false);
+  // En de kleurnaam staat er níet meer als kop. "Green"/"Yellow" blijven wél de
+  // badge- en printtaal (STATUS[...].label/.word, DESIGN.md O13) — die worden hier
+  // alleen niet meer in de legenda herhaald.
+  for (const kleur of ["Green", "Yellow", "Blue", "Red", "Purple"]) {
+    expect(
+      page.getByText(kleur, { exact: true }).elements().length,
+      `kleurnaam ${kleur} niet meer als legenda-kop`,
+    ).toBe(0);
+  }
 
-  // De betekenis was hiervoor alleen een `title` (hover-only, op touch onbereikbaar).
-  // Nu staat hij in de DOM zodra je de legenda opent — tikbaar, dus ook op touch.
-  const uitleg =
-    "Brand not in the catalog yet — data gap, our action (load the brand).";
-  await page.getByText("Dot colours").click();
-  expect(details.open, "legenda opent op klik").toBe(true);
-  await expect.element(page.getByText(uitleg)).toBeInTheDocument();
+  // De zin achter het label staat er onveranderd, zonder klik.
+  await expect
+    .element(
+      page.getByText(
+        "Brand not in the catalog yet — data gap, our action (load the brand).",
+      ),
+    )
+    .toBeInTheDocument();
 });
 
 // ── 3. De datum per kaart ──────────────────────────────────────────────────────────
@@ -455,4 +466,43 @@ test("lege lijst na zoeken: eigen zin, zelfde gedeelde vorm", async () => {
   expect(leeg!.dataset.variant).toBe("framed");
   // Bewuste `action={null}`: alleen titel, geen leeg actie-blok.
   expect(leeg!.children.length).toBe(1);
+});
+
+// ── 5. De tooltip-vertraging ───────────────────────────────────────────────────────
+// Demo Brink Licht 12 aug: "die tooltip komt pas na twee seconden, dan ben ik al aan
+// het scrollen." De uitleg zat in een `title` en die vertraging is browser-eigen en
+// niet in te stellen — vandaar components/ui/hint.tsx. Deze test meet de vertraging
+// in de hover-stand écht na (0,3 s), en pint tegelijk vast dat er géén `title` meer
+// naast staat: twee tooltips over elkaar is erger dan één trage.
+test("tooltip: 300ms in plaats van de browser-vertraging, en geen dubbele title", async () => {
+  await renderServer(
+    <Screen>
+      <Projectlijst />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Ziekenhuis Noord")).toBeInTheDocument();
+  const groen = "We have the product; all specs within the green margin.";
+  // De telling op de eerste kaart draagt de uitleg; de legenda onderaan draagt
+  // dezelfde zin, dus we pakken hem via de tooltip-rol.
+  const tips = document.querySelectorAll<HTMLElement>('[role="tooltip"]');
+  const tip = [...tips].find((t) => t.textContent === groen)!;
+  expect(tip, "tooltip staat in de DOM, ook zonder hover").toBeTruthy();
+  expect(getComputedStyle(tip).opacity, "onzichtbaar in rust").toBe("0");
+
+  const trigger = tip.parentElement!;
+  expect(trigger.getAttribute("title"), "geen tweede, trage browser-tooltip").toBe(
+    null,
+  );
+
+  await page.elementLocator(trigger).hover();
+  await expect
+    .poll(() => getComputedStyle(tip).transitionDelay, {
+      message: "vertraging in de hover-stand",
+    })
+    .toBe("0.3s");
+  // En hij komt er ook echt: 300 ms wachten + 100 ms overgang.
+  await expect
+    .poll(() => getComputedStyle(tip).opacity, { timeout: 2000 })
+    .toBe("1");
+  await page.screenshot({ path: "./projectlijst-tooltip.light.test.png" });
 });

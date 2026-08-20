@@ -19,6 +19,7 @@ import {
   countedLineTotal,
   countsInTotal,
   dayPriceExpiredNote,
+  productPriceStateNote,
   notableDeviations,
   pmSummary,
   requestedText,
@@ -243,6 +244,10 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         // A7: en het merkteken "verlopen dagprijs" deelt diezelfde subregel — het staat
         // vooraan, want het gaat over het BEDRAG dat ernaast staat.
         const expiredNote = dayPriceExpiredNote(line);
+        // Regel 3, herschreven: vervallen product → dezelfde subregel. Op papier is er
+        // geen kleur, dus de zin moet het alleen doen — vandaar dat productPriceStateNote
+        // de prijslijst en de datum voluit noemt.
+        const vervalNote = productPriceStateNote(line);
         // B3: het auto-door-label deelt de subregel met de afwijkingsnotitie.
         // Stap 7: idem voor het merkteken "handmatig gekozen".
         const hasSubLine =
@@ -250,7 +255,8 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
           !!line.autoAccepted ||
           !!line.matchstationChosen ||
           !!line.manuallyChosen ||
-          expiredNote != null;
+          expiredNote != null ||
+          vervalNote != null;
         const rowH = 13 + (hasSubLine ? 10 : 0);
         need(rowH);
 
@@ -291,7 +297,8 @@ export async function renderEstimatePdf(data: EstimateData): Promise<Uint8Array>
         // groen. B3: het label "automatisch geaccepteerde bijna-match" erachteraan.
         if (hasSubLine) {
           const parts: string[] = [];
-          if (expiredNote) parts.push(expiredNote); // A7 — vooraan: het gaat over het bedrag
+          if (vervalNote) parts.push(vervalNote); // regel 3 — vooraan: er ís geen bedrag
+          if (expiredNote) parts.push(expiredNote); // A7 — het gaat over het bedrag
           if (notable.length > 0)
             parts.push(`deviation: ${notable.map((d) => d.note).join(" · ")}`);
           if (line.autoAccepted) parts.push("automatically accepted near-match");

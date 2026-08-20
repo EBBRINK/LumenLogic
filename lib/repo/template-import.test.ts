@@ -48,12 +48,38 @@ async function importeer(db: TestDb, brandId: string, rijen: GelezenRij[]) {
   });
 }
 
-async function zichtbareCodes(db: TestDb, brandId: string): Promise<string[]> {
+/**
+ * De codes die op de ACTUELE lijst staan — dat is wat deze tests bedoelden toen ze nog van
+ * "zichtbaar" spraken. Sinds migratie 0022 staat een product dat uit de lijst is gevallen
+ * óók in `visible_products` (vindbaar, zonder bedrag, `uit_prijslijst`), dus "zichtbaar" en
+ * "op de actuele lijst" zijn niet langer hetzelfde. De import-tests gaan over dat tweede;
+ * `vervallenCodes` hieronder bewaakt het eerste.
+ */
+async function actueleCodes(db: TestDb, brandId: string): Promise<string[]> {
   const rows = await db
     .select({ code: products.supplierArticleCode })
     .from(visibleProducts)
     .innerJoin(products, eq(products.id, visibleProducts.id))
-    .where(eq(products.brandId, brandId));
+    .where(
+      and(eq(products.brandId, brandId), eq(visibleProducts.priceState, "actueel")),
+    );
+  return rows.map((r) => r.code ?? "").sort();
+}
+
+/** De codes die wél vindbaar zijn maar niet meer op de lijst staan (geen bedrag). */
+async function vervallenCodes(db: TestDb, brandId: string): Promise<string[]> {
+  const rows = await db
+    .select({ code: products.supplierArticleCode, prijs: visibleProducts.grossPrice })
+    .from(visibleProducts)
+    .innerJoin(products, eq(products.id, visibleProducts.id))
+    .where(
+      and(
+        eq(products.brandId, brandId),
+        eq(visibleProducts.priceState, "uit_prijslijst"),
+      ),
+    );
+  // De bescherming van regel 3, hier meegemeten: vervallen betekent geen bedrag.
+  for (const r of rows) expect(r.prijs).toBeNull();
   return rows.map((r) => r.code ?? "").sort();
 }
 
@@ -134,9 +160,11 @@ test("vervang-semantiek: bestand wint (zetten, wijzigen, wissen), ontbrekend pro
   expect(actief.name).toBe("Price list 2027");
   expect(actief.validUntil).toBe("2027-12-31");
 
-  // IJzeren regel 3, centraal afgedwongen: ART-2 heeft geen regel op de nieuwe lijst en
-  // is dus onzichtbaar — maar zijn data bestaat nog (geen delete, geen spookproduct).
-  expect(await zichtbareCodes(db, brandId)).toEqual(["ART-1", "ART-3"]);
+  // IJzeren regel 3, centraal afgedwongen: ART-2 heeft geen regel op de nieuwe lijst.
+  // Sinds 0022 verdwijnt hij daardoor niet, maar wordt hij vindbaar zónder bedrag — precies
+  // het scenario van de bestekschrijver die een artikelnummer van vorig jaar overtypt.
+  expect(await actueleCodes(db, brandId)).toEqual(["ART-1", "ART-3"]);
+  expect(await vervallenCodes(db, brandId)).toEqual(["ART-2"]);
   const [art2] = await db.select().from(products).where(eq(products.id, tweedeProductId));
   expect(art2.name).toBe("Spot Beta");
 
@@ -193,7 +221,8 @@ test("tweede run met hetzelfde bestand convergeert: geen veldwijzigingen, wél e
   expect(alle).toHaveLength(2);
   // De lijst-wissel gebeurt wél opnieuw — het bestand is opnieuw integraal leidend.
   expect(tweede.priceList.priceLines).toBe(1);
-  expect(await zichtbareCodes(db, brandId)).toEqual(["ART-1"]);
+  expect(await actueleCodes(db, brandId)).toEqual(["ART-1"]);
+  expect(await vervallenCodes(db, brandId)).toEqual(["ART-2"]);
 });
 
 test("zonder één verwerkbare prijs weigert de import vóór de eerste schrijf", async () => {
@@ -290,5 +319,6 @@ test("catalogus-formaat: 2.000 rijen in batches, geen per-rij-explosie", async (
   expect(uitkomst.createdProducts).toBe(2000);
   expect(uitkomst.priceList.priceLines).toBe(2000);
   expect(uitkomst.goneProducts).toBe(2); // ART-1 en ART-2 stonden niet in het bestand
-  expect(await zichtbareCodes(db, brandId)).toHaveLength(2000);
+  expect(await actueleCodes(db, brandId)).toHaveLength(2000);
+  expect(await vervallenCodes(db, brandId)).toEqual(["ART-1", "ART-2"]);
 });

@@ -74,7 +74,7 @@ Login = Better Auth magic link naar een adres op de **allowlist**. Er is nog gé
   daarna het token uit de `verification`-tabel lezen en de prod-URL bouwen:
   `https://lumenlogic.vercel.app/api/auth/magic-link/verify?token=<TOKEN>&callbackURL=%2Fdossiers`
 
-**Allowlist (kunnen inloggen):** `hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`,
+**Allowlist (kunnen inloggen):** `tester@voorbeeld.nl`, `timo@jouwainstein.com`,
 `e.brink@brinklicht.nl` (Eduard, toegevoegd 2026-07-09). Toevoegen kan in `/instellingen`.
 
 ## Wat er draait (kort)

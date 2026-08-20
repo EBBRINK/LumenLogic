@@ -317,6 +317,145 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## Ijzeren regel 3 herschreven — vervallen producten zichtbaar + driver-waarschuwing — 19 aug 2026
+
+Besloten in de demosessie met Brink Licht van 12 aug, door Timo bevestigd op 19 aug.
+Achtergrond en meting: `docs/probleem-vervallen-producten.md`; spec:
+`docs/goal-vervallen-producten.md`.
+
+**De regel zelf is gewijzigd, in `CLAUDE.md`.** Oud: "verlopen prijslijst = product
+onzichtbaar in álle zoekresultaten". Nieuw: "verlopen prijslijst = product zichtbaar zonder
+prijs; nooit een prijs uit een verlopen lijst; altijd rood gemarkeerd, altijd met de melding
+welke prijslijst de laatst bekende was." De bescherming is identiek gebleven — er mag nog
+steeds nooit geoffreerd worden op verouderde prijzen — maar verbergen heeft plaatsgemaakt
+voor melden. Aanleiding: bestekschrijvers (Deerns) hergebruiken een bestek van vorig jaar,
+en die artikelnummers leverden **nul treffers** op in plaats van "dit product is vervallen".
+
+**Waar de poort nu zit.** `db/migrations/0022_vervallen_zichtbaar.sql` herschrijft
+`visible_products`. Drie toestanden in `price_state`: `actueel`, `prijslijst_verlopen`
+(prijsregel in een lijst waarvan `valid_until` voorbij is — onze data loopt achter) en
+`uit_prijslijst` (geen prijsregel meer, wél een rij in `archive.prices_archive` — het
+product is uit productie). `gross_price`, `currency`, `price_list_id` en `valid_until` zijn
+**NULL zodra de toestand niet `actueel` is**. Dat is de afdwinging: een consument die een
+bedrag toont krijgt niets, ook zonder van deze wijziging te weten. Het sluit meteen het
+staffel-lek — `lib/repo/staffel.ts` bindt `price_tiers.price_list_id` aan
+`visible_products.price_list_id`, en NULL matcht daar niets. Leeskant (de teksten):
+`lib/prijstoestand.ts`; markering: `components/vervallen-markering.tsx`.
+
+### Aannames en besluiten
+
+- **Nooit-geprijsd blijft onzichtbaar.** Geen prijsregel én geen archiefrij → geen rij in de
+  view. Anders overspoelen 200k+ nooit-geprijsde producten de catalogus. "Zichtbaar"
+  betekent nu: wij kennen de prijs, of kenden hem. Dit is ook wat er van de oude
+  onzichtbaarheid over is — `db/test-db.ts` kreeg er `seedBrandProduct({zonderPrijs})` voor.
+- **Een nog-niet-begonnen lijst (`valid_from > current_date`) blijft onzichtbaar.** Dat is
+  geen verval maar het omgekeerde: die prijs komt eraan. "Price list expired" erop plakken
+  zou liegen en er valt niets na te vragen. Gedrag op die rand dus onveranderd.
+- **De twee vervaltoestanden blijven apart**, ook al zien ze er hetzelfde uit (rood, geen
+  bedrag). Het antwoord op "en nu?" is tegengesteld: bij een verlopen lijst bel je het merk
+  om een verlenging, bij een uit-de-lijst-gevallen product zoek je een vervanger.
+- **Alternatieven-suggesties blijven prijsbaar.** `getEquivalentAlternatives`
+  (`lib/repo/equivalence.ts`) filtert op `price_state = 'actueel'`: een alternatief
+  voorstellen dat je niet kunt offreren is erger dan geen alternatief. Zoeken en matchen
+  tonen vervallen producten juist wél — dáár is de hele wijziging voor.
+- **De matcher beoordeelt vervallen NIET.** Een vervallen product kan gewoon groen zijn als
+  het aan de specs voldoet; vervallen is een prijsvraag, geen matchvraag. Het scherm
+  markeert het.
+- **`LATERAL` in plaats van een CTE met `DISTINCT ON`.** De view wordt in de praktijk altijd
+  bevraagd met een filter op `products`; een CTE met `DISTINCT ON` sorteert eerst alle 210k
+  prijsrijen en blokkeert predicate pushdown. Er is een index bij gekomen:
+  `prices_archive_product_idx` (het archief had er geen enkele).
+- **De driver-waarschuwing is een signaal, geen koppeling.** Er is géén datamodelwijziging.
+  Het merk-brede feit "dit merk voert losse onderdelen" komt uit `ONDERDEEL_START`
+  (`lib/enrichment/verdenking.ts`, nu geëxporteerd), hergebruikt in Postgres via
+  `lib/onderdeel-signaal.ts`. Drempel **≥3 producten** per merk; één treffer kan een
+  parse-artefact zijn, en de merken die er in de meting van 30 jul uitspringen liggen er
+  ruim boven (W&D 197, Flos Architectural 110, Lombardo 82, TossB 38, Marset 21).
+  ⚠️ `\b` is in Postgres' ARE géén woordgrens maar het backspace-teken; `onderdeelPatroonSql()`
+  vertaalt naar `\y` en `lib/repo/onderdeel-merken.test.ts` legt beide kanten op dezelfde
+  namenlijst naast elkaar.
+- **Terughoudend, en dat is per scherm anders.** Regel-detail (één armatuur in beeld) →
+  inline bij de regel. Offerte (veertig regels) → **één** melding boven de tabel, met de
+  merken erin genoemd. Een waarschuwing op elke regel wordt weggekeken, en dat is precies de
+  faalmodus die de klant beschreef. Een regel die zélf een driver is krijgt hem niet.
+
+### Bewust NIET gedaan / opvolgtaken
+
+- **⚠️ Het testmerk `ZZTEST QA-14` komt terug in de zoekresultaten.** Dat merk staat bewust
+  in productie en was uitgezet dóór de prijslijst te laten verlopen (zie hierboven,
+  "Uitschakeling is gebeurd via ijzeren regel 3, niet met DELETE"). Die aan/uit-knop bestaat
+  niet meer: de twee geprijsde producten (`ZZTEST-LL14-0001/0002`) zijn nu vindbaar als
+  `prijslijst_verlopen`; `…-0003` blijft onzichtbaar omdat het nooit een prijs had.
+  **Handeling vóór of vlak na de deploy:** zet de status van die producten op iets anders
+  dan `actief`, of verwijder de prijsregels. `products.status` is de juiste vervanger, maar
+  de view filtert daar vandaag niet op — dat alsnog toevoegen is een tweede
+  zichtbaarheidsregel in dezelfde wijziging en is daarom niet meegenomen. **Opvolgtaak.**
+- **`scripts/import.ts` (`bun run import`) kent het archief nog steeds niet.** Voor de 211k
+  XIS-producten die er zo in zijn gekomen bestaat geen archiefrij, dus de toestand
+  `uit_prijslijst` zal daar niet ontstaan — die producten blijven op hun oude lijst staan en
+  vallen in `prijslijst_verlopen` zodra die verloopt. Het script gebruikt bovendien nog
+  altijd een hardgecodeerde `valid_until = 2026-12-31` (`scripts/import.ts:26-27`).
+  Aansluiten op `replacePriceList` is een eigen opdracht. **Opvolgtaak.**
+- **De AI-vangnet-zoekactie (`lib/ai/vangnet.ts`) is ongewijzigd** en vindt dus voortaan ook
+  vervallen producten. Dat is gewenst (het vangnet zoekt het gevraagde artikel), maar het
+  model krijgt de toestand niet te zien — dat zou een wijziging van de tool-schema's en de
+  prompt kosten. De mens die de suggestie beoordeelt ziet de markering wél. **Opvolgtaak
+  als het in de praktijk misleidt.**
+- **`lib/repo/ai-suggestions.ts` joint `INNER` op de view.** Suggesties op een product dat
+  onzichtbaar wérd verdwenen stilzwijgend; die komen nu terug. Geen actie ondernomen —
+  dit is het gewenste gedrag onder de nieuwe regel, maar het is een gedragsverandering die
+  niemand heeft aangevraagd.
+- **De teller op `/catalog` telt vervallen producten mee.** `components/catalog-search.tsx`
+  telt `aantoonbaar.length + onvolledig.length`; de resultaatverzameling is groter geworden.
+  De screenshots in `components/catalog.test.tsx` zijn bijgewerkt. Loopt er parallel werk aan
+  een resultaatlimiet met totaalteller, dan moet dat op deze nieuwe verzameling gemeten
+  worden.
+- **Niet in een browser geverifieerd.** Deze worktree heeft geen `DATABASE_URL`, dus
+  `bun dev` kan niet draaien. Bewijs komt uit de white-box RSC-tests met screenshots
+  (`components/vervallen-markering.test.tsx`, `components/catalog.test.tsx`,
+  `components/dossier/regel-detail.test.tsx`) en uit de PGlite-tests, die exact dezelfde
+  migraties draaien als Neon.
+## Projectpagina-verbeteringen uit de demo — 19 aug 2026
+
+Vier punten uit de demosessie met Brink Licht van 12 augustus. **Drie gebouwd, één bewust
+niet** — die vierde staat hieronder als open punt.
+
+**Gebouwd**
+1. **Legenda vast onderaan.** Was een `<details>` bovenaan `/projects` die je moest
+   openklappen; is nu een altijd-open `<aside>` mét `sticky bottom-0`, ónder de lijst. Hij
+   blijft in beeld terwijl je scrolt en gaat aan het eind in de flow staan. Bewust `sticky`
+   en niet `fixed`: fixed haalt hem uit de flow en legt hem over de laatste kaart heen.
+2. **De kop is de betekenis, niet de kleurnaam.** Nieuw veld `STATUS[...].name` in
+   `components/dossier/status.ts`: Match · Attention · Awaiting brand · Invalid product ·
+   Out of scope · Open. ⚠ `label` en `word` zijn NIET hernoemd en mogen dat ook niet: `word`
+   wordt letterlijk op de PDF gedrukt en het geprinte kleurwoord is een eis (DESIGN.md O13,
+   FUNCTIONEEL-ONTWERP §577). Gevolg — en dat is een **bewuste aanname**: de badge op de
+   kaart zegt nog steeds "Green"/"Yellow", de legenda eronder "Match"/"Attention". Het
+   bolletje is de koppeling. Wil Brink óók de badges omzetten, dan is dat een apart besluit
+   mét een antwoord op wat er dan op papier komt.
+3. **Tooltip na 300 ms.** De uitleg zat in een `title`; die vertraging is browser-eigen
+   (~1–2 s) en niet in te stellen. Nieuw: `components/ui/hint.tsx` — CSS-only (geen JS, geen
+   client component), 300 ms bij verschijnen en 0 bij verdwijnen, tekst staat altijd in de
+   DOM (schermlezers hoeven niet te hoveren). Gebruikt door `StatusBadge`, `StatusTally` en
+   `ProjectStatusBadge`; de `title`-attributen zijn daar weg (twee tooltips over elkaar is
+   erger dan één trage). Bijvangst: de projectkaart in `dossier-list.tsx` staat nu op
+   `overflow-visible` — `ui/card.tsx` knipt standaard af en sneed de tooltip halverwege de
+   tweede regel doormidden.
+
+**Niet gebouwd — punt 4: groene regels uit de Review-lijst**
+De vraag was of dit "een schakelaar" is. **Dat is het niet.** De wachtrij en de tab-teller
+zijn allebei `reviewKind is not null` (`getReviewQueue` / `getReviewCounts` in
+`lib/repo/review.ts`) — er is geen statusfilter en geen vlag. Groene regels komen daar
+binnen via één plek: elke door OCR of de leesroute gelezen regel krijgt `reviewKind = 'ocr'`
+(B7, `lib/repo/ocr.ts` ±475 en `lib/repo/leesroute.ts`). Die review stelt een ándere vraag
+dan de matchreview — niet "klopt de match?" maar "hebben we de regel goed gelézen?" — en
+staat dus los van de kleur. Groen uitsluiten betekent die regel wijzigen, en die regel hangt
+aan twee dingen die er niet los van staan: de vangnet-gating (`lib/ai/vangnet.ts` B8) en
+`pruneOcrPageImages` (`lib/repo/ocr.ts`), die het paginabeeld pas weggooit als er geen open
+review meer op de run staat. Gezien de aangekondigde herziening van de matchpijplijn
+(SQL-regels → LLM-oordeel) is dit expres blijven liggen. Het automatisch hermatchen na
+"checked" is in deze sessie niet aangeraakt.
+
 ## Wachtwoord-reset — backend (bouwer 1, 19 aug 2026, branch wachtwoord-reset)
 
 Better Auth core-resetflow aangezet (docs/goal-wachtwoord-reset.md, bouwstappen 1–4 + 6):
@@ -387,7 +526,7 @@ te maken. **Deploy 2 (magic link eruit) mag pas ná stap 10 hieronder.**
 ### Vóór de push — één minuut, voorkomt een kapotte migratie
 1. **Tel de gebruikers na.** `select email from "user";` op productie. Migratie
    `0019_org_type_activatie.sql:61-63` noemt drie adressen **letterlijk**
-   (`hello@noplasticfloralfoam.com`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
+   (`tester@voorbeeld.nl`, `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) en
    geeft precies díé een `org_admin`-membership in de Brink-org. Staat er inmiddels een
    vierde adres, dan krijgt dat géén membership en kan het na deploy 2 niet meer inloggen.
    Dat is de veilige kant om op te falen, maar je wilt het wéten, niet ontdekken.
@@ -540,7 +679,7 @@ zijn golf 2. **Niets gedeployed, niets naar main gepusht** — het werk staat op
    poort onder het wachtwoordpad is dat je een PIN van Brink nodig hebt om er één te kúnnen
    zetten. **Gevolg voor deploy 2 (G27):** als de magic link eruit gaat, verliest de
    allowlist zijn enige gebruiker. Bewuste keuze van Timo nodig: weghalen of herbestemmen.
-2. **`hello@noplasticfloralfoam.com`** krijgt via 0019 een `org_admin`-membership in de
+2. **`tester@voorbeeld.nl`** krijgt via 0019 een `org_admin`-membership in de
    Brink-org, net als de andere twee users — het is Timo's eigen tweede adres. Er is
    **niets** aan de allowlist veranderd. Het account kan dus pas inloggen zodra Brink er een
    PIN voor aanmaakt; via magic link kan het (op productie) niet. Bewust zo gelaten.
@@ -682,7 +821,7 @@ zijn naam belooft**:
   de aanroepende `useAiSuggestionAction` — en concludeert dat er een hook conditioneel wordt
   aangeroepen. Laat staan. `bun run lint` geeft verder 19 errors + 12 warnings, alle in
   bestanden die dit item niet aanraakt.
-- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `hello@noplasticfloralfoam.com` en
+- **`db/migrations/0004_vijfstatussen.sql:131-134`** zaait `tester@voorbeeld.nl` en
   `timo@jouwainstein.com` in de allowlist, terwijl productie `timo@jouwainstein.com` en
   `e.brink@brinklicht.nl` heeft. Elke verse database (en dus elke test) draait een ándere
   allowlist dan productie.
@@ -4995,7 +5134,7 @@ mobiel/desktop, alle acht bekeken (23–39 KB, geen blanco captures).
 
 - **`components/dossier/quote-view.tsx:79-87`** — het kopblok (`<dl>` met `grid-cols-2` op
   mobiel) laat een lang e-mailadres tegen de buurcel aanlopen: op 375px leest de screenshot
-  `hello@noplasticfloralfoam.com2026-08-07`, zonder spatie tussen "Author" en "Valid until".
+  `tester@voorbeeld.nl2026-08-07`, zonder spatie tussen "Author" en "Valid until".
   Zichtbaar in `components/dossier/estimate-leeg.dark.mobile.test.png`. Pre-existent, raakt de
   lege toestand niet.
 - **`components/admin/brands-list-block.tsx`** — de lege toestand kent het verschil niet tussen
@@ -5370,6 +5509,212 @@ convergeert (0 writes op producten) in 1,3 s. Repo-tests: `lib/repo/template-imp
 scherm: `components/data/template-upload-card.test.tsx` (screenshots light/dark ×
 mobile/desktop).
 
+## Resultaatplafond op /catalog — af 19 aug 2026
+
+Besluit uit de demosessie van 12 aug: de catalogus-zoekfunctie toont **maximaal 9 treffers**,
+noemt het **werkelijke totaal** ("Showing 9 of 237 matches") en biedt **geen doorbladeren** —
+"mensen moeten hun informatie aanleveren". Volledige achtergrond en meetlat in
+`docs/goal-resultaatplafond.md`.
+
+De ene ingreep die verder reikt dan het scherm: de specfilters (Kelvin/CRI/IP) zijn van JS
+naar SQL verhuisd. Het getoonde totaal komt uit `searchProductsWithTotal()` in
+`lib/repo/products.ts` — één `count(*)` over exact dezelfde WHERE als de resultaatquery, op
+de view `visible_products` (regel 3). Zou een filter pas ná de query in JS toeslaan, dan
+telt de teller rijen die de gebruiker nooit kan bereiken. `classify()` in
+`app/catalog/page.tsx` doet daarom alleen nog de splitsing aantoonbaar/onvolledig; zet daar
+geen tweede afkeuring terug. `searchProducts()` is ongewijzigd voor het review-scherm.
+
+**Bewust niet gebouwd, apart belegd:** de slimme vervolgvraag boven de 25 treffers, live
+meetellen tijdens typen, en meebewegende facetten.
+
+**Testkanttekening:** `components/data/custom-fields.test.tsx` viel tijdens deze sessie
+wisselend om op een timeout in de archiveer-bevestiging — ook op een schone boom, en ook
+zonder deze wijziging. Het is machinebelasting (er draaiden parallelle sessies), geen
+regressie van dit werk.
+---
+
+## IA-opschoning: navigatie en informatiestructuur (2026-08-20)
+
+_Besluitenlijst uit de demosessie met Brink Licht van 12 augustus. Puur verplaatsen,
+hernoemen en weghalen — geen nieuwe functionaliteit. De acht punten uit de opdracht staan
+hieronder met wat er werkelijk is gebeurd._
+
+**Verplaatsingen (routes).** Alle oude adressen blijven werken via permanente redirects in
+`next.config.ts`; bookmarks en gedeelde links breken dus niet.
+
+| Was | Is | Punt |
+|---|---|---|
+| `/data/brand-relations` (+ `[brandId]`, `/template`, upload-route) | `/brand-management` | 1 |
+| `/data/price-lists` | `/brand-management/price-lists` | 4 |
+| `/data/fields` | `/admin/fields` | 3 |
+| `/data/event-log` | `/admin/event-log` | 5 |
+| `/data/loading` | `/admin/loading` | — (zie hieronder) |
+| `/data/evaluation` | `/admin/evaluation` | — (zie hieronder) |
+| `/settings/organization` | `/admin/organizations` | 7 |
+| `/data`, `/data/enrichment`, `/data/enrichment/[runId]` | **weg** | 2, 6, 8 |
+
+**Drie keuzes die de opdracht niet dichttimmerde, met Timo afgestemd vóór het bouwen:**
+
+1. **Brand management wordt een top-level route** (`/brand-management`, niet
+   `/data/brand-management`): het is een hoofdingang, en de sectie waar het onder hing
+   bestaat niet meer.
+2. **Loading en Evaluation stonden niet in de lijst** maar wél onder Data. Ze zijn mee naar
+   `/admin` gegaan (eigen kaarten), zodat `/data` écht kon verdwijnen en er geen scherm
+   zonder ingang achterbleef.
+3. **Punt 6 is de héle enrichment-sectie**, niet alleen `/data/enrichment/[runId]`. Het
+   overzicht bestond alleen om runs te starten die je in dát scherm goedkeurde; de
+   prijslijst-skill stelt die vragen nu in de chat. Weg zijn ook
+   `components/data/enrichment-panels.tsx` en `enrichment-status.tsx`.
+
+**Punt 2 en 7 — de balk.** `NAV_ITEMS` gaat van acht naar zes items: Projects, Catalog,
+Brand management, Analytics, Brand portal, Admin. "Data" en "Settings" zijn eruit.
+Settings hangt sinds nu in een **accountmenu onder de accountnaam** met tandwiel-icoon
+(`components/account-menu.tsx`, Radix DropdownMenu — die levert toetsenbordbediening en de
+aria-koppeling die een menu tot een menu maakt). Het e-mailadres, dat er als kale `<span>`
+stond, ís nu de trigger.
+
+⚠️ **Eén valkuil die dit opleverde en die is afgevangen.** `/admin` staat in de
+route-allowlist op `intern`, maar `/admin/organizations` (net als `/admin/users`) op
+`org_admin`. Door het organisatiescherm naar Admin te verplaatsen én Settings uit de balk te
+halen, zou een **externe** org-beheerder geen enkele link naar zijn eigen organisatiescherm
+meer hebben — precies UX-audit bug #11 opnieuw, dat scherm had dáárvoor al eens nul inkomende
+links. Oplossing: `ACCOUNT_ITEMS` bevat ook `/admin/organizations`, en `SiteNav` toont die
+regel alleen aan wie géén Admin-ingang heeft. Voor intern is de kaart op `/admin` de ene
+ingang. Vastgelegd in `components/site-nav.test.tsx`.
+
+**Punt 8 — de dekkingsmeter is weg.** "Tier 1 coverage 82%" telde al mee zodra één veld was
+ingevuld. Hij stond alleen op `/data`; met die pagina verdween ook
+`components/data/coverage-meter.tsx`. `getTier2Coverage()` in `lib/repo/enrichment.ts` staat
+er nog (met zijn tests) maar wordt nergens meer aangeroepen — kandidaat om te schrappen zodra
+zeker is dat er geen ander scherm meer op wacht.
+
+**Server-actions meeverhuisd, en meteen op het zod-patroon gezet.** `app/data/actions.ts` is
+opgesplitst naar `app/admin/loading/actions.ts` en `app/admin/evaluation/actions.ts`; beide
+volgen nu poort → `parseForm()` → repo (`docs/INVOERVALIDATIE.md`), waar ze eerst een kale
+`String(formData.get(…))` deden. De poorttest ging mee als
+`app/admin/workbench-gate.test.ts`.
+
+**Testnaden.** Twee stukken zijn uit hun pagina gehaald om ze zonder database te kunnen
+testen én fotograferen — dezelfde vorm als de opgeheven `DataCards`:
+`components/admin/admin-cards.tsx` (de acht beheerkaarten; `adminCards()` is puur) en
+`components/data/brand-management-header.tsx` (de hernoemde kop + de ingang naar de
+prijslijsten). Nieuwe screenshots: `admin-kaarten.*`, `account-menu.*` (open menu, licht/
+donker × mobiel/desktop) en de bijgewerkte `site-nav.*` / `data-merkrelaties.*`.
+Beide componenten gebruiken bewust een kale `<a>` en géén `next/link`: dat is in een
+RSC-test een client-reference en de test faalt dan al bij de import.
+
+**Niet gedaan, bewust:**
+
+- **De statusfilters als checkboxes** (het "meenemen"-punt). Dat is geen knop omzetten:
+  `BrandRelationsQuery.status` is `"alle" | RelationStatus`, en meervoud raakt de parser,
+  `brandRelationsHref()`, `filterBrandRelationRows()`, de werkbalk en drie testbestanden.
+  Ver boven het kwartier dat de opdracht ervoor uittrok, en de opdracht zei: dan overslaan.
+- **De overloop van de balk op 375px.** Hij is met twee items minder kleiner geworden maar
+  niet weg; op mobiel valt het accountmenu daardoor deels buiten beeld. Dat is hetzelfde
+  openstaande punt als in `components/site-nav.test.tsx` gedocumenteerd staat (besluit G21),
+  en hoort bij het navigatiewerk, niet bij deze verplaatsing.
+- **De urgentie-sortering van de prijslijsten** (vervaldatum × aantal projecten) — die is
+  apart belegd; hier is alléén verplaatst wat er stond.
+## 2026-08-20 — Prijslijsten sorteren op urgentie, niet op vervaldatum
+
+Spec, weging en de motivering per gewicht: `docs/goal-prijslijst-urgentie.md`.
+`urgentie = vraagscore × tijdfactor`; de tijdfactor loopt op vanaf 90 dagen vóór verval,
+piekt op 0,70 op de datum zelf, stijgt tot 1,00 op 90 dagen erna en vlakt daarna af. Een merk
+zonder bruikbare lijst krijgt meteen 1,00. De vraagscore is `1 + Σ gewicht × ln(1 + telling)`
+over acht signalen (projecten, spec-regels, zoekacties, gevraagd-niet-in-catalogus, wachtrij,
+zoekacties zonder resultaat, overwogen, gekozen), alle over de laatste twaalf maanden.
+
+- `lib/price-list-urgency.ts` — puur; kent geen routes (`urgencyHref` krijgt zijn basispad).
+- `lib/repo/price-list-urgency.ts` — `listBrandUrgency`: één rij per MERK, inclusief merken
+  zónder prijslijst. Naast `listPriceListStatus` en niet ervoor in de plaats: de verlengsectie
+  blijft prijslijst-georiënteerd, want verlengen doe je aan een lijst.
+- `components/data/price-list-urgency-table.tsx` — server-component, sorteerstand in de URL.
+- `lib/repo/enrichment.ts` — de 30/14/7-ladder is nu `expiryBucket()` (was inline), zodat het
+  merk-overzicht dezelfde badge rekent als de prijslijst-tabel.
+- `components/data/brand-scorecard.tsx` — 66 velden per categorie inklapbaar (`<details>`,
+  geen client-JS). De ingeklapte kop draagt "3 of 6 filled" plus de namen van de gevulde
+  velden. `brand-relations.test.tsx` ankerde op `closest("section")` en is meegegaan naar
+  `closest("details")`.
+
+**⚠️ Geen geldsignaal in de formule — dat is een besluit, geen omissie.** Ijzeren regel 2.
+Het staat als eigen sectie in het goal-document, zodat een volgende bouwer het niet als
+vergeetachtigheid repareert.
+
+**Aannames en open eindes**
+
+- **Het scherm staat nog op `/data/price-lists`.** De IA-opschoning (sessie `lucid-kirch`,
+  branch `claude/jovial-pare-a7e2e0`) verplaatst het naar `/brand-management/price-lists` en
+  was op het moment van bouwen nog niet gecommit. Verhuizen kost twee dingen: het page-bestand
+  naar `app/brand-management/price-lists/page.tsx`, en `basePath="/brand-management/price-lists"`
+  meegeven aan `<PriceListUrgencyTable>`. De formule en alle tests blijven staan.
+- **Rijen zijn per merk, niet per prijslijst.** Anders kan "een merk zonder prijslijst krijgt
+  de maximale tijdfactor" niet bestaan — dat merk had geen rij. Gevolg: het overzicht toont nu
+  ~438 merken in plaats van ~438 lijsten, en merken zonder lijst zijn voor het eerst zichtbaar.
+- **`geenBruikbareLijst()` ≠ `isCoverageGap()`.** De eerste (max tijdfactor) telt een verlopen
+  lijst NIET mee — die heeft nog een datum, en die datum bepaalt hoe hard hij oploopt. De kop
+  van de tabel telt de dekkingsgaten wél op de brede definitie. Twee begrippen, twee namen.
+- **De gewichten zijn beredeneerd, niet gemeten.** Er is geen dataset van "welke lijst had
+  Brink als eerste moeten oppakken". Bijstellen is één regel in `VRAAG_GEWICHT`.
+- **Geen paginering.** Het merkrelatie-overzicht pagineert op 25 rijen omdat de
+  compleetheidsaggregatie duur is; deze query is één statement met CTE's en heeft dat niet
+  nodig. Bij 438 rijen is dat een lange pagina — als dat gaat storen is de sorteerstand in de
+  URL het aanknopingspunt voor een `page`-parameter in dezelfde vorm.
+
+**De suite**: `lib/price-list-urgency.test.ts` (24, puur), `lib/repo/price-list-urgency.test.ts`
+(6, PGlite), `components/data/price-list-urgency.test.tsx` (19, white-box RSC + screenshots
+light/dark × mobile/desktop). Let op: de browser-tests flakeyen onder parallelle belasting
+(`expected 0 to be greater than 20` = de render was nog leeg) — per bestand draaien geeft groen,
+en dat gedrag bestaat ook zonder deze wijziging.
+
+---
+
+## Live treffer-teller op /catalog (2026-08-20)
+
+Spec, meting en de eerlijke "niet gehaald"-sectie staan in `docs/goal-live-teller.md`. Wat een
+volgende sessie moet weten en niet uit de code kan aflezen:
+
+**1. De zoeksemantiek is app-breed veranderd, niet alleen op /catalog.** De AND-met-terugval zit
+in `fuzzyWhere()` in `lib/repo/products.ts`, en die voedt `runSearch` — dus óók
+`searchProducts()`. De andere echte beller daarvan is
+`app/projects/[id]/review/page.tsx` (handmatig linken van een rode regel). Daar geldt nu
+hetzelfde: strenge treffers eerst, brede alleen als streng nul oplevert. Dat is een
+verbetering, maar **dat scherm meldt de terugval niet** — `searchProducts()` geeft alleen
+`items` terug, zonder de `verbreed`-vlag die `searchProductsWithTotal()` wél heeft. Wie het
+review-scherm aanraakt: neem die melding daar alsnog mee, of accepteer bewust dat hij daar
+stil blijft. De matching-engine (`lib/matching/engine.ts`) staat hier los van en is niet
+geraakt.
+
+**2. Het letterlijke klantvoorbeeld uit de demo werkt niet.** `Entero 2700` in het
+vrije-tekstveld levert nul strenge treffers op en verbreedt naar 2.520 — omdat "2700" niet in
+de productnamen van Delta Light staat maar in het veld `kelvin`. Versmallen gaat daar via het
+veld Color temp. (K). Zie de tabellen in de goal-doc. Vóór de volgende demo hierover een
+beslissing nemen; nu is het een zichtbare, eerlijke terugvalmelding en geen slinkende stapel.
+
+**2b. Specwaarden worden uit de vrije zoektekst gevist (20 aug, vervolg).** `2700`, `IP44`,
+`CRI90` en varianten worden herkend en als specfilter toegepast in plaats van als naamwoord —
+`lib/spec-tokens.ts`, samengevoegd in `bereidZoekopdrachtVoor()` in `lib/repo/products.ts`.
+Daarmee werkt het klantvoorbeeld wél: `Entero 2700` gaat op productie van 2.520 (verbreed) naar
+1.026. Dit is RADEN, dus drie dingen zijn niet optioneel: het scherm toont wat er gelezen is, een
+expliciet specveld wint altijd, en zonder anker wordt er niet gesplitst (anders geeft een kaal
+`2700` nul treffers). Grenzen staan in `lib/spec-tokens.ts` — kelvin alleen tussen 1800 en 6500,
+zodat een lumenwaarde of artikelnummer geen filter wordt. Dit werkt óók door in het
+review-scherm, zie punt 1.
+
+**3. De teller logt bewust geen events.** Zie de kop van `countSearchMatches`. Draai dat niet
+terug zonder de afweging daar te lezen: het gaat om regel 5 én om een schrijfpad per
+toetsaanslag op >1 miljoen producten.
+
+**4. De debounce-test is timinggevoelig.** `components/catalog-live-count.test.tsx` telde eerst
+exact één action-aanroep per getypt woord. Groen solo, rood in de volle suite: onder belasting
+duurt een gesimuleerde toetsaanslag soms langer dan de debounce van 200 ms. Hij meet nu wat de
+debounce belóóft (minder tellingen dan toetsaanslagen, laatste telling over het hele woord).
+Zet er geen exact getal terug.
+
+**5. Herkomst van de code.** Twee sessies bouwden dit parallel. De aanpak van
+`claude/sad-raman-b2cd04` (server action + gedeelde `lib/catalog-zoekvorm.ts`) is overgenomen
+omdat die dichter bij de repo-conventies zit; de eigen aanzet staat nog als commit b514cc5 op
+deze branch, inclusief de eerste meting van het OR-probleem.
+
 ---
 
 _2026-08-12. **Groen betekent "dit is hét product"** (punt 3 uit de Brink-demo van 12 aug).
@@ -5636,63 +5981,3 @@ session-revocation blokkeert.
 ZONDER session-revocation en zonder `password_reset_completed`-event (de throw viel ná
 updatePassword, vóór revokeSessionsOnPasswordReset). Vercel-logs nalopen op de
 uuid-fout en getroffen users' sessies handmatig verwijderen.
-
----
-
-_2026-08-20. **Sprint M2 — installatie en af-toets op de EliteDesk (vervolg).**
-De keten is end-to-end rond: upload → wachtrij → EliteDesk → statussen in de app,
-7,5 min voor 19 regels, zonder handwerk. Uitkomst run 10:45 (lokaal): 14× groen
-(identieke producten en prijzen als de onafhankelijke referentierun op de Mac),
-C1312/S geel met beide kleurvarianten, LUNELLE rood, 2× Trizo21 blauw, 1× onzeker
-(Tekna LOFT: catalogus 600 mm vs gevraagd 1200 mm — referentie koos 'gevonden met
-kanttekening', het station het voorzichtigere 'onzeker')._
-
-_**Wat er tijdens de installatie gevonden en gefixt is (chronologisch, elk met
-commit):**_
-
-_1. **PowerShell 5.1 leest scripts zonder BOM als ANSI** — watcher.ps1 moet als
-UTF-8-mét-BOM op de machine staan (repo blijft BOM-loos; de kopieerstap zet hem
-erop, zie RUNBOOK)._
-
-_2. **Claude Code is op de EliteDesk een Store-app**: claude.exe leeft (buiten de
-app-context) onder `AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\
-Claude\claude-code\<versie>\`; `%APPDATA%\Claude\...` bestaat alleen ín de
-gevirtualiseerde context. Wrapper `C:\matchstation\bin\claude.cmd` zoekt beide
-roots af (hoogste versie wint) — bij een Claude-update die de structuur wijzigt is
-dit de eerste plek om te kijken._
-
-_3. **cmd /c-quoting**: meerdere gequote delen op één regel vereisen een extra paar
-quotes om de hele /c-regel (commit "cmd /c-quoting gefixt")._
-
-_4. **Timeout 10 → 25 min**: 19 regels kosten ~6-12 min echt werk; 10 min kapte de
-sessie af in zijn eindcontrole. Weesprocessen na een timeout-kill worden opgeruimd
-op de allowlist-cmdline — NOOIT op procesnaam: desktop-app én interactieve sessies
-heten ook claude.exe (bijna-incident 20 aug, correctie door de EliteDesk-sessie)._
-
-_5. **De Bash(psql:*)-allowlist weigert variabele-expansie** — `psql
-"$DATABASE_URL_RO"` kan dus nooit werken in de sessie. De watcher ontleedt de URL
-nu naar PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGSSLMODE/PGCHANNELBINDING zodat een
-kaal `psql -c` werkt; de connectiestring komt zo ook niet in het transcript._
-
-_6. **De terugkerende 400 was één ontbrekende opsomming in de prompt**: de sessie
-schreef 'oranje' als spec-oordeel; het schema kent groen/geel/rood/onbekend. De
-prompt somt nu álle enum-waarden op. Diagnose werd pas mogelijk toen de watcher de
-app-responsbody ging loggen en de POST-body + sessie-uitvoer per poging ging
-bewaren (verstuurd-pN.json, sessie-uitvoer-pN.txt) — die instrumentatie zit er nu
-standaard in._
-
-_7. **De fallback-keten is drie keer in het echt bewezen**: elke mislukte run landde
-als 19× onzeker met reviewvlag en verwijzing naar failed\<dossier> — nooit stil._
-
-_**Open eindes:** (a) wachtwoord van de Neon-leesrol rouleren — de connectiestring
-is één keer als screenshot in een chat langsgekomen; (b) sessieprompt op de machine
-staat nu zonder BOM, met BOM werkt ook maar voegt een onzichtbare U+FEFF toe; (c)
-machine-sleutel is 20 aug geroteerd (oude was als Sensitive niet meer uitleesbaar);
-sleutelbestand op de Mac-desktop is na gebruik weggegooid → verifieer; (d) de
-Write-Log van de watcher schrijft ANSI (é wordt mojibake in het log) — cosmetisch._
-
-_**Besluit Timo, 20 aug (via sprintmaster matchstation): M3 vervalt.** De dagelijkse
-steekproef (5 regels, 10 min) komt er niet. Consequentie, gemeld en geaccepteerd:
-er ontstaat geen gemeten foutpercentage per grond, dus ook geen "na ~50 nagekeken
-regels heroverwegen"-moment. Het matchstation draait op de vangrails die er zijn
-(read-only, bewijs per regel, events, dood-melding) zonder menselijk meetritueel._

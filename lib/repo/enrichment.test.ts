@@ -639,7 +639,7 @@ test("steekproef overspant de hele catalogus, niet alleen de alfabetische kop", 
   expect(chosen[chosen.length - 1]).toBeGreaterThan(390); // én het einde
 });
 
-// ── Prijslijst-dekking: de badge op /data/price-lists mag niet liegen ─────────
+// ── Prijslijst-dekking: de badge op /brand-management/price-lists mag niet liegen ─────────
 //
 // UX-audit 30 jul (bug #3): het scherm gaf groen "154 d valid" bij 0 producten. Voor de
 // matcher is dat hetzelfde gat als een verlopen lijst — ijzeren regel 3. De weergave beslist

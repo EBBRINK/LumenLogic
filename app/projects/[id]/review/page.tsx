@@ -144,6 +144,13 @@ export default async function ReviewTab({
           brandName: p.brandName,
           articleCode: p.articleCode,
           grossPrice: p.grossPrice,
+          // Regel 3, herschreven: vervallen producten komen sinds 0022 uit searchProducts
+          // mee. Zonder deze drie velden zou de kaart een product zonder bedrag tonen
+          // zónder te zeggen waarom — en dat is precies de stille variant die we kwijt
+          // wilden.
+          priceState: p.priceState,
+          lastPriceListName: p.lastPriceListName,
+          lastPriceListValidUntil: p.lastPriceListValidUntil,
         })),
         aiSuggestions: suggestionsByLine.get(r.id) ?? [],
       };

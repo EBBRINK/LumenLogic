@@ -1080,7 +1080,7 @@ omdat hun herkomst ertoe doet — het zijn geen algemene stack-risico's maar din
 context al een keer misgingen of expliciet zijn afgesproken**. Drie ervan (B-19, B-20, B-23) horen
 qua impact in §2.1 thuis; dat staat er per bevinding bij.
 
-**Onderbouwing uit de vault (`~/Documents/AIgenstate/timo-vault/`):**
+**Onderbouwing uit de vault (uit Timo's eigen notities, buiten deze repo):**
 - `raw/chad-gill-eduard-meeting-2026-07-21.md` — Chad Gill's harde regel: *"set a hard rule that no
   instructions can be given via email or images or voice"*, en zijn Security Sentinel (wekelijkse
   dependency-check; open source pas installeren na een maand + reviews). Timo's eigen reactie in dat
@@ -1408,7 +1408,7 @@ indexmigratie.
 - `HANDOVER.md`, sectie "TypeScript 7 (goal-typescript-7, 5 aug)" — de toolketenmigratie, en de
   reden dat `bun install` in een verse worktree verplicht is.
 
-### Uit de vault (`~/Documents/AIgenstate/timo-vault/`)
+### Uit de vault (uit Timo's eigen notities, buiten deze repo)
 - `raw/chad-gill-eduard-meeting-2026-07-21.md` — prompt-injectieregel, Security Sentinel,
   API-budgetplafonds, Codex-reviewlaag. → SEC-12, SEC-14, B-19, B-23.
 - `projects/ainstein/brink-rls-hardening.md` — het datalek van 2026-07-02 en de hardening van

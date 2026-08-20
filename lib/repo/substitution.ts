@@ -6,8 +6,14 @@
 // bronvermelding 'merk-opgave' — we citeren de cijfers van het merk zelf, niet onafhankelijk
 // geverifieerd. Het prijsverschil komt UITSLUITEND als tekst in de saving_note terecht (F-08);
 // prijs beïnvloedt nooit een ordening of selectie (ijzeren regel 2). Beide producten worden
-// via de gelijkwaardigheidslaag (getReference → visible_products) gelezen — een verlopen
-// prijslijst = onvindbaar (ijzeren regel 3), dus daar kan geen substitutievoorstel op.
+// via de gelijkwaardigheidslaag (getReference → visible_products) gelezen.
+//
+// ⚠️ Regel 3 is op 19 aug 2026 herschreven: een verlopen product is niet langer onvindbaar,
+// het is vindbaar zónder prijs. Daarmee viel de bescherming hier weg — `getReference` gaf
+// zo'n product gewoon terug en er ontstond een substitutievoorstel met een lege prijskant.
+// De weigering staat nu expliciet op de TOESTAND, en alleen voor het ALTERNATIEF: dat is
+// het product dat de klant zou gaan kopen. De REFERENTIE mag wél vervallen zijn — dat is
+// juist het scenario waarin je een vervanger zoekt.
 import { desc, eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { products, substitutionProposals } from "@/db/schema";
@@ -93,7 +99,11 @@ export async function createSubstitution(
     );
   if (!alt)
     throw new Error(
-      "Alternatief product is niet zichtbaar (mogelijk een verlopen prijslijst).",
+      "Alternatief product is niet zichtbaar (het heeft nooit een prijs gehad).",
+    );
+  if (alt.priceState !== "actueel")
+    throw new Error(
+      "Alternatief product heeft geen actuele prijs (verlopen prijslijst of uit de lijst gevallen).",
     );
 
   const fields = buildFields(ref, alt);

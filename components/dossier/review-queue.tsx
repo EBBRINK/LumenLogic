@@ -10,6 +10,8 @@
 // Gele regels met meerdere schone kandidaten krijgen een "welke van deze N"-kaart.
 // Rode regels zonder match staan onderaan in "Niet gevonden — handmatig linken":
 // de mens zoekt daar zélf (ijzeren regel 4 — het systeem doet géén suggesties).
+import { VervallenMarkering } from "@/components/vervallen-markering";
+import { leesPrijstoestand } from "@/lib/prijstoestand";
 import { IconCheck, IconSearch } from "./icons";
 import { AiSuggestionBlock } from "./ai-suggestion-block";
 import { Button } from "@/components/ui/button";
@@ -653,6 +655,20 @@ function RedLinkCard({
                         </>
                       )}
                     </p>
+                    {/* Vervallen? Dan de hele zin, niet alleen een badge: dit is de
+                        plek waar iemand op het punt staat een product aan een
+                        offerteregel te koppelen, en "welke prijslijst was de laatste"
+                        bepaalt wat hij vervolgens aan het merk vraagt. */}
+                    <VervallenMarkering
+                      toestand={leesPrijstoestand(r.priceState)}
+                      stempel={{
+                        name: r.lastPriceListName ?? null,
+                        validUntil: r.lastPriceListValidUntil ?? null,
+                      }}
+                      brandName={r.brandName}
+                      variant="inline"
+                      className="mt-1"
+                    />
                   </div>
                   <form action={linkAction}>
                     <input type="hidden" name="dossierId" value={dossierId} />

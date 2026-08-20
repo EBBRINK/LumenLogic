@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { activeNavHref, NAV_ITEMS } from "./nav-items";
+import { AccountMenu } from "./account-menu";
+import { ACCOUNT_ITEMS, activeNavHref, NAV_ITEMS, type NavItem } from "./nav-items";
 import { ThemeToggle } from "./theme-toggle";
 
 export function NavLink({
@@ -48,10 +49,12 @@ export function NavBar({
   email,
   pathname,
   items = NAV_ITEMS,
+  accountItems = ACCOUNT_ITEMS,
 }: {
   email?: string | null;
   pathname?: string;
-  items?: readonly { href: string; label: string }[];
+  items?: readonly NavItem[];
+  accountItems?: readonly NavItem[];
 }) {
   const routePathname = usePathname();
   // De actieve sectie wordt bepaald over de ZICHTBARE items: staat /data niet in de balk,
@@ -108,10 +111,11 @@ export function NavBar({
             elementen niet anders verdeelt dan hiervoor. Verder is er níéts aan de balk
             veranderd: de overloop bij 375px (gemeten: body.scrollWidth 595 → 651) blijft
             staan en hoort bij week 3 (besluit G21, vier rollen), niet hier. */}
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden text-xs text-nav-muted sm:inline">
-            {email}
-          </span>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Het adres stond hier als kale <span>. Sinds de IA-opschoning (12 aug) is het
+              de trigger van het accountmenu: "Settings" is uit de balk gehaald en alles
+              wat een instelling is hangt onder de accountnaam, met een tandwiel. */}
+          <AccountMenu email={email} items={accountItems} />
           <ThemeToggle />
         </div>
       </div>

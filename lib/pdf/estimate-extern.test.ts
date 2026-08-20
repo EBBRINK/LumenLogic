@@ -127,7 +127,7 @@ function bedragenIn(tekst: string): string[] {
 test("de INTERNE PDF valt wél door de bedragen-zeef (anders bewijst de test hieronder niets)", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "tester@voorbeeld.nl");
   const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const tekst = await pdfText(await renderEstimatePdf(data));
@@ -141,7 +141,7 @@ test("de INTERNE PDF valt wél door de bedragen-zeef (anders bewijst de test hie
 test("de EXTERNE PDF bevat geen enkel bedrag, en wél de regels, aantallen en statussen", async () => {
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "tester@voorbeeld.nl");
   const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const tekst = await pdfText(
@@ -191,7 +191,7 @@ test("het externe stuk noemt de prijsbron nergens — ook niet het vervalmerktek
   // bedrag ernaast is hij voor de ontvanger bovendien betekenisloos.
   const db = await createTestDb();
   const dossierId = await seedEstimateDossier(db);
-  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "tester@voorbeeld.nl");
   const data = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
 
   const intern = await pdfText(await renderEstimatePdf(data));

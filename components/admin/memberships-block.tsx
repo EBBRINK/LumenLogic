@@ -39,7 +39,7 @@ export function MembershipsBlock({
       <CardContent className="pt-6">
         {memberships.length === 0 ? (
           // Alleen-lezen inzage over org-grenzen: leden beheren doet de org-admin op
-          // /settings/organization. Bewuste `action={null}`.
+          // /admin/organizations. Bewuste `action={null}`.
           <EmptyState
             variant="inline"
             title="No members in any organization yet."

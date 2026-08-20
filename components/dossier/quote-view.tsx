@@ -1,3 +1,4 @@
+import { DriverWaarschuwing } from "@/components/driver-waarschuwing";
 import type { ReactNode } from "react";
 import {
   Table,
@@ -14,6 +15,7 @@ import {
   countedLineTotal,
   countsInTotal,
   dayPriceExpiredNote,
+  productPriceStateNote,
   notableDeviations,
   pmSummary,
   requestedText,
@@ -98,6 +100,7 @@ export function QuoteView({
   actions,
   frozen = false,
   headerEditable = false,
+  driverMerken = [],
 }: {
   dossierName: string;
   phase: Phase;
@@ -112,6 +115,13 @@ export function QuoteView({
    * dat er misschien niet is — dat was precies de val (herstel 2026-07-30).
    */
   headerEditable?: boolean;
+  /**
+   * Merken op dit stuk die losse drivers/accessoires voeren (lib/repo/onderdeel-merken.ts).
+   * Als PROP en niet als query hierbinnen: QuoteView is presentational en fixture-testbaar,
+   * dat blijft zo. Eén melding voor het hele stuk — bij veertig regels is een waarschuwing
+   * per regel de snelste weg naar wegkijken.
+   */
+  driverMerken?: readonly string[];
 }) {
   const computed = computeEstimate(header, lines, { frozen });
   const { totals, pm, pmLines, pmByStatus, brandFreq, hasZones, groups } = computed;
@@ -202,25 +212,32 @@ export function QuoteView({
           action={null}
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8 text-right">#</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Product</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead className="text-right">Quantity</TableHead>
-              <TableHead className="text-right">Unit price</TableHead>
-              <TableHead className="text-right">Line total</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {groups.map((g) => (
-              <ZoneRows key={g.zone ?? "__none__"} group={g} showZone={hasZones} />
-            ))}
-          </TableBody>
-        </Table>
+        <>
+          <DriverWaarschuwing
+            merken={driverMerken}
+            variant="overzicht"
+            className="mb-4 print:hidden"
+          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8 text-right">#</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Product</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Unit price</TableHead>
+                <TableHead className="text-right">Line total</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groups.map((g) => (
+                <ZoneRows key={g.zone ?? "__none__"} group={g} showZone={hasZones} />
+              ))}
+            </TableBody>
+          </Table>
+        </>
       )}
 
       {lines.length > 0 && (
@@ -344,6 +361,11 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
   // de PDF (lib/repo/estimate.ts), want dit gaat over het bedrag in de kolom ernaast:
   // die toont dan de catalogusprijs, of "—" als er niets is om op terug te vallen.
   const expiredNote = dayPriceExpiredNote(line);
+  // Regel 3, herschreven: vervallen product → dezelfde subregel, in rood in plaats van
+  // amber. Rood want dat is de kleur die de klant in de demo vroeg ("dat die rood zijn,
+  // dat daar iets mee is"), en het onderscheidt zich van de verlopen dagprijs, die over
+  // een handmatig ingevoerd bedrag gaat en niet over het product.
+  const vervalNote = productPriceStateNote(line);
   const hasOtherMarks =
     notable.length > 0 ||
     !!line.autoAccepted ||
@@ -376,7 +398,7 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
           <StatusBadge status={line.status} />
         </TableCell>
       </TableRow>
-      {(hasOtherMarks || expiredNote) && (
+      {(hasOtherMarks || expiredNote || vervalNote) && (
         <TableRow className="border-0 hover:bg-transparent">
           <TableCell />
           <TableCell />
@@ -384,6 +406,12 @@ function LineRows({ line, nr }: { line: EstimateLine; nr: number }) {
             colSpan={COLS - 2}
             className="pt-0 text-xs text-muted-foreground"
           >
+            {vervalNote && (
+              <span className="text-status-red-ink">
+                {vervalNote}
+                {(expiredNote || hasOtherMarks) && " — "}
+              </span>
+            )}
             {expiredNote && (
               <span className="text-status-amber-ink">
                 {expiredNote}

@@ -41,7 +41,7 @@ const bronnen = import.meta.glob("/app/**/*.{ts,tsx}", {
 }) as Record<string, string>;
 
 /**
- * `/app/data/fields/page.tsx` → `/data/fields`, `/app/page.tsx` → `/`. Precies de
+ * `/app/admin/fields/page.tsx` → `/admin/fields`, `/app/page.tsx` → `/`. Precies de
  * afbeelding die Next zelf maakt, inclusief `[param]`-segmenten — zo is de route die een
  * bestand hoort te bewaken niet iets wat iemand overtypt maar iets wat volgt uit waar het
  * bestand staat.
@@ -63,7 +63,7 @@ test("de bronbestanden zijn ingelezen (anders bewijst dit bestand niets)", () =>
   expect(routeBestanden.length).toBeGreaterThan(35);
   expect(routeBestanden.some((p) => p.endsWith("/app/page.tsx"))).toBe(true);
   expect(
-    routeBestanden.some((p) => p.endsWith("/app/data/fields/page.tsx")),
+    routeBestanden.some((p) => p.endsWith("/app/admin/fields/page.tsx")),
   ).toBe(true);
 });
 
@@ -85,8 +85,8 @@ test("elke route in app/ staat in de allowlist", () => {
 });
 
 test("een route die niemand heeft toegelaten, is geweigerd", () => {
-  // Geen prefix-erfenis: /data/nieuw-scherm erft niets van /data.
-  expect(niveauVoor("/data/nieuw-scherm")).toBeNull();
+  // Geen prefix-erfenis: /admin/nieuw-scherm erft niets van /admin.
+  expect(niveauVoor("/admin/nieuw-scherm")).toBeNull();
   expect(niveauVoor("/projects/[id]/geheim")).toBeNull();
   expect(niveauVoor("")).toBeNull();
   // …en `null` is voor iedereen behalve niemand een weigering — zie de matrix verderop.
@@ -102,7 +102,7 @@ test("elke niet-open route bewaakt zichzelf, met precies zijn eigen route", () =
     if (ROUTE_NIVEAUS[route as Route] === "open") continue;
     const bron = bronnen[pad];
     // Letterlijk zijn eigen route, niet "een" bewaakRoute-aanroep: een pagina die
-    // `bewaakRoute("/projects")` doet terwijl hij op /data staat, zou anders groen zijn.
+    // `bewaakRoute("/projects")` doet terwijl hij op /admin staat, zou anders groen zijn.
     const eigen = new RegExp(
       `bewaakRoute\\(\\s*["']${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']\\s*\\)`,
     );
@@ -167,15 +167,17 @@ test("er is geen middleware.ts die stilletjes een tweede waarheid wordt", () => 
 
 // ── De drie niveaus die ertoe doen, vastgepind ───────────────────────────────
 
-test("de acceptatie-eis staat in de tabel: /data, /admin, Merken en /analytics zijn intern", () => {
+test("de acceptatie-eis staat in de tabel: Brand management, /admin, Merken en /analytics zijn intern", () => {
   // Letterlijk de routes die de acceptatie-eis van 3.2a opsomt als geweigerd voor een
   // extern account. Verschuift er hier één naar `iedereen`, dan is dat een bewuste
   // handeling in de diff en geen ongelukje.
   for (const route of Object.keys(ROUTE_NIVEAUS) as Route[]) {
-    if (route === "/admin/users") continue; // de ene uitzondering, hieronder apart
+    // De twee uitzonderingen binnen /admin, hieronder apart: beide staan op `org_admin`
+    // omdat een externe beheerder ze binnen zijn eigen organisatie nodig heeft.
+    if (route === "/admin/users" || route === "/admin/organizations") continue;
     if (
-      route === "/data" ||
-      route.startsWith("/data/") ||
+      route === "/brand-management" ||
+      route.startsWith("/brand-management/") ||
       route === "/admin" ||
       route.startsWith("/admin/") ||
       route === "/brand" ||
@@ -220,7 +222,7 @@ test("instellingen: het eigen scherm voor iedereen, organisatiebeheer alleen voo
   // zou betekenen dat ze hun eigen wachtwoord niet kunnen wijzigen. De interne blokken op
   // dat scherm renderen alleen voor intern; dat is getest in app/settings/settings-*.test.
   expect(ROUTE_NIVEAUS["/settings"]).toBe("iedereen");
-  expect(ROUTE_NIVEAUS["/settings/organization"]).toBe("org_admin");
+  expect(ROUTE_NIVEAUS["/admin/organizations"]).toBe("org_admin");
 });
 
 // ── magBij, uitputtend ───────────────────────────────────────────────────────

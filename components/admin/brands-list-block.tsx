@@ -30,11 +30,11 @@ export type BrandListRow = {
 
 // De levensfase staat als BADGE in de naamkolom (plan §1). De labels en de badge zelf staan
 // sinds de UX-audit van 30 jul in components/admin/brand-lifecycle-badge.tsx, omdat
-// /data/price-lists dezelfde badge toont — één presentatie, geen tweede kopie.
+// /brand-management/price-lists dezelfde badge toont — één presentatie, geen tweede kopie.
 
 // MERKENLIJST (sprint 2.0a, blok 3): het add/edit/delete-deel van merkbeheer. De
 // disclosure-tier en per-veld-uitzonderingen zijn verhuisd naar
-// components/data/brand-visibility-block.tsx op /data/brand-relations/[brandId] — dit
+// components/data/brand-visibility-block.tsx op /brand-management/[brandId] — dit
 // scherm (uit components/admin/brands-tier-block.tsx) is nu puur de lijst: naam, code,
 // levensfase-badge, productaantal, prijslijst-verlopen-notice en de doorklik naar het
 // merk-detail (bewerken/verwijderen).
@@ -118,8 +118,8 @@ export function BrandsListBlock({ brands }: { brands: BrandListRow[] }) {
                             brandName={b.name}
                             // Wees naar de merkpagina, maar dáár staat alleen dezelfde
                             // melding — een doodlopende doorverwijzing. De verlenging
-                            // gebeurt op /data/price-lists (bevinding B3).
-                            href="/data/price-lists"
+                            // gebeurt op /brand-management/price-lists (bevinding B3).
+                            href="/brand-management/price-lists"
                           />
                         </div>
                       )}

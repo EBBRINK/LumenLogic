@@ -38,7 +38,7 @@ const MIN = 12;
 const MAX = 128;
 
 const emails: AllowedEmailRow[] = [
-  { email: "hello@noplasticfloralfoam.com", addedBy: "migratie-0004" },
+  { email: "tester@voorbeeld.nl", addedBy: "migratie-0004" },
 ];
 
 function Screen({ children }: { children: React.ReactNode }) {

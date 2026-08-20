@@ -8,6 +8,15 @@
       "port": 3000
     },
     {
+      "name": "steekproef-testkopie",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "cd .claude/worktrees/relaxed-tereshkova-c27ac7 && exec bun --env-file=.env.branch run dev"
+      ],
+      "port": 3000
+    },
+    {
       "name": "scratchpad-preview",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4173", "--directory", "/private/tmp/claude-501/-Users-timowittkamp-Documents-dev-lumenlogic/f8eb3ad2-f5ae-4659-bcae-e6757a35c4fe/scratchpad"],

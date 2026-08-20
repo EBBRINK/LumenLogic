@@ -151,7 +151,6 @@ export default async function DossiersPage({
             stilzwijgend (verificatie 30 jul). */}
         <StatusFilter active={filter} params={{ q }} />
       </div>
-      <StatusLegend className="mb-4" />
       {/* De noemer is de lijst ná het statusfilter, niet de hele database — daarom staat
           het filter erbij zodra het niet "All" is. "0 of 1 project match" liep bovendien
           mis in het werkwoord; "Showing … matching" klopt bij elk aantal. */}
@@ -181,6 +180,9 @@ export default async function DossiersPage({
               : "No projects yet. Use “New project” to create one."
         }
       />
+      {/* De legenda staat onder de lijst en plakt aan de onderkant van het scherm
+          (demo 12 aug): altijd zichtbaar terwijl je door de projecten scrolt. */}
+      <StatusLegend className="mt-8" />
     </main>
   );
 }

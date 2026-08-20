@@ -33,7 +33,7 @@
 //     uitputtend testbaar en op één scherm leesbaar.
 //
 // ⚠️ TWEE DEUREN, ÉÉN REGEL. Een lidmaatschap mét rollen kan langs twee kanten ontstaan:
-// het PIN-scherm (`app/admin/users`) en het organisatiescherm (`app/settings/organization`).
+// het PIN-scherm (`app/admin/users`) en het organisatiescherm (`app/admin/organizations`).
 // Dat zijn niet twee besluiten maar één, dus ze delen `decideMembershipAuthority()`. De
 // eerste ronde van dit item liet de tweede deur open: een gewone gebruiker zette zichzelf
 // via `addMemberAction` in de interne org en was daarna volgens regel 1 almachtig.
@@ -664,7 +664,7 @@ export type CreateOrgOutcome =
 /**
  * De vierde deur (sprint 3.2c, besluiten 1–3): een organisatie aanmaken.
  *
- * Tot 3.2c stond dit als `createOrgAction` op `/settings/organization` en riep die action
+ * Tot 3.2c stond dit als `createOrgAction` op `/admin/organizations` en riep die action
  * `createOrganization()` rechtstreeks aan, met alleen `bewaakNiveau("intern")` ervoor. Dat
  * hield, maar het was de enige schrijfweg naar de organisatietabel die niet dezelfde vorm
  * had als de rest van G39 — en `organizations` is juist de tabel waar `type` in staat.

@@ -173,7 +173,7 @@ export function AnalyticsTilesView({ data }: { data: AnalyticsTiles }) {
           <Tile
             title="Matcher status split"
             // Ook hier events (`matched_status`), geen spec-regels: een regel die opnieuw
-            // gematcht wordt — dat gebeurt live via "Mark as loaded" op /data/loading —
+            // gematcht wordt — dat gebeurt live via "Mark as loaded" op /admin/loading —
             // telt opnieuw mee. "How spec lines came out of the matcher" beloofde dus meer
             // dan de query levert.
             description="Recorded matcher outcomes; a re-matched line counts again."
@@ -318,7 +318,7 @@ export function AnalyticsTilesView({ data }: { data: AnalyticsTiles }) {
           <Tile
             title="Brand load queue by demand"
             // De query filtert NIET op status en levert de hele wachtrij (top 10 op vraag).
-            // Vandaag staat alles op 'wachtend', maar "Mark as loaded" op /data/loading is
+            // Vandaag staat alles op 'wachtend', maar "Mark as loaded" op /admin/loading is
             // uitgeleverd: één klik en er stond "Loaded" onder "Brands waiting to be loaded".
             // De query mag ik niet aanraken, dus de UI lost het op: de kop/ondertitel claimt
             // geen status meer, en elke rij draagt haar eigen status als tekst in de meta.

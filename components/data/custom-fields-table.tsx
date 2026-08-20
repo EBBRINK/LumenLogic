@@ -27,7 +27,7 @@ import {
   type VeldFormAction,
 } from "./custom-field-form";
 
-export const FIELDS_PATH = "/data/fields";
+export const FIELDS_PATH = "/admin/fields";
 
 export type CatalogusOverzichtBucket = {
   key: string;

@@ -286,7 +286,6 @@ const BEKEND_OPEN: Record<string, { aantal: number; waarom: string }> = {
   "/components/dossier/spec-line-table.tsx": { aantal: 1, waarom: "veegbeurt 2" },
   "/components/dossier/werkvoorbereider-view.tsx": { aantal: 2, waarom: "veegbeurt 2" },
   "/components/dossier/deviation-table.tsx": { aantal: 1, waarom: "veegbeurt 2" },
-  "/components/data/enrichment-panels.tsx": { aantal: 3, waarom: "veegbeurt 2" },
   "/components/data/price-list-status.tsx": { aantal: 1, waarom: "veegbeurt 2" },
   "/components/data/custom-fields-table.tsx": { aantal: 1, waarom: "veegbeurt 2" },
   "/components/analytics-view.tsx": { aantal: 2, waarom: "veegbeurt 2" },

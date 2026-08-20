@@ -18,7 +18,7 @@ export type OrgWithMembers = {
   members: MemberRow[];
   /**
    * Mag de ingelogde gebruiker de leden van déze organisatie beheren (besluiten G36/G39)?
-   * Bepaald door de server (app/settings/organization/page.tsx via describeIssueScope);
+   * Bepaald door de server (app/admin/organizations/page.tsx via describeIssueScope);
    * dit blok toont dan de formulieren, en anders alleen de lijst. UI-gemak — de actions
    * beslissen zelf opnieuw.
    */

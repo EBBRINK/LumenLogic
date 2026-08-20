@@ -5,8 +5,12 @@
 //   2. duurzaamheid (garantie, repareerbaarheid, EPD/levensduur) als tiebreak.
 // Prijs komt in GEEN enkele vergelijkings- of sorteerstap voor (ijzeren regel 2).
 // Ontbrekende data wordt eerlijk als "geen data" getoond, nooit stilzwijgend weggelaten.
-// Leest enkel uit visible_products → verlopen prijslijst = onvindbaar (ijzeren regel 3).
+// Leest enkel uit visible_products. ⚠️ Sinds migratie 0022 betekent dat NIET meer "alleen
+// producten met een geldige prijs": een verlopen prijslijst levert een vindbaar product
+// zónder bedrag (regel 3, herschreven). Voor de REFERENTIE is dat gewenst — je zoekt juist
+// een vervanger — maar de ALTERNATIEVEN worden hieronder expliciet op 'actueel' gefilterd.
 import { and, ne, sql } from "drizzle-orm";
+import { leesPrijstoestand, type Prijstoestand } from "@/lib/prijstoestand";
 import { visibleProducts } from "@/db/schema";
 import type { AppDb } from "./db";
 import { logEvent } from "./events";
@@ -45,6 +49,8 @@ export type Reference = {
   cri: number | null;
   ipValue: string | null;
   grossPrice: string | null;
+  /** Regel 3, herschreven: 'actueel' | 'prijslijst_verlopen' | 'uit_prijslijst'. */
+  priceState: Prijstoestand;
   warrantyMonths: number | null;
   repairability: string | null;
   epdLifetimeHours: number | null;
@@ -52,6 +58,7 @@ export type Reference = {
 };
 
 const FIELDS = {
+  priceState: visibleProducts.priceState,
   id: visibleProducts.id,
   name: visibleProducts.name,
   brandName: visibleProducts.brandName,
@@ -134,6 +141,7 @@ export async function getReference(
     cri: r.cri ?? null,
     ipValue: r.ipValue ?? null,
     grossPrice: r.grossPrice ?? null,
+    priceState: leesPrijstoestand(r.priceState),
     warrantyMonths: r.warrantyMonths ?? null,
     repairability: r.repairability ?? null,
     epdLifetimeHours: r.epdLifetimeHours ?? null,
@@ -157,7 +165,16 @@ export async function getEquivalentAlternatives(
   if (!reference) return { reference: null, alternatives: [] };
 
   const prefix = categoryPrefix(reference.categoryPath);
-  const conditions = [ne(visibleProducts.id, reference.id)];
+  const conditions = [
+    ne(visibleProducts.id, reference.id),
+    // ⚠️ Alleen actuele producten mogen als ALTERNATIEF voorgesteld worden. Sinds migratie
+    // 0022 staan vervallen producten wél in de view — vindbaar en rood — maar een
+    // alternatief voorstellen dat je niet kunt offreren is erger dan geen alternatief: de
+    // gebruiker zou het overnemen en pas bij het opmaken van de offerte merken dat er geen
+    // prijs is. Zoeken en matchen tonen vervallen producten juist wél; dáár is de
+    // herschreven regel 3 voor. Dit is de andere kant van diezelfde beslissing.
+    sql`${visibleProducts.priceState} = 'actueel'`,
+  ];
   if (prefix) {
     conditions.push(
       sql`${visibleProducts.categoryPath} ilike ${prefix + "%"}`,

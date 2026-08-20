@@ -102,30 +102,64 @@ function categoryMustComplete(category: CategorieScore): boolean {
   );
 }
 
+/** De velden waar daadwerkelijk iets in zit. `ratio === null` = niet meetbaar, geen vulling. */
+function gevuldeVelden(category: CategorieScore): FieldCoverage[] {
+  return category.fields.filter((f) => f.ratio !== null && f.ratio > 0);
+}
+
+/**
+ * Eén categorie, ingeklapt. `<details>`/`<summary>` en geen useState: deze scorecard is een
+ * server-component zonder client-JS (zie de kop van dit bestand), en de browser doet het
+ * open- en dichtklappen zelf.
+ *
+ * Wat er in de INGEKLAPTE kop staat is de hele reden voor deze wijziging: 66 velden onder
+ * elkaar zeggen niets. De kop draagt daarom de teller ("1 of 6 filled") en, zodra er iets
+ * gevuld is, de namen van die gevulde velden — dan hoef je voor het antwoord "wat weten we
+ * van dit merk" niets meer open te klikken. Categorieën waar niets in zit blijven leeg en
+ * dicht; die hebben geen kop nodig die dat nog eens uitspelt.
+ */
 function CategorySection({ category }: { category: CategorieScore }) {
   const mustComplete = categoryMustComplete(category);
+  const gevuld = gevuldeVelden(category);
   return (
-    <section className="rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">
-          {category.order}. {category.labelEn}
-        </h3>
-        {category.measurableFields === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            not measurable yet
+    <details className="group rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">
+            {/* Puur decoratief, dus aria-hidden: de open/dicht-stand komt al uit <details>
+                zelf en zou anders dubbel worden voorgelezen. */}
+            <span aria-hidden="true" className="mr-1 inline-block transition-transform group-open:rotate-90">
+              ›
+            </span>
+            {category.order}. {category.labelEn}
+          </h3>
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {category.measurableFields === 0 ? (
+              <span>not measurable yet</span>
+            ) : (
+              <>
+                <span className="tabular-nums">
+                  {gevuld.length} of {category.measurableFields} filled
+                </span>
+                <span className="font-medium tabular-nums">
+                  {Math.round(category.ratio * 100)}%
+                </span>
+              </>
+            )}
           </span>
-        ) : (
-          <span className="text-xs font-medium tabular-nums text-muted-foreground">
-            {Math.round(category.ratio * 100)}%
-          </span>
+        </div>
+        {gevuld.length > 0 && (
+          <p className="mt-1 pl-4 text-xs text-muted-foreground">
+            {gevuld.map((f) => f.labelEn).join(" · ")}
+          </p>
         )}
-      </div>
-      <ul className="space-y-1.5">
+      </summary>
+      <ul className="mt-3 space-y-1.5">
         {category.fields.map((f) => (
           <FieldRow key={f.key} field={f} mustComplete={mustComplete} />
         ))}
       </ul>
-    </section>
+    </details>
   );
 }
 
@@ -171,16 +205,21 @@ export function BrandScorecard({
       </div>
 
       {internalCategory && (
-        <section className="rounded-xl bg-muted/30 p-4 ring-1 ring-foreground/10">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium">
-              {internalCategory.order}. {internalCategory.labelEn}
-            </h3>
-            <span className="text-xs text-muted-foreground">
-              not included in the totals
-            </span>
-          </div>
-          <ul className="space-y-1.5">
+        <details className="group rounded-xl bg-muted/30 p-4 ring-1 ring-foreground/10">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">
+                <span aria-hidden="true" className="mr-1 inline-block transition-transform group-open:rotate-90">
+                  ›
+                </span>
+                {internalCategory.order}. {internalCategory.labelEn}
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                not included in the totals
+              </span>
+            </div>
+          </summary>
+          <ul className="mt-3 space-y-1.5">
             {internalCategory.fields.map((f) => (
               <FieldRow
                 key={f.key}
@@ -189,7 +228,7 @@ export function BrandScorecard({
               />
             ))}
           </ul>
-        </section>
+        </details>
       )}
 
       <section className="rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10">

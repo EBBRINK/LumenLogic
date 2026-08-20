@@ -9,7 +9,7 @@
 // afdwingt.
 //
 // Dat is geen theorie: ronde 1 van dit item sloot het PIN-scherm en liet
-// `app/settings/organization/actions.ts` open, waar dezelfde rollen langs een tweede deur
+// `app/admin/organizations/actions.ts` open, waar dezelfde rollen langs een tweede deur
 // werden uitgedeeld. Ronde 2 leverde een bewaker op die maar twee van de zes vormen ving.
 //
 // ⚠️ WAT DEZE BEWAKER WÉL VANGT (elke vorm heeft een eigen zelftest onderaan):
@@ -208,7 +208,7 @@ test("er staat geen bekende schuld open", () => {
 
 test("saveBrandingAction schrijft niet meer rechtstreeks op organizations (3.2a)", () => {
   // De contra-kant van de lege lijst hierboven: die is ook leeg als het bestand verdwijnt.
-  const bron = bronnen["/app/settings/organization/actions.ts"];
+  const bron = bronnen["/app/admin/organizations/actions.ts"];
   expect(bron, "bronbestand niet gevonden").toBeTruthy();
   expect(/\.\s*update\s*\(\s*organizations\s*[),]/.test(bron)).toBe(false);
   // En hij gaat via de poort, niet via een nieuwe eigen weg.
@@ -222,7 +222,7 @@ test("de bronbestanden zijn daadwerkelijk ingelezen (anders bewijst deze test ni
   expect(paden.length).toBeGreaterThan(50);
   for (const verwacht of [
     "/app/admin/users/actions.ts",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     "/components/admin/pin-block.tsx",
     "/lib/repo/authz.ts",
   ]) {
@@ -291,27 +291,27 @@ test("geen enkel bestand schrijft memberships of PIN's buiten de autorisatielaag
 const AANVALLEN: [naam: string, pad: string, bron: string][] = [
   [
     "named import",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     `import { addMembership } from "@/lib/repo/orgs";\nexport async function x() { await addMembership(db, {}); }`,
   ],
   [
     "named import onder een alias",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     `import { addMembership as zetLid } from "@/lib/repo/orgs";\nexport async function x() { await zetLid(db, {}); }`,
   ],
   [
     "namespace-import",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     `import * as orgs from "@/lib/repo/orgs";\nexport async function x() { await orgs.addMembership(db, {}); }`,
   ],
   [
     "dynamische import",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     `export async function x() { const m = await import("@/lib/repo/orgs"); await m.addMembership(db, {}); }`,
   ],
   [
     "rechtstreeks op de tabel schrijven",
-    "/app/settings/organization/actions.ts",
+    "/app/admin/organizations/actions.ts",
     `import { memberships } from "@/db/schema";\nexport async function x() {\n  await db.insert(memberships).values({ orgId, email, roles: ["org_admin"] });\n}`,
   ],
   [

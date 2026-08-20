@@ -56,7 +56,7 @@ export default async function MerkDetailPage({
           <p className="mt-1 text-sm text-muted-foreground">
             Relationship, outreach and completeness live on{" "}
             <Link
-              href={`/data/brand-relations/${brand.id}`}
+              href={`/brand-management/${brand.id}`}
               className="underline underline-offset-4"
             >
               Brand relations

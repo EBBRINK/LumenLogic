@@ -30,7 +30,7 @@ import {
   type BrandRelationsQuery,
 } from "@/lib/brand-relations-view";
 import { niveauLabel } from "@/lib/niveau-labels";
-import { DataCards } from "./data-cards";
+import { BrandManagementHeader } from "./brand-management-header";
 import { blokKleur } from "./mini-scorecard";
 import { BrandRelationForm } from "./brand-relation-form";
 import { BrandScorecard } from "./brand-scorecard";
@@ -263,6 +263,10 @@ function Overzicht({
   const window = pageWindow(gefilterd, query.page);
   return (
     <Screen>
+      {/* De kop hoort bij het scherm en staat sinds de IA-opschoning (12 aug) in een eigen
+          component, zodat de hernoeming naar "Brand management" en de ingang naar de
+          prijslijsten hier ook echt gefotografeerd worden. */}
+      <BrandManagementHeader />
       <div className="space-y-4">
         <BrandRelationsToolbar
           query={query}
@@ -422,11 +426,11 @@ test("punt 2: pager en filters dragen de hele stand in de URL", () => {
   };
   // Bladeren houdt zoekterm én filters vast.
   expect(brandRelationsHref(query, { page: 4 })).toBe(
-    "/data/brand-relations?q=occ&status=benaderd&noresponse=1&page=4",
+    "/brand-management?q=occ&status=benaderd&noresponse=1&page=4",
   );
   // Een andere selectie zet de pagina terug op 1 — anders sta je op pagina 3 van 1.
   expect(brandRelationsHref(query, { status: "verwerkt" })).toBe(
-    "/data/brand-relations?q=occ&status=verwerkt&noresponse=1",
+    "/brand-management?q=occ&status=verwerkt&noresponse=1",
   );
   // Heen en weer: de URL is de enige bron van waarheid.
   expect(
@@ -456,10 +460,10 @@ test("punt 2: de pagerknoppen staan er echt en wijzen naar de buurpagina's", asy
   await expect.element(page.getByText("Page 2 of 18")).toBeInTheDocument();
   await expect
     .element(page.getByRole("link", { name: "Previous", exact: true }))
-    .toHaveAttribute("href", "/data/brand-relations");
+    .toHaveAttribute("href", "/brand-management");
   await expect
     .element(page.getByRole("link", { name: "Next", exact: true }))
-    .toHaveAttribute("href", "/data/brand-relations?page=3");
+    .toHaveAttribute("href", "/brand-management?page=3");
 });
 
 test("statusfilter en zoeken beperken de lijst (puur, zoals de RSC het doet)", () => {
@@ -496,7 +500,7 @@ test("de werkbalk toont het statusfilter als links met aria-current", async () =
     .toHaveAttribute("aria-current", "page");
   await expect
     .element(page.getByRole("link", { name: "Data received", exact: true }))
-    .toHaveAttribute("href", "/data/brand-relations?status=data_ontvangen");
+    .toHaveAttribute("href", "/brand-management?status=data_ontvangen");
 });
 
 // Reviewzwerm 2.5a C1: een filter zonder treffers gaf een kale grijze regel — het dialect
@@ -625,6 +629,21 @@ test("punt 4: 'Price list' tint alleen de uitzonderingen, niet de 437× 'Valid'"
   );
 });
 
+// ── IA-opschoning 12 aug 2026 (demosessie Brink Licht) ──────────────────────
+
+test("de kop heet Brand management en wijst door naar de prijslijsten", async () => {
+  await renderServer(overzicht);
+  await expect
+    .element(page.getByRole("heading", { name: "Brand management" }))
+    .toBeInTheDocument();
+  // Punt 1: "relations" suggereerde een verhouding tussen dingen; dit scherm beheert.
+  expect(document.body.textContent).not.toContain("Brand relations");
+  // Punt 4: het prijslijst-overzicht stond onder Data en hoort hier — één plek.
+  await expect
+    .element(page.getByRole("link", { name: "Price lists" }))
+    .toHaveAttribute("href", "/brand-management/price-lists");
+});
+
 test("punt 4: 'Completeness' is een percentage met link naar de scorecard, geen blokjesdiagram", async () => {
   await renderServer(overzicht);
   await wachtOpTabel();
@@ -634,21 +653,9 @@ test("punt 4: 'Completeness' is een percentage met link naar de scorecard, geen 
   await expect.element(pct).toBeInTheDocument();
   await expect
     .element(pct)
-    .toHaveAttribute("href", "/data/brand-relations/b-flos");
+    .toHaveAttribute("href", "/brand-management/b-flos");
   // 0 producten blijft "n/a" — geen 0% dat als slecht rapportcijfer leest.
   await expect.element(page.getByText("n/a")).toBeInTheDocument();
-});
-
-test("kaart op /data: 'Event log' aanwezig; Loading en Brand relations niet meer", async () => {
-  await renderServer(
-    <Screen>
-      <DataCards badge={{ "/data/enrichment": 3 }} />
-    </Screen>,
-  );
-  await expect.element(page.getByText("Event log")).toBeInTheDocument();
-  await expect.element(page.getByText("3", { exact: true })).toBeInTheDocument();
-  expect(page.getByText("Loading").query()).toBeNull();
-  expect(page.getByText("Brand relations").query()).toBeNull();
 });
 
 test("mini-scorecard-kleurfunctie blijft gelden voor het detailscherm", () => {
@@ -842,8 +849,10 @@ test("detail-scorecard (G9-G12): categorie 1-10 met percentage, categorie 11 apa
     .element(page.getByText("not included in the totals"))
     .toBeInTheDocument();
   // Commercial hield na de verhuizing precies één veld over (G9/G12): het prijsveld.
+  // De categorie is sinds de inklapbare scorecard een <details> in plaats van een <section>
+  // (goal-prijslijst-urgentie): de velden staan er nog steeds allemaal in, alleen dichtgeklapt.
   const commercialHeading = page.getByText("2. Commercial").query();
-  const commercial = commercialHeading?.closest("section");
+  const commercial = commercialHeading?.closest("details");
   expect(commercial).not.toBeNull();
   expect(commercial!.textContent).toContain("Gross list price excl. VAT");
   expect(commercial!.textContent).not.toContain("Stock");

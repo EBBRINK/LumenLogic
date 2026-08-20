@@ -1,5 +1,5 @@
 // Levensfase-badge van een merk — één presentatie, hergebruikt op elk scherm dat een merk
-// als rij toont. Stond als losse map in brands-list-block.tsx; sinds /data/price-lists
+// als rij toont. Stond als losse map in brands-list-block.tsx; sinds /brand-management/price-lists
 // dezelfde badge nodig heeft (UX-audit 30 jul: een merk dat niet meer bestaat kreeg daar
 // een schone groene rij) woont hij hier, zodat er nooit twee presentaties naast elkaar
 // ontstaan die uit elkaar kunnen lopen — zelfde afweging als PriceListExpiryNotice

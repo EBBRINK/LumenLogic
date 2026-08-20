@@ -234,7 +234,7 @@ function overDagen(n: number): string {
   return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 }
 
-test("DE BEWIJSTEST: verlopen lijst verlengen maakt de producten weer zichtbaar (regel 3, terug)", async () => {
+test("DE BEWIJSTEST: verlopen lijst verlengen geeft de producten hun prijs terug (regel 3, terug)", async () => {
   const db = await createTestDb();
   const { brandId, priceListId, productId } = await seedBrandProduct(db, {
     brand: "Occhio",
@@ -244,12 +244,19 @@ test("DE BEWIJSTEST: verlopen lijst verlengen maakt de producten weer zichtbaar 
     validUntil: "2020-12-31", // verlopen: valid_until < CURRENT_DATE
   });
 
-  // Uitgangspunt = ijzeren regel 3: het product is nergens meer te vinden.
+  // Uitgangspunt = ijzeren regel 3 in zijn nieuwe formulering (migratie 0022): het product
+  // is wél te vinden, maar er hangt geen bedrag aan. Vóór 0022 stond hier `toHaveLength(0)`;
+  // wat de verlenging repareert is sindsdien de PRIJS, niet het bestaan.
   const voor = await db
     .select()
     .from(visibleProducts)
     .where(eq(visibleProducts.brandId, brandId));
-  expect(voor, "verlopen prijslijst hoort het product onzichtbaar te maken").toHaveLength(0);
+  expect(voor, "verlopen prijslijst laat het product staan").toHaveLength(1);
+  expect(voor[0].priceState).toBe("prijslijst_verlopen");
+  expect(
+    voor[0].grossPrice,
+    "een bedrag uit een verlopen lijst mag nergens naar buiten komen",
+  ).toBeNull();
 
   const nieuweDatum = overDagen(365);
   const bijgewerkt = await extendPriceListValidity(
@@ -259,13 +266,14 @@ test("DE BEWIJSTEST: verlopen lijst verlengen maakt de producten weer zichtbaar 
   expect(bijgewerkt.validUntil).toBe(nieuweDatum);
   expect(bijgewerkt.id).toBe(priceListId); // dezelfde lijst, geen opvolger
 
-  // En dít is wat er niet bestond: het product is terug, mét zijn prijs.
+  // En dít is wat er niet bestond: de prijs is terug.
   const na = await db
     .select()
     .from(visibleProducts)
     .where(eq(visibleProducts.brandId, brandId));
   expect(na).toHaveLength(1);
   expect(na[0].id).toBe(productId);
+  expect(na[0].priceState).toBe("actueel");
   expect(na[0].grossPrice).toBe("845.00");
 
   // Geen archief-bijwerking: de prijsregels bewegen niet bij een verlenging.

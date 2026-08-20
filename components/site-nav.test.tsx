@@ -1,12 +1,16 @@
-// Hoofdnavigatie (sprint 1.3-B): "Brand relations" → /data/brand-relations als hoofdingang naast
-// het merkportaal ("Brand portal" → /brand). De actieve sectie wordt centraal bepaald
-// (longest-prefix-wint), anders lichten op /data/brand-relations zowel "Data" als
-// "Brand relations" op. Pure resolver-tests + screenshots licht/donker × mobiel/desktop.
+// Hoofdnavigatie (sprint 1.3-B): "Brand management" → /brand-management als hoofdingang
+// naast het merkportaal ("Brand portal" → /brand). De actieve sectie wordt centraal
+// bepaald (longest-prefix-wint). Pure resolver-tests + screenshots licht/donker ×
+// mobiel/desktop.
+//
+// IA-opschoning 12 aug 2026: "Brand relations" heet "Brand management", "Data" is uit de
+// balk verdwenen (alles eronder heeft een eigen huis) en "Settings" staat niet meer in de
+// balk maar in het accountmenu onder het e-mailadres.
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
-import { activeNavHref, NAV_ITEMS } from "./nav-items";
+import { ACCOUNT_ITEMS, activeNavHref, NAV_ITEMS } from "./nav-items";
 import { magBij, niveauVoor } from "@/lib/route-allowlist";
 import { decideToegang, type Toegang } from "@/lib/repo/toegang";
 import { NavBar } from "./nav-link";
@@ -18,18 +22,17 @@ const viewports = {
 
 // ── Pure resolver ────────────────────────────────────────────────────────────
 
-test("actieve sectie: longest-prefix wint op /data/brand-relations", () => {
-  // De regressie: vóór 1.3-B matchte /data óók en lichtten er twee items op.
-  expect(activeNavHref("/data/brand-relations")).toBe("/data/brand-relations");
-  expect(activeNavHref("/data/brand-relations")).not.toBe("/data");
-  expect(activeNavHref("/data/brand-relations/b-flos")).toBe(
-    "/data/brand-relations",
+test("actieve sectie: de merksectie licht op, ook op een subpad", () => {
+  expect(activeNavHref("/brand-management")).toBe("/brand-management");
+  expect(activeNavHref("/brand-management/b-flos")).toBe("/brand-management");
+  expect(activeNavHref("/brand-management/price-lists")).toBe(
+    "/brand-management",
   );
 });
 
 test("actieve sectie: bestaand gedrag blijft intact", () => {
-  expect(activeNavHref("/data")).toBe("/data");
-  expect(activeNavHref("/data/imports")).toBe("/data");
+  expect(activeNavHref("/admin")).toBe("/admin");
+  expect(activeNavHref("/admin/fields")).toBe("/admin");
   expect(activeNavHref("/projects")).toBe("/projects");
   expect(activeNavHref("/projects/p-1")).toBe("/projects");
   expect(activeNavHref("/catalog/123")).toBe("/catalog");
@@ -41,17 +44,38 @@ test("actieve sectie: bestaand gedrag blijft intact", () => {
   expect(activeNavHref("/branding")).toBeNull();
 });
 
-test("navigatie-items: Brand relations staat tussen Catalog en Data, labels zijn uniek", () => {
+test("navigatie-items: Brand management staat ná Catalog, labels zijn uniek", () => {
   const labels = NAV_ITEMS.map((i) => i.label);
-  expect(labels.indexOf("Brand relations")).toBe(labels.indexOf("Catalog") + 1);
-  expect(labels.indexOf("Brand relations")).toBe(labels.indexOf("Data") - 1);
+  expect(labels.indexOf("Brand management")).toBe(labels.indexOf("Catalog") + 1);
   expect(new Set(labels).size).toBe(labels.length);
-  expect(NAV_ITEMS.find((i) => i.label === "Brand relations")?.href).toBe(
-    "/data/brand-relations",
+  expect(NAV_ITEMS.find((i) => i.label === "Brand management")?.href).toBe(
+    "/brand-management",
   );
   expect(NAV_ITEMS.find((i) => i.label === "Brand portal")?.href).toBe("/brand");
   // Het oude label "Brand" bestaat niet meer.
   expect(labels).not.toContain("Brand");
+});
+
+// ── IA-opschoning 12 aug 2026 (demosessie Brink Licht) ───────────────────────
+//
+// Drie besluiten die alleen als assertie blijven staan. Zonder deze test is
+// "Data staat niet meer in de balk" een commit-bericht en geen eigenschap.
+
+test("de balk draagt geen Data en geen Brand relations meer", () => {
+  const labels = NAV_ITEMS.map((i) => i.label);
+  expect(labels).not.toContain("Data");
+  expect(labels).not.toContain("Brand relations");
+  // En er wijst ook geen item meer naar een pad onder de opgeheven werkbank.
+  for (const it of NAV_ITEMS) {
+    expect(it.href.startsWith("/data"), it.href).toBe(false);
+  }
+});
+
+test("Settings staat niet in de balk maar in het accountmenu", () => {
+  expect(NAV_ITEMS.map((i) => i.label)).not.toContain("Settings");
+  expect(ACCOUNT_ITEMS.find((i) => i.label === "Settings")?.href).toBe(
+    "/settings",
+  );
 });
 
 // ── Gerenderde balk ──────────────────────────────────────────────────────────
@@ -62,9 +86,20 @@ afterEach(() => {
   localStorage.removeItem(THEME_STORAGE_KEY);
 });
 
+// Intern ziet géén "Organizations" in het accountmenu — dat scherm is voor hem een kaart
+// op /admin. Zo rendert SiteNav het ook (zie de filter daar), dus dat is de stand die de
+// screenshots horen te tonen.
+const INTERNE_ACCOUNT_ITEMS = ACCOUNT_ITEMS.filter(
+  (it) => !it.href.startsWith("/admin/"),
+);
+
 const nav = (
   <div className="min-h-screen bg-background text-foreground">
-    <NavBar email="timo@brinklicht.nl" pathname="/data/brand-relations" />
+    <NavBar
+      email="timo@brinklicht.nl"
+      pathname="/brand-management"
+      accountItems={INTERNE_ACCOUNT_ITEMS}
+    />
   </div>
 );
 
@@ -75,7 +110,7 @@ for (const theme of ["light", "dark"] as const) {
       if (theme === "dark") document.documentElement.classList.add("dark");
       await renderServer(nav);
       await expect
-        .element(page.getByRole("link", { name: "Brand relations" }))
+        .element(page.getByRole("link", { name: "Brand management" }))
         .toBeInTheDocument();
       await expect
         .element(page.getByRole("link", { name: "Brand portal" }))
@@ -92,7 +127,7 @@ for (const theme of ["light", "dark"] as const) {
 async function renderNav() {
   await renderServer(nav);
   await expect
-    .element(page.getByRole("link", { name: "Brand relations" }))
+    .element(page.getByRole("link", { name: "Brand management" }))
     .toBeInTheDocument();
 }
 
@@ -215,20 +250,56 @@ test("de balk klikt zichzelf naar dark en terug", async () => {
   expect(document.documentElement.classList.contains("dark")).toBe(false);
 });
 
-test("gerenderde balk markeert alleen Brand relations op /data/brand-relations", async () => {
+test("gerenderde balk markeert alleen Brand management op /brand-management", async () => {
   await renderServer(nav);
   await expect
-    .element(page.getByRole("link", { name: "Brand relations" }))
+    .element(page.getByRole("link", { name: "Brand management" }))
     .toHaveAttribute("aria-current", "page");
   expect(
-    page.getByRole("link", { name: "Data", exact: true }).element(),
-  ).not.toHaveAttribute("aria-current");
+    document.querySelectorAll('nav [aria-current="page"]').length,
+  ).toBe(1);
 });
+
+// ── Het accountmenu (IA-opschoning, punt 7) ──────────────────────────────────
+
+test("het accountmenu opent onder de accountnaam en draagt Settings", async () => {
+  await renderNav();
+  // Geen enkele Settings-link in de bálk — dat is de helft van de eis.
+  expect(document.querySelectorAll('nav a[href="/settings"]').length).toBe(0);
+
+  const trigger = page.getByRole("button", { name: "Account and settings" });
+  await expect.element(trigger).toBeInTheDocument();
+  // Het e-mailadres is de knop geworden, niet zomaar een label ernaast.
+  expect(trigger.element().textContent).toContain("timo@brinklicht.nl");
+  await trigger.click();
+  await expect
+    .element(page.getByRole("menuitem", { name: "Settings" }))
+    .toHaveAttribute("href", "/settings");
+});
+
+// Het open menu is een eigen visuele stand (portal, eigen vlak op de pagina in plaats van
+// op de navy balk) en krijgt daarom zijn eigen opnamen, licht/donker × mobiel/desktop.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`accountmenu open (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderNav();
+      await page.getByRole("button", { name: "Account and settings" }).click();
+      await expect
+        .element(page.getByRole("menuitem", { name: "Settings" }))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./account-menu.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}
 
 // ── 3.2a: de balk toont alleen wat deze kijker mag bereiken ──────────────────
 //
-// Zonder deze filter houdt een extern account een menu met Data, Brand relations,
-// Analytics, Brand portal en Admin — vijf links die allemaal op een 404 uitkomen, want die
+// Zonder deze filter houdt een extern account een menu met Brand management, Analytics,
+// Brand portal en Admin — vier links die allemaal op een 404 uitkomen, want die
 // routes staan in de allowlist op niveau `intern`. De filter zelf zit in
 // `components/site-nav.tsx` en gebruikt dezelfde `ROUTE_NIVEAUS` als de poort; hier wordt
 // vastgelegd wat dat oplevert, en dat de balk het ook echt zo rendert.
@@ -253,18 +324,38 @@ test("intern ziet de hele balk", () => {
   expect(zichtbaarVoor(INTERN)).toEqual(NAV_ITEMS.map((i) => i.label));
 });
 
-test("extern houdt Projects, Catalog en Settings over — de rest is intern", () => {
-  expect(zichtbaarVoor(EXTERN_LID)).toEqual(["Projects", "Catalog", "Settings"]);
-  // Een externe org_admin ziet hetzelfde: /admin/users staat wél op `org_admin`, maar het
-  // NAV-item wijst naar /admin (het dashboard) en dat is en blijft intern.
-  expect(zichtbaarVoor(EXTERN_ADMIN)).toEqual([
-    "Projects",
-    "Catalog",
+test("extern houdt Projects en Catalog over — de rest is intern", () => {
+  expect(zichtbaarVoor(EXTERN_LID)).toEqual(["Projects", "Catalog"]);
+  // Een externe org_admin ziet dezelfde bálk: /admin/users en /admin/organizations staan
+  // wél op `org_admin`, maar het NAV-item wijst naar /admin (het dashboard) en dat is en
+  // blijft intern. Zijn weg naar het organisatiescherm loopt via het accountmenu.
+  expect(zichtbaarVoor(EXTERN_ADMIN)).toEqual(["Projects", "Catalog"]);
+  for (const weg of [
+    "Data",
+    "Brand management",
+    "Analytics",
+    "Brand portal",
+    "Admin",
     "Settings",
-  ]);
-  for (const weg of ["Data", "Brand relations", "Analytics", "Brand portal", "Admin"]) {
+  ]) {
     expect(zichtbaarVoor(EXTERN_LID), weg).not.toContain(weg);
   }
+});
+
+test("het accountmenu is de weg van een externe beheerder naar zijn organisaties", () => {
+  // De regressie die deze test uitsluit: /admin/organizations (tot 12 aug
+  // /settings/organization) verhuisde naar Admin, en /admin staat op `intern`. Zonder de
+  // regel in ACCOUNT_ITEMS + de filter in site-nav.tsx zou een externe org_admin geen
+  // enkele link naar dat scherm meer hebben — precies UX-audit bug #11, opnieuw.
+  const voor = (toegang: Toegang) =>
+    ACCOUNT_ITEMS.filter((it) => magBij(toegang, niveauVoor(it.href))).map(
+      (it) => it.label,
+    );
+  expect(voor(EXTERN_ADMIN)).toContain("Organizations");
+  expect(voor(EXTERN_LID)).toEqual(["Settings"]);
+  expect(voor(INTERN)).toContain("Organizations"); // mág erbij…
+  // …maar SiteNav laat hem voor intern weg: daar is /admin de ene ingang.
+  expect(INTERNE_ACCOUNT_ITEMS.map((i) => i.label)).toEqual(["Settings"]);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -280,6 +371,9 @@ for (const theme of ["light", "dark"] as const) {
             items={NAV_ITEMS.filter((it) =>
               magBij(EXTERN_LID, niveauVoor(it.href)),
             )}
+            accountItems={ACCOUNT_ITEMS.filter((it) =>
+              magBij(EXTERN_LID, niveauVoor(it.href)),
+            )}
           />
         </div>,
       );
@@ -288,8 +382,8 @@ for (const theme of ["light", "dark"] as const) {
         .toBeInTheDocument();
       // Wat er NIET staat is de hele eis — een screenshot alleen zou dat niet vastleggen.
       expect(
-        document.querySelectorAll('nav a[href="/data"]').length,
-        "Data staat nog in de balk voor een extern account",
+        document.querySelectorAll('nav a[href^="/admin"]').length,
+        "Admin staat nog in de balk voor een extern account",
       ).toBe(0);
       await page.screenshot({
         path: `./site-nav.extern.${theme}.${device}.test.png`,

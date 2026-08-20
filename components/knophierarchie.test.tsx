@@ -244,16 +244,7 @@ const NIET_MEETELLEN: { bestand: string; label: string; reden: string }[] = [
   {
     bestand: "/components/data/brand-relations-controls.tsx",
     label: "",
-    reden: "Statusfilter op /data/brand-relations: navy = de actieve chip, geen actie.",
-  },
-  // — Eén bestand, twee schermen. enrichment-panels.tsx exporteert BrandPicker
-  //   (/data/enrichment) én SampleReview (/data/enrichment/[runId]); de scan ziet het
-  //   bestand, niet welke export een pagina gebruikt. Beide schermen hebben er zelf één.
-  {
-    bestand: "/components/data/enrichment-panels.tsx",
-    label: "Publish",
-    reden:
-      "Primary van /data/enrichment/[runId]; 'Run parser' in hetzelfde bestand is de primary van /data/enrichment.",
+    reden: "Statusfilter op /brand-management: navy = de actieve chip, geen actie.",
   },
 ];
 

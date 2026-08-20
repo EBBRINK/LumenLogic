@@ -6,9 +6,20 @@ Lees `docs/BUILD-PLAN.md` vóór je iets bouwt; achtergrond in `docs/lumenlogic-
 ## IJzeren regels (elke sessie, elke feature)
 1. Dit is GEEN webshop. Geen winkelwagen, geen checkout, geen publieke prijzen.
 2. Geld beïnvloedt nooit de ranking. Matching-logica strikt gescheiden van commercie.
-3. Verlopen prijslijst = product onzichtbaar in álle zoekresultaten (centraal afgedwongen).
+3. Verlopen prijslijst = product zichtbaar zonder prijs. Nooit een prijs tonen uit een
+   verlopen lijst; altijd rood gemarkeerd, altijd met de melding welke prijslijst de laatst
+   bekende was. Centraal afgedwongen.
 4. Fase-aware: default = veilig. Tender-stand toont nooit alternatieven-suggesties.
 5. Elke zoekactie/match/offerte wordt gelogd in de events-tabel.
+
+⚠️ **Regel 3 is op 19 aug 2026 herschreven** (was: "product onzichtbaar in álle
+zoekresultaten"). De bescherming is identiek gebleven — er mag nooit geoffreerd worden op
+verouderde prijzen — maar verbergen heeft plaatsgemaakt voor melden: bestekschrijvers
+hergebruiken een bestek van vorig jaar, en die artikelnummers moeten een treffer opleveren.
+De poort zit in `db/migrations/0022_vervallen_zichtbaar.sql`: `visible_products` levert
+`price_state` ('actueel' | 'prijslijst_verlopen' | 'uit_prijslijst') en zet `gross_price`,
+`currency`, `price_list_id` en `valid_until` op NULL zodra die niet 'actueel' is. Leeskant:
+`lib/prijstoestand.ts`. Achtergrond: `docs/probleem-vervallen-producten.md`.
 
 ## Stack & commando's
 Next.js 16 (App Router, RSC) · TypeScript 7 (native) · Drizzle + Neon · Better Auth (magic link →
@@ -53,6 +64,27 @@ worktrees delen de hook). `safe-push.sh <sha>` pusht exact die commit(s), rebase
 origin/main, via een wegwerp-worktree — het raakt je lokale main nooit aan. Zonder argument pusht
 het HEAD; `DRY_RUN=1` toont wat er zou gaan zonder te pushen. Ging in week 1 vier keer mis vóór dit
 er was; zie het beslissingslog in `docs/lumenlogic-sprintplan-augustus.md`.
+
+## Agent skills
+
+De bouwketen staat globaal in `~/.claude/CLAUDE.md`: `/grill-me` → `/to-spec` → `/implement` →
+`/code-review`, met `/to-tickets` ertussen zodra een spec meerdere onderdelen tegelijk raakt
+(matching + import + UI). Wat hier project-specifiek geldt:
+
+### Issue tracker
+Geen GitHub Issues, ondanks de remote. Dit project trackt in `docs/` met een eigen conventie:
+`docs/probleem-<slug>.md` (wat er mis is, gemeten) → `docs/goal-<slug>.md` (wat we bouwen, met
+beslissingen en meetresultaten). **`/to-spec` schrijft naar `docs/goal-<slug>.md`**, niet naar
+`.scratch/`. Zie `docs/agents/issue-tracker.md`.
+
+### Testnaden
+`/implement` draait `/tdd`. De naad hier is de white-box RSC-test met screenshots
+(light/dark × mobile/desktop) — die eis stond al in de Werkwijze hierboven en verandert niet.
+Bestaande naden hebben voorrang op nieuwe.
+
+### ⚠️ Nooit pushen
+`/implement` commit op de huidige branch en stopt daar. Pushen doet een agent hier **nooit**
+uit zichzelf — zie de safe-push-regel hierboven; een push naar main is een productie-deploy.
 
 ⚠️ **Await je een server action vanuit een client component?** Doe dat via `callAction()`
 uit `lib/next-action-result.ts`, nooit met een kale `await` in een `try/catch`. Een action

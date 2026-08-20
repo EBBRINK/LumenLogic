@@ -43,6 +43,7 @@ import {
   tokenWeight,
 } from "./textscore";
 import { specSpans } from "@/lib/enrichment/parser";
+import { leesPrijstoestand, type Prijstoestand } from "@/lib/prijstoestand";
 
 export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars";
 
@@ -53,6 +54,13 @@ export type ScoredCandidate = {
   articleCode: string | null;
   grossPrice: string | null;
   currency: string | null;
+  // Vervallen? De view levert de toestand mee en zet grossPrice op NULL zodra hij niet
+  // 'actueel' is (ijzeren regel 3, herschreven). De matcher beoordeelt hem NIET — een
+  // vervallen product mag gewoon groen zijn als het aan de specs voldoet; wat er mis mee
+  // is, is een prijsvraag en geen matchvraag. Het scherm markeert hem rood.
+  priceState: Prijstoestand;
+  lastPriceListName: string | null;
+  lastPriceListValidUntil: string | null;
   kelvin: number | null;
   cri: number | null;
   ipValue: string | null;
@@ -208,6 +216,9 @@ export const SELECTION = {
   diameterCm: visibleProducts.diameterCm,
   grossPrice: visibleProducts.grossPrice,
   currency: visibleProducts.currency,
+  priceState: visibleProducts.priceState,
+  lastPriceListName: visibleProducts.lastPriceListName,
+  lastPriceListValidUntil: visibleProducts.lastPriceListValidUntil,
   // Herkomst per verrijkt veld (H-09). Nodig voor de onbevestigde-bron-poort hieronder:
   // zonder deze kolom kan de lijst-indeling niet weten of een waarde uit echte
   // fabrikantsdata komt of uit een eigen aanname.
@@ -794,6 +805,9 @@ export async function evaluateSpecLine(
       articleCode: (r.articleCode as string | null) ?? null,
       grossPrice: (r.grossPrice as string | null) ?? null,
       currency: (r.currency as string | null) ?? null,
+      priceState: leesPrijstoestand(r.priceState as string | null),
+      lastPriceListName: (r.lastPriceListName as string | null) ?? null,
+      lastPriceListValidUntil: (r.lastPriceListValidUntil as string | null) ?? null,
       kelvin: (r.kelvin as number | null) ?? null,
       cri: (r.cri as number | null) ?? null,
       ipValue: (r.ipValue as string | null) ?? null,
@@ -903,6 +917,6 @@ export async function evaluateSpecLine(
 
 // interne hulpvelden (_red/_unknown) niet lekken naar de buitenkant
 function strip(c: ScoredCandidate): ScoredCandidate {
-  const { productId, name, brandName, articleCode, grossPrice, currency, kelvin, cri, ipValue, deviations, list, score } = c;
-  return { productId, name, brandName, articleCode, grossPrice, currency, kelvin, cri, ipValue, deviations, list, score };
+  const { productId, name, brandName, articleCode, grossPrice, currency, priceState, lastPriceListName, lastPriceListValidUntil, kelvin, cri, ipValue, deviations, list, score } = c;
+  return { productId, name, brandName, articleCode, grossPrice, currency, priceState, lastPriceListName, lastPriceListValidUntil, kelvin, cri, ipValue, deviations, list, score };
 }

@@ -1,6 +1,6 @@
 // Prijslijst-verloop-waarschuwing (sprint 1.6, deel B, besluit G8): één component,
 // hergebruikt op elk scherm waar het merk als rij of als pagina voorkomt (merkpagina,
-// /admin/brands, /data/price-lists) — nooit vier losse implementaties die uit elkaar
+// /admin/brands, /brand-management/price-lists) — nooit vier losse implementaties die uit elkaar
 // kunnen lopen (zie hoe field-catalog.measure vijf weken achterliep op het schema).
 //
 // De tekst zegt wat je moet DOEN: het merk heeft wél geleverd, de lijst is verlopen, je

@@ -2,8 +2,8 @@
 
 > ## ⚠️ Dit document is NIET het plan.
 >
-> **Het plan staat in de vault:** `timo-vault/projects/lumenlogic/sprintplan.md`
-> (volledig pad: `/Users/timowittkamp/Documents/AIgenstate/timo-vault/projects/lumenlogic/sprintplan.md`).
+> **Het plan zelf beheert Timo buiten deze repo.** Is het nodig, dan zetten we die
+> documenten alsnog in git.
 > Vijf werkweken, **klaar op 14 augustus 2026**. Dáár staan scope, weekindeling en deadlines;
 > die versie is leidend — ook boven de klant-PDF ernaast.
 >
@@ -32,11 +32,10 @@ hulp (besluit C9). Geen aparte afspraak nodig. Timo daarna twee weken vakantie.
 **Brink ligt stil 3–7 aug (bouwvak); Timo werkt door** (besluit C7). Geen blocker: week 3
 levert een mogelijkheid op, geen afhankelijkheid van Brink-mensen.
 
-## Capaciteit (80/20-regel, elke week)
+## Capaciteit
 
-24 u/week → **~19 u aan het weekdoel, ~5 u buffer** (bugs, support Eduard, technische schuld,
-onvoorzien). Items zijn op die 19 u gedimensioneerd; de buffer wordt nooit vooraf ingepland.
-Deze week loopt wo–vr (3 dagen, ~14 u → ~11,5 u doel + ~2,5 u buffer).
+Elke week gaat het grootste deel naar het weekdoel en blijft er bewust ruimte over voor
+bugs, support en onvoorzien werk. Die buffer wordt nooit vooraf ingepland.
 
 ---
 
@@ -1191,7 +1190,7 @@ door de sprintmaster dichtgetimmerd.** Wat vaststaat als probleem dat het moet o
   waarop Timo tekent, dán bouwen. Screenshots light/dark × mobile/desktop, zelf bekeken.
 
 *2.0b — visuele afwerking.* Kleur, typografie, componenten op basis van de brand kit
-(`/Users/timowittkamp/Downloads/lumenlogic_brand_kit.md`, geleverd 29 jul).
+(brand kit, geleverd 29 jul).
 
 **Besluit G23 (Timo, 29 jul) — de brand kit is leidend, trouw bouwen.** De sprintmaster meldde dat
 de kit botst met Timo's eigen frontend-design-veto's (Inter-font, card-grids met teal-linkerstreep,
@@ -1473,7 +1472,7 @@ onafhankelijk nagemeten — alle vijf de onderdelen bevestigd:
   `ADD COLUMN IF NOT EXISTS` met default, twee inserts, één backfill, `CREATE TABLE IF NOT EXISTS`).
   Oude code draait er probleemloos naast. **Daarom mag de volgorde om: eerst migreren, dan pushen.**
 - Twee voorwaarden die vóór de migratie geteld moeten worden, allebei nu vervuld maar breekbaar:
-  `0017:54-61` hardcodeert **drie** e-mailadressen (`hello@noplasticfloralfoam.com`,
+  `0017:54-61` hardcodeert **drie** e-mailadressen (`tester@voorbeeld.nl`,
   `timo@jouwainstein.com`, `e.brink@brinklicht.nl`) — productie heeft er nu precies 3, maar een
   vierde user zou stil géén membership krijgen. En `0017:46-47` gebruikt een scalar subquery op
   `slug = 'brink-licht'`; `organizations` heeft **alleen** `organizations_pkey` op `id`, dus **geen
@@ -1498,7 +1497,7 @@ precies zo gevaarlijk als het klinkt, ook voor een sessie die alleen documenten 
 `app/projects/actions.ts:652` is **geen bug**. `useAiSuggestion` is een gewone async repo-functie
 (`lib/repo/ai-suggestions.ts:124`); ESLint ziet de `use`-prefix aan voor een React hook. Fout-positief.
 Wél bevestigd: de allowlist-mismatch in `db/migrations/0004_vijfstatussen.sql:131-134` (seedt
-`hello@noplasticfloralfoam.com` + `timo@jouwainstein.com`, productie heeft `timo@jouwainstein.com` +
+`tester@voorbeeld.nl` + `timo@jouwainstein.com`, productie heeft `timo@jouwainstein.com` +
 `e.brink@brinklicht.nl`), de atomaire pogingenteller en de reset-on-success.
 
 **Het productie-incident, nagemeten:** een bouwagent draaide een dev-server tegen productie-Neon.

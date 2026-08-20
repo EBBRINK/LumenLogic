@@ -18,6 +18,13 @@
 // — papier heeft geen backlight — dus ze zijn niet gelijk te trekken, wel op één plek
 // te zetten. Waarden ongewijzigd overgenomen uit die kopie.
 //
+// `name` naast `label` (demo Brink Licht 12 aug): "Yellow" zegt een gebruiker niets over
+// wat hij moet doen. De legenda draagt daarom de BETEKENIS als kop ("Attention",
+// "Awaiting brand"); `meaning` blijft de zin erachter. `label` en `word` blijven de
+// kleurnamen — die zijn geen stijlkeuze maar een eis: het woord gaat mee op zwart-
+// witprint (DESIGN.md O13, FUNCTIONEEL-ONTWERP §577). Hernoem `label`/`word` dus niet
+// "voor de consistentie"; dan liegt het papier. `name` is puur schermtaal.
+//
 // Wat hier bewust NIET (meer) staat: een `countsInTotal`-vlag. Die stond er wél, met
 // voor paars zelfs de tegengestelde waarde van wat de code doet (`true`, met een comment
 // dat "niet opgeteld" zei) — en met nul lezers: alle drie de plekken die het écht willen
@@ -29,6 +36,7 @@ export type MatchStatus = "open" | "groen" | "geel" | "blauw" | "rood" | "paars"
 
 export type StatusMeta = {
   label: string; // korte UI-tekst
+  name: string; // legenda-kop: wat de kleur BETEKENT (zie toelichting hieronder)
   word: string; // los woord voor zwart-witprint (NFR 4)
   dot: string; // bg-status-*-dot voor het gekleurde bolletje
   tint: string; // subtiele pill-achtergrond + tekst; dark loopt via de tokens
@@ -39,6 +47,7 @@ export type StatusMeta = {
 export const STATUS: Record<MatchStatus, StatusMeta> = {
   open: {
     label: "Open",
+    name: "Open",
     word: "Open",
     dot: "bg-status-grey-dot",
     tint: "bg-status-grey-tint text-status-grey-ink",
@@ -47,6 +56,7 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   },
   groen: {
     label: "Green",
+    name: "Match",
     word: "Green",
     dot: "bg-status-green-dot",
     tint: "bg-status-green-tint text-status-green-ink",
@@ -55,6 +65,7 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   },
   geel: {
     label: "Yellow",
+    name: "Attention",
     word: "Yellow",
     dot: "bg-status-amber-dot",
     tint: "bg-status-amber-tint text-status-amber-ink",
@@ -63,6 +74,7 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   },
   blauw: {
     label: "Blue",
+    name: "Awaiting brand",
     word: "Blue",
     dot: "bg-status-blue-dot",
     tint: "bg-status-blue-tint text-status-blue-ink",
@@ -71,6 +83,7 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   },
   rood: {
     label: "Red",
+    name: "Invalid product",
     word: "Red",
     dot: "bg-status-red-dot",
     tint: "bg-status-red-tint text-status-red-ink",
@@ -79,6 +92,7 @@ export const STATUS: Record<MatchStatus, StatusMeta> = {
   },
   paars: {
     label: "Purple",
+    name: "Out of scope",
     word: "Purple",
     dot: "bg-status-purple-dot",
     tint: "bg-status-purple-tint text-status-purple-ink",

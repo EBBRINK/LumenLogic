@@ -5,9 +5,14 @@ import {
   type CatalogValues,
 } from "@/components/catalog-search";
 import { listCatalogBrands } from "@/lib/repo/catalog";
-import { searchProducts, type ProductCandidate } from "@/lib/repo/products";
+import {
+  searchProductsWithTotal,
+  type ProductCandidate,
+} from "@/lib/repo/products";
 import { getActor } from "@/lib/session";
 import { bewaakRoute } from "@/lib/route-toegang";
+import { ipNumber } from "@/lib/catalog-zoekvorm";
+import { countCatalogMatches } from "./actions";
 
 // Los zoeken in de catalogus, zonder dossier (functioneel ontwerp §3.12). GEEN dossier-layout
 // → eigen <main>. De aanpak is bewust de eenvoudigste die werkt: een GET-form schrijft de
@@ -26,53 +31,40 @@ function toInt(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// IP-code ("IP44") → beschermingsgetal (44). Hoger = meer bescherming, dus bruikbaar als
-// ondergrens-vergelijking. Geen match → null (onbekend, niet 0).
-function ipNumber(v: string | null): number | null {
-  const m = String(v ?? "").match(/(\d{2})/);
-  return m ? Number.parseInt(m[1], 10) : null;
-}
+// ipNumber ("IP44" → 44) verhuisde naar lib/catalog-zoekvorm.ts: de live-tel-action moet
+// het IP-veld exact zo lezen als deze pagina, dus de definitie staat op één plek.
 
 type Criteria = { kelvin: number | null; cri: number | null; ip: number | null };
 
-// Splits de kandidaten in twee lijsten op basis van de ingevulde specfilters:
+// Het resultaatplafond (demosessie Brink Licht, 12 aug). Een zoekopdracht met weinig
+// informatie leverde honderden technisch kloppende maar waardeloze treffers op. Er worden
+// er nu maximaal negen getoond — mét het werkelijke totaal ernaast, want dát is de prikkel
+// om meer in te vullen. Bewust GEEN doorbladeren: "mensen moeten hun informatie
+// aanleveren". Verhoog dit getal dus niet om "meer te laten zien"; dat is precies het
+// gedrag dat hier is afgeschaft.
+const RESULTAAT_PLAFOND = 9;
+
+// Splits de opgehaalde kandidaten in twee lijsten:
 //   • aantoonbaar — elk ingevuld criterium heeft data op het product én voldoet.
 //   • onvolledig  — mist data voor ≥1 ingevuld criterium (grijze vlag; nooit weggelaten).
-// Een product met VOLLEDIGE data dat een expliciet ingevuld filter niet haalt, is een
-// legitieme filter-misser en valt buiten beide lijsten (dat is niet het stil weglaten van
-// ontbrekende data, maar een bewuste zoekverfijning). Zonder specfilters is elke treffer
-// een aantoonbare merk/tekst-match.
+// Producten die aantoonbaar NIET aan een ingevuld filter voldoen zijn hier al weg: die
+// sluit searchProductsWithTotal in SQL uit (`filters`). Dat hoort daar en niet hier, want
+// het totaal dat we tonen moet exact de rijen tellen die de query ook teruggeeft. Zet dus
+// geen tweede afkeuring terug in deze functie — dan zou het scherm rijen wegfilteren die
+// nog wél in de teller zitten.
 function classify(
   candidates: ProductCandidate[],
   crit: Criteria,
 ): { aantoonbaar: CatalogResult[]; onvolledig: CatalogResult[] } {
-  const hasCriteria = crit.kelvin != null || crit.cri != null || crit.ip != null;
   const aantoonbaar: CatalogResult[] = [];
   const onvolledig: CatalogResult[] = [];
 
   for (const c of candidates) {
-    if (!hasCriteria) {
-      aantoonbaar.push(c);
-      continue;
-    }
     const missing: string[] = [];
-    let fails = false;
+    if (crit.kelvin != null && c.kelvin == null) missing.push("color temp.");
+    if (crit.cri != null && c.cri == null) missing.push("CRI");
+    if (crit.ip != null && ipNumber(c.ipValue) == null) missing.push("IP");
 
-    if (crit.kelvin != null) {
-      if (c.kelvin == null) missing.push("color temp.");
-      else if (c.kelvin !== crit.kelvin) fails = true;
-    }
-    if (crit.cri != null) {
-      if (c.cri == null) missing.push("CRI");
-      else if (c.cri < crit.cri) fails = true;
-    }
-    if (crit.ip != null) {
-      const p = ipNumber(c.ipValue);
-      if (p == null) missing.push("IP");
-      else if (p < crit.ip) fails = true;
-    }
-
-    if (fails) continue; // aantoonbaar niet-voldoend aan een ingevuld filter
     if (missing.length > 0) onvolledig.push({ ...c, missing });
     else aantoonbaar.push(c);
   }
@@ -117,14 +109,28 @@ export default async function CatalogusPage({
 
   let aantoonbaar: CatalogResult[] = [];
   let onvolledig: CatalogResult[] = [];
+  let total = 0;
+  let verbreed = false;
+  let herkend: Awaited<ReturnType<typeof searchProductsWithTotal>>["herkend"] = [];
   if (searched) {
-    const candidates = await searchProducts(db, {
+    const {
+      items,
+      total: gevonden,
+      verbreed: viaTerugval,
+      herkend: uitTekst,
+    } = await searchProductsWithTotal(db, {
       query: values.q,
       brand: values.brand,
-      limit: 40,
+      // Precies het plafond ophalen, niet meer: wat je niet toont, hoef je ook niet uit de
+      // database te trekken. Het totaal komt uit een count over dezelfde WHERE.
+      limit: RESULTAAT_PLAFOND,
+      filters: crit,
       actor: await getActor(),
     });
-    ({ aantoonbaar, onvolledig } = classify(candidates, crit));
+    total = gevonden;
+    verbreed = viaTerugval;
+    herkend = uitTekst;
+    ({ aantoonbaar, onvolledig } = classify(items, crit));
   }
 
   return (
@@ -145,6 +151,10 @@ export default async function CatalogusPage({
         onvolledig={onvolledig}
         searched={searched}
         filtersActive={filtersActive}
+        total={total}
+        verbreed={verbreed}
+        herkend={herkend}
+        countAction={countCatalogMatches}
       />
     </main>
   );

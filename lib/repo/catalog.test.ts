@@ -3,9 +3,11 @@
 // query is vervangen door een semi-join op products + prices + price_lists.
 //
 // WAT DEZE TESTS BEWAKEN, in volgorde van belang:
-//  1. De VERZAMELING is identiek aan die van visible_products. Dat een merk met een
-//     verlopen prijslijst wegvalt is ijzeren regel 3 en is hier de hoofdassertie — een
-//     "opschoning" die 438 merken teruggeeft in plaats van 30 is een lek, geen fix.
+//  1. De VERZAMELING is identiek aan die van visible_products. Dát is de hoofdassertie —
+//     de keuzelijst mag nooit een eigen mening krijgen over wie zichtbaar is.
+//     ⚠️ Sinds 0022 (19 aug 2026) luidt regel 3 "verlopen prijslijst = zichtbaar zonder
+//     prijs", dus een merk met een verlopen lijst hóórt er nu IN te staan. Wat níét mag
+//     terugkomen is een merk zonder enig prijsspoor of met alleen een toekomstige lijst.
 //  2. De lijst wordt niet meer uit de brede prijs-view gehaald (de dure scan die
 //     onvoorwaardelijk draaide).
 // De referentietest (1) draait beide queries naast elkaar op dezelfde database, zodat
@@ -26,7 +28,7 @@ async function oudeMerkenlijst(db: Awaited<ReturnType<typeof createTestDb>>) {
   return rows.map((r) => r.brandName).filter((b): b is string => Boolean(b));
 }
 
-test("regel 3: een verlopen prijslijst haalt het merk uit de keuzelijst, een geldige zet het erin", async () => {
+test("regel 3: een verlopen prijslijst houdt het merk in de keuzelijst, een toekomstige niet", async () => {
   const db = await createTestDb();
   await seedBrandProduct(db, {
     brand: "Flos",
@@ -37,7 +39,8 @@ test("regel 3: een verlopen prijslijst haalt het merk uit de keuzelijst, een gel
   await seedBrandProduct(db, {
     brand: "Artemide",
     name: "Tolomeo",
-    // Prijslijst is gisteren verlopen → onzichtbaar in ÁLLE zoekresultaten, ook hier.
+    // Prijslijst is verlopen → het product blijft vindbaar (zonder prijs), dus het merk
+    // moet ook te kiezen zijn. Anders kun je niet filteren naar wat je juist zoekt.
     validFrom: "2020-01-01",
     validUntil: "2020-12-31",
   });
@@ -54,10 +57,10 @@ test("regel 3: een verlopen prijslijst haalt het merk uit de keuzelijst, een gel
   const merken = await listCatalogBrands(db);
 
   expect(merken).toContain("Flos");
-  expect(merken).not.toContain("Artemide"); // ← de kern: verlopen blijft verborgen
-  expect(merken).not.toContain("Toekomst");
+  expect(merken).toContain("Artemide"); // ← de omkering: verlopen is vindbaar
+  expect(merken).not.toContain("Toekomst"); // nog niet begonnen ≠ vervallen
   expect(merken).not.toContain("Zonder Producten");
-  expect(merken).toEqual(["Flos"]);
+  expect(merken).toEqual(["Artemide", "Flos"]);
 });
 
 test("de nieuwe query geeft exact dezelfde verzameling als DISTINCT over visible_products", async () => {
@@ -75,9 +78,11 @@ test("de nieuwe query geeft exact dezelfde verzameling als DISTINCT over visible
   const oud = await oudeMerkenlijst(db);
 
   expect(nieuw).toEqual(oud);
-  // En het is geen lege-vs-lege vergelijking: er staat echt wat in, en Bega niet.
+  // En het is geen lege-vs-lege vergelijking: er staat echt wat in, Bega inbegrepen —
+  // dat merk heeft alleen een verlopen lijst en is sinds 0022 vindbaar zónder prijs.
   expect(oud.length).toBeGreaterThan(0);
-  expect(nieuw).not.toContain("Bega");
+  expect(nieuw).toContain("Bega");
+  expect(nieuw).not.toContain("Kaal Merk"); // geen product, geen prijsspoor
   // "Delta Light" heeft één geldig en één verlopen product → precies één keer in de lijst.
   expect(nieuw.filter((m) => m === "Delta Light")).toHaveLength(1);
 });
@@ -108,7 +113,7 @@ test("grensdatum: vandaag aflopen of vandaag beginnen is nog zichtbaar, gisteren
   const db = await createTestDb();
   const { gisteren, vandaag, morgen } = await dagen(db);
 
-  // Gisteren afgelopen → verlopen, dus onzichtbaar (ijzeren regel 3).
+  // Gisteren afgelopen → verlopen, dus zichtbaar zónder prijs (regel 3 sinds 0022).
   await seedBrandProduct(db, {
     brand: "Gisteren Af",
     name: "Verlopen",
@@ -131,7 +136,8 @@ test("grensdatum: vandaag aflopen of vandaag beginnen is nog zichtbaar, gisteren
     validUntil: "2999-12-31",
   });
   // Morgen beginnend → nog niet geldig. Dit is de rand die wegvalt zodra de
-  // valid_from-conditie uit de EXISTS verdwijnt.
+  // valid_from-conditie uit de EXISTS verdwijnt — en het is óók de rand die 0022 niet mocht
+  // meenemen: een prijs die eraan komt is geen verval, dus daar valt niets over te melden.
   await seedBrandProduct(db, {
     brand: "Morgen Begint",
     name: "Nog niet",
@@ -144,8 +150,9 @@ test("grensdatum: vandaag aflopen of vandaag beginnen is nog zichtbaar, gisteren
 
   // De hoofdassertie: exact dezelfde semantiek als de view, óók op de grensdagen.
   expect(nieuw).toEqual(oud);
-  // En expliciet, zodat een falende run meteen zegt wélke rand gesneuveld is.
-  expect(nieuw).toEqual(["Vandaag Af", "Vandaag Begonnen"]);
+  // En expliciet, zodat een falende run meteen zegt wélke rand gesneuveld is. "Gisteren Af"
+  // staat er sinds 0022 bij; "Morgen Begint" nog steeds niet.
+  expect(nieuw).toEqual(["Gisteren Af", "Vandaag Af", "Vandaag Begonnen"]);
 });
 
 test("de keuzelijst komt niet meer uit de brede prijs-view", async () => {
@@ -158,5 +165,8 @@ test("de keuzelijst komt niet meer uit de brede prijs-view", async () => {
   expect(sql).not.toContain("visible_products");
   expect(sql.toLowerCase()).toContain("exists");
   expect(sql).toContain("price_lists");
+  // valid_from blijft: een toekomstige lijst is geen verval (zie de kop van 0022).
   expect(sql).toContain("current_date");
+  // …en het archief is de tweede helft van de view: uit de lijst gevallen, wél bekend.
+  expect(sql).toContain("prices_archive");
 });

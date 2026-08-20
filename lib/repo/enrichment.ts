@@ -1369,14 +1369,14 @@ export type PriceListStatus = {
   daysLeft: number;
   bucket: "verlopen" | "7" | "14" | "30" | "ok";
   // Additief (bevinding B3): een VERVANGEN lijst heeft geen prijsregels meer (die staan in
-  // prices_archive) en blijft hier bewust in de rijenset staan — /data/price-lists toont
+  // prices_archive) en blijft hier bewust in de rijenset staan — /brand-management/price-lists toont
   // hem als dekkingsgat en andere schermen rekenen op dezelfde set. Maar verlengen kan hij
   // niet: extendPriceListValidity weigert hem altijd met 'archived'. Zonder dit veld kon
   // het scherm dat niet weten en bood het een formulier aan dat 100% van de tijd faalde.
   // null = actieve lijst.
   replacedAt: Date | null;
   // De levensfase van het merk rijdt mee in dezelfde select (nul extra queries), net als op
-  // /admin/brands: een lijst van een merk dat niet meer bestaat mag op /data/price-lists
+  // /admin/brands: een lijst van een merk dat niet meer bestaat mag op /brand-management/price-lists
   // geen schone groene rij zijn (UX-audit 30 jul). null = geen merk aan de lijst gekoppeld.
   lifecycle: BrandLifecycle | null;
 };
@@ -1392,6 +1392,18 @@ export function daysUntil(dateStr: string, today: Date = new Date()): number {
   );
   const [y, m, d] = dateStr.split("-").map((s) => parseInt(s, 10));
   return Math.round((Date.UTC(y, m - 1, d) - t0) / 86_400_000);
+}
+
+// De waarschuwingsladder 30/14/7 dagen, als eigen functie: het merk-overzicht op
+// /data/price-lists rekent per MERK (lib/repo/price-list-urgency.ts) en heeft exact dezelfde
+// bucket nodig voor exact dezelfde badge. Twee kopieën van deze ladder zouden hetzelfde
+// scherm zichzelf laten tegenspreken — de fout die de UX-audit van 30 jul al ving.
+export function expiryBucket(daysLeft: number): PriceListStatus["bucket"] {
+  if (daysLeft < 0) return "verlopen";
+  if (daysLeft <= 7) return "7";
+  if (daysLeft <= 14) return "14";
+  if (daysLeft <= 30) return "30";
+  return "ok";
 }
 
 // Per prijslijst: hoeveel dagen tot verval + in welke waarschuwingsbucket. Verlopen lijsten
@@ -1439,16 +1451,7 @@ export async function listPriceListStatus(
 
   return rows.map((r) => {
     const daysLeft = daysUntil(r.validUntil, today);
-    const bucket: PriceListStatus["bucket"] =
-      daysLeft < 0
-        ? "verlopen"
-        : daysLeft <= 7
-          ? "7"
-          : daysLeft <= 14
-            ? "14"
-            : daysLeft <= 30
-              ? "30"
-              : "ok";
+    const bucket = expiryBucket(daysLeft);
     return {
       id: r.id,
       name: r.name,

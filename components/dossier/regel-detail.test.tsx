@@ -27,6 +27,9 @@ const provable: RegelCandidate[] = [
     ipValue: "IP20",
     lumenOutput: 1200,
     grossPrice: "310.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
     list: "aantoonbaar",
     chosen: true,
@@ -46,6 +49,9 @@ const provable: RegelCandidate[] = [
     ipValue: "IP20",
     lumenOutput: 1800,
     grossPrice: "345.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
     list: "aantoonbaar",
     deviations: [],
@@ -65,6 +71,9 @@ const incomplete: RegelCandidate[] = [
     ipValue: null,
     lumenOutput: null,
     grossPrice: "226.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
     list: "onvolledig",
     deviations: [
@@ -87,6 +96,38 @@ const incomplete: RegelCandidate[] = [
     ],
   },
 ];
+
+// Regel 3, herschreven (19 aug 2026): een vervallen product wordt gewoon als kandidaat
+// beoordeeld — vervallen is een prijsvraag, geen matchvraag — en draagt op de kaart de
+// rode markering in plaats van een bedrag.
+const vervallenKandidaat: RegelCandidate = {
+  id: "p4",
+  name: "SASSO 100 SQ SP CEIL 17,9W cob LED 2700K (2024)",
+  brandName: "XAL",
+  articleCode: "L360-SASSO100-2024",
+  supplierArticleCode: null,
+  categoryPath: "Binnen >> Spots",
+  kelvin: 2700,
+  cri: 90,
+  ipValue: "IP20",
+  lumenOutput: 1200,
+  grossPrice: null, // de view levert geen bedrag zodra de toestand niet 'actueel' is
+  priceState: "uit_prijslijst",
+  lastPriceListName: "Price list 2024",
+  lastPriceListValidUntil: "2024-12-31",
+  matchKind: "fuzzy",
+  list: "aantoonbaar",
+  // Twee oordelen, niet één: met één oordeel krijgt deze kaart dezelfde samenvattingszin
+  // ("1 of 1 requested fields within margin") als de bestaande fixtures, en dan lopen twee
+  // oudere tests op een strict-mode-botsing stuk.
+  // Bewust andere velden dan de fixtures hierboven: gelijke pillen zouden de bestaande
+  // strict-mode-matchers laten botsen. De inhoud doet er hier niet toe, de
+  // onderscheidbaarheid wel.
+  deviations: [
+    { field: "cri", requested: 90, delivered: 90, verdict: "groen" },
+    { field: "ip", requested: "IP20", delivered: "IP20", verdict: "groen" },
+  ],
+};
 
 const deviations: Deviation[] = [
   { field: "kelvin", requested: 2700, delivered: 2700, verdict: "groen", note: "exact" },
@@ -124,7 +165,7 @@ const candidatesScreen = (
         brandText: "XAL",
         productText: "SASSO 100",
       }}
-      provable={provable}
+      provable={[...provable, vervallenKandidaat]}
       incomplete={incomplete}
       chooseAction={noopAction}
       setLineStatusAction={noopAction}
@@ -194,6 +235,26 @@ test("MatchCandidates: prijzen worden getoond (nooit gesorteerd)", async () => {
   await expect.element(page.getByText("310,00")).toBeInTheDocument();
   await expect.element(page.getByText("345,00")).toBeInTheDocument();
   await expect.element(page.getByText("226,00")).toBeInTheDocument();
+});
+
+test("MatchCandidates: een vervallen kandidaat draagt de rode markering in plaats van een prijs", async () => {
+  // De hele wijziging van 19 aug in één kaart: het product doet gewoon mee als kandidaat
+  // (het voldoet aan kelvin), maar er staat geen bedrag en er staat wél waarom.
+  await renderServer(candidatesScreen);
+  await expect
+    .element(page.getByText("SASSO 100 SQ SP CEIL 17,9W cob LED 2700K (2024)"))
+    .toBeInTheDocument();
+  await expect.element(page.getByText("Discontinued")).toBeInTheDocument();
+  await expect
+    .element(page.getByTitle(/No longer included in the price list of 31-12-2024/))
+    .toBeInTheDocument();
+
+  const kaart = page
+    .getByText("SASSO 100 SQ SP CEIL 17,9W cob LED 2700K (2024)")
+    .element()
+    .closest("li");
+  expect(kaart).not.toBeNull();
+  expect(kaart!.textContent).not.toMatch(/€/);
 });
 
 // UX-audit 30 jul (item 3): de prijs stond rechtsboven als zwaarste element van de kaart,
@@ -349,7 +410,7 @@ test("MatchCandidates: een lege kolom draagt de gedeelde lege toestand", async (
           brandText: "XAL",
           productText: "SASSO 100",
         }}
-        provable={provable}
+        provable={[...provable, vervallenKandidaat]}
         incomplete={[]}
         chooseAction={noopAction}
         setLineStatusAction={noopAction}

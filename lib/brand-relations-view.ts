@@ -87,7 +87,7 @@ export type BrandRelationsQuery = {
 // pagina's — genoeg om zoeken/filteren het primaire pad te houden, wat het ook is.
 export const BRAND_RELATIONS_PAGE_SIZE = 25;
 
-export const BRAND_RELATIONS_PATH = "/data/brand-relations";
+export const BRAND_RELATIONS_PATH = "/brand-management";
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 

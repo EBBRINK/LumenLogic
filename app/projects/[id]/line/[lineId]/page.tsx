@@ -1,5 +1,10 @@
+import { DriverWaarschuwing } from "@/components/driver-waarschuwing";
+import { isLosOnderdeel } from "@/lib/onderdeel-signaal";
+import { merkenMetLosseOnderdelen } from "@/lib/repo/onderdeel-merken";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { leesPrijstoestand } from "@/lib/prijstoestand";
+import { VervallenMarkering } from "@/components/vervallen-markering";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/db/client";
 import { AiSuggestionBlock } from "@/components/dossier/ai-suggestion-block";
@@ -81,6 +86,13 @@ export default async function RegelDetailPage({
       ipValue: p?.ipValue ?? null,
       lumenOutput: p?.lumenOutput ?? null,
       grossPrice: p?.grossPrice ?? null,
+      // Regel 3, herschreven: het product is nu zichtbaar mét zijn toestand. Een kandidaat
+      // waarvan het product helemaal niet meer in de view staat (nooit geprijsd, of
+      // verwijderd) blijft "(product no longer visible)" — leesPrijstoestand zet die op
+      // 'uit_prijslijst', de veilige kant.
+      priceState: leesPrijstoestand(p?.priceState),
+      lastPriceListName: p?.lastPriceListName ?? null,
+      lastPriceListValidUntil: p?.lastPriceListValidUntil ?? null,
       matchKind: "fuzzy",
       deviations: (c.verdicts ?? []) as Deviation[],
       list: c.list === "onvolledig" ? "onvolledig" : "aantoonbaar",
@@ -106,6 +118,20 @@ export default async function RegelDetailPage({
   const codeOnbekend =
     specLine.reqArticleCode != null &&
     !(await articleCodeExists(db, specLine.reqArticleCode));
+
+  // Driver-waarschuwing (demo 12 aug): voert het merk van dit armatuur losse drivers of
+  // accessoires? Dan alleen de herinnering om na te vragen — geen koppeling, geen gok over
+  // wélke driver (docs/goal-vervallen-producten.md, deel 3).
+  //
+  // Alleen over het GEMATCHTE product, en alleen als dat zelf geen los onderdeel is: staat
+  // er al een driver op de regel, dan is de vraag beantwoord. Dit scherm toont één
+  // armatuur, dus hier mag de waarschuwing bij de regel staan; op de offerte staat hij
+  // gegroepeerd (zie components/driver-waarschuwing.tsx).
+  const onderdeelMerken =
+    matched && !isLosOnderdeel(matched.name)
+      ? await merkenMetLosseOnderdelen(db, [matched.brandName])
+      : new Set<string>();
+  const driverMerken = [...onderdeelMerken];
 
   // Gevraagde kernvelden: alleen wat is ingevuld is een matcheis (B-09).
   const requested: { label: string; value: string | number }[] = [];
@@ -144,6 +170,8 @@ export default async function RegelDetailPage({
         </h2>
         <StatusBadge status={specLine.status as MatchStatus} />
       </div>
+
+      <DriverWaarschuwing merken={driverMerken} variant="regel" className="mb-5" />
 
       {/* B-10: regel bewerken → matcher draait opnieuw. */}
       <details className="mb-5 rounded-lg border">
@@ -254,12 +282,30 @@ export default async function RegelDetailPage({
                 <span className="font-medium">{matched.name}</span>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {matched.articleCode ?? "—"} ·{" "}
-                <span className="tabular-nums">
-                  {formatEur(matched.grossPrice)}
-                </span>{" "}
-                each
+                {matched.articleCode ?? "—"}
+                {/* Regel 3, herschreven: bij een vervallen product is er geen bedrag, en
+                    dan is "— each" een leeg streepje zonder uitleg. De markering eronder
+                    zegt wát er aan de hand is en welke prijslijst de laatste was. */}
+                {matched.grossPrice != null && (
+                  <>
+                    {" · "}
+                    <span className="tabular-nums">
+                      {formatEur(matched.grossPrice)}
+                    </span>{" "}
+                    each
+                  </>
+                )}
               </p>
+              <VervallenMarkering
+                toestand={leesPrijstoestand(matched.priceState)}
+                stempel={{
+                  name: matched.lastPriceListName,
+                  validUntil: matched.lastPriceListValidUntil,
+                }}
+                brandName={matched.brandName}
+                variant="inline"
+                className="mt-2"
+              />
               <div className="mt-3 flex flex-wrap items-end gap-2">
                 <Button asChild size="sm" variant="ghost">
                   <a href="#kandidaten">Change match</a>

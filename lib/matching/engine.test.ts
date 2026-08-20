@@ -360,15 +360,19 @@ test("o5: merkrij zonder producten → blauw (datagat), brandKey eigen key", asy
   expect(out.provable).toHaveLength(0);
 });
 
-test("o5: merk met alléén onzichtbare producten (verlopen prijslijst) → NIET blauw maar rood", async () => {
+test("o5: merk met alléén onzichtbare producten (nooit geprijsd) → NIET blauw maar rood", async () => {
   const db = await createTestDb();
-  // Product bestaat in de basistabel maar de prijslijst is verlopen → onzichtbaar in
+  // Product bestaat in de basistabel maar heeft nooit een prijs gehad → onzichtbaar in
   // visible_products. Bekend merk dus (rood/dagprijs-territorium), geen datagat.
+  //
+  // ⚠️ Stond hier tot 19 aug 2026 met een VERLOPEN prijslijst. Dat is sinds migratie 0022
+  // niet meer de onzichtbaar-makende toestand: een verlopen lijst geeft een vindbaar
+  // product zónder bedrag (regel 3, herschreven). "Nooit een prijs gekend" is wat er van de
+  // oude onzichtbaarheid over is, en dat is wat deze test nodig heeft.
   await seedBrandProduct(db, {
     brand: "Modular",
     name: "Smart 48",
-    validFrom: "2020-01-01",
-    validUntil: "2020-12-31",
+    zonderPrijs: true,
   });
   const out = await evaluateSpecLine(
     db,
@@ -378,6 +382,30 @@ test("o5: merk met alléén onzichtbare producten (verlopen prijslijst) → NIET
   expect(out.status).not.toBe("blauw");
   expect(out.provable).toHaveLength(0);
   expect(out.incomplete).toHaveLength(0);
+});
+
+test("regel 3 herschreven: een verlopen product wordt gewoon een kandidaat, zonder bedrag", async () => {
+  // De keerzijde van de test hierboven, en de eigenlijke wens uit de demo van 12 aug: het
+  // product van vorig jaar moet gevonden worden. De matcher beoordeelt het als elk ander
+  // product — vervallen is een prijsvraag, geen matchvraag — en de prijs is NULL.
+  const db = await createTestDb();
+  await seedBrandProduct(db, {
+    brand: "Modular",
+    name: "Smart 48",
+    price: "444.00",
+    validFrom: "2020-01-01",
+    validUntil: "2020-12-31",
+  });
+  const out = await evaluateSpecLine(
+    db,
+    req({ brandText: "Modular", productText: "Smart 48", specs: {} }),
+  );
+  const kandidaten = [...out.provable, ...out.incomplete];
+  expect(kandidaten).toHaveLength(1);
+  expect(kandidaten[0].name).toBe("Smart 48");
+  expect(kandidaten[0].priceState).toBe("prijslijst_verlopen");
+  expect(kandidaten[0].grossPrice).toBeNull();
+  expect(kandidaten[0].lastPriceListValidUntil).toBe("2020-12-31");
 });
 
 test("o5: alias 'aromasdelcampo' → kandidaten van Aromas (substitutie-bewijs)", async () => {

@@ -221,7 +221,7 @@ export function BrandRelationsTable({
 
       {rows.length === 0 ? (
         // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": op
-        // /data/brand-relations staat de tabel in een `space-y-4`-kolom naast de
+        // /brand-management staat de tabel in een `space-y-4`-kolom naast de
         // toolbar en de pager, niet in een <Card> die al een kader tekent.
         //
         // Bewuste `action={null}`: het filter dat deze leegte veroorzaakt staat in
@@ -268,7 +268,7 @@ export function BrandRelationsTable({
                   </TableCell>
                   <TableCell className="font-medium">
                     <a
-                      href={`/data/brand-relations/${r.brandId}`}
+                      href={`/brand-management/${r.brandId}`}
                       className="hover:underline"
                     >
                       {r.brandName}
@@ -363,7 +363,7 @@ export function BrandRelationsTable({
                       </span>
                     ) : (
                       <a
-                        href={`/data/brand-relations/${r.brandId}`}
+                        href={`/brand-management/${r.brandId}`}
                         className="hover:underline"
                         title={`${Math.round(r.completeness * 100)}% of the requested fields filled — open ${r.brandName} for the full scorecard`}
                       >

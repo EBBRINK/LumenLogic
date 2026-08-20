@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { AllowedEmailsBlock } from "@/components/settings/allowed-emails-block";
@@ -8,7 +6,6 @@ import type { ChangePasswordResult } from "@/components/settings/password-block"
 import { PasswordBlock } from "@/components/settings/password-block";
 import { XisBlock } from "@/components/settings/xis-block";
 import type { XisEnvironment } from "@/components/settings/xis-block";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { changeOwnPassword } from "@/lib/auth-activation";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth-factory";
@@ -135,7 +132,7 @@ export default async function InstellingenPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
           {intern
-            ? "Login access, LLM budget and the XIS connection."
+            ? "Login access, the monthly LLM cap and the XIS connection."
             : "Your account."}
         </p>
       </header>
@@ -167,28 +164,10 @@ export default async function InstellingenPage() {
             />
           </>
         )}
-        {/* UX-audit 30 jul (bug #11): /settings/organization had nul inkomende links —
-            gebouwd, maar alleen via de URL te bereiken. Dit is de ingang. Alleen voor wie
-            er ook door mag: de route staat op niveau `org_admin`. */}
-        {toegang.adminOrgIds.length > 0 && (
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Organizations</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Organizations, their members and the roles those members come in
-              with. A role sets the default view, never what the engine shows.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href="/settings/organization"
-              className="inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-            >
-              Manage organizations <ArrowRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
-        )}
+        {/* De Organizations-kaart is hier weg (opschoning 12 aug, punt 7): organisaties
+            en gebruikers zijn beheer en staan op /admin. Wie geen Admin-ingang heeft maar
+            wél org-beheerder is, houdt zijn link in het accountmenu — zie
+            components/nav-items.ts (ACCOUNT_ITEMS). */}
         <PasswordBlock
           minPasswordLength={MIN_PASSWORD_LENGTH}
           maxPasswordLength={MAX_PASSWORD_LENGTH}

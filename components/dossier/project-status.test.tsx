@@ -132,8 +132,22 @@ const screens = {
 // <option> in de status-dropdown van ProjectStatusControls. `getByText("Concept").first()`
 // pakte dié option en bleef daarom groen met `ProjectStatusBadge → null` (gemeten: 4/4
 // projectkop-status-tests groen terwijl de badge weg was) — en een <option> staat niet eens
-// op de foto. De badge-ankers lezen daarom de badge zélf, herkenbaar aan zijn title-tekst
-// (`PROJECT_STATUS_META[...].meaning`), en asserteren het label dáárbinnen.
+// op de foto. De badge-ankers lezen daarom de badge zélf, herkenbaar aan de uitleg die
+// eraan hangt (`PROJECT_STATUS_META[...].meaning`), en asserteren het label dáárbinnen.
+// Die uitleg zat in een `title` en zit sinds de demo van 12 aug in een Hint-tooltip
+// (components/ui/hint.tsx — de browservertraging van `title` was ~2 s en niet in te
+// stellen). Vandaar `badgeTekst()`: zoek de tooltip, lees de badge ernaast.
+// Geeft "" terug zolang de badge er nog niet staat, en niet `undefined`: `toContain`
+// op undefined gooit een argumentfout in plaats van te falen, en `expect.poll` stopt
+// dan met een onleesbare melding in plaats van door te pollen. Onder volle belasting
+// (hele suite parallel) is die eerste tik er echt.
+function badgeTekst(uitleg: string): string {
+  const tip = [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].find(
+    (t) => t.textContent === uitleg,
+  );
+  return tip?.parentElement?.textContent ?? "";
+}
+
 const anchors: Record<keyof typeof screens, () => Promise<unknown>> = {
   // dossiernaam uit DossierList
   "projectlijst-status": () =>
@@ -141,14 +155,14 @@ const anchors: Record<keyof typeof screens, () => Promise<unknown>> = {
   // ProjectStatusBadge (niet de <option> met dezelfde tekst)
   "projectkop-status": () =>
     expect
-      .element(page.getByTitle(PROJECT_STATUS_META.concept.meaning))
-      .toHaveTextContent("Concept"),
+      .poll(() => badgeTekst(PROJECT_STATUS_META.concept.meaning))
+      .toContain("Concept"),
   // PhaseBadge (afgeleide fase) én de statusbadge ernaast
   "projectkop-gegund": async () => {
     await expect.element(page.getByText("Awarded").first()).toBeInTheDocument();
     await expect
-      .element(page.getByTitle(PROJECT_STATUS_META.gegund.meaning))
-      .toHaveTextContent("Won");
+      .poll(() => badgeTekst(PROJECT_STATUS_META.gegund.meaning))
+      .toContain("Won");
   },
   // read-only-regel uit ProjectStatusControls
   "projectkop-archief": () =>

@@ -26,7 +26,7 @@ const header: EstimateHeader = {
   quoteDate: "2026-07-07",
   customer: "Deerns",
   projectRef: "PRJ-42",
-  author: "hello@noplasticfloralfoam.com",
+  author: "tester@voorbeeld.nl",
   validUntil: "2026-08-07",
 };
 
@@ -215,11 +215,14 @@ test("statuskleuren blijven zichtbaar: elke regel draagt zijn badge", async () =
     <ExternalQuoteView estimate={estimate} phase="tender" />,
     "Request order is preserved",
   );
-  // De statuscel is de laatste kolom; StatusBadge zet zijn betekenis op `title`, dus
-  // dat is meteen het bewijs dat het de gedeelde badge is en geen los stukje tekst.
+  // De statuscel is de laatste kolom; StatusBadge hangt zijn betekenis in een Hint
+  // (`role="tooltip"`), dus dat is meteen het bewijs dat het de gedeelde badge is en
+  // geen los stukje tekst. Stond hier eerst als `span[title]` — sinds de demo van
+  // 12 aug is dat geen `title` meer, want de browservertraging daarvan (~2 s) is niet
+  // in te stellen; zie components/ui/hint.tsx.
   const badges = Array.from(
-    document.querySelectorAll("tbody tr > td:last-child > span[title]"),
-  );
+    document.querySelectorAll('tbody tr > td:last-child [role="tooltip"]'),
+  ).map((tip) => tip.previousElementSibling!);
   expect(badges).toHaveLength(8); // acht regels, acht badges
   const woorden = badges.map((b) => b.textContent?.trim());
   for (const w of ["Green", "Yellow", "Blue", "Red", "Purple", "Open"]) {

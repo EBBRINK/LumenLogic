@@ -141,6 +141,14 @@ export async function getSpecLines(db: AppDb, dossierId: string) {
       matchedBrand: visibleProducts.brandName,
       matchedArticleCode: visibleProducts.articleCode,
       matchedPrice: visibleProducts.grossPrice,
+      // Regel 3 (herschreven 19 aug 2026): een gematcht product waarvan de prijslijst
+      // verlopen is, of dat uit de lijst is gevallen, blijft nu gewoon in de leftJoin
+      // staan — mét naam en artikelcode, zónder bedrag. Tot 0022 verdween de hele rij en
+      // stond er op de offerte een regel zonder productnaam en zonder uitleg. Deze drie
+      // velden zijn wat de estimate nodig heeft om er de juiste zin bij te zetten.
+      matchedPriceState: visibleProducts.priceState,
+      matchedLastPriceListName: visibleProducts.lastPriceListName,
+      matchedLastPriceListValidUntil: visibleProducts.lastPriceListValidUntil,
       matchedKelvin: visibleProducts.kelvin,
       matchedCri: visibleProducts.cri,
       matchedIp: visibleProducts.ipValue,

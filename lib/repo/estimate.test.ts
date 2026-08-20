@@ -364,7 +364,7 @@ test("kopblok: vóór genereren geen nummer maar de wachttekst, ná genereren he
   expect(NUMBER_PENDING).toBe("Number assigned when the estimate is generated");
   expect(NUMBER_PENDING).not.toContain("on sending");
 
-  await generateQuote(db, ALLE_DOSSIERS, dossierId, "hello@noplasticfloralfoam.com");
+  await generateQuote(db, ALLE_DOSSIERS, dossierId, "tester@voorbeeld.nl");
 
   const after = (await getEstimateData(db, ALLE_DOSSIERS, dossierId))!;
   const year = new Date().getFullYear();
@@ -372,7 +372,7 @@ test("kopblok: vóór genereren geen nummer maar de wachttekst, ná genereren he
   expect(after.computed.quoteNumberDisplay).toBe(`BL-${year}-0001`);
   expect(after.computed.quoteNumberAssigned).toBe(true);
   expect(after.header.customer).toBe("Deerns");
-  expect(after.header.author).toBe("hello@noplasticfloralfoam.com");
+  expect(after.header.author).toBe("tester@voorbeeld.nl");
   expect(after.quote?.frozenAt ?? null).toBeNull();
 });
 

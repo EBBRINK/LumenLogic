@@ -162,7 +162,7 @@ export async function setBrandFieldOverride(
 // bovendien van staging haalt, waarmee het échte voorstel-scherm (de dubbelklik-poort van
 // applyTemplateProposal kijkt naar exact deze status) onbereikbaar wordt. Template-uploads
 // worden beoordeeld op hun eigen voorstel-scherm bij de merkrelatie:
-// /data/brand-relations/[brandId]/upload/[uploadId] — één upload, één goedkeuringspoort.
+// /brand-management/[brandId]/upload/[uploadId] — één upload, één goedkeuringspoort.
 export async function listBrandUploadsForReview(db: AppDb) {
   return db
     .select({

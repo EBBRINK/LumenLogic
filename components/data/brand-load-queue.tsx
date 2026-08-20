@@ -38,7 +38,7 @@ export function BrandLoadQueue({
 }) {
   if (rows.length === 0) {
     return (
-      // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": op /data/loading
+      // Was een kale grijze regel (reviewzwerm 2.5a C1). "framed": op /admin/loading
       // staat dit blok direct in <main>, zonder omhullende kaart.
       //
       // Bewuste `action={null}`: deze wachtrij vult zichzelf vanuit de matcher — een

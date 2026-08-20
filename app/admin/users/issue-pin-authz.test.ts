@@ -58,7 +58,7 @@ const { issuePinAction } = await import("./actions");
 // De TWEEDE deur naar dezelfde beslissing (besluit G39). Hij deelt in dit bestand dezelfde
 // gemockte db en sessie, dus de escalatieketen hieronder is de échte keten: twee echte
 // server-actions achter elkaar, zonder formulier.
-const orgActions = await import("@/app/settings/organization/actions");
+const orgActions = await import("@/app/admin/organizations/actions");
 
 // De tekst die élke bevoegdheidsweigering geeft (lib/repo/authz.ts). Staat hier voluit en
 // niet als import: een test die de constante meeleest, keurt ook een gewijzigde constante
@@ -134,7 +134,7 @@ async function nietsAangemaakt(db: TestDb, email: string) {
  *
  * Tot 3.2a kwam een gewone gebruiker of een passant gewoon bij `issuePinAction()` /
  * `addMemberAction()` aan, en weigerde G36 hem daar met `{ok:false, error: GEWEIGERD}`.
- * Sinds 3.2a staat `/admin/users` en `/settings/organization` in de route-allowlist op
+ * Sinds 3.2a staat `/admin/users` en `/admin/organizations` in de route-allowlist op
  * niveau `org_admin`, en die poort weigert hem al vóór de action zijn werk begint — met
  * `notFound()`, want wie er niet bij mag hoort ook niet te weten dát de route bestaat.
  *

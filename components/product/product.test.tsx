@@ -171,6 +171,36 @@ test("tier2: per-veld-override verbergt de kleurtemperatuur", async () => {
   expect(document.body.textContent ?? "").not.toContain("2700 K"); // verborgen veld → geen rij
 });
 
+// Regel 3, herschreven (19 aug 2026). Tot 0022 kwam een vervallen product hier nooit aan:
+// het viel uit visible_products en de productpagina was een 404. Nu bestaat de pagina wél,
+// en zonder deze tak stond er "— list price" — een leeg streepje zonder uitleg, precies de
+// stille variant waar de klant in de demo over viel.
+test("tier1: een vervallen product toont de reden in plaats van een leeg bedrag", async () => {
+  const disclosure = resolveDisclosure("tier1", intern);
+  await renderServer(
+    <Screen>
+      <ProductCard
+        spec={baseSpec}
+        disclosure={disclosure}
+        price={{
+          grossPrice: null, // de view levert geen bedrag zodra de toestand niet 'actueel' is
+          currency: null,
+          priceState: "prijslijst_verlopen",
+          lastPriceListName: "Price list 2025",
+          lastPriceListValidUntil: "2025-12-31",
+        }}
+        overrides={{}}
+        requestAction={noopAction}
+      />
+    </Screen>,
+  );
+  await expect.element(page.getByText("Price list expired")).toBeInTheDocument();
+  await expect.element(page.getByText(/expired on 31-12-2025/)).toBeInTheDocument();
+  const tekst = document.body.textContent ?? "";
+  expect(tekst).not.toContain("list price");
+  expect(tekst).not.toMatch(/€/);
+});
+
 // ── Visuele dekking: de drie tiers × licht/donker × mobiel/desktop ───────────
 
 const screens = {

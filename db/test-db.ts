@@ -27,11 +27,10 @@ import snelheidIndexenSql from "./migrations/0017_snelheid_indexen.sql?raw";
 import analyticsMerkgatSql from "./migrations/0018_analytics_merkgat_index.sql?raw";
 import orgTypeActivatieSql from "./migrations/0019_org_type_activatie.sql?raw";
 import gevraagdArtikelnummerSql from "./migrations/0020_gevraagd_artikelnummer.sql?raw";
-// 0021 (alias Tekna Nautic) zaait via een SELECT-gebonden INSERT niets in een verse
-// test-DB en levert geen schema-verschil op — daarom hier bewust niet meegenomen (zelfde
-// afweging als 0010/0012 hierboven). 0022 verandert wél het schema (matchstation_queue,
-// llm_usage.matchstation_job_id, review_kind + 2 waarden) en moet dus wel mee.
+import aliasTeknaNauticSql from "./migrations/0021_alias_tekna_nautic.sql?raw";
+// Let op: twee sporen maakten allebei een "0022" — verschillende bestanden, allebei nodig.
 import matchstationSql from "./migrations/0022_matchstation.sql?raw";
+import vervallenZichtbaarSql from "./migrations/0022_vervallen_zichtbaar.sql?raw";
 import eventsEntityIdTextSql from "./migrations/0023_events_entity_id_text.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
@@ -83,9 +82,15 @@ export async function createTestDb(): Promise<TestDb> {
   // 0020: spec_lines.req_article_code — het gevraagde leveranciersartikelnummer, het veld
   // waarop de matcher als eerste matcht (docs/goal-artikelnummer-matching.md).
   await client.exec(gevraagdArtikelnummerSql);
-  // 0022: matchstation_queue + llm_usage.matchstation_job_id + review_kind uitgebreid
+  // 0021: alias Tekna Nautic → Tekna (seedt niets op een lege test-DB).
+  await client.exec(aliasTeknaNauticSql);
+  // 0022a: matchstation_queue + llm_usage.matchstation_job_id + review_kind uitgebreid
   // met 'onzeker'/'niet_beoordeeld' (sprint M1, docs/plan-matchstation-eigen-machine.md).
   await client.exec(matchstationSql);
+  // 0022b: visible_products herschreven — vervallen producten zijn zichtbaar zónder prijs
+  // (ijzeren regel 3, nieuwe formulering). Dit is de laatste definitie van de view en
+  // db/matcher-grens.test.ts leest hem hier terug.
+  await client.exec(vervallenZichtbaarSql);
   // 0023: events.entity_id uuid → text — Better Auth-user-ids zijn geen uuid
   // (docs/probleem-events-entity-id-uuid.md).
   await client.exec(eventsEntityIdTextSql);
@@ -146,6 +151,12 @@ export async function seedBrandProduct(
     warrantyMonths?: number | null;
     repairability?: string | null;
     epdLifetimeHours?: number | null;
+    /**
+     * Geen prijsregel aanmaken. Sinds migratie 0022 is dát wat een product écht onzichtbaar
+     * maakt: een verlopen prijslijst levert een vindbaar product zónder bedrag op, maar
+     * "nooit een prijs gekend" blijft buiten `visible_products`.
+     */
+    zonderPrijs?: boolean;
   },
 ) {
   const brandId = crypto.randomUUID();
@@ -185,11 +196,13 @@ export async function seedBrandProduct(
     repairability: opts.repairability ?? null,
     epdLifetimeHours: opts.epdLifetimeHours ?? null,
   });
-  await db.insert(schema.prices).values({
-    productId,
-    priceListId: pl.id,
-    grossPrice: opts.price ?? "100.00",
-  });
+  if (!opts.zonderPrijs) {
+    await db.insert(schema.prices).values({
+      productId,
+      priceListId: pl.id,
+      grossPrice: opts.price ?? "100.00",
+    });
+  }
   return { brandId, priceListId: pl.id, productId };
 }
 
@@ -243,4 +256,42 @@ export async function addProductToBrand(
     grossPrice: opts.price ?? "100.00",
   });
   return { productId };
+}
+
+/**
+ * Zet een bestaand product in de toestand `uit_prijslijst`: de prijsregel verdwijnt uit
+ * `prices` en verhuist naar `archive.prices_archive`. Precies wat `replacePriceList`
+ * (lib/repo/price-archive.ts) doet met een product dat niet in de nieuwe lijst terugkomt —
+ * het productiepad dat deze toestand veroorzaakt, zie docs/probleem-vervallen-producten.md.
+ *
+ * Bewust GEEN aanroep van replacePriceList zelf: die archiveert álle producten van het merk,
+ * en het scenario dat we willen zaaien is juist "één product valt eruit, de rest niet".
+ */
+export async function laatProductUitPrijslijstVallen(
+  db: TestDb,
+  productId: string,
+) {
+  const [prijs] = await db
+    .select()
+    .from(schema.prices)
+    .where(eq(schema.prices.productId, productId));
+  if (!prijs) throw new Error(`Product ${productId} heeft geen prijsregel om te archiveren`);
+  const [lijst] = await db
+    .select()
+    .from(schema.priceLists)
+    .where(eq(schema.priceLists.id, prijs.priceListId));
+  await db.insert(schema.pricesArchive).values({
+    originalPriceId: prijs.id,
+    productId,
+    priceListId: lijst.id,
+    priceListName: lijst.name,
+    brandId: lijst.brandId,
+    grossPrice: prijs.grossPrice,
+    purchasePrice: prijs.purchasePrice,
+    currency: prijs.currency,
+    validFrom: lijst.validFrom,
+    validUntil: lijst.validUntil,
+  });
+  await db.delete(schema.prices).where(eq(schema.prices.id, prijs.id));
+  return { priceListName: lijst.name, validUntil: lijst.validUntil };
 }

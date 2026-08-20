@@ -41,7 +41,7 @@ export default async function AdminMerkenPage({
     lifecycle: phase || undefined,
   });
   // Sprint 2.0a (blok 3): disclosure-tier en per-veld-overrides zijn verhuisd naar
-  // /data/brand-relations/[brandId] (Visibility-sectie). Dit scherm is nu puur
+  // /brand-management/[brandId] (Visibility-sectie). Dit scherm is nu puur
   // merkbeheer — geen N+1 meer over listBrandFieldOverrides (bijvangst, niet het doel).
   const rows: BrandListRow[] = brands.map((b) => ({
     id: b.id,

@@ -2,6 +2,7 @@
 // Zelfde badge-filosofie als status.ts (matchkleuren): rustige tinten, geen alarmen —
 // "niet gegund" is data, geen fout. De labels hier zijn ook de dropdown-opties.
 import { Badge } from "@/components/ui/badge";
+import { Hint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
 import type { ProjectStatus, XisPhase } from "./types";
 
@@ -89,8 +90,11 @@ export function ProjectStatusBadge({
 }) {
   const m = PROJECT_STATUS_META[status];
   return (
-    <Badge variant="secondary" className={cn(m.tint, className)} title={m.meaning}>
-      {m.label}
-    </Badge>
+    // align="end": deze badge staat rechts in de projectkaart, en die kaart knipt af.
+    <Hint text={m.meaning} align="end">
+      <Badge variant="secondary" className={cn(m.tint, className)}>
+        {m.label}
+      </Badge>
+    </Hint>
   );
 }

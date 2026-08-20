@@ -13,6 +13,8 @@
 // Ijzeren regels: prijs mag getoond worden, maar rangschikt nooit; disclosure verkoopt nooit
 // zichtbaarheid; ontbrekende spec = geen rij hier (de grijze-vlag-vergelijking leeft in de
 // vergelijk-tray, de échte naast-elkaar-context).
+import { VervallenMarkering } from "@/components/vervallen-markering";
+import { leesPrijstoestand } from "@/lib/prijstoestand";
 import { fieldVisible, type Disclosure } from "@/lib/repo/disclosure";
 import { formatEur } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +44,16 @@ export type ProductSpec = {
   countryOfOrigin: string | null;
 };
 
-export type ProductPrice = { grossPrice: string | null; currency: string | null } | null;
+export type ProductPrice = {
+  grossPrice: string | null;
+  currency: string | null;
+  // Regel 3, herschreven (19 aug 2026). Optioneel omdat de fixtures van de bestaande tests
+  // hem niet kennen; ontbreekt hij, dan leest leesPrijstoestand hem als vervallen — maar
+  // dan is er ook een bedrag, en de tak hieronder kijkt eerst naar het bedrag.
+  priceState?: string | null;
+  lastPriceListName?: string | null;
+  lastPriceListValidUntil?: string | null;
+} | null;
 
 type RequestAction = (formData: FormData) => void | Promise<void>;
 
@@ -144,10 +155,27 @@ function PriceBlock({
       // even zichtbaar en even exact, alleen niet meer als eerste in het oog.
       // Niet terugzetten naar een koptekstformaat zonder dat besluit terug te draaien.
       <div className="flex items-baseline gap-2">
-        <span data-price className="text-base font-medium tabular-nums">
-          {formatEur(price?.grossPrice)}
-        </span>
-        <span className="text-sm text-muted-foreground">list price</span>
+        {price != null && price.grossPrice == null && price.priceState != null ? (
+          // Geen bedrag, maar wél een reden: de prijslijst is verlopen of het product is
+          // uit de lijst gevallen. Zonder deze tak stond hier "— list price", en dat is
+          // de stille variant waar de klant over viel.
+          <VervallenMarkering
+            toestand={leesPrijstoestand(price.priceState)}
+            stempel={{
+              name: price.lastPriceListName ?? null,
+              validUntil: price.lastPriceListValidUntil ?? null,
+            }}
+            brandName={spec.brandName}
+            variant="inline"
+          />
+        ) : (
+          <>
+            <span data-price className="text-base font-medium tabular-nums">
+              {formatEur(price?.grossPrice)}
+            </span>
+            <span className="text-sm text-muted-foreground">list price</span>
+          </>
+        )}
       </div>
     );
   }

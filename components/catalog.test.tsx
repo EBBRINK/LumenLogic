@@ -1,7 +1,7 @@
 // White-box RSC-render van het losse catalogus-zoekscherm met fixture-data. Licht/donker ×
 // mobiel/desktop. Assert op zichtbare structuur: merk-select, beide resultaatlijsten, en dat
-// een product met prijs zichtbaar is. Ontbrekende-data-vlag en de "nog niet gezocht"-staat
-// hebben eigen asserts.
+// een product met prijs zichtbaar is. Ontbrekende-data-vlag, het resultaatplafond met zijn
+// teller, en de "nog niet gezocht"-staat hebben eigen asserts.
 import { page } from "vitest/browser";
 import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
@@ -39,6 +39,9 @@ const aantoonbaar: CatalogResult[] = [
     ipValue: "IP20",
     lumenOutput: 1200,
     grossPrice: "310.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
   },
   {
@@ -53,9 +56,36 @@ const aantoonbaar: CatalogResult[] = [
     ipValue: "IP20",
     lumenOutput: 1800,
     grossPrice: "345.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
   },
 ];
+
+// Regel 3, herschreven (19 aug 2026): een vervallen product staat in de lijst, rood en
+// zonder bedrag. Precies het geval waar de klant om vroeg — de bestekschrijver typt een
+// artikelnummer over uit het bestek van vorig jaar en moet een treffer krijgen.
+const vervallen: CatalogResult = {
+  id: "p4",
+  name: "SASSO 100 PHANTOM EDITION",
+  brandName: "GhostLux",
+  articleCode: "L999-EXPIRED",
+  supplierArticleCode: null,
+  categoryPath: "Binnen >> Spots",
+  kelvin: 2700,
+  cri: 90,
+  ipValue: "IP20",
+  lumenOutput: 1100,
+  // ⚠️ null, en dat is geen vergetelheid: de view levert geen bedrag zodra de toestand
+  // niet 'actueel' is. Een fixture met een prijs erin zou een situatie testen die niet
+  // kan bestaan.
+  grossPrice: null,
+  priceState: "prijslijst_verlopen",
+  lastPriceListName: "Price list 2025",
+  lastPriceListValidUntil: "2025-12-31",
+  matchKind: "fuzzy",
+};
 
 const onvolledig: CatalogResult[] = [
   {
@@ -70,6 +100,9 @@ const onvolledig: CatalogResult[] = [
     ipValue: "IP20",
     lumenOutput: null,
     grossPrice: "180.00",
+    priceState: "actueel",
+    lastPriceListName: "Price list 2026",
+    lastPriceListValidUntil: "2026-12-31",
     matchKind: "fuzzy",
     missing: ["color temp.", "CRI"],
   },
@@ -85,10 +118,11 @@ const searchedUi = (
     <CatalogSearch
       brands={brands}
       values={values}
-      aantoonbaar={aantoonbaar}
+      aantoonbaar={[...aantoonbaar, vervallen]}
       onvolledig={onvolledig}
       searched
       filtersActive
+      total={237}
     />
   </div>
 );
@@ -114,6 +148,28 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+test("regel 3: een vervallen product staat in de lijst — rood, zonder bedrag", async () => {
+  await renderServer(searchedUi);
+  await expect
+    .element(page.getByText("SASSO 100 PHANTOM EDITION"))
+    .toBeInTheDocument();
+  // Het korte label op de kaart…
+  await expect.element(page.getByText("Price list expired")).toBeInTheDocument();
+  // …en de laatst bekende prijslijst, waar de kaart hem kwijt kan: in de title.
+  await expect
+    .element(page.getByTitle(/expired on 31-12-2025/))
+    .toBeInTheDocument();
+  // Geen bedrag bij dit product. De andere kaarten hebben er wél een, dus dit is geen
+  // "er staat toevallig nergens een prijs op dit scherm"-test.
+  const kaart = page
+    .getByText("SASSO 100 PHANTOM EDITION")
+    .element()
+    .closest("a");
+  expect(kaart).not.toBeNull();
+  expect(kaart!.textContent).not.toMatch(/€/);
+  await expect.element(page.getByText("€ 310,00")).toBeInTheDocument();
+});
 
 test("brand-select toont alle merken als opties", async () => {
   await renderServer(searchedUi);
@@ -142,6 +198,49 @@ test("de lijstnoot zegt wat de lijst is, zonder het beleid voor te lezen", async
     .element(page.getByText(/No data is not a rejection/))
     .toBeInTheDocument();
   expect(document.body.textContent).not.toContain("silently omitted");
+});
+
+// Het resultaatplafond (demosessie Brink Licht, 12 aug). Maximaal negen treffers, en het
+// werkelijke totaal erbij: de gebruiker moet zien hoe groot de stapel is die hij niet ziet,
+// want dat is de prikkel om meer in te vullen. Nooit stil afkappen.
+test("plafond: het scherm noemt het werkelijke totaal en wat het weglaat", async () => {
+  await renderServer(searchedUi);
+  // 4, niet 3: de vervallen-branch (19 aug) voegde een vierde treffer toe aan de fixture —
+  // een vervallen product telt als treffer, precies waar die wijziging om draaide.
+  await expect.element(page.getByText(/Showing 4 of 237 matches/)).toBeInTheDocument();
+  await expect
+    .element(page.getByText(/the other 233 are left out/))
+    .toBeInTheDocument();
+});
+
+// Expliciet zo besloten: geen doorbladeren naar de rest. "Mensen moeten hun informatie
+// aanleveren." Deze test valt om zodra iemand er alsnog een volgende-pagina-knop bij zet.
+test("plafond: er is geen weg naar de rest van de stapel", async () => {
+  await renderServer(searchedUi);
+  const knoppen = Array.from(document.querySelectorAll("a, button")).map(
+    (el) => el.textContent ?? "",
+  );
+  for (const woord of ["Next", "More", "Show all", "Load more", "Page"]) {
+    expect(knoppen.some((t) => t.includes(woord))).toBe(false);
+  }
+});
+
+test("plafond: past de hele stapel binnen het plafond, dan is er niets weggelaten", async () => {
+  await renderServer(
+    <div className="min-h-screen bg-background p-6 text-foreground">
+      <CatalogSearch
+        brands={brands}
+        values={values}
+        aantoonbaar={aantoonbaar}
+        onvolledig={onvolledig}
+        searched
+        filtersActive
+        total={3}
+      />
+    </div>,
+  );
+  await expect.element(page.getByText("Showing all 3 matches")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("left out");
 });
 
 test("nog niet gezocht: prompt zichtbaar, geen resultaatlijsten", async () => {

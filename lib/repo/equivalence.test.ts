@@ -85,13 +85,32 @@ test("regel 3: alternatief met verlopen prijslijst is onvindbaar", async () => {
   expect(alternatives.some((a) => a.name.includes("PHANTOM"))).toBe(false);
 });
 
-test("regel 3: referentie met verlopen prijslijst levert geen engine-resultaat", async () => {
+test("regel 3 herschreven: een vervallen referentie krijgt gewoon alternatieven", async () => {
+  // ⚠️ Deze test verwachtte tot 19 aug 2026 `reference: null` — verlopen was onvindbaar.
+  // Sinds migratie 0022 is de referentie vindbaar zónder bedrag, en dat is precies het
+  // geval waarin je een alternatief zoekt. Wat wél hard blijft: een ALTERNATIEF moet
+  // actueel zijn, anders stel je iets voor dat je niet kunt offreren.
   const db = await createTestDb();
   const { productId: ref } = await seedBrandProduct(db, {
     brand: "XAL", name: "SASSO 100 CEIL", categoryPath: CAT, kelvin: 3000,
-    price: "310.00", validUntil: "2020-01-01",
+    price: "310.00", validFrom: "2019-01-01", validUntil: "2020-01-01",
   });
+  await seedBrandProduct(db, {
+    brand: "Delta Light", name: "BOXY CEIL", categoryPath: CAT, kelvin: 3000,
+    price: "280.00",
+  });
+  // En een alternatief dat óók vervallen is: dat mag niet voorgesteld worden.
+  await seedBrandProduct(db, {
+    brand: "Ghost", name: "PHANTOM CEIL", categoryPath: CAT, kelvin: 3000,
+    price: "90.00", validFrom: "2019-01-01", validUntil: "2020-01-01",
+  });
+
   const res = await getEquivalentAlternatives(db, { phase: "awarded", referenceProductId: ref });
-  expect(res.reference).toBeNull();
-  expect(res.alternatives).toHaveLength(0);
+  expect(res.reference).not.toBeNull();
+  expect(res.reference!.priceState).toBe("prijslijst_verlopen");
+  expect(res.reference!.grossPrice).toBeNull();
+
+  const namen = res.alternatives.map((a) => a.name);
+  expect(namen).toContain("BOXY CEIL");
+  expect(namen).not.toContain("PHANTOM CEIL");
 });

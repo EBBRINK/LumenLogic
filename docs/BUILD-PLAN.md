@@ -39,7 +39,7 @@ Volledige achtergrond: `docs/lumenlogic-briefing.md` en `docs/lumenlogic-podcast
 |---|---|---|
 | Stack | epic-rsc-stack-skelet (route B, publieke ingrediënten): Next.js 16, React 19, TypeScript, Drizzle, Better Auth, Vitest 5 + vitest-plugin-rsc, Tailwind 4, shadcn/ui, Bun, Vercel | Timo traint 4 weken met Kasper Peulen (auteur van de stack); agent krijgt "ogen" via screenshot-tests |
 | Database | **Neon** Postgres (via Vercel Marketplace) | Stack-zuiver; Neon-branch per PR-preview; later triviaal naar Supabase te verhuizen (allebei kaal Postgres) |
-| Databron | Supabase-project "Thursd Chatbot" (`uvmeytxejlzvdgjgthmr`) is **bron, geen backend** — CSV-export staat in `data/source/` | 211k echte producten, 436 merken; app blijft los van die legacy |
+| Databron | Een extern Supabase-archiefproject is **bron, geen backend** — CSV-export staat in `data/source/` | 211k echte producten, 436 merken; app blijft los van die legacy |
 | Zoeken | Postgres full-text + trigram (`pg_trgm`) — **geen Elasticsearch in run 1** | 211k rijen kan Postgres prima aan; ES pas bij 3M SKU's |
 | Auth | Better Auth magic link, **één gebruiker (Timo), geen rollen** | Rollen (calculator/werkvoorbereider) komen met de fase-engine |
 | Spec-invoer | Handmatig/CSV-plak per regel — **geen PDF-parsing in run 1** | PDF-import van armaturenboeken = run 2 |

@@ -1,4 +1,4 @@
-// White-box tests voor de verleng-sectie op /data/price-lists (bevinding B3). De melding
+// White-box tests voor de verleng-sectie op /brand-management/price-lists (bevinding B3). De melding
 // PriceListExpiryNotice zegt op vier schermen "what's needed now is an extension" — deze
 // sectie is de plek waar die verlenging gebeurt. De tests toetsen echte inhoud (welk merk,
 // welke datum, welke bediening), niet "het rendert".

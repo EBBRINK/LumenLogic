@@ -154,12 +154,25 @@ export async function getProductForDisclosure(
   // gewoon specs én prijs.
   const tier = (spec.disclosureTier ?? "tier2") as DisclosureTier;
   const disclosure = resolveDisclosure(tier, ctx);
-  let price: { grossPrice: string | null; currency: string | null } | null = null;
+  // Sinds migratie 0022 (regel 3, herschreven) staat een vervallen product hier gewoon in
+  // de view, zónder bedrag. `grossPrice` is dan NULL en zou als "—" op de kaart landen —
+  // precies de stille variant die we kwijt wilden. De toestand gaat daarom mee, zodat de
+  // kaart kan zeggen wát er aan de hand is en welke prijslijst de laatste was.
+  let price: {
+    grossPrice: string | null;
+    currency: string | null;
+    priceState?: string | null;
+    lastPriceListName?: string | null;
+    lastPriceListValidUntil?: string | null;
+  } | null = null;
   if (disclosure.showPrice) {
     const [pv] = await db
       .select({
         grossPrice: visibleProducts.grossPrice,
         currency: visibleProducts.currency,
+        priceState: visibleProducts.priceState,
+        lastPriceListName: visibleProducts.lastPriceListName,
+        lastPriceListValidUntil: visibleProducts.lastPriceListValidUntil,
       })
       .from(visibleProducts)
       .where(eq(visibleProducts.id, productId))

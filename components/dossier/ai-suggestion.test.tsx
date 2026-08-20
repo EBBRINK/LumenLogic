@@ -161,7 +161,7 @@ test("render-guard: in tender-fase geen suggestie van een ander merk; bij awarde
   );
   // eerst wachten tot de kaart er staat — daarna pas de afwezigheid asserten
   await expect
-    .element(page.getByText(/Same brand, deviation within the yellow margin/))
+    .element(page.getByText(/Same brand, deviation within the yellow margin/).first())
     .toBeInTheDocument();
   // defense in depth (regel 4): het blok verschijnt niet, ook al staat de suggestie er
   expect(page.getByText(/AI suggestion/).query()).toBeNull();
@@ -201,7 +201,7 @@ test("render-guard A14: 'Delta' toont geen 'Delta Light' in tender", async () =>
     </Screen>,
   );
   await expect
-    .element(page.getByText(/Same brand, deviation within the yellow margin/))
+    .element(page.getByText(/Same brand, deviation within the yellow margin/).first())
     .toBeInTheDocument();
   expect(page.getByText(/AI suggestion/).query()).toBeNull();
   expect(page.getByText(/submerk moet in tender geweerd worden/).query()).toBeNull();

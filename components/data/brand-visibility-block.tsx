@@ -8,7 +8,7 @@ import { veldClass } from "@/components/ui/field";
 // stille typefouten uitnodigen.
 //
 // Verhuisd uit components/admin/brands-tier-block.tsx (blok 3, sprint 2.0a): dit is de
-// éénmerks-variant, hier op /data/brand-relations/[brandId] — zichtbaarheid is geen
+// éénmerks-variant, hier op /brand-management/[brandId] — zichtbaarheid is geen
 // merkbeheer, en leeft nu bij de merkrelatie in plaats van in Admin.
 const TOGGLE_FIELDS = [
   { field: "gross_price", label: "Price" },

@@ -9,6 +9,11 @@
 // staan hier ook — scherm en PDF drukken ze af, ze schrijven ze niet zelf. Handmatige
 // statuslijsten aan de leeskant zijn verboden: die lieten `open` uit de verantwoording
 // vallen terwijl er wél "p.m." naast de regel stond (reviewzwerm A4).
+import {
+  leesPrijstoestand,
+  vervalMelding,
+  type Prijstoestand,
+} from "@/lib/prijstoestand";
 import type { Deviation } from "@/components/dossier/types";
 import { STATUS, STATUS_ORDER, type MatchStatus } from "@/components/dossier/status";
 import { formatDate } from "@/lib/format";
@@ -25,6 +30,9 @@ export type EstimateLine = {
   fixtureCode: string;
   zone?: string | null;
   productName: string | null; // gematchte productnaam, anders de gevraagde tekst
+  // Merk van het GEMATCHTE product (niet de gevraagde merktekst — dat is `brandText`).
+  // Draagt de driver-waarschuwing: die vraag gaat over wat het merk daadwerkelijk levert.
+  productBrand?: string | null;
   sku: string | null; // artikelcode van het gematchte product
   quantity: number | null;
   unitPrice: string | null; // dagprijs (I-04) wint van catalogusprijs
@@ -48,6 +56,14 @@ export type EstimateLine = {
   // (of null als die er niet is) — de combinatie van die twee bepaalt welke zin erbij
   // komt; zie dayPriceExpiredNote hieronder.
   dayPriceExpiredOn?: string | null;
+  // Regel 3, herschreven (19 aug 2026): de prijstoestand van het GEMATCHTE product. Bij
+  // 'prijslijst_verlopen' of 'uit_prijslijst' is er geen catalogusprijs — niet omdat het
+  // product ontbreekt, maar omdat wij geen geldige prijs meer hebben. Precies hetzelfde
+  // soort merkteken per regel als dayPriceExpiredOn hierboven, en om dezelfde reden:
+  // scherm en PDF moeten het kunnen afdrukken. Zie productPriceStateNote.
+  productPriceState?: Prijstoestand | null;
+  productLastPriceListName?: string | null;
+  productLastPriceListValidUntil?: string | null;
 };
 
 // Wat er in het veld "Quote number" staat zolang er nog geen nummer is. Eén constante,
@@ -151,6 +167,38 @@ export function dayPriceExpiredNote(line: EstimateLine): string | null {
   return line.unitPrice != null
     ? `day price expired ${on} — catalogue price used instead`
     : `day price expired ${on} — no catalogue price to fall back on`;
+}
+
+// Regel 3: de zin die bij een VERVALLEN product op het klantstuk komt. Zelfde vorm en
+// dezelfde twee aanroepers als dayPriceExpiredNote hierboven (scherm + PDF), zodat papier
+// en scherm letterlijk hetzelfde zeggen.
+//
+// Draagt de regel al een dagprijs, dan is er wél een bedrag en is dit geen alarm maar een
+// aantekening: de calculator heeft zelf een prijs ingevoerd, en dat is precies de
+// ontsnappingsroute die de spot-price-invoer biedt. Zonder dagprijs is het regeltotaal
+// "—" en moet de klant lezen waarom er geen prijs staat.
+export function productPriceStateNote(line: EstimateLine): string | null {
+  const toestand = line.productPriceState;
+  if (!toestand || toestand === "actueel") return null;
+  const melding = vervalMelding(
+    toestand,
+    {
+      name: line.productLastPriceListName ?? null,
+      validUntil: line.productLastPriceListValidUntil ?? null,
+    },
+    // Het merk van het GEMATCHTE product, niet de gevraagde merktekst: die laatste is
+    // wat het bestek schreef en kan een tikfout of een alias zijn. Op een klantstuk hoort
+    // de naam te staan van het merk dat wij moeten bellen.
+    line.productBrand ?? null,
+  );
+  if (!melding) return null;
+  // vervalMelding sluit af met "— no current price."; met een dagprijs erop is dat de
+  // verkeerde slotzin, dus die helft wordt hier vervangen in plaats van herschreven in
+  // lib/prijstoestand.ts (waar geen enkel begrip van dagprijzen hoort te zitten).
+  const kern = melding.replace(/ — no current price\.$/, "");
+  return line.unitPrice != null
+    ? `${kern} — day price on this line used instead`
+    : `${kern} — no catalogue price to fall back on`;
 }
 
 // Transparantieregel (C-07): benoemde afwijkingen als subregel — óók binnen groen.
@@ -380,9 +428,15 @@ export async function getEstimateData(
       status: r.status as MatchStatus,
       quantity: r.quantity,
       productName: r.matchedName ?? null,
+      productBrand: r.matchedBrand ?? null,
       sku: r.matchedArticleCode ?? null,
       unitPrice: chosen.unitPrice,
       dayPriceExpiredOn: chosen.dayPriceExpiredOn,
+      productPriceState: r.matchedProductId
+        ? leesPrijstoestand(r.matchedPriceState)
+        : null,
+      productLastPriceListName: r.matchedLastPriceListName ?? null,
+      productLastPriceListValidUntil: r.matchedLastPriceListValidUntil ?? null,
       deviations: (r.deviations as Deviation[] | null) ?? null,
       brandText: r.brandText,
       productText: r.productText,

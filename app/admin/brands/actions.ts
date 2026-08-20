@@ -156,7 +156,7 @@ export async function createBrandAction(
 
   revalidatePath("/admin/brands");
   revalidatePath("/admin");
-  revalidatePath("/data/brand-relations");
+  revalidatePath("/brand-management");
   // redirect() gooit intern — daarom ná de revalidatePaths en buiten elke try/catch.
   // Succes is een scherm (het verse merk), geen melding.
   redirect(`/admin/brands/${id}`);
@@ -191,7 +191,7 @@ export async function updateBrandAction(
   revalidatePath("/admin/brands");
   revalidatePath(`/admin/brands/${brandId}`);
   revalidatePath("/admin");
-  revalidatePath("/data/brand-relations");
+  revalidatePath("/brand-management");
   return { status: "idle" };
 }
 
@@ -207,7 +207,7 @@ export async function setBrandLifecycleAction(formData: FormData): Promise<void>
   revalidatePath("/admin/brands");
   revalidatePath(`/admin/brands/${brandId}`);
   revalidatePath("/admin");
-  revalidatePath("/data/brand-relations");
+  revalidatePath("/brand-management");
 }
 
 export type BrandDeleteState =
@@ -238,6 +238,6 @@ export async function deleteBrandAction(
 
   revalidatePath("/admin/brands");
   revalidatePath("/admin");
-  revalidatePath("/data/brand-relations");
+  revalidatePath("/brand-management");
   redirect("/admin/brands");
 }

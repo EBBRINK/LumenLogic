@@ -23,7 +23,7 @@ const header: EstimateHeader = {
   quoteDate: "2026-07-07",
   customer: "Deerns",
   projectRef: "PRJ-42",
-  author: "hello@noplasticfloralfoam.com",
+  author: "tester@voorbeeld.nl",
   validUntil: "2026-08-07",
 };
 
@@ -91,6 +91,19 @@ const zonedLines: EstimateLine[] = [
     productName: null, sku: null, unitPrice: null,
     brandText: "Delta Light", productText: "SPLITBOX 1",
     dayPriceExpiredOn: "2020-06-30",
+  },
+  {
+    // Regel 3, herschreven (19 aug 2026): het product is gematcht en heeft gewoon een
+    // naam, maar zijn prijslijst is verlopen. Vóór 0022 viel de hele leftJoin weg en stond
+    // hier een regel zónder productnaam en zónder uitleg; nu staat de naam er én de reden.
+    // Geen stukprijs, dus regeltotaal "—".
+    id: "l10", fixtureCode: "Lx900", zone: "B-02", status: "groen", quantity: 2,
+    productName: "MITO SOSPESO 40 UP", sku: "OC-MITO-40",
+    productBrand: "Occhio", unitPrice: null,
+    brandText: "Occhio", productText: "MITO SOSPESO 40",
+    productPriceState: "prijslijst_verlopen",
+    productLastPriceListName: "Price list 2025",
+    productLastPriceListValidUntil: "2025-12-31",
   },
 ];
 
@@ -625,4 +638,63 @@ test("XIS-dialoog niet gepoort: de verzendknop staat er gewoon", async () => {
   await expect
     .element(page.getByRole("button", { name: "Send to XIS" }))
     .toBeInTheDocument();
+});
+
+// ── Regel 3 herschreven + driver-waarschuwing (demo 12 aug 2026) ─────────────
+
+test("een vervallen product op de offerte: naam blijft staan, bedrag niet, reden erbij", async () => {
+  await renderServer(
+    <QuoteView
+      dossierName="Ziekenhuis Noord"
+      phase="tender"
+      header={header}
+      lines={zonedLines}
+    />,
+  );
+  // De naam staat er — dát was de winst: vóór 0022 verdween de regel-inhoud.
+  await expect.element(page.getByText("MITO SOSPESO 40 UP")).toBeInTheDocument();
+  // En de reden, met de laatst bekende prijslijst erin.
+  await expect
+    .element(page.getByText(/Price list of Occhio expired on 31-12-2025/))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText(/no catalogue price to fall back on/).first())
+    .toBeInTheDocument();
+});
+
+test("de driver-waarschuwing staat één keer op het stuk, met de merken erin", async () => {
+  // Terughoudendheid is hier de eis: één melding boven de tabel, niet één per regel.
+  // Een waarschuwing op elk van veertig regels wordt weggekeken.
+  await renderServer(
+    <QuoteView
+      dossierName="Ziekenhuis Noord"
+      phase="tender"
+      header={header}
+      lines={zonedLines}
+      driverMerken={["Occhio", "Wever & Ducré"]}
+    />,
+  );
+  await expect
+    .element(page.getByText(/check whether one is needed here/))
+    .toBeInTheDocument();
+  const treffers = document.body.textContent!.match(
+    /check whether one is needed here/g,
+  );
+  expect(treffers).toHaveLength(1);
+  expect(document.body.textContent).toContain(
+    "Occhio and Wever & Ducré sell drivers and accessories as separate items",
+  );
+});
+
+test("zonder merken met losse onderdelen verschijnt er geen waarschuwing", async () => {
+  await renderServer(
+    <QuoteView
+      dossierName="Ziekenhuis Noord"
+      phase="tender"
+      header={header}
+      lines={zonedLines}
+    />,
+  );
+  await expect.element(page.getByText("MITO SOSPESO 40 UP")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("check whether one is needed here");
 });

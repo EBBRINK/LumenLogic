@@ -81,7 +81,7 @@ export function BrandRelationForm({
         />
       </label>
       <div className="sm:col-span-2">
-        {/* De primary van /data/brand-relations/[brandId]: dit is de enige actie op het
+        {/* De primary van /brand-management/[brandId]: dit is de enige actie op het
             scherm die iets wegschrijft (DESIGN.md §6, één primary per scherm). De
             kopieerknop en "Check template" zijn daarom outline. */}
         <Button type="submit">Save</Button>

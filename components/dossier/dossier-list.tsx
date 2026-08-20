@@ -69,7 +69,11 @@ export function DossierList({
                    alleen blijft subtiel; de rand is wat je op afstand ziet.
                 Transitie op background-color én box-shadow (de ring ís een box-shadow;
                 `transition-colors` laat hem springen). 150ms, DESIGN.md §8. */}
-            <Card className="py-3 transition-[background-color,box-shadow] hover:bg-accent hover:ring-ring">
+            {/* `overflow-visible`: ui/card.tsx knipt standaard alles af wat buiten de
+                kaart valt (rondingen op kaartbrede afbeeldingen — die heeft deze kaart
+                niet). Zonder dit sneed de kaart de tooltip van de kleuren-telling en de
+                statusbadge halverwege de tweede regel af. */}
+            <Card className="overflow-visible py-3 transition-[background-color,box-shadow] hover:bg-accent hover:ring-ring">
               <CardContent className="flex items-center justify-between gap-3 px-4">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{d.name}</p>
@@ -121,53 +125,53 @@ export function DossierList({
   );
 }
 
-// ── Legenda bij de gekleurde bolletjes (UX-audit 30 jul) ───────────────────────────
-// De betekenis zat alleen in `title`-attributen op de telling: hover-only, en op touch
-// dus helemaal onbereikbaar. Hier staat hij één keer boven de lijst, niet per kaart.
+// ── Legenda bij de gekleurde bolletjes (UX-audit 30 jul; demo Brink Licht 12 aug) ──
+// De betekenis zat eerst alleen in `title`-attributen op de telling: hover-only, en op
+// touch dus helemaal onbereikbaar. Sindsdien staat hij één keer bij de lijst, niet per
+// kaart.
 //
-// Dichtgeklapt is het één regel — de zes bolletjes met hun naam. Uitgeklapt komen de
-// betekenissen erbij. Een `<details>` en geen tooltip: tikbaar, focusbaar, geen JS.
+// Ronde 2 (demo 12 aug): het was een `<details>` bovenaan — dicht één regel met de zes
+// kleurnamen, open pas de betekenissen. Twee klachten van de klant, allebei terecht:
+// je moet hem eerst openklappen, en "Yellow" vertelt je niets. Dus:
+//   • geen `<details>`/pijltje meer — altijd open;
+//   • `sticky bottom-0` onderaan de pagina: hij blijft in beeld terwijl je door de
+//     lijst scrolt, en gaat aan het eind gewoon in de flow staan. Bewust sticky en
+//     niet `fixed`: fixed haalt hem uit de flow en legt hem over de laatste kaart.
+//   • de kop is nu STATUS[...].name ("Match", "Awaiting brand") — de betekenis, niet
+//     de kleurnaam. Het bolletje ernaast houdt de koppeling met de kleur, en de
+//     kleurnaam blijft staan wáár hij moet staan: op de badge en op de print
+//     (STATUS[...].label/.word, DESIGN.md O13). De legenda hernoemt dus niets.
+// De beschrijvende zin (`meaning`) staat er onveranderd achter.
 //
-// De namen komen uit STATUS[...].label en dat is bewust: de matcher-statussen HETEN de
-// kleuren ("Blue", "Red", "Purple") omdat het woord op zwart-witprint mee moet
-// (DESIGN.md O13). De legenda legt dus uit wat een kleur betékent; hij hernoemt niets.
+// `max-h-[45vh] overflow-y-auto`: op 375px zijn zes regels mét zin hoog, en een
+// sticky balk die het halve scherm vult is erger dan geen legenda.
 export function StatusLegend({ className }: { className?: string }) {
   return (
-    <details
+    <aside
+      aria-label="Dot colours"
       className={cn(
-        "rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs",
+        "sticky bottom-0 z-10 max-h-[45vh] overflow-y-auto rounded-lg border border-border bg-card px-3 py-2.5 text-xs shadow-lg",
         className,
       )}
     >
-      <summary className="cursor-pointer marker:text-muted-foreground">
-        <span className="font-medium">Dot colours</span>
-        {STATUS_ORDER.map((s) => (
-          <span
-            key={s}
-            className="ml-3 inline-flex items-center gap-1 text-muted-foreground"
-          >
-            <span
-              className={cn("size-2 rounded-full", STATUS[s].dot)}
-              aria-hidden
-            />
-            {STATUS[s].label}
-          </span>
-        ))}
-      </summary>
-      <dl className="mt-2 grid gap-1.5 border-t border-border pt-2 sm:grid-cols-2">
+      <p className="mb-1.5 font-medium">Dot colours</p>
+      <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {STATUS_ORDER.map((s) => (
           <div key={s} className="flex gap-2">
-            <dt className="flex shrink-0 items-center gap-1 font-medium">
+            {/* Vaste kolombreedte: zonder dit begint elke zin op een andere x en
+                oogt de legenda als losse regels in plaats van een lijst. w-28 past
+                de langste kop ("Invalid product") op text-xs. */}
+            <dt className="flex w-28 shrink-0 items-center gap-1.5 font-medium">
               <span
                 className={cn("size-2 rounded-full", STATUS[s].dot)}
                 aria-hidden
               />
-              {STATUS[s].label}
+              {STATUS[s].name}
             </dt>
             <dd className="text-muted-foreground">{STATUS[s].meaning}</dd>
           </div>
         ))}
       </dl>
-    </details>
+    </aside>
   );
 }

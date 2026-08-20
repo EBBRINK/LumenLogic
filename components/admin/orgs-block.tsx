@@ -2,9 +2,9 @@
 
 // ORGANISATIES op /admin/users — sprint 3.2c, besluiten 1, 4a, 6, 7 en 8 (Timo, 4 aug).
 //
-// WAAROM DIT BLOK HIER STAAT EN NIET OP /settings/organization. Iemand toegang geven is in
+// WAAROM DIT BLOK HIER STAAT EN NIET OP /admin/organizations. Iemand toegang geven is in
 // het hoofd van Brink één handeling, maar kostte twee schermen: een organisatie aanmaken
-// kon alleen op /settings/organization, een PIN uitgeven alleen hier. Het aanmaakformulier
+// kon alleen op /admin/organizations, een PIN uitgeven alleen hier. Het aanmaakformulier
 // is dáár weggehaald (besluit 1) in plaats van hier gedupliceerd — twee plekken laten
 // bestaan verdubbelt de versnippering in plaats van hem op te lossen. Dat scherm gaat sinds
 // 3.2c puur over branding en leden van BESTAANDE organisaties.

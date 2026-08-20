@@ -13,7 +13,7 @@
 // werkt niet. Zowel requireUuid() als requireSession() (die redirect("/login")
 // doet) draaien BINNEN de pagina, dus ónder elke loading-boundary op layout-niveau
 // — een route-group-loading.tsx loopt tegen exact dezelfde muur en commit de status
-// net zo hard. Wachtstand voor de trage schermen (/data/brand-relations scant ~210k
+// net zo hard. Wachtstand voor de trage schermen (/brand-management scant ~210k
 // rijen) hoort daarom in een <Suspense>-grens BINNEN de pagina, ná de sessie- en
 // uuid-check: dan staat de status al vast voordat de fallback in beeld komt.
 //

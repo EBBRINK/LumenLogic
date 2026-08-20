@@ -40,7 +40,7 @@ import orgTypeActivatieSql from "@/db/migrations/0019_org_type_activatie.sql?raw
 
 // De uitgangsstand van 30 jul 2026 (§2 van de sprintbriefing).
 const BESTAANDE_USERS = [
-  "hello@noplasticfloralfoam.com",
+  "tester@voorbeeld.nl",
   "timo@jouwainstein.com",
   "e.brink@brinklicht.nl",
 ];

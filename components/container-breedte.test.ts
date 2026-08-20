@@ -3,7 +3,7 @@
 // Aanleiding (UX-audit, bak 2 item 1): op productie waren er VIJF verschillende
 // inhoudsbreedtes gemeten op `main.getBoundingClientRect()` bij viewport 1512 —
 // navbalk 1152, /catalog en /settings 1152, /projects en het hele dossier 1024,
-// /data/evaluation 896, plus twee admin-formulieren op 768. Gevolg: de linkerrand
+// /admin/evaluation 896, plus twee admin-formulieren op 768. Gevolg: de linkerrand
 // van de inhoud sprong bij elke navigatie opzij, en juist de meestgebruikte
 // schermen (het dossier) stonden 64px uit het lood met het logo en de navigatie.
 //
@@ -152,7 +152,7 @@ test("bronscan: de app- en componentenboom worden écht gevonden", () => {
   const paden = paginas.map((p) => p.pad);
   expect(paden).toContain("app/settings/page.tsx");
   expect(paden).toContain("app/projects/[id]/layout.tsx");
-  expect(paden).toContain("app/data/evaluation/page.tsx");
+  expect(paden).toContain("app/admin/evaluation/page.tsx");
   expect(paden).toContain("components/login-form.tsx");
 });
 

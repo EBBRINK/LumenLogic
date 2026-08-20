@@ -83,14 +83,14 @@ test("badge: href maakt de badge klikbaar naar het merk", async () => {
       validUntil="2026-07-13"
       variant="badge"
       brandName="ZZTEST QA-14"
-      href="/data/brand-relations/b-qa14"
+      href="/brand-management/b-qa14"
     />,
   );
   // Eerst wachten tot de render door is, pas daarna de DOM ruw bevragen (precedent
   // elders in de codebase: een kale query() vóór de render race verliest weleens).
   await expect.element(page.getByText(/extension/i)).toBeInTheDocument();
   const link = document.querySelector<HTMLAnchorElement>(
-    'a[href="/data/brand-relations/b-qa14"]',
+    'a[href="/brand-management/b-qa14"]',
   );
   expect(link).not.toBeNull();
   expect(link?.textContent).toMatch(/extension/i);

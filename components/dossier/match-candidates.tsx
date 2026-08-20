@@ -1,3 +1,5 @@
+import { VervallenMarkering } from "@/components/vervallen-markering";
+import { isVervallen } from "@/lib/prijstoestand";
 import { IconCheck, IconSearch } from "./icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -161,10 +163,26 @@ function CandidateRow({
         </div>
         {/* Regel 2: prijs tonen, nooit sorteren — en sinds de UX-audit van 30 jul ook
             nooit meer het zwaarste element op de kaart. Zichtbaar en exact, op
-            bodygewicht: geld mag hier meekijken, niet meebeslissen. */}
-        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          {formatEur(candidate.grossPrice)}
-        </span>
+            bodygewicht: geld mag hier meekijken, niet meebeslissen.
+            Regel 3 (19 aug): is het product vervallen, dan staat daar de rode markering
+            in plaats van een bedrag. De matcher beoordeelt zo'n product gewoon op zijn
+            specs — vervallen is een prijsvraag, geen matchvraag — dus een groene
+            kandidaat kan hier wel degelijk rood gemarkeerd staan. Dat is de bedoeling. */}
+        {isVervallen(candidate.priceState) ? (
+          <VervallenMarkering
+            toestand={candidate.priceState}
+            stempel={{
+              name: candidate.lastPriceListName,
+              validUntil: candidate.lastPriceListValidUntil,
+            }}
+            brandName={candidate.brandName}
+            variant="badge"
+          />
+        ) : (
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+            {formatEur(candidate.grossPrice)}
+          </span>
+        )}
       </div>
 
       <MatchEvidence deviations={candidate.deviations ?? []} />

@@ -12,13 +12,29 @@ import { db } from "@/db/client";
 import { resolveToegang } from "@/lib/repo/toegang";
 import { magBij, niveauVoor } from "@/lib/route-allowlist";
 import { getSession } from "@/lib/session";
-import { NAV_ITEMS } from "./nav-items";
+import { ACCOUNT_ITEMS, NAV_ITEMS } from "./nav-items";
 import { NavBar } from "./nav-link";
 
 export async function SiteNav() {
   const session = await getSession();
   if (!session) return null;
   const toegang = await resolveToegang(db, session.user?.email);
-  const items = NAV_ITEMS.filter((it) => magBij(toegang, niveauVoor(it.href)));
-  return <NavBar email={session.user?.email} items={items} />;
+  const mag = (href: string) => magBij(toegang, niveauVoor(href));
+  const items = NAV_ITEMS.filter((it) => mag(it.href));
+  // Hetzelfde filter voor het accountmenu, plus één regel erbovenop: /admin/organizations
+  // staat er alleen in voor wie géén Admin-ingang heeft (zie ACCOUNT_ITEMS). Voor intern
+  // is dat scherm een kaart op /admin; twee ingangen naar hetzelfde scherm is precies wat
+  // deze opschoning wegneemt.
+  const accountItems = ACCOUNT_ITEMS.filter(
+    (it) =>
+      mag(it.href) &&
+      !(it.href.startsWith("/admin/") && toegang.soort === "intern"),
+  );
+  return (
+    <NavBar
+      email={session.user?.email}
+      items={items}
+      accountItems={accountItems}
+    />
+  );
 }

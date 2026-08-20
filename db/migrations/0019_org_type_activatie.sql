@@ -58,7 +58,7 @@ INSERT INTO memberships (org_id, email, roles)
 SELECT o.id, u.email, ARRAY['org_admin']::membership_role[]
 FROM organizations o
 CROSS JOIN (VALUES
-  ('hello@noplasticfloralfoam.com'),
+  ('tester@voorbeeld.nl'),
   ('timo@jouwainstein.com'),
   ('e.brink@brinklicht.nl')
 ) AS u(email)

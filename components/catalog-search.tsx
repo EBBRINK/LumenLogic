@@ -1,10 +1,9 @@
-import { IconSearch } from "./dossier/icons";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { veldClass } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { formatEur } from "@/lib/format";
+import { CatalogSearchForm, type CountAction } from "./catalog-search-form";
+import { VervallenMarkering } from "@/components/vervallen-markering";
+import { isVervallen } from "@/lib/prijstoestand";
+import { omschrijfHerkenning, type HerkendToken } from "@/lib/spec-tokens";
 import type { Candidate } from "./dossier/types";
 
 // Losse catalogus-zoek (functioneel ontwerp §3.12). Geen dossiercontext: het merk is het
@@ -16,6 +15,10 @@ import type { Candidate } from "./dossier/types";
 //     (tekstsimilariteit); deze component hersorteert nooit.
 //   • Ontbrekende data ≠ afkeuring. Een product zonder gevraagde spec belandt in
 //     "Mogelijk — data onvolledig" (grijze vlag), het wordt nooit stil weggelaten.
+//   • Regel 3 (herschreven 19 aug 2026): een vervallen product staat gewoon in de lijst,
+//     rood gemarkeerd en zónder bedrag. Vóór die datum kwam het hier nooit aan — en juist
+//     dát was het probleem: de bestekschrijver die een artikelnummer van vorig jaar
+//     overtypte kreeg nul treffers in plaats van "dit product is vervallen".
 
 // Eén zoekresultaat = een catalogus-kandidaat, optioneel verrijkt met welke ingevulde
 // specfilters we NIET konden verifiëren (ontbrekende productdata).
@@ -31,29 +34,6 @@ export type CatalogValues = {
 };
 
 const EMPTY_VALUES: CatalogValues = { brand: "", q: "", kelvin: "", cri: "", ip: "" };
-
-// Native select met exact de tokens van <Input> — dezelfde bron (components/ui/field.ts),
-// dus ook dezelfde 44px (O9) en dezelfde focus-ring. Hier stond een eigen reeks op h-8 met
-// de afgeschafte shadcn-resten dark:bg-input/30 en ring-ring/50.
-const selectClass = cn(veldClass, "w-full min-w-0");
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </label>
-  );
-}
 
 function ResultCard({ item }: { item: CatalogResult }) {
   const code = item.articleCode ?? item.supplierArticleCode ?? "—";
@@ -80,9 +60,23 @@ function ResultCard({ item }: { item: CatalogResult }) {
             </p>
           )}
         </div>
-        <span className="shrink-0 font-medium tabular-nums">
-          {formatEur(item.grossPrice)}
-        </span>
+        {/* Prijs OF markering, nooit allebei — de view levert bij een vervallen product
+            geen bedrag, dus hier valt niets weg te laten dat er anders wél zou staan. */}
+        {isVervallen(item.priceState) ? (
+          <VervallenMarkering
+            toestand={item.priceState}
+            stempel={{
+              name: item.lastPriceListName,
+              validUntil: item.lastPriceListValidUntil,
+            }}
+            brandName={item.brandName}
+            variant="badge"
+          />
+        ) : (
+          <span className="shrink-0 font-medium tabular-nums">
+            {formatEur(item.grossPrice)}
+          </span>
+        )}
       </a>
     </li>
   );
@@ -126,6 +120,10 @@ export function CatalogSearch({
   onvolledig = [],
   searched = false,
   filtersActive = false,
+  total,
+  verbreed = false,
+  herkend = [],
+  countAction,
 }: {
   brands: string[];
   values?: CatalogValues;
@@ -133,67 +131,32 @@ export function CatalogSearch({
   onvolledig?: CatalogResult[];
   searched?: boolean;
   filtersActive?: boolean;
+  /** Aantal ZICHTBARE treffers in totaal — inclusief wat het plafond buiten beeld laat. */
+  total?: number;
+  /**
+   * Viel de zoekopdracht terug op de BREDE variant? Dan bevat geen enkel product álle
+   * getypte woorden en zie je de ruimere uitslag. Dat moet het scherm zeggen: een lijst
+   * zonder je eigen zoekwoord erin leest anders als een exact antwoord.
+   */
+  verbreed?: boolean;
+  /**
+   * Specwaarden die uit de vrije zoektekst gelezen zijn ("2700" → kleurtemperatuur). Het
+   * scherm toont ze omdat het raden is: een verkeerd geraden token moet zichtbaar en
+   * corrigeerbaar zijn (vul het specveld zelf in — dat wint altijd).
+   */
+  herkend?: HerkendToken[];
+  /** Server action voor de live teller tijdens het typen; zonder blijft de teller uit. */
+  countAction?: CountAction;
 }) {
-  const total = aantoonbaar.length + onvolledig.length;
+  const shown = aantoonbaar.length + onvolledig.length;
+  const gevonden = total ?? shown;
+  const verborgen = Math.max(0, gevonden - shown);
   return (
     <div className="flex flex-col gap-6">
-      <form method="get" action="/catalog" className="flex flex-col gap-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Brand" hint="We always have the brand — start there.">
-            <select
-              name="brand"
-              defaultValue={values.brand}
-              aria-label="Brand"
-              data-testid="brand-select"
-              className={selectClass}
-            >
-              <option value="">All brands</option>
-              {brands.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Free text">
-            <Input
-              name="q"
-              defaultValue={values.q}
-              placeholder="e.g. SASSO 100 or article no. L360048"
-            />
-          </Field>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Color temp. (K)">
-            <Input
-              type="number"
-              name="kelvin"
-              defaultValue={values.kelvin}
-              placeholder="e.g. 3000"
-              inputMode="numeric"
-            />
-          </Field>
-          <Field label="CRI (min.)">
-            <Input
-              type="number"
-              name="cri"
-              defaultValue={values.cri}
-              placeholder="e.g. 90"
-              inputMode="numeric"
-            />
-          </Field>
-          <Field label="IP (min.)">
-            <Input name="ip" defaultValue={values.ip} placeholder="e.g. IP44" />
-          </Field>
-        </div>
-
-        <div>
-          <Button type="submit">
-            <IconSearch /> Search
-          </Button>
-        </div>
-      </form>
+      {/* Het formulier is een clientcomponent geworden voor de live teller (demosessie
+          12 aug): tijdens het typen telt het aantal treffers mee, gedebounced, via de
+          meegegeven server action. De echte zoekactie blijft het GET-formulier. */}
+      <CatalogSearchForm brands={brands} values={values} countAction={countAction} />
 
       {!searched ? (
         // Geen actie: de zoekknop staat direct hierboven in hetzelfde formulier — een
@@ -202,28 +165,68 @@ export function CatalogSearch({
           title="Choose a brand or type free text and search the catalog."
           action={null}
         />
-      ) : total === 0 ? (
+      ) : shown === 0 ? (
         <EmptyState
           title="No products found"
           description="No visible product matches this search. That's an honest status, not an error."
           action={null}
         />
       ) : (
-        <div className="flex flex-col gap-8">
-          <ResultList title="Provably compliant" items={aantoonbaar} />
-          <ResultList
-            title="Possible — data incomplete"
-            // UX-audit 30 jul (item 12): hier stond "They are never silently omitted."
-            // achteraan. Die belofte staat nu nog op één plek, bij het afrondingsblok in
-            // components/dossier/match-candidates.tsx — daar valt de status te kiezen,
-            // hier valt niets te kiezen. Wat blijft is wat de lijst betekent.
-            note="No data is not a rejection: these products are (still) missing data to prove the match."
-            items={onvolledig}
-          />
+        <div className="flex flex-col gap-4">
+          {/* Het resultaatplafond, hardop. Er worden maximaal negen treffers getoond, en
+              de gebruiker moet zién hoe groot de stapel is die hij niet ziet — dat getal
+              is precies de prikkel om meer in te vullen. Er is bewust geen doorbladeren:
+              wie de rest wil zien, levert informatie aan. Nooit stil afkappen; als deze
+              regel verdwijnt, liegt het scherm over wat het weglaat. */}
+          {/* De terugval, hardop. Dit is de tegenhanger van de strenge AND-tak: geen enkel
+              product bevat álle getypte woorden, dus toont het scherm de ruimere uitslag.
+              Stil doen zou de ergste variant zijn — je typt een woord erbij, de stapel wordt
+              groter, en er staat nergens waarom. OCR-aanvragen zitten vol verschrijvingen,
+              dus dit gebeurt vaker dan je zou denken; zie lib/repo/products.ts. */}
+          {herkend.length > 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="spec-tokens">
+              {herkend.map(omschrijfHerkenning).join(" · ")}. Fill in the field yourself to
+              override.
+            </p>
+          )}
+          {verbreed && (
+            <p className="text-sm" data-testid="broadened">
+              <span className="font-medium">No product has all your search words.</span>{" "}
+              <span className="text-muted-foreground">
+                Showing the broader match instead: products with at least one of them.
+              </span>
+            </p>
+          )}
+          <p className="text-sm" data-testid="result-cap">
+            <span className="font-medium tabular-nums">
+              {verborgen > 0
+                ? `Showing ${shown} of ${gevonden} matches`
+                : `Showing all ${gevonden} matches`}
+            </span>
+            {verborgen > 0 && (
+              <span className="text-muted-foreground">
+                {" "}
+                — the other {verborgen} are left out and cannot be paged through. Fill in
+                more fields to narrow the search.
+              </span>
+            )}
+          </p>
+          <div className="flex flex-col gap-8">
+            <ResultList title="Provably compliant" items={aantoonbaar} />
+            <ResultList
+              title="Possible — data incomplete"
+              // UX-audit 30 jul (item 12): hier stond "They are never silently omitted."
+              // achteraan. Die belofte staat nu nog op één plek, bij het afrondingsblok in
+              // components/dossier/match-candidates.tsx — daar valt de status te kiezen,
+              // hier valt niets te kiezen. Wat blijft is wat de lijst betekent.
+              note="No data is not a rejection: these products are (still) missing data to prove the match."
+              items={onvolledig}
+            />
+          </div>
         </div>
       )}
 
-      {searched && filtersActive && total > 0 && (
+      {searched && filtersActive && shown > 0 && (
         <p className="text-xs text-muted-foreground">
           Products that demonstrably fail a filled-in spec filter are not in these
           lists.

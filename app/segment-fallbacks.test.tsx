@@ -1,7 +1,8 @@
 // White-box RSC-tests van de SEGMENT-foutgrenzen (reviewzwerm 2.5a, B16).
 // Zusterbestand van app/fallbacks.test.tsx — dat bewaakt de drie WORTEL-fallbacks
 // (error/global-error/not-found); dit bewaakt de drie segmentgrenzen die er tot deze
-// sprint niet waren: app/projects/error.tsx, app/data/error.tsx, app/admin/error.tsx.
+// sprint niet waren: app/projects/error.tsx, app/brand-management/error.tsx (heette tot
+// de IA-opschoning app/data/error.tsx), app/admin/error.tsx.
 //
 // WAT HIER PRECIES BEWEZEN WORDT, in twee stappen — want "de fout landt op het
 // segmentscherm" bestaat uit twee onafhankelijke delen:
@@ -26,7 +27,7 @@ import { afterEach, expect, test } from "vitest";
 import { renderServer } from "vitest-plugin-rsc/nextjs/testing-library";
 import RootError from "./error";
 import AdminError from "./admin/error";
-import DataError from "./data/error";
+import BrandManagementError from "./brand-management/error";
 import ProjectsError from "./projects/error";
 
 const viewports = {
@@ -64,10 +65,10 @@ const SEGMENTEN = [
     terug: { label: "Back to projects", href: "/projects" },
   },
   {
-    pad: "./data/error.tsx",
-    Boundary: DataError,
-    kop: "Data could not be loaded",
-    terug: { label: "Back to data", href: "/data" },
+    pad: "./brand-management/error.tsx",
+    Boundary: BrandManagementError,
+    kop: "Brand management could not be loaded",
+    terug: { label: "Back to brand management", href: "/brand-management" },
   },
   {
     pad: "./admin/error.tsx",
@@ -135,9 +136,9 @@ test("de wortelfallback blijft het generieke scherm — het paar is te ondersche
 // ── 3. Lekken doet het segmentscherm net zo min ──────────────────────────────
 
 test("segmentgrens: de databasefout lekt niet, de digest wél", async () => {
-  await renderServer(canvas(<DataError error={DB_FOUT} reset={GEEN_RESET} />));
+  await renderServer(canvas(<BrandManagementError error={DB_FOUT} reset={GEEN_RESET} />));
   await expect
-    .element(page.getByRole("heading", { name: "Data could not be loaded" }))
+    .element(page.getByRole("heading", { name: "Brand management could not be loaded" }))
     .toBeInTheDocument();
 
   const tekst = document.body.textContent ?? "";
@@ -163,8 +164,8 @@ test("segmentgrens: zonder digest blijft de referentieregel weg", async () => {
 // ── 4. Opnamen ───────────────────────────────────────────────────────────────
 //
 // De drie schermen zijn één component met een andere sectienaam (app/segment-error.tsx),
-// dus licht/donker × mobiel/desktop staat één keer volledig — op Projects. Voor Data en
-// Admin volstaat één opname elk: die bewijzen de bedrading (kop + weg terug), niet
+// dus licht/donker × mobiel/desktop staat één keer volledig — op Projects. Voor Brand
+// management en Admin volstaat één opname elk: die bewijzen de bedrading (kop + weg terug), niet
 // nogmaals de vormgeving. Twaalf bijna identieke PNG's zijn geen bewijs maar ruis.
 for (const theme of ["light", "dark"] as const) {
   for (const [device, viewport] of Object.entries(viewports)) {
@@ -180,13 +181,13 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("data-error: opname (light, desktop)", async () => {
+test("brand-management-error: opname (light, desktop)", async () => {
   await page.viewport(viewports.desktop.width, viewports.desktop.height);
-  await renderServer(canvas(<DataError error={DB_FOUT} reset={GEEN_RESET} />));
+  await renderServer(canvas(<BrandManagementError error={DB_FOUT} reset={GEEN_RESET} />));
   await expect
-    .element(page.getByRole("heading", { name: "Data could not be loaded" }))
+    .element(page.getByRole("heading", { name: "Brand management could not be loaded" }))
     .toBeInTheDocument();
-  await page.screenshot({ path: "./data-error.light.desktop.test.png" });
+  await page.screenshot({ path: "./brand-management-error.light.desktop.test.png" });
 });
 
 test("admin-error: opname (dark, mobile)", async () => {

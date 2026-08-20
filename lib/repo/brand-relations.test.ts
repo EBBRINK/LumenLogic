@@ -253,7 +253,12 @@ test("1.6-A: prijs op een verlopen lijst telt WEL mee in de compleetheid", async
 // merk, maar de catalogus (visible_products, ijzeren regel 3) blijft leeg — de
 // verlopen lijst maakt het product nog altijd onvindbaar. Dat bewijst dat de twee
 // assen ontkoppeld zijn: compleetheid = aanlevering, zichtbaarheid = geldigheid.
-test("DoD 2: verlopen lijst — compleetheid telt de prijs, visible_products blijft leeg", async () => {
+// ⚠️ 19 aug 2026: de tweede helft van deze test is omgekeerd door migratie 0022. Regel 3
+// luidt nu "verlopen prijslijst = zichtbaar zónder prijs", dus visible_products blijft niet
+// meer leeg — de rij staat er, met `price_state = 'prijslijst_verlopen'` en `gross_price`
+// NULL. De strekking van de test is ongewijzigd: compleetheid en zichtbaarheid zijn twee
+// verschillende vragen, en de compleetheidsmeting mag niet met de zichtbaarheid meebewegen.
+test("DoD 2: verlopen lijst — compleetheid telt de prijs, de view toont hem zonder bedrag", async () => {
   const db = await createTestDb();
   const { brandId } = await seedBrandProduct(db, {
     brand: "Merk Verlopen Zichtbaarheid", name: "P1",
@@ -263,12 +268,14 @@ test("DoD 2: verlopen lijst — compleetheid telt de prijs, visible_products bli
   expect(c.filledByField[PRICE_FIELD_KEY]).toBe(1); // compleetheid: prijs geleverd
 
   const visibleRes = await db.execute(
-    sql`select count(*) as count from visible_products where brand_id = ${brandId}`,
+    sql`select price_state, gross_price from visible_products where brand_id = ${brandId}`,
   );
   const visibleRows = (
     Array.isArray(visibleRes) ? visibleRes : (visibleRes as { rows?: unknown[] }).rows ?? []
-  ) as { count: string | number }[];
-  expect(Number(visibleRows[0].count)).toBe(0); // zichtbaarheid: onverkort onvindbaar
+  ) as { price_state: string; gross_price: string | null }[];
+  expect(visibleRows).toHaveLength(1); // vindbaar…
+  expect(visibleRows[0].price_state).toBe("prijslijst_verlopen");
+  expect(visibleRows[0].gross_price).toBeNull(); // …maar zonder bedrag
 });
 
 // DoD 3: regressiecheck. Twee merken met identieke veldvulling, alleen het merk met

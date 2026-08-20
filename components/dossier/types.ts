@@ -1,5 +1,6 @@
 // Gedeelde vormtypes voor de presentational componenten. Bewust losgekoppeld van de
 // repo zodat de componenten met fixtures getest kunnen worden (screenshots).
+import type { Prijstoestand } from "@/lib/prijstoestand";
 import type { MatchStatus, StatusCounts } from "./status";
 
 export type { MatchStatus, StatusCounts } from "./status";
@@ -84,6 +85,13 @@ export type Candidate = {
   ipValue: string | null;
   lumenOutput: number | null;
   grossPrice: string | null;
+  // Ijzeren regel 3 (herschreven 19 aug 2026): een vervallen product is vindbaar zónder
+  // bedrag. `grossPrice` is dan NULL en dit veld zegt waaróm — zie lib/prijstoestand.ts.
+  // Bewust VERPLICHT: een nieuw scherm dat een kandidaat samenstelt moet zich uitspreken,
+  // anders verdwijnt de rode markering stilzwijgend op precies dat ene scherm.
+  priceState: Prijstoestand;
+  lastPriceListName: string | null;
+  lastPriceListValidUntil: string | null;
   matchKind: "exact" | "fuzzy";
   // vijfstatussen-verrijking (optioneel; nieuwe match-pagina vult deze)
   deviations?: Deviation[];
@@ -167,6 +175,12 @@ export type RedLinkResult = {
   brandName: string | null;
   articleCode: string | null;
   grossPrice?: string | null;
+  // Regel 3 herschreven: dit is dé plek waar een vervallen product opduikt. De rode regel
+  // ontstond juist omdat het bestek een artikelnummer noemt dat wij niet actueel hebben;
+  // de handmatige zoekactie moet het dan kunnen vinden én meteen zeggen wat eraan mankeert.
+  priceState?: Prijstoestand;
+  lastPriceListName?: string | null;
+  lastPriceListValidUntil?: string | null;
 };
 
 // Een rode regel zonder match in de sectie "Niet gevonden — handmatig linken".

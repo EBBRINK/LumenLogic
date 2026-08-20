@@ -18,13 +18,13 @@ import {
 } from "@/lib/repo/settings";
 
 // Migratie 0004 seedt twee adressen; daar bouwen de tests op voort.
-const SEEDED = ["hello@noplasticfloralfoam.com", "timo@jouwainstein.com"];
+const SEEDED = ["tester@voorbeeld.nl", "timo@jouwainstein.com"];
 
 test("allowlist: toevoegen, controleren en verwijderen", async () => {
   const db = await createTestDb();
 
   // Seed-adressen staan er al in en zijn toegestaan.
-  expect(await isAllowed(db, "hello@noplasticfloralfoam.com")).toBe(true);
+  expect(await isAllowed(db, "tester@voorbeeld.nl")).toBe(true);
   const seeded = await listAllowedEmails(db);
   expect(seeded.map((r) => r.email).sort()).toEqual([...SEEDED].sort());
 

@@ -799,10 +799,16 @@ export const events = pgTable("events", {
     .defaultNow(),
 });
 
-// De view `visible_products` wordt in db/migrations/0001 (hand-geschreven) aangemaakt:
-//   product ⨝ prices ⨝ price_lists WHERE valid_from <= now <= valid_until.
-// `.existing()` → drizzle-kit genereert hier GEEN DDL; de migratie is de bron van waarheid.
-// Alle zoekopdrachten gaan via lib/repo/products.ts, dat uitsluitend deze view raadpleegt.
+// De view `visible_products` wordt hand-geschreven aangemaakt; de laatste definitie staat in
+// db/migrations/0022_vervallen_zichtbaar.sql. `.existing()` → drizzle-kit genereert hier GEEN
+// DDL; de migratie is de bron van waarheid. Alle zoekopdrachten gaan via lib/repo/products.ts
+// en lib/matching/engine.ts, die uitsluitend deze view raadplegen.
+//
+// ⚠️ Sinds 0022 is dit NIET meer "producten met een geldige prijs" maar "producten waarvan we
+// een prijs kennen of ooit kenden", met `priceState` erbij (ijzeren regel 3, herschreven). De
+// geldpoort zit nu in de kolommen: `grossPrice`, `currency`, `priceListId` en `validUntil` zijn
+// NULL zodra `priceState <> 'actueel'`. Wie een bedrag toont krijgt dus vanzelf niets, ook
+// zonder van deze wijziging te weten.
 export const visibleProducts = pgView("visible_products", {
   id: uuid("id"),
   articleCode: text("article_code"),
@@ -833,10 +839,17 @@ export const visibleProducts = pgView("visible_products", {
   epdLifetimeHours: integer("epd_lifetime_hours"),
   countryOfOrigin: text("country_of_origin"),
   status: text("status"),
+  // 'actueel' | 'prijslijst_verlopen' | 'uit_prijslijst' — zie lib/repo/prijstoestand.ts,
+  // dat de drie waarden als gesloten unie vastlegt en er de melding bij levert.
+  priceState: text("price_state"),
   grossPrice: numeric("gross_price", { precision: 12, scale: 2 }),
   currency: text("currency"),
   priceListId: uuid("price_list_id"),
   validUntil: date("valid_until"),
+  // De laatst bekende prijslijst — óók gevuld als de toestand 'actueel' is (dan is het de
+  // lopende lijst). Prijsloos: een naam en een einddatum, nooit een bedrag.
+  lastPriceListName: text("last_price_list_name"),
+  lastPriceListValidUntil: date("last_price_list_valid_until"),
 }).existing();
 
 // visible_specs (J-01): productspecs LOS van de prijs — voor de disclosure-productkaart,

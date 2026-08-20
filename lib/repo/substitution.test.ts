@@ -130,7 +130,12 @@ test("getSubstitution + listSubstitutions: identiteit uit de catalogus + samenva
   expect(list[0].referenceName).toBe("SASSO 100 CEIL");
 });
 
-test("createSubstitution: onzichtbaar (verlopen) product geeft geen voorstel", async () => {
+test("createSubstitution: een vervallen ALTERNATIEF geeft geen voorstel", async () => {
+  // ⚠️ Deze test heette tot 19 aug 2026 "onzichtbaar (verlopen) product" en leunde op de
+  // oude formulering van regel 3: verlopen = onvindbaar, dus getReference gaf null. Sinds
+  // migratie 0022 is een verlopen product wél vindbaar (zonder bedrag), en viel die
+  // bescherming stilzwijgend weg. De weigering staat nu op de toestand — zie de kop van
+  // lib/repo/substitution.ts.
   const db = await createTestDb();
   const dossier = await createDossier(db, { orgId: null, name: "Verlopen", xisPhase: "deal_making" });
   const { productId: ref } = await seedBrandProduct(db, {
@@ -144,7 +149,8 @@ test("createSubstitution: onzichtbaar (verlopen) product geeft geen voorstel", a
     name: "PHANTOM CEIL",
     categoryPath: CAT,
     price: "100.00",
-    validUntil: "2020-01-01", // verlopen → onvindbaar (regel 3)
+    validFrom: "2019-01-01",
+    validUntil: "2020-01-01", // verlopen → vindbaar, maar niet te offreren
   });
   await expect(
     createSubstitution(db, {
@@ -152,7 +158,38 @@ test("createSubstitution: onzichtbaar (verlopen) product geeft geen voorstel", a
       referenceProductId: ref,
       alternativeProductId: ghost,
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow(/geen actuele prijs/);
+});
+
+test("createSubstitution: een vervallen REFERENTIE mag wél — dat is het hele scenario", async () => {
+  // De andere kant van dezelfde beslissing: het voorgeschreven armatuur is uit productie,
+  // en juist daarom zoek je een vervanger. Alleen wat de klant gaat kópen moet prijsbaar
+  // zijn.
+  const db = await createTestDb();
+  const dossier = await createDossier(db, { orgId: null, name: "Vervanger", xisPhase: "deal_making" });
+  const { productId: ref } = await seedBrandProduct(db, {
+    brand: "Ghost",
+    name: "PHANTOM CEIL",
+    categoryPath: CAT,
+    price: "100.00",
+    validFrom: "2019-01-01",
+    validUntil: "2020-01-01",
+  });
+  const { productId: alt } = await seedBrandProduct(db, {
+    brand: "XAL",
+    name: "SASSO 100 CEIL",
+    categoryPath: CAT,
+    price: "310.00",
+  });
+  const voorstel = await createSubstitution(db, {
+    dossierId: dossier.id,
+    referenceProductId: ref,
+    alternativeProductId: alt,
+  });
+  expect(voorstel.id).toBeTruthy();
+  // Zonder referentieprijs valt het prijsverschil niet te bepalen, en dat zegt de notitie
+  // eerlijk in plaats van een besparing te verzinnen.
+  expect(voorstel.savingNote).toMatch(/cannot be determined/);
 });
 
 test("systeemAlternatieven: N spots in een zone → voorstel voor één lijnsysteem", async () => {

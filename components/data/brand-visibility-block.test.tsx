@@ -1,6 +1,6 @@
 // White-box RSC-render-test van BrandVisibilityBlock (sprint 2.0a, blok 3): de éénmerks-
 // variant van de vroegere BrandsTierBlock-tier/toggle-kolommen, nu op
-// /data/brand-relations/[brandId]. Licht/donker × mobiel/desktop + gerichte asserts op wat
+// /brand-management/[brandId]. Licht/donker × mobiel/desktop + gerichte asserts op wat
 // stil kapot kan gaan: de tier-select toont de huidige tier, de toggles tonen hun
 // effectieve staat (basis/zichtbaar/verborgen), en alles is een <form> — werkt zonder JS.
 import { page } from "vitest/browser";

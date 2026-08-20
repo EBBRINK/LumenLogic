@@ -24,7 +24,7 @@ import { seedInternLid } from "@/db/test-org";
 
 const harnas = vi.hoisted(() => ({
   db: null as unknown,
-  email: "hello@noplasticfloralfoam.com",
+  email: "tester@voorbeeld.nl",
   // De schakelaar: `true` = geen sessie.
   uitgelogd: false,
 }));
