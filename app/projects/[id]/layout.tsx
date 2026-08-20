@@ -13,7 +13,13 @@ import { getReviewCounts } from "@/lib/repo/review";
 import { isReadOnly } from "@/lib/repo/project-status";
 import type { StatusCounts } from "@/components/dossier/status";
 import { requireUuid } from "@/lib/uuid";
+import {
+  getDossierDeleteImpact,
+  magVerwijderen,
+} from "@/lib/repo/dossier-delete";
+import { ProjectDeleteButton } from "@/components/dossier/project-delete-button";
 import { setStatusAction, setXisPhaseAction } from "../actions";
+import { deleteProjectsAction } from "../delete-actions";
 import { bewaakRoute } from "@/lib/route-toegang";
 import { toegangScope } from "@/lib/repo/toegang";
 
@@ -45,6 +51,13 @@ export default async function DossierLayout({
   const counts = (await getStatusCounts(db, id)) as StatusCounts;
   const review = await getReviewCounts(db, id);
   const readOnly = isReadOnly(dossier.status);
+  // Verwijderen: alleen intern of org-admin van de eigen org ziet de knop; de repo
+  // herhaalt die controle. Impact vooraf, zodat de dialoog naam én inhoud kan noemen.
+  const scope = toegangScope(toegang);
+  const magWeg = magVerwijderen(toegang, dossier);
+  const impact = magWeg
+    ? (await getDossierDeleteImpact(db, scope, [dossier.id]))[dossier.id]
+    : undefined;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-8">
@@ -74,14 +87,24 @@ export default async function DossierLayout({
             <StatusTally counts={counts} />
           </div>
         </div>
-        <ProjectStatusControls
-          dossierId={dossier.id}
-          status={dossier.status}
-          xisPhase={dossier.xisPhase}
-          archivedReason={dossier.archivedReason}
-          statusAction={setStatusAction}
-          xisPhaseAction={setXisPhaseAction}
-        />
+        <div className="flex flex-col items-end gap-2">
+          <ProjectStatusControls
+            dossierId={dossier.id}
+            status={dossier.status}
+            xisPhase={dossier.xisPhase}
+            archivedReason={dossier.archivedReason}
+            statusAction={setStatusAction}
+            xisPhaseAction={setXisPhaseAction}
+          />
+          {magWeg && impact && (
+            <ProjectDeleteButton
+              dossierId={dossier.id}
+              name={dossier.name}
+              impact={impact}
+              action={deleteProjectsAction}
+            />
+          )}
+        </div>
       </header>
 
       {readOnly && (

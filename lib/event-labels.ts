@@ -23,6 +23,7 @@ export const ACTION_LABEL: Record<string, string> = {
   suggestions: "Suggestions (awarded)",
   pdf_import: "PDF import",
   dossier_created: "Project created",
+  dossier_deleted: "Project deleted",
   phase_changed: "Phase change",
   // Nieuwe event-acties uit de vijfstatussen-/matcherlaag — nette labels.
   matched_status: "Status set",

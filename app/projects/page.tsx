@@ -1,5 +1,6 @@
 import { db } from "@/db/client";
-import { DossierList, StatusLegend } from "@/components/dossier/dossier-list";
+import { StatusLegend } from "@/components/dossier/dossier-list";
+import { SelectableDossierList } from "@/components/dossier/dossier-list-selectable";
 import { NewDossierDialog } from "@/components/dossier/new-dossier-form";
 import {
   StatusFilter,
@@ -14,7 +15,9 @@ import { listOrganizations } from "@/lib/repo/orgs";
 import { getStatusCounts } from "@/lib/repo/matching";
 import { bewaakRoute } from "@/lib/route-toegang";
 import { toegangScope } from "@/lib/repo/toegang";
+import { magVerwijderen } from "@/lib/repo/dossier-delete";
 import { createDossierAction } from "./actions";
+import { deleteProjectsAction } from "./delete-actions";
 
 // Statusfilter (B6): zonder filter alles behálve archief.
 const FILTERS: ProjectStatusFilter[] = [
@@ -117,16 +120,23 @@ export default async function DossiersPage({
     : dossiers;
   // Kleuren-telling per dossier ophalen zodat de lijst het status-dashboard toont (E-03).
   const withCounts = await Promise.all(
-    gevonden.map(async (d) => ({
-      id: d.id,
-      name: d.name,
-      customer: d.customer,
-      phase: d.phase,
-      status: d.status,
-      // Maakt de bestaande sortering (updated_at DESC) zichtbaar op de kaart.
-      updatedAt: d.updatedAt,
-      counts: (await getStatusCounts(db, d.id)) as StatusCounts,
-    })),
+    gevonden.map(async (d) => {
+      const counts = (await getStatusCounts(db, d.id)) as StatusCounts;
+      return {
+        id: d.id,
+        name: d.name,
+        customer: d.customer,
+        phase: d.phase,
+        status: d.status,
+        // Maakt de bestaande sortering (updated_at DESC) zichtbaar op de kaart.
+        updatedAt: d.updatedAt,
+        counts,
+        // Verwijderen (goal-projecten-verwijderen): alleen wie mag, krijgt een
+        // checkbox; de repo herhaalt de controle bij de daadwerkelijke delete.
+        canDelete: magVerwijderen(toegang, d),
+        lineCount: Object.values(counts).reduce((n, c) => n + c, 0),
+      };
+    }),
   );
 
   return (
@@ -168,8 +178,9 @@ export default async function DossiersPage({
           `?filter=archief` is onwaar zodra er één niet-gearchiveerd project bestaat —
           zelfde soort halve waarheid als de rest van de audit; alleen de derde tak mag
           "nog geen projecten" zeggen. */}
-      <DossierList
+      <SelectableDossierList
         dossiers={withCounts}
+        deleteAction={deleteProjectsAction}
         emptyMessage={
           q !== ""
             ? `No project matches “${q}”${

@@ -5997,3 +5997,22 @@ Plan + arbitrage: `docs/goal-import-meer-formaten.md`. Open eindes:
   niemand kleinere batches (gedocumenteerd in lib/ai/leesroute.ts).
 - Volle vitest-suite flakte op 8 niet-gerelateerde bestanden (bekende belasting-flake);
   allemaal solo groen geverifieerd.
+
+## 2026-08-20 — Projecten verwijderen (goal-projecten-verwijderen)
+
+Gebouwd in worktree modest-cerf-d6b15d: `lib/repo/dossier-delete.ts` (impact + delete +
+rechten), `app/projects/delete-actions.ts` (eigen bestand naast actions.ts — afspraak met
+de import-meer-formaten-sessie), verwijderknop op de projectpagina en bulkselectie op
+`/projects`. Geen migratie nodig; cascade bestond al, leads worden losgekoppeld.
+
+Open eindes:
+1. **Geen uitkomst-feedback in de UI.** `deleteProjectsAction` geeft niets terug; een
+   `skipped` (id buiten scope/rechten, of een DELETE die op een nieuwe FK-blocker stuit)
+   oogt identiek aan succes — de kaart blijft dan gewoon staan zonder melding. De repo
+   levert `{deleted, skipped}` al; een `useActionState`-vorm zoals `deleteBrandAction`
+   is de logische vervolgstap als dit in de praktijk verwarring geeft.
+2. **Nieuwe FK's zonder ON DELETE CASCADE op de dossier-boom breken de delete stil.**
+   De kale catch in `deleteDossiers` vangt de PG-constraintfout af (bewust: geen
+   constraint-namen naar buiten) en telt als skipped. Check bij elke nieuwe tabel die
+   (indirect) aan `project_dossiers` hangt dat de keten cascadet — migratie 0024
+   (`import_source_files`, cascadet via `import_runs`) is gecheckt en zit goed.
