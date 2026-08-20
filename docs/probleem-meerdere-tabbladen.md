@@ -21,10 +21,17 @@ plattegrond en dezelfde ruimtes, maar een andere spot:
 
 | | Tabblad 1 | Tabblad 2 |
 |---|---|---|
-| Spot | Delta Light Spy 39 Trimless 24121 9220 B | Wever & Ducré 18486LQ3 |
-| Aantal | 53 | 49 |
+| Tabbladnaam | `Delta Light` | `Wever en Ducre` |
+| Hoofdspot | Delta Light Spy 39 Trimless 24121 9220 B | Wever & Ducré 18486LQ3 |
+| Aantal hoofdspots | 53 | 49 |
+| Resterende Spy 39 | — | 6 (toilet, douches, badkamer) |
+| Rijen · dataregels · som | 102 · 42 · 86 | 102 · 42 · 86 |
 | Dimming | Dali-dim | Loxone |
 | Bruto materiaal | € 23.413 | € 14.954 |
+
+Let op: 53 en 49 zijn **spots**, niet regels en niet armaturen. Blad 2 houdt op zes plekken de
+Delta Light Spy 39 aan, dus 49 + 6 = 55 spots daar tegen 53 op blad 1. Het werkboek bevat
+verder géén legenda-, sjabloon- of verborgen blad: precies twee zichtbare tabbladen.
 
 Het prijsverschil is € 8.459 op één woning. Dat is precies de vraag die de klant gesteld heeft,
 en precies de helft die vandaag stil wegvalt.
@@ -32,8 +39,11 @@ en precies de helft die vandaag stil wegvalt.
 ## Waarom samenvoegen géén oplossing is
 
 De voor de hand liggende reflex — lees alle tabbladen en plak ze achter elkaar — geeft hier
-102 armaturen waar er 53 hangen. Het zijn geen vervolgbladen maar **alternatieven**: dezelfde
-plafonds, twee merken. Optellen levert een offerte op die twee keer dezelfde ruimte verlicht.
+**84 spec-regels en 172 armaturen waar er 42 regels en 86 armaturen zijn** — precies het
+dubbele. Beide bladen zijn namelijk vormgelijk: elk 102 rijen, elk 42 dataregels, en elk een
+eigen totaalregel op rij 102 die `Aantallen = 86` zegt. Het zijn geen vervolgbladen maar
+**alternatieven**: dezelfde plattegrond, dezelfde ruimtes, dezelfde coderingen, twee merken.
+Optellen levert een offerte op die elke ruimte twee keer verlicht.
 
 ## De diepere beperking
 

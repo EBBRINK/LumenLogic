@@ -7,7 +7,7 @@ tabblad 2 Wever & Ducré — het tweede blad verdwijnt vandaag zonder een woord)
 **Vaststaand besluit (Timo, 20 aug 2026, niet heropenen): de gebruiker kiest het tabblad.**
 Bij meer dan één tabblad met herkenbare data toont de upload een keuzelijst met per blad de
 naam en het aantal gevonden regels. Samenvoegen is expliciet afgewezen: de tabbladen van het
-Bos-bestand zijn alternatieven (102 armaturen op papier, 53 aan het plafond), geen
+Bos-bestand zijn alternatieven (samenvoegen geeft 84 regels en 172 armaturen waar er 42 en 86 zijn), geen
 vervolgbladen.
 
 **Volgorde:** dit werk gaat ná `docs/goal-bestek-kopwoorden.md` (zelfde bestanden). Zonder
@@ -240,7 +240,9 @@ blijven via `callAction()` lopen (redirect ≠ fout; `/login` = sessie verlopen)
 
 1. **Bos-bestand (geanonimiseerde fixture uit goal-bestek-kopwoorden):** upload toont een
    keuzelijst met twee bladen en hun regelaantallen; blad 2 kiezen importeert alléén de
-   Wever & Ducré-regels; nergens 102 regels.
+   Wever & Ducré-regels; **42 regels met som 86**, nooit 84 regels of som 172.
+   Beide bladen dragen een eigen totaalregel `Aantallen = 86` op rij 102 — gebruik die als
+   assertie, net als bij klus 1, en zorg dat die regel zélf geen spec-regel wordt.
 2. **Één-blads-bestand (bestaande fixtures):** exact het huidige aantal klikken en dezelfde
    redirect — geen keuzescherm in de DOM.
 3. **Beide paden:** dezelfde beslisfunctie, aantoonbaar via N1 + N3 + de window-registraties
