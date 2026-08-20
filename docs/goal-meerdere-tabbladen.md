@@ -263,7 +263,52 @@ blijven via `callAction()` lopen (redirect ≠ fout; `/login` = sessie verlopen)
 - **Meldingen bij 0 gevonden regels** — bestaand terrein van
   `docs/probleem-liegende-import-melding.md`, gedrag blijft hier ongewijzigd.
 
-## Na het bouwen (invullen bij oplevering)
+## Na het bouwen (20 aug 2026, gebouwd)
 
-- Gemeten resultaat op de Bos-fixture: …
-- Niet gehaald / open eindes: …
+**Gemeten resultaat op de Bos-fixture** (`tests/acceptatie-meerdere-tabbladen.test.ts`,
+door `sheetsFromXlsx → summarizeSheets → chooseSheet → parseSpecLinesFromRows`):
+
+- de keuzelijst biedt exact twee bladen aan — `Delta Light — 42 lines found` en
+  `Wever en Ducre — 42 lines found`, `skipped: 0`;
+- blad 2 kiezen levert 42 regels en 86 armaturen, met 49 Wever en Ducre-spots en de 6
+  Spy 39's die daar blijven staan. Hetzelfde controlegetal als blad 1: rij 102 zegt zelf
+  `Aantallen = 86`;
+- samenvoegen zou 84 regels en 172 armaturen geven — dat staat als tegenproef in dezelfde
+  test, zodat de "optellen"-reflex niet ongemerkt kan terugkeren;
+- de twee bladen zijn regel voor regel identiek op rijnummer, codering, ruimte en aantal;
+  alleen het product verschilt (rij 57 is op blad 1 een NIME II en op blad 2 een W&D).
+
+Alle vijf de naden staan: N1 `lib/table/sheet-choice.test.ts`, N2 uitgebreid in
+`lib/table/rows-from-xlsx.test.ts`, N3 in `lib/table/parse-rows.test.ts`, N4
+`app/projects/table-sheet-choice.test.ts` (PGlite, échte action), N5 in
+`components/dossier/pdf-upload.test.tsx` met screenshots
+`project-tabbladkeuze.{light,dark}.{mobile,desktop}.test.png`.
+
+### Eén afwijking van de spec, bewust
+
+**"Tabblad met herkenbare data" eist nu óók een herkende koprij.** De spec definieerde het
+als `parseSpecLinesFromRows(rows).lines.length >= 1`. Gemeten tijdens het bouwen: een
+legendablad met alleen `["Toelichting bij de codes"]` levert daarmee **1 regel** op — het
+positionele pad maakt van kolom A een armatuurcode. Elk bestand met een toelichtingstabje
+zou dan een keuzescherm krijgen, wat botst met de harde eis uit het probleemdocument dat
+de keuze "geen extra klik mag worden voor de 90% die één blad heeft". §b van deze spec
+ging er ook expliciet van uit dat een legendablad 0 regels geeft; dat klopt niet.
+
+Gebouwd is daarom: **niet verborgen én koprij herkend én ≥ 1 regel** (Timo, 20 aug).
+
+Eerlijk over de grens daarvan: "regressievrij" geldt voor het geval dat géén blad een
+koprij heeft — dan valt alles in de fallback, die het eerste blad mét inhoud pakt, exact
+als vroeger. Heeft blad A géén koprij maar wél positionele regels en blad B wél een
+koprij, dan wordt B zonder keuze geïmporteerd. Er verdwijnt daar dus nog steeds een blad
+zonder het te vragen — maar het slechtere: B is de tabel die we écht begrijpen, A is een
+positionele gok. Vóór deze feature won A, simpelweg omdat hij vooraan stond. Het gedrag
+is vastgepind in `sheet-choice.test.ts` ("koprij-blad wint van een koprijloos blad"), en
+de samenvattingsregel zegt daarom `not offered — no luminaire table recognised there` in
+plaats van de eerdere, in dit geval onware, formulering "without recognisable lines".
+
+### Niet gedaan, bewust
+
+- Het docx-vrije-tekstpad in `finishTableImportAction` heeft een pre-existing bug: de
+  `redirect()` staat binnen de `try` met een kale `catch`, dus een geslaagde import meldt
+  "The file could not be parsed." en logt een misleidend `tabel_import_rejected`. Buiten
+  scope van deze spec (het AI-pad blijft ongemoeid), apart gemeld — zie `HANDOVER.md`.

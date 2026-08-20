@@ -244,3 +244,24 @@ test("zone vult NIET door op het positionele pad", () => {
   expect(headerRow).toBeNull();
   expect(lines.every((l) => l.zone === null)).toBe(true);
 });
+
+test("het regelaantal hangt NIET van de merkenlijst af (goal-meerdere-tabbladen N3)", () => {
+  // Hier leunt de hele client/server-consistentie op: de browser heeft geen catalogus
+  // en telt dus met een lege merkenlijst, de server telt mét. Zouden die twee kunnen
+  // verschillen, dan toont de keuzelijst andere aantallen dan er geïmporteerd worden.
+  // brandNames stuurt alléén de merk/type-splitsing, nooit of een rij een regel is.
+  const rows = [
+    BOS_HEADER,
+    ["", "Hal", "", "", "3", "", "12", "", "Louis Poulsen Toldbod 155", "", "", ""],
+    ["", "", "", "", "1", "", "13", "", "Delta Light Spy 39", "", "", ""],
+    ["", "Zolder", "", "", "2", "", "", "", "Onbekend merk pendel", "", "", ""],
+    ["", "Totaal", "", "", "6", "", "", "", "", "", "", ""],
+  ];
+  const met = parseSpecLinesFromRows(rows, BESTEK_BRANDS);
+  const zonder = parseSpecLinesFromRows(rows, []);
+  expect(met.lines).toHaveLength(3);
+  expect(zonder.lines).toHaveLength(met.lines.length);
+  // de splitsing verschilt wél — dat is precies wat brandNames doet
+  expect(met.lines[0].brandText).toBe("Louis Poulsen");
+  expect(zonder.lines[0].brandText).toBeNull();
+});

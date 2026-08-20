@@ -28,6 +28,13 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { callAction, failureDetail } from "@/lib/next-action-result";
+import {
+  chooseSheet,
+  summarizeSheets,
+  type SheetChoice,
+  type SheetOption,
+} from "@/lib/table/sheet-choice";
+import { isHiddenWorksheet, rowsFromWorksheet } from "@/lib/table/worksheet-rows";
 import { IconUpload } from "./icons";
 
 // Client-side groottegrens: boven 100 MB laden we het bestand niet eens in het
@@ -99,7 +106,11 @@ export type UploadSourceChunkAction = (formData: FormData) => Promise<
 export type FinishTableImportAction = (input: {
   dossierId: string;
   runId: string;
-}) => Promise<{ error: string } | void>;
+  // Ontbreekt bij de eerste finish: de server bepaalt dan of er iets te kiezen valt en
+  // antwoordt met {sheetChoice} zónder te importeren. Wij vragen het de gebruiker en
+  // roepen dezelfde finish nog eens aan, nu mét index.
+  sheetIndex?: number;
+}) => Promise<{ error: string } | { sheetChoice: SheetChoice } | void>;
 
 // >15 MB-pad: het bronbestand blijft achter, alleen de client-gelezen rijen
 // gaan de deur uit. Redirect bij succes zoals finishTableImportAction.
@@ -107,6 +118,8 @@ export type ImportTabelRowsAction = (input: {
   dossierId: string;
   filename: string;
   rows: string[][];
+  sheetName?: string;
+  sheetCount?: number;
 }) => Promise<{ error: string } | void>;
 
 // Openstaande OCR-run van dit dossier (B5) — de projectpagina haalt dit bytes-vrij
@@ -126,7 +139,96 @@ type CardStatus =
   | { kind: "idle" }
   | { kind: "busy"; text: string }
   | { kind: "handoff"; text: string }
-  | { kind: "error"; text: string };
+  | { kind: "error"; text: string }
+  // Eén werkboek, twee uitvoeringen van dezelfde armaturenstaat: de gebruiker kiest
+  // welk tabblad geïmporteerd wordt (docs/goal-meerdere-tabbladen.md). Als tak van
+  // deze union, want de toestanden sluiten elkaar per constructie uit — je kunt niet
+  // tegelijk kiezen en bezig zijn.
+  | {
+      kind: "chooseSheet";
+      sheets: SheetOption[];
+      skippedSheets: number;
+      // Sluit over het pad heen: gechunkt roept dit finishTableImportAction met een
+      // sheetIndex aan, op het >15 MB-pad verstuurt het de al ingelezen rijen van dát
+      // blad. Zo rendert één stuk UI allebei de paden.
+      confirm: (index: number) => Promise<void>;
+    };
+
+// De keuzelijst. Eén component voor allebei de uploadpaden — welk pad de keuze
+// aanbood, zie je hier niet, en dat is precies de bedoeling: de weergave kan niet
+// uiteenlopen. Waarom er gekozen moet worden staat erbij, want "twee tabbladen" is
+// geen antwoord op de vraag die de gebruiker heeft.
+function SheetChoiceBlock({
+  sheets,
+  skipped,
+  picked,
+  onPick,
+  onConfirm,
+  onCancel,
+}: {
+  sheets: SheetOption[];
+  skipped: number;
+  picked: number | null;
+  onPick: (index: number) => void;
+  onConfirm: (index: number) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-md border p-3">
+      <p className="text-sm font-medium">
+        This file has {sheets.length} sheets with luminaire lines — choose which
+        one to import.
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        They are alternatives, not continuations: importing both would light
+        every room twice.
+      </p>
+      <fieldset className="mt-2.5 flex flex-col gap-1.5">
+        <legend className="sr-only">Sheet to import</legend>
+        {sheets.map((sheet) => (
+          <label
+            key={sheet.index}
+            className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm"
+          >
+            <input
+              type="radio"
+              name="sheet-choice"
+              value={sheet.index}
+              checked={picked === sheet.index}
+              onChange={() => onPick(sheet.index)}
+            />
+            <span className="font-medium">{sheet.name}</span>
+            <span className="text-muted-foreground">
+              — {sheet.lines} lines found
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {skipped > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {skipped} other {skipped === 1 ? "sheet was" : "sheets were"} not
+          offered — no luminaire table recognised there.
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {/* De zware actie van dit blok, maar níet de primary van het SCHERM: dat is de
+            upload-knop hierboven (DESIGN.md §6, één primary per scherm). outline naast
+            een ghost-Cancel houdt het onderscheid. */}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={picked == null}
+          onClick={() => picked != null && onConfirm(picked)}
+        >
+          Import this sheet
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // Blijft de overdrachtstoestand langer dan dit staan, dan is er geen navigatie
 // gekomen en zeggen we dat eerlijk in plaats van eeuwig "opening…" te tonen.
@@ -212,10 +314,16 @@ export function PdfUploadCard({
   //  handoff — uitkomst bekend én goed; Next navigeert, de kaart draagt over
   //  error   — eerlijke foutmelding, kaart weer vrij voor een nieuwe poging
   const [status, setStatus] = useState<CardStatus>({ kind: "idle" });
+  // Welk tabblad staat aangevinkt. null = "nog niets aangeraakt", en dan valt de keuze
+  // op het eerste aangeboden blad — een radiolijst zonder selectie is een dood scherm.
+  const [sheetPick, setSheetPick] = useState<number | null>(null);
   const busy = status.kind === "busy" ? status.text : null;
   // Tijdens 'handoff' blijft het formulier op slot: de navigatie loopt nog en een
   // tweede upload zou op het OCR-pad opnieuw geld kosten.
-  const locked = status.kind === "busy" || status.kind === "handoff";
+  const locked =
+    status.kind === "busy" ||
+    status.kind === "handoff" ||
+    status.kind === "chooseSheet";
   const setBusy = (text: string | null) =>
     setStatus((s) =>
       text != null
@@ -561,6 +669,10 @@ export function PdfUploadCard({
       );
       return;
     }
+    // Vastleggen ná de poort: de keuzelijst roept deze acties later nog eens aan, vanuit
+    // een closure die de narrowing van hierboven niet meer ziet.
+    const finishTabel = finishTableImportAction;
+    const importTabelRows = importTabelRowsAction;
 
     if (file.size > MAX_TABLE_SOURCE_BYTES) {
       // >15 MB-fallback: rijen client-side lezen. Een docx van >15 MB kunnen we
@@ -573,23 +685,74 @@ export function PdfUploadCard({
         return;
       }
       setBusy("File is larger than 15 MB — reading rows in the browser…");
-      let rows: string[][];
+
+      // Versturen is één plek, want hij wordt vanaf twee kanten aangeroepen: direct als
+      // er niets te kiezen valt, en vanuit de keuzelijst als de gebruiker een blad koos.
+      const verstuur = async (
+        rows: string[][],
+        blad: { name: string; count: number } | null,
+      ) => {
+        setBusy(`Read ${rows.length} rows — importing…`);
+        const result = await callAction(
+          () =>
+            importTabelRows({
+              dossierId,
+              filename: file.name,
+              rows,
+              ...(blad ? { sheetName: blad.name, sheetCount: blad.count } : {}),
+            }),
+          { path: `/projects/${dossierId}` },
+        );
+        if (result.kind === "failed") {
+          setError(
+            `The import did not complete (${failureDetail(result.error)}). Check this project's events log to see whether lines were saved before retrying.`,
+          );
+          return;
+        }
+        if (result.kind === "signedOut") {
+          setError(
+            "Your session expired before anything was imported — nothing was saved. Sign in again and choose the same file.",
+          );
+          return;
+        }
+        if (result.kind === "divertedTo") {
+          setError(
+            `The import ended on an unexpected page (${result.href}) — nothing was confirmed. Check this project's events log before retrying.`,
+          );
+          return;
+        }
+        if (result.kind === "value" && result.value && "error" in result.value) {
+          setError(result.value.error);
+          return;
+        }
+        setHandoff("Import complete — opening the results…");
+      };
+
+      let csvRijen: string[][] = [];
+      let bladen: {
+        index: number;
+        name: string;
+        hidden: boolean;
+        rows: string[][];
+      }[] = [];
       try {
         if (kind === "csv") {
-          rows = splitCsvRows(await file.text());
+          csvRijen = splitCsvRows(await file.text());
         } else {
-          const ExcelJS = await import("exceljs");
-          const wb = new ExcelJS.Workbook();
+          const ExcelJSRuntime = await import("exceljs");
+          const wb = new ExcelJSRuntime.Workbook();
           await wb.xlsx.load(await file.arrayBuffer());
-          rows = [];
-          const ws = wb.worksheets[0];
-          ws?.eachRow((row) => {
-            const cells: string[] = [];
-            row.eachCell({ includeEmpty: true }, (cell) => {
-              cells.push(cell.text ?? "");
-            });
-            rows.push(cells);
-          });
+          // Álle bladen, niet langer hard worksheets[0]: dat negeerde een tweede
+          // uitvoering stilzwijgend en liep bovendien uit de pas met de server, die
+          // het eerste blad mét inhoud pakte.
+          bladen = wb.worksheets.map((ws, i) => ({
+            index: i + 1,
+            name: ws.name,
+            hidden: isHiddenWorksheet(ws),
+            // zelfde lezer als de server (lib/table/worksheet-rows.ts): zou dit pad
+            // anders lezen, dan beloofde "N lines found" iets anders dan er komt
+            rows: rowsFromWorksheet(ws),
+          }));
         }
       } catch {
         setError(
@@ -597,34 +760,35 @@ export function PdfUploadCard({
         );
         return;
       }
-      setBusy(`Read ${rows.length} rows — importing…`);
-      const result = await callAction(
-        () => importTabelRowsAction({ dossierId, filename: file.name, rows }),
-        { path: `/projects/${dossierId}` },
-      );
-      if (result.kind === "failed") {
-        setError(
-          `The import did not complete (${failureDetail(result.error)}). Check this project's events log to see whether lines were saved before retrying.`,
-        );
+
+      if (kind === "csv") {
+        await verstuur(csvRijen, null); // csv heeft geen tabbladen
         return;
       }
-      if (result.kind === "signedOut") {
-        setError(
-          "Your session expired before anything was imported — nothing was saved. Sign in again and choose the same file.",
-        );
+      // Dezelfde beslisfunctie als het serverpad — dát is waarom hij bestaat.
+      const beslissing = chooseSheet(summarizeSheets(bladen));
+      const bladVan = (index: number) => bladen.find((b) => b.index === index);
+      if (beslissing.kind === "choose") {
+        setStatus({
+          kind: "chooseSheet",
+          sheets: beslissing.sheets,
+          skippedSheets: beslissing.skipped,
+          confirm: async (index) => {
+            const blad = bladVan(index);
+            // alléén de rijen van het gekozen blad gaan de deur uit
+            await verstuur(blad?.rows ?? [], {
+              name: blad?.name ?? "",
+              count: bladen.length,
+            });
+          },
+        });
         return;
       }
-      if (result.kind === "divertedTo") {
-        setError(
-          `The import ended on an unexpected page (${result.href}) — nothing was confirmed. Check this project's events log before retrying.`,
-        );
-        return;
-      }
-      if (result.kind === "value" && result.value && "error" in result.value) {
-        setError(result.value.error);
-        return;
-      }
-      setHandoff("Import complete — opening the results…");
+      const blad = bladVan(beslissing.index);
+      await verstuur(blad?.rows ?? [], {
+        name: blad?.name ?? "",
+        count: bladen.length,
+      });
       return;
     }
 
@@ -700,34 +864,58 @@ export function PdfUploadCard({
       // {ok} (alreadyDone of vers opgeslagen): door naar de volgende chunk.
     }
 
-    setBusy("Reading rows and matching…");
-    const finished = await callAction(
-      () => finishTableImportAction({ dossierId, runId: start.runId }),
-      { path: `/projects/${dossierId}` },
-    );
-    if (finished.kind === "failed") {
-      setError(
-        `The import did not complete (${failureDetail(finished.error)}). The uploaded file is saved — choose the same file again to retry; check this project's events log first.`,
+    // De finish draait mogelijk TWEE keer: één keer zonder sheetIndex (de server kijkt
+    // dan of er iets te kiezen valt en importeert nog niets), en zo nodig nog eens met
+    // het gekozen blad. Dat mag van de idempotentie-poort, want een proef-finish laat de
+    // run op 'voorstel' staan.
+    const finish = async (sheetIndex?: number) => {
+      setBusy("Reading rows and matching…");
+      const finished = await callAction(
+        () =>
+          finishTabel({
+            dossierId,
+            runId: start.runId,
+            ...(sheetIndex != null ? { sheetIndex } : {}),
+          }),
+        { path: `/projects/${dossierId}` },
       );
-      return;
-    }
-    if (finished.kind === "signedOut") {
-      setError(
-        "Your session expired before the import could be completed — no lines were saved. Sign in again and choose the same file.",
-      );
-      return;
-    }
-    if (finished.kind === "divertedTo") {
-      setError(
-        `The import ended on an unexpected page (${finished.href}) — nothing was confirmed. Check this project's events log before retrying.`,
-      );
-      return;
-    }
-    if (finished.kind === "value" && finished.value && "error" in finished.value) {
-      setError(finished.value.error);
-      return;
-    }
-    setHandoff("Import complete — opening the results…");
+      if (finished.kind === "failed") {
+        setError(
+          `The import did not complete (${failureDetail(finished.error)}). The uploaded file is saved — choose the same file again to retry; check this project's events log first.`,
+        );
+        return;
+      }
+      if (finished.kind === "signedOut") {
+        setError(
+          "Your session expired before the import could be completed — no lines were saved. Sign in again and choose the same file.",
+        );
+        return;
+      }
+      if (finished.kind === "divertedTo") {
+        setError(
+          `The import ended on an unexpected page (${finished.href}) — nothing was confirmed. Check this project's events log before retrying.`,
+        );
+        return;
+      }
+      if (finished.kind === "value" && finished.value) {
+        if ("error" in finished.value) {
+          setError(finished.value.error);
+          return;
+        }
+        if ("sheetChoice" in finished.value) {
+          const keuze = finished.value.sheetChoice;
+          setStatus({
+            kind: "chooseSheet",
+            sheets: keuze.sheets,
+            skippedSheets: keuze.skipped,
+            confirm: (index) => finish(index),
+          });
+          return;
+        }
+      }
+      setHandoff("Import complete — opening the results…");
+    };
+    await finish();
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -890,6 +1078,22 @@ export function PdfUploadCard({
               </>
             )}
           </p>
+        )}
+        {status.kind === "chooseSheet" && (
+          <SheetChoiceBlock
+            sheets={status.sheets}
+            skipped={status.skippedSheets}
+            picked={sheetPick ?? status.sheets[0]?.index ?? null}
+            onPick={setSheetPick}
+            onConfirm={(index) => {
+              setSheetPick(null);
+              void status.confirm(index);
+            }}
+            onCancel={() => {
+              setSheetPick(null);
+              setStatus({ kind: "idle" });
+            }}
+          />
         )}
         {status.kind === "error" && (
           <p role="alert" className="mt-2 text-sm text-destructive">

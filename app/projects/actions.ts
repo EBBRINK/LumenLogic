@@ -67,7 +67,16 @@ import {
 import { recordDocxFreeTextImport } from "@/lib/repo/table-freetext";
 import { rowsFromCsv } from "@/lib/table/rows-from-csv";
 import { rowsFromDocx } from "@/lib/table/rows-from-docx";
-import { rowsFromXlsx } from "@/lib/table/rows-from-xlsx";
+import { sheetsFromXlsx } from "@/lib/table/rows-from-xlsx";
+import {
+  chooseSheet,
+  isChoosableSheet,
+  summarizeSheets,
+  MAX_SHEETS,
+  type SheetChoice,
+  type SheetOption,
+  type SheetSummary,
+} from "@/lib/table/sheet-choice";
 import {
   parseSpecLinesFromRows,
   rowsToMarkdown,
@@ -682,19 +691,29 @@ export async function uploadSourceChunkAction(formData: FormData): Promise<
   return { ok: true, alreadyDone };
 }
 
-const finishTableImportSchema = z.object({ dossierId: zUuid, runId: zUuid });
+// Welk tabblad de gebruiker koos. 1-gebaseerd, zoals de tabjes tellen; dezelfde
+// bovengrens als waarmee chooseSheet bladen aanbiedt, zodat de server nooit iets
+// aanbiedt dat zijn eigen schema daarna weigert.
+const sheetIndexSchema = z.number().int().min(1).max(MAX_SHEETS).optional();
+const finishTableImportSchema = z.object({
+  dossierId: zUuid,
+  runId: zUuid,
+  // Ontbreekt bij de eerste finish; de server bepaalt dan zelf of er te kiezen valt.
+  sheetIndex: sheetIndexSchema,
+});
 
 // Afronden: assembleren, maat- en magic-bytes-check, parsen, regels + matcher +
 // verplichte 'tabel'-review (recordTableImport), events, redirect ?tabel=<n>&run=<id>.
 export async function finishTableImportAction(input: {
   dossierId: string;
   runId: string;
-}): Promise<{ error: string } | void> {
+  sheetIndex?: number;
+}): Promise<{ error: string } | { sheetChoice: SheetChoice } | void> {
   const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const parsed = parseJson(finishTableImportSchema, input);
   if (!parsed.ok) return { error: parsed.error };
-  const { dossierId, runId } = parsed.data;
+  const { dossierId, runId, sheetIndex } = parsed.data;
 
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== dossierId || run.source !== "tabel") {
@@ -740,9 +759,17 @@ export async function finishTableImportAction(input: {
   }
 
   let rows: TableRows;
+  // Bij xlsx: alle bladen apart, plus de proefparse waarop de keuze rust. Beide staan
+  // hier al klaar vóór de beslissing, want die beslissing valt buiten de try — een
+  // `return` binnen een try met een kale `catch` zou als "parse_fout" eindigen.
+  let bladRijen = new Map<number, TableRows>();
+  let bladen: SheetSummary[] = [];
   try {
     if (kind === "xlsx") {
-      rows = await rowsFromXlsx(file.bytes);
+      const sheets = await sheetsFromXlsx(file.bytes);
+      bladRijen = new Map(sheets.map((sheet) => [sheet.index, sheet.rows]));
+      bladen = summarizeSheets(sheets);
+      rows = []; // wordt hieronder gezet, zodra vaststaat wélk blad het wordt
     } else if (kind === "csv") {
       rows = rowsFromCsv(new TextDecoder().decode(file.bytes));
     } else {
@@ -804,6 +831,58 @@ export async function finishTableImportAction(input: {
     return { error: "The file could not be parsed." };
   }
 
+  // Welk tabblad? Eén werkboek kan twee UITVOERINGEN van dezelfde armaturenstaat
+  // dragen; optellen zou elke ruimte twee keer verlichten. Zie
+  // docs/probleem-meerdere-tabbladen.md. De beslissing zelf staat in
+  // lib/table/sheet-choice.ts, gedeeld met het >15 MB-clientpad.
+  let gekozenBlad: SheetOption | null = null;
+  if (kind === "xlsx") {
+    // Een teruggestuurde sheetIndex is client-invoer: alleen een blad dat in ONZE eigen
+    // proef als datablad naar voren kwam mag geïmporteerd worden. Anders zou een
+    // geknutselde index een verborgen sjabloonblad de offerte in kunnen duwen.
+    if (sheetIndex != null && !isChoosableSheet(bladen, sheetIndex)) {
+      await reject("onbekend_tabblad", {
+        sheetIndex,
+        sheets: bladen.map(
+          (b): SheetOption => ({ index: b.index, name: b.name, lines: b.lines }),
+        ),
+      });
+      return {
+        error: "That sheet is not part of this file, or holds no luminaire lines.",
+      };
+    }
+    const beslissing =
+      sheetIndex != null
+        ? ({ kind: "auto", index: sheetIndex } as const)
+        : chooseSheet(bladen);
+
+    if (beslissing.kind === "choose") {
+      // Niets importeren: de run blijft op 'voorstel' staan, zodat de tweede finish
+      // (mét sheetIndex) de idempotentie-poort hierboven gewoon passeert. Tab dicht
+      // tijdens de keuze? Zelfde bestand opnieuw kiezen hervat de run.
+      await logEvent(db, {
+        entity: "import_run",
+        entityId: runId,
+        action: "tabel_sheet_keuze_nodig",
+        actor,
+        payload: {
+          filename: file.filename,
+          sheets: beslissing.sheets,
+          skipped: beslissing.skipped,
+        },
+      });
+      return {
+        sheetChoice: { sheets: beslissing.sheets, skipped: beslissing.skipped },
+      };
+    }
+
+    rows = bladRijen.get(beslissing.index) ?? [];
+    const blad = bladen.find((b) => b.index === beslissing.index);
+    if (blad) {
+      gekozenBlad = { index: blad.index, name: blad.name, lines: blad.lines };
+    }
+  }
+
   const brandNames = (await db.select({ name: brands.name }).from(brands)).map(
     (b) => b.name,
   );
@@ -832,6 +911,7 @@ export async function finishTableImportAction(input: {
       kind,
       rows: rows.length,
       headerRow,
+      ...(gekozenBlad ? { sheet: gekozenBlad } : {}),
     },
   });
 
@@ -853,18 +933,26 @@ const importTabelRowsSchema = z.object({
   rows: z
     .array(z.array(z.string()).max(TABEL_MAX_CELLS))
     .max(TABEL_MAX_ROWS),
+  // Welk tabblad de client koos, puur voor het audit-spoor. Meer weet de server op dit
+  // pad niet: het bronbestand wordt hier bewust niet opgeslagen, dus we kunnen de keuze
+  // niet zelf narekenen. De beslissing zelf viel in de browser, met dezelfde
+  // chooseSheet als het serverpad.
+  sheetName: zTrimmed.max(255).optional(),
+  sheetCount: z.number().int().min(1).max(MAX_SHEETS).optional(),
 });
 
 export async function importTabelRowsAction(input: {
   dossierId: string;
   filename: string;
   rows: string[][];
+  sheetName?: string;
+  sheetCount?: number;
 }): Promise<{ error: string } | void> {
   const { toegang, scope } = await bewaakProject(input);
   const actor = await getActor();
   const parsed = parseJson(importTabelRowsSchema, input);
   if (!parsed.ok) return { error: parsed.error };
-  const { dossierId, filename, rows } = parsed.data;
+  const { dossierId, filename, rows, sheetName, sheetCount } = parsed.data;
   const totalChars = rows.reduce(
     (n, r) => n + r.reduce((m, c) => m + c.length, 0),
     0,
@@ -889,7 +977,12 @@ export async function importTabelRowsAction(input: {
     entityId: result.run.id,
     action: "source_file_skipped_too_large",
     actor,
-    payload: { filename, rows: rows.length, sourceStored: false },
+    payload: {
+      filename,
+      rows: rows.length,
+      sourceStored: false,
+      ...(sheetName != null ? { sheet: { name: sheetName, count: sheetCount } } : {}),
+    },
   });
 
   revalidatePath(`/projects/${dossierId}`);

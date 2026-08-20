@@ -462,7 +462,13 @@ declare global {
   interface Window {
     __verzondenChunks?: string[];
     __tabelStart?: { filename: string }[];
-    __rijenImport?: { filename: string; rows: string[][] }[];
+    __rijenImport?: {
+      filename: string;
+      rows: string[][];
+      sheetName?: string;
+      sheetCount?: number;
+    }[];
+    __tabelFinish?: { sheetIndex?: number }[];
     __ocrStarts?: { filename: string; pageCount: number }[];
   }
 }
@@ -651,6 +657,74 @@ export function KaartMetCrashInLoop() {
         return { created: 1, duplicates: 0 };
       }}
       finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// ── Tabbladkeuze (goal-meerdere-tabbladen) ───────────────────────────────────
+
+// Twee tabbladen met regels: de eerste finish antwoordt {sheetChoice} en importeert
+// niets; ná de keuze gaat dezelfde finish nog eens de deur uit, nu mét sheetIndex.
+export function KaartMetTabelSheetKeuze() {
+  if (typeof window !== "undefined") {
+    window.__tabelFinish = [];
+    window.__verzondenChunks = [];
+  }
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={async () => ({ runId: "r9", doneChunks: [] })}
+      uploadSourceChunkAction={async (form) => {
+        (window.__verzondenChunks ??= []).push(String(form.get("chunk")));
+        return { ok: true, alreadyDone: false };
+      }}
+      finishTableImportAction={async (input) => {
+        (window.__tabelFinish ??= []).push({ sheetIndex: input.sheetIndex });
+        if (input.sheetIndex == null) {
+          return {
+            sheetChoice: {
+              sheets: [
+                { index: 1, name: "Delta Light", lines: 42 },
+                { index: 2, name: "Wever en Ducre", lines: 42 },
+              ],
+              skipped: 1,
+            },
+          };
+        }
+        throw nextRedirectError(`/projects/d1?tabel=42&run=r9&blad=${input.sheetIndex}`);
+      }}
+      importTabelRowsAction={tabelOnverwacht.importTabelRowsAction}
+    />
+  );
+}
+
+// >15 MB-pad met een werkboek van twee databladen: de keuze valt in de browser, en
+// alléén de rijen van het gekozen blad gaan de deur uit.
+export function KaartMetRijenFallbackMeerdereBladen() {
+  if (typeof window !== "undefined") window.__rijenImport = [];
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={tabelOnverwacht.startTableImportAction}
+      uploadSourceChunkAction={tabelOnverwacht.uploadSourceChunkAction}
+      finishTableImportAction={tabelOnverwacht.finishTableImportAction}
+      importTabelRowsAction={async (input) => {
+        window.__rijenImport?.push({
+          filename: input.filename,
+          rows: input.rows,
+          sheetName: input.sheetName,
+          sheetCount: input.sheetCount,
+        });
+        throw nextRedirectError("/projects/d1?tabel=2&run=r9");
+      }}
     />
   );
 }

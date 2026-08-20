@@ -317,6 +317,56 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## Tabbladkeuze — het tweede tabblad verdwijnt niet meer — 20 aug 2026
+
+`docs/goal-meerdere-tabbladen.md` gebouwd op branch `claude/gallant-curie-ea62ad`, direct
+na de kopwoorden-klus (zelfde bestanden). Een werkboek met twee UITVOERINGEN van dezelfde
+armaturenstaat importeerde alleen het eerste blad en meldde niet dat het tweede bestond.
+Nu: bij meer dan één blad met regels kiest de gebruiker, met naam en regelaantal per blad.
+
+Nieuw: `lib/table/sheet-choice.ts` (puur — geen DB, geen exceljs, geen "use client") en
+`sheetsFromXlsx` in `lib/table/rows-from-xlsx.ts`. `rowsFromXlsx` is daar nu een dun
+laagje over en pakt nog steeds het eerste blad mét inhoud, zodat de fallback zich exact
+gedraagt als vroeger.
+
+**Waarom één gedeelde beslisfunctie.** De twee uploadpaden liepen uiteen: de server pakte
+het eerste blad met inhoud, het >15 MB-clientpad hard `worksheets[0]`. Nu roepen ze allebei
+`chooseSheet` én `summarizeSheets` aan, dus ze kunnen per constructie niet meer verschillen
+— niet in wélk blad, en niet in het getal dat de keuzelijst toont.
+
+**Het clientpad telt zonder merkenlijst.** De browser heeft geen catalogus. Dat mag, want
+`brandNames` stuurt alleen de merk/type-splitsing en nooit óf een rij een regel is; die
+invariant staat als test in `parse-rows.test.ts`. Zonder die test zou de keuzelijst andere
+aantallen kunnen tonen dan er geïmporteerd worden.
+
+**Afwijking van de spec.** "Tabblad met herkenbare data" eist nu óók een herkende koprij,
+niet alleen ≥ 1 regel. Reden: een legendablad met één regel tekst in kolom A levert
+positioneel wél een "regel" op, en zou dus een keuzescherm afdwingen voor wat de gebruiker
+als één-blads-bestand ziet. Zie het goal-document voor de meting.
+
+**Meegenomen bugfix.** Het >15 MB-clientpad las rijen met `ws.eachRow((row) => …)`, dat
+lege rijen overslaat — alle rijnummers schoven op en `sourcePage` loog over waar een regel
+vandaan kwam, in strijd met "rijgrenzen zijn heilig". Nu vult `rowsFromWorksheet` op tot
+het `rowNumber` dat exceljs meegeeft, en trimt hij cellen zoals de serverkant.
+
+### ⚠ Open eind: docx-vrije-tekst meldt een geslaagde import als mislukt
+
+Niet door deze klus veroorzaakt en bewust niet hier gefixt (beide specs zetten het AI-pad
+buiten scope), maar wel hier gevonden: in `finishTableImportAction` staat de `redirect()`
+van het docx-vrije-tekstpad BINNEN de `try` die eindigt op een kale `} catch {`. Next'
+redirect werkt door te gooien, dus dat succes-signaal wordt opgeslokt: de gebruiker krijgt
+"The file could not be parsed." terwijl de regels wél zijn weggeschreven, plus een
+misleidend `tabel_import_rejected`-event met reden "parse_fout". Dezelfde foutklasse die
+in `CLAUDE.md` staat, maar dan serverkant.
+
+### Testfixture
+
+`docs/examples/test-armaturenstaat-woning.xlsx` heeft nu twee bladen ("Delta Light" en
+"Wever en Ducre"), regel voor regel identiek op rijnummer, codering, ruimte en aantal —
+alleen de productkolom verschilt. De >15 MB-naad gebruikt een werkboek met een afbeelding
+van willekeurige bytes als ballast: onsamendrukbaar, dus in één keer boven de grens zonder
+honderdduizenden cellen (gemeten: ~0,7 s voor schrijven én teruglezen).
+
 ## Bestek-kopwoorden — een echt bestek levert 42 regels in plaats van 9 — 20 aug 2026
 
 `docs/goal-bestek-kopwoorden.md` gebouwd op branch `claude/gallant-curie-ea62ad`. De

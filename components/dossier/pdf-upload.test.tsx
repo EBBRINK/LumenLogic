@@ -37,7 +37,9 @@ import {
   KaartMetBeeldOcr,
   KaartMetRijenFallback,
   KaartMetTabelChunkFout,
+  KaartMetRijenFallbackMeerdereBladen,
   KaartMetTabelHappy,
+  KaartMetTabelSheetKeuze,
   KaartMetTabelResumeChunks,
   KaartMetTabelStartError,
 } from "./pdf-upload-test-stubs";
@@ -1155,5 +1157,165 @@ for (const theme of ["light", "dark"] as const) {
         path: `./review-tabel.${theme}.${device}.test.png`,
       });
     });
+  }
+}
+
+// ── Tabbladkeuze (goal-meerdere-tabbladen N5) ────────────────────────────────
+
+// Een werkboek van >15 MB dat de browser zelf moet lezen. De ballast is een
+// afbeelding van willekeurige bytes: onsamendrukbaar, dus het bestand komt in één keer
+// boven de 15 MB-grens zonder dat we honderdduizenden cellen hoeven te schrijven
+// (gemeten: ~0,7 s voor schrijven én teruglezen).
+async function makeGrootWerkboek(): Promise<File> {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  const kop = ["Codering", "Ruimtenaam", "Aantal", "Fabrikant/type"];
+  const een = wb.addWorksheet("Delta Light");
+  een.addRow(kop);
+  een.addRow(["1", "Hal", 3, "Delta Light Spy 39"]);
+  een.addRow(["2", "Keuken", 2, "Delta Light Spy 39"]);
+  const twee = wb.addWorksheet("Wever en Ducre");
+  twee.addRow(kop);
+  twee.addRow(["1", "Hal", 3, "Wever en Ducre 18486LQ3"]);
+  // legendablad zonder koprij: telt niet als keuze, wél als overgeslagen
+  wb.addWorksheet("Legenda").addRow(["Toelichting bij de coderingen"]);
+
+  const bytes = new Uint8Array(17 * 1024 * 1024);
+  for (let i = 0; i < bytes.length; i += 65536) {
+    crypto.getRandomValues(bytes.subarray(i, Math.min(i + 65536, bytes.length)));
+  }
+  const id = wb.addImage({
+    buffer: bytes as unknown as Parameters<typeof wb.addImage>[0]["buffer"],
+    extension: "png",
+  });
+  wb.addWorksheet("Ballast").addImage(id, "A1:B2");
+
+  const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+  return new File([buf], "armaturenstaat.xlsx", {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+test("twee tabbladen: keuzelijst, en pas de tweede finish draagt de sheetIndex", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelSheetKeuze />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText(/This file has 2 sheets with luminaire lines/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText(/Delta Light/)).toBeInTheDocument();
+  await expect.element(page.getByText(/Wever en Ducre/)).toBeInTheDocument();
+  // samenvattingsregel voor wat géén keuze is
+  await expect
+    .element(page.getByText(/1 other sheet was not offered/))
+    .toBeInTheDocument();
+  // er is nog NIETS geïmporteerd: één finish, zonder index
+  expect(window.__tabelFinish).toEqual([{ sheetIndex: undefined }]);
+  // en het bestandsveld zit op slot zolang de keuze openstaat
+  await expect
+    .element(page.getByRole("button", { name: "Import file" }))
+    .toBeDisabled();
+
+  await userEvent.click(page.getByRole("radio", { name: /Wever en Ducre/ }));
+  await userEvent.click(page.getByRole("button", { name: "Import this sheet" }));
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  // de tweede finish draagt precies het gekozen blad
+  expect(window.__tabelFinish).toEqual([
+    { sheetIndex: undefined },
+    { sheetIndex: 2 },
+  ]);
+}, 60_000);
+
+test("annuleren vanuit de keuzelijst: terug naar idle, niets geïmporteerd", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelSheetKeuze />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText(/This file has 2 sheets with luminaire lines/))
+    .toBeInTheDocument();
+  await userEvent.click(page.getByRole("button", { name: "Cancel" }));
+  expect(document.body.textContent).not.toContain(
+    "This file has 2 sheets with luminaire lines",
+  );
+  // alleen de proef-finish is gedraaid; de run blijft aan de serverkant 'voorstel'
+  expect(window.__tabelFinish).toEqual([{ sheetIndex: undefined }]);
+  await expect
+    .element(page.getByRole("button", { name: "Import file" }))
+    .toBeEnabled();
+}, 60_000);
+
+test("één tabblad met regels: géén keuzescherm, geen extra klik", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelHappy />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  // de keuzelijst heeft nooit in de DOM gestaan
+  expect(document.body.textContent).not.toContain("sheets with luminaire lines");
+  expect(document.body.textContent).not.toContain("Import this sheet");
+}, 60_000);
+
+test(">15 MB-pad: dezelfde keuzelijst, en alléén de rijen van het gekozen blad", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetRijenFallbackMeerdereBladen />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makeGrootWerkboek());
+  await expect
+    .element(page.getByText(/This file has 2 sheets with luminaire lines/))
+    .toBeInTheDocument();
+  // vóór de keuze is er niets verstuurd
+  expect(window.__rijenImport).toEqual([]);
+
+  await userEvent.click(page.getByRole("radio", { name: /Wever en Ducre/ }));
+  await userEvent.click(page.getByRole("button", { name: "Import this sheet" }));
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+
+  expect(window.__rijenImport?.length).toBe(1);
+  const verstuurd = window.__rijenImport?.[0];
+  expect(verstuurd?.sheetName).toBe("Wever en Ducre");
+  expect(verstuurd?.sheetCount).toBe(4); // twee databladen + legenda + ballast
+  // alléén blad 2: de Delta Light-regels zijn nergens te bekennen
+  expect(verstuurd?.rows).toEqual([
+    ["Codering", "Ruimtenaam", "Aantal", "Fabrikant/type"],
+    ["1", "Hal", "3", "Wever en Ducre 18486LQ3"],
+  ]);
+  expect(JSON.stringify(verstuurd?.rows)).not.toContain("Delta Light Spy 39");
+}, 120_000);
+
+// Screenshots van de keuzelijst — de staande eis uit CLAUDE.md voor deze klus.
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`tabbladkeuze (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(
+        <Screen>
+          <KaartMetTabelSheetKeuze />
+        </Screen>,
+      );
+      await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+      await expect
+        .element(page.getByText(/This file has 2 sheets with luminaire lines/))
+        .toBeInTheDocument();
+      await page.screenshot({
+        path: `./project-tabbladkeuze.${theme}.${device}.test.png`,
+      });
+    }, 60_000);
   }
 }
