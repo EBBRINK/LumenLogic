@@ -59,8 +59,8 @@ export type SpecLineRow = {
   reqIp: string | null;
   status: MatchStatus;
   deviations?: Deviation[] | null;
-  source?: "manual" | "csv" | "pdf" | "ocr" | "llm";
-  reviewKind?: "geel" | "variant" | "onvolledig" | "ocr" | null;
+  source?: "manual" | "csv" | "pdf" | "ocr" | "llm" | "tabel";
+  reviewKind?: "geel" | "variant" | "onvolledig" | "ocr" | "tabel" | null;
   noMatchReason?: string | null;
   manualPrice?: string | null;
   matchedProductId: string | null;
@@ -134,7 +134,7 @@ export type ReviewItem = {
   brandText: string | null;
   productText: string | null;
   status: MatchStatus;
-  reviewKind: "geel" | "variant" | "onvolledig" | "ocr";
+  reviewKind: "geel" | "variant" | "onvolledig" | "ocr" | "tabel";
   deviations?: Deviation[] | null;
   reqColor?: string | null;
   // Echte kleurvarianten (variantkaart); leeg → fallback op candidates, nooit

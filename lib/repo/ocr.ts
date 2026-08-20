@@ -126,12 +126,12 @@ export async function startOcrRun(
   };
 }
 
-// Server-hardening (CodeRabbit, PR #2): de client-loop stuurt altijd JPEG, maar het
-// gedeclareerde mime-type is client-input — de bytes zelf moeten het waarmaken vóór
-// ze opgeslagen en naar de vision-API gaan. JPEG begint altijd met FF D8 (SOI).
-export function isJpegImage(bytes: Uint8Array): boolean {
-  return bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8;
-}
+// Server-hardening (CodeRabbit, PR #2): de client-loop stuurt JPEG (of sinds
+// goal-import-meer-formaten PNG), maar het gedeclareerde mime-type is client-input —
+// de bytes zelf moeten het waarmaken vóór ze opgeslagen en naar de vision-API gaan.
+// De check zelf is gegeneraliseerd naar lib/bytes/magic.ts; de export blijft hier
+// bestaan zodat bestaande aanroepers (actions, tests) niets merken.
+export { isJpegImage } from "@/lib/bytes/magic";
 
 // Welke (pagina, tegel)-paren al een beeldrij hebben — bewust ZONDER de
 // bytes-kolom (B2). Gesorteerd op pagina, dan tegel. Tile 0 = hele pagina

@@ -109,6 +109,38 @@ export const LEVER_REGELS_TOOL_TEKST: OcrToolDef = {
   },
 };
 
+// ── Rij-variant (goal-import-meer-formaten, Bouwer B punt 2) ─────────────────
+// Voor het docx-VRIJE-TEKST-fallbackpad: de tabelparsers van lib/table/ zijn
+// deterministisch en LLM-vrij (arbitragebesluit "geen AI op tabelrijen"); alleen
+// lopende tekst zonder tabelstructuur gaat door deze variant. Zelfde
+// afleverkanaal (lever_regels), zelfde kern, maar de eenheid is een RIJ
+// ('=== ROW N ==='-markers) en het verplichte plaatsveld heet `rij`.
+export const LEESROUTE_BATCH_RIJEN = 40;
+
+export const LEVER_REGELS_TOOL_RIJEN: OcrToolDef = {
+  ...LEVER_REGELS_TOOL,
+  input_schema: {
+    ...LEVER_REGELS_TOOL.input_schema,
+    properties: {
+      regels: {
+        ...ocrRegelsSchema,
+        items: {
+          ...ocrRegelsSchema.items,
+          properties: {
+            ...ocrRegelsSchema.items.properties,
+            rij: {
+              type: "integer",
+              description:
+                "the row number from the '=== ROW N ===' marker above the row",
+            },
+          },
+          required: [...ocrRegelsSchema.items.required, "rij"],
+        },
+      },
+    },
+  },
+};
+
 // ── Prompt: eigen tekstlaag-intro + gedeelde kern + extra tekstlaag-regels ───
 // De kern (het Rules-blok) is exact die van de vision-route; de extra regels
 // adresseren de gemeten oorzaken O1/O2 (merkkolom vs. ruimtenaam, gelijmde codes,
@@ -141,6 +173,33 @@ export const LEESROUTE_SYSTEM_PROMPT =
   "and the nearest descriptive light text as type, or null if there is none.\n" +
   "- Pages are separated by '=== PAGE N ===' markers; report for every row the " +
   "page number it appears on.";
+
+// Rij-variant van de prompt: zelfde kern en dezelfde tekstlaag-regels (de
+// vrije docx-tekst heeft exact dezelfde kwalen: layout kwijt, gelijmde codes,
+// ruimtenamen die op merken lijken) — alleen de eenheid is een rij en het
+// verplichte veld heet rij. De PAGE-markerregel is vervangen door de ROW-regel.
+export const LEESROUTE_SYSTEM_PROMPT_RIJEN =
+  "You read rows of free-running text extracted from a luminaire schedule " +
+  "('armaturenstaat') document. The text comes from document extraction: the " +
+  "column layout is lost, line breaks are unreliable and adjacent fields may " +
+  "run into each other. Extract the luminaire rows and deliver them with the " +
+  "lever_regels tool.\n" +
+  SYSTEM_PROMPT_KERN +
+  "\n- The brand is the manufacturer column — never a room, space or function " +
+  "name such as Raadzaal, Toilet, Woonkamer, Vergaderruimte.\n" +
+  "- If the manufacturer field is a placeholder such as '-', 'n.t.b.' or " +
+  "'te bepalen', or if no manufacturer is printed for the row, merk is null. " +
+  "Never take a word from the type text, a proposal ('voorstel: …') or the " +
+  "surrounding prose as the brand.\n" +
+  "- Text extraction may glue a fixture code to the next word. Whenever a token " +
+  "starts with a code from the same family as the other codes in the text but " +
+  "carries extra trailing letters, split it: deliver the bare fixture code as " +
+  "its own row and keep the glued fragment untouched in ruwe_tekst. Never skip " +
+  "a code because it is glued.\n" +
+  "- Suffix variants such as Lr001B, Lr001_N or L010a are separate rows — never " +
+  "fold a variant into its base code.\n" +
+  "- Rows are separated by '=== ROW N ===' markers; report for every delivered " +
+  "row the row number of the marker it appears under.";
 
 // ── Router: deterministisch snelpad of AI-leesroute? ─────────────────────────
 // Puur, geen DB. 'Bekend' = de deterministische parser heeft een merkclaim
@@ -188,19 +247,25 @@ async function leesPaginasTekst(opts: {
   pages: LeesroutePagina[];
   maxTokensEerste: number;
   maxTokensRetry: number;
+  // Rij-variant (goal-import-meer-formaten): zelfde machinerie, andere marker,
+  // eigen prompt/tool. Defaults = de bestaande paginavariant, byte-identiek.
+  marker?: "PAGE" | "ROW";
+  system?: string;
+  tool?: OcrToolDef;
 }): Promise<LeesResultaat> {
-  // Eén user-message met per pagina een '=== PAGE N ==='-marker boven de tekst;
-  // het toolschema en de prompt verwijzen naar precies deze markers.
+  // Eén user-message met per eenheid een '=== PAGE N ==='- (of '=== ROW N ===')-
+  // marker boven de tekst; toolschema en prompt verwijzen naar precies deze markers.
+  const marker = opts.marker ?? "PAGE";
   const tekst = opts.pages
-    .map((p) => `=== PAGE ${p.pageNumber} ===\n${p.text}`)
+    .map((p) => `=== ${marker} ${p.pageNumber} ===\n${p.text}`)
     .join("\n\n");
   const messages: OcrMessageParams["messages"] = [
     { role: "user", content: [{ type: "text", text: tekst }] },
   ];
   const res = await leverRegelsMetRetry({
     client: opts.client,
-    system: LEESROUTE_SYSTEM_PROMPT,
-    tools: [LEVER_REGELS_TOOL_TEKST],
+    system: opts.system ?? LEESROUTE_SYSTEM_PROMPT,
+    tools: [opts.tool ?? LEVER_REGELS_TOOL_TEKST],
     messages,
     maxTokensEerste: opts.maxTokensEerste,
     maxTokensRetry: opts.maxTokensRetry,
@@ -291,6 +356,11 @@ async function leesrouteEenheid(
     maxTokensEerste: number;
     maxTokensRetry: number;
     reserveEur: number;
+    // Rij-variant: zelfde reservering, events en kostenboekhouding; de payload-
+    // sleutel 'paginas' draagt dan het RIJ-bereik (gedocumenteerd bij de rij-API).
+    marker?: "PAGE" | "ROW";
+    system?: string;
+    tool?: OcrToolDef;
   },
 ): Promise<EenheidResult> {
   const budget = await checkOcrBudget(db, opts.importRunId);
@@ -320,6 +390,9 @@ async function leesrouteEenheid(
         pages: opts.pages,
         maxTokensEerste: opts.maxTokensEerste,
         maxTokensRetry: opts.maxTokensRetry,
+        marker: opts.marker,
+        system: opts.system,
+        tool: opts.tool,
       });
     // usage is de SOM over alle pogingen, dus de kosten volgen daar vanzelf uit.
     const costEur =
@@ -498,4 +571,153 @@ export async function leesrouteBatch(
     totaal.truncated += r.truncated;
   }
   return totaal;
+}
+
+// ── Rij-variant: publieke API voor het docx-vrije-tekst-fallbackpad ──────────
+// (goal-import-meer-formaten, Bouwer B punt 2 + arbitrage "geen AI op
+// tabelrijen"). Tabelrijen gaan NOOIT hierlangs — alleen lopende docx-tekst
+// zonder tabelstructuur. Zelfde budget (gedeeld €1-plafond via checkOcrBudget),
+// zelfde reservering, zelfde events (leesroute_batch_*) — de payload-sleutel
+// 'paginas' draagt op dit pad het RIJ-bereik [eerste..laatste].
+
+export type LeesrouteRij = { rowNumber: number; text: string };
+
+type RijenResultaat = {
+  regels: (OcrRegel & { rij: number })[];
+  rijOnbekend: number;
+  usage: { inputTokens: number; outputTokens: number };
+  attempts: OcrAttempt[];
+  truncated: number;
+};
+
+// parseLeverRegels (ocr.ts) kent alleen het pagina-veld. In plaats van dat
+// gedeelde koppelcontract aan te raken (byte-identiek gepind in de tests),
+// vertaalt deze adapter het rij-veld uit de modelrespons naar pagina vóór het
+// parsen; de publieke rij-API hernoemt het daarna weer terug. Puur, geen state.
+function metRijAlsPagina(client: OcrClient): OcrClient {
+  return {
+    async createMessage(params) {
+      const res = await client.createMessage(params);
+      return {
+        ...res,
+        content: res.content.map((b) => {
+          if (b.type !== "tool_use" || b.name !== "lever_regels") return b;
+          const input = b.input as { regels?: unknown };
+          if (!Array.isArray(input.regels)) return b;
+          return {
+            ...b,
+            input: {
+              ...input,
+              regels: input.regels.map((r) => {
+                if (typeof r !== "object" || r === null) return r;
+                const { rij, ...rest } = r as Record<string, unknown>;
+                return { ...rest, pagina: rij };
+              }),
+            },
+          };
+        }),
+      };
+    },
+  };
+}
+
+function naarRijen(res: LeesResultaat): RijenResultaat {
+  return {
+    regels: res.regels.map(({ pagina, ...rest }) => ({ ...rest, rij: pagina })),
+    rijOnbekend: res.paginaOnbekend,
+    usage: res.usage,
+    attempts: res.attempts,
+    truncated: res.truncated,
+  };
+}
+
+// Pure laag (geen DB): één batch rijen (~LEESROUTE_BATCH_RIJEN) met
+// '=== ROW N ==='-markers, batchbudgetten identiek aan de paginavariant.
+// Rij-fallback: een regel zonder geldig rijnummer valt op de eerste batchrij
+// en telt in rijOnbekend — zelfde afspraak als de paginafallback.
+export async function readRowsTextWithModel(opts: {
+  client: OcrClient;
+  rows: LeesrouteRij[];
+}): Promise<RijenResultaat> {
+  return naarRijen(
+    await leesPaginasTekst({
+      client: metRijAlsPagina(opts.client),
+      pages: opts.rows.map((r) => ({ pageNumber: r.rowNumber, text: r.text })),
+      maxTokensEerste: MAX_TOKENS_PER_BATCH,
+      maxTokensRetry: MAX_TOKENS_BATCH_RETRY,
+      marker: "ROW",
+      system: LEESROUTE_SYSTEM_PROMPT_RIJEN,
+      tool: LEVER_REGELS_TOOL_RIJEN,
+    }),
+  );
+}
+
+export type LeesrouteRijenBatchResult =
+  | { skipped: "no_key" | "budget_run" | "budget_month" }
+  | { failed: string }
+  | {
+      regels: (OcrRegel & { rij: number })[];
+      rijOnbekend: number;
+      inputTokens: number;
+      outputTokens: number;
+      costEur: number;
+      truncated: number;
+    };
+
+export function isLeesrouteRijenBatchSuccess(
+  r: LeesrouteRijenBatchResult,
+): r is Extract<LeesrouteRijenBatchResult, { regels: (OcrRegel & { rij: number })[] }> {
+  return "regels" in r;
+}
+
+// Eén batch rijen: envApiKey → budgetcheck → reservering → tekst-call → echte
+// kosten → events, één-op-één het patroon van leesrouteBatch. Bewust GÉÉN
+// per-rij-escalatie bij dubbele afkapping: 40 losse calls voor één verdwaalde
+// dichte batch zou het €1-plafond in één klap leegtrekken; de dubbel afgekapte
+// batch levert de beste poging + truncated-events (tripwire zichtbaar), en de
+// aanroeper (fase B van Bouwer A) kan kleinere batches sturen.
+export async function leesrouteRijenBatch(
+  db: AppDb,
+  opts: {
+    importRunId: string;
+    rows: LeesrouteRij[];
+    client?: OcrClient;
+    actor?: string;
+  },
+): Promise<LeesrouteRijenBatchResult> {
+  const apiKey = envApiKey();
+  const client =
+    opts.client ?? (apiKey ? createAnthropicOcrClient(apiKey) : null);
+  if (!client) return { skipped: "no_key" };
+  if (opts.rows.length === 0) {
+    return {
+      regels: [],
+      rijOnbekend: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costEur: 0,
+      truncated: 0,
+    };
+  }
+  const batch = await leesrouteEenheid(db, {
+    importRunId: opts.importRunId,
+    pages: opts.rows.map((r) => ({ pageNumber: r.rowNumber, text: r.text })),
+    client: metRijAlsPagina(client),
+    actor: opts.actor ?? LEESROUTE_ACTOR,
+    maxTokensEerste: MAX_TOKENS_PER_BATCH,
+    maxTokensRetry: MAX_TOKENS_BATCH_RETRY,
+    reserveEur: LEESROUTE_RESERVE_EUR,
+    marker: "ROW",
+    system: LEESROUTE_SYSTEM_PROMPT_RIJEN,
+    tool: LEVER_REGELS_TOOL_RIJEN,
+  });
+  if ("skipped" in batch || "failed" in batch) return batch;
+  return {
+    regels: batch.regels.map(({ pagina, ...rest }) => ({ ...rest, rij: pagina })),
+    rijOnbekend: batch.paginaOnbekend,
+    inputTokens: batch.inputTokens,
+    outputTokens: batch.outputTokens,
+    costEur: batch.costEur,
+    truncated: batch.truncated,
+  };
 }

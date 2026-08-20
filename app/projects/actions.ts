@@ -8,7 +8,9 @@ import { brands } from "@/db/schema";
 // De conventie staat in docs/INVOERVALIDATIE.md.
 import {
   parseForm,
+  parseJson,
   z,
+  zBoundedInt,
   zEnumFrom,
   zOptionalInt,
   zOptionalNumber,
@@ -47,13 +49,30 @@ import {
   setLineStatus,
   unlinkMatch,
 } from "@/lib/repo/matching";
-import { recordPdfImport, getImportRun } from "@/lib/repo/imports";
+import { recordPdfImport, recordTableImport, getImportRun } from "@/lib/repo/imports";
 import {
   finishOcrRun,
-  isJpegImage,
   processOcrPage,
   startOcrRun,
 } from "@/lib/repo/ocr";
+import { isJpegImage, isPngImage, isZipContainer } from "@/lib/bytes/magic";
+import {
+  addSourceChunk,
+  assembleSourceFile,
+  startTableImport,
+  SOURCE_CHUNK_MAX_BYTES,
+  SOURCE_FILE_MAX_BYTES,
+  SOURCE_MAX_CHUNKS,
+} from "@/lib/repo/source-files";
+import { recordDocxFreeTextImport } from "@/lib/repo/table-freetext";
+import { rowsFromCsv } from "@/lib/table/rows-from-csv";
+import { rowsFromDocx } from "@/lib/table/rows-from-docx";
+import { rowsFromXlsx } from "@/lib/table/rows-from-xlsx";
+import {
+  parseSpecLinesFromRows,
+  rowsToMarkdown,
+  type TableRows,
+} from "@/lib/table/parse-rows";
 import { beslisRoute } from "@/lib/ai/leesroute";
 import { envApiKey } from "@/lib/ai/shared";
 import { recordLeesrouteImport } from "@/lib/repo/leesroute";
@@ -486,19 +505,26 @@ export async function ocrPageAction(formData: FormData): Promise<
   if (width < 1 || width > OCR_MAX_DIMENSION || height < 1 || height > OCR_MAX_DIMENSION) {
     return { error: "Invalid OCR page request." };
   }
-  // Server-hardening: de client-loop stuurt altijd JPEG (canvas → toBlob
-  // 'image/jpeg'); alles anders is per definitie geen legitiem paginabeeld.
-  if (!(image instanceof File) || image.type !== "image/jpeg") {
-    return { error: "No JPEG page image supplied." };
+  // Server-hardening: de PDF-loop stuurt JPEG (canvas → toBlob 'image/jpeg') en de
+  // losse-beelden-route (goal-import-meer-formaten) mag óók PNG aanleveren — zónder
+  // client-side hercodering (arbitragebesluit 20 aug). Alles anders is per definitie
+  // geen legitiem paginabeeld.
+  if (
+    !(image instanceof File) ||
+    (image.type !== "image/jpeg" && image.type !== "image/png")
+  ) {
+    return { error: "No JPEG or PNG page image supplied." };
   }
   if (image.size > OCR_IMAGE_CAP) {
     return { error: "Page image is larger than 2 MB." };
   }
   const imageBytes = new Uint8Array(await image.arrayBuffer());
-  // JPEG-magic-bytes (FF D8): het gedeclareerde type is client-input — de bytes
-  // zelf moeten het waarmaken vóór ze opgeslagen en naar de vision-API gaan.
-  if (!isJpegImage(imageBytes)) {
-    return { error: "Page image is not a valid JPEG." };
+  // Magic bytes (lib/bytes/magic.ts): het gedeclareerde type is client-input — de
+  // bytes zelf moeten het waarmaken vóór ze opgeslagen en naar de vision-API gaan.
+  const bytesOk =
+    image.type === "image/png" ? isPngImage(imageBytes) : isJpegImage(imageBytes);
+  if (!bytesOk) {
+    return { error: "Page image bytes do not match the declared image type." };
   }
   const run = await getImportRun(db, runId);
   if (!run || run.dossierId !== dossierId || run.source !== "ocr") {
@@ -558,6 +584,318 @@ export async function finishOcrAction(formData: FormData) {
   const counts = (finished.counts ?? {}) as Record<string, number>;
   revalidatePath(`/projects/${dossierId}`);
   redirect(`/projects/${dossierId}?ocr=${counts.checked ?? 0}&run=${runId}`);
+}
+
+// ── Tabel-import: xlsx / csv / docx (goal-import-meer-formaten, Bouwer A stap 4) ──
+// Transport is gechunkt (start → chunk → finish, B4-lockpatroon): één FormData-call
+// van 4 MB zou Vercel's ~4,5 MB-limiet raken. Limieten zijn interface-afspraak met
+// Bouwer B: 15 MB totaal, 2 MB per chunk, max 8 chunks; daarboven leest de client
+// de rijen zelf en gaat het via importTabelRowsAction (bronbestand niet opgeslagen).
+//
+// Filename-conventie N losse beelden (afspraak met Bouwer B, hier vastgelegd omdat de
+// server hem óók moet kennen voor het OCR-run-bestand): de client bundelt N jpg/png's
+// onder één synthetische naam `armaturenstaat-<dossierId-kort>-<yyyymmdd>.beelden`,
+// waarbij beeld i = pagina i van de OCR-run. Die route loopt via de bestaande
+// start/ocrPage/finish-acties (ocrPageAction accepteert sinds vandaag ook PNG).
+
+// Welke parser bij welk bestand hoort. Extensie eerst, mime secundair — mimes zijn
+// tussen browsers rommelig (csv komt ook als application/vnd.ms-excel binnen).
+function tableKindOf(
+  filename: string,
+  mime: string,
+): "xlsx" | "csv" | "docx" | null {
+  const ext = filename.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (ext === "xlsx") return "xlsx";
+  if (ext === "csv" || ext === "tsv" || ext === "txt") return "csv";
+  if (ext === "docx") return "docx";
+  if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return "xlsx";
+  if (
+    mime ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  )
+    return "docx";
+  if (mime === "text/csv" || mime === "text/tab-separated-values") return "csv";
+  return null;
+}
+
+const startTableImportSchema = z.object({
+  dossierId: zUuid,
+  filename: zTrimmed.min(1).max(255),
+});
+
+// Run starten of hervatten. doneChunks voedt de client-loop (die slaat die chunks
+// over); de chunk-rij zelf is het idempotentie-lock (unique(run, chunk)).
+export async function startTableImportAction(input: {
+  dossierId: string;
+  filename: string;
+}): Promise<{ error: string } | { runId: string; doneChunks: number[] }> {
+  const { toegang, scope } = await bewaakProject(input);
+  const actor = await getActor();
+  const parsed = parseJson(startTableImportSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const { run, doneChunks } = await startTableImport(db, {
+    dossierId: parsed.data.dossierId,
+    filename: parsed.data.filename,
+    actor,
+  });
+  return { runId: run.id, doneChunks };
+}
+
+const uploadChunkSchema = z.object({
+  dossierId: zUuid,
+  runId: zUuid,
+  chunk: zBoundedInt(0, SOURCE_MAX_CHUNKS - 1),
+});
+
+// Eén chunk. Idempotent: een dubbel verstuurde chunk conflicteert op unique(run,
+// chunk) en meldt {alreadyDone} — hervatten kost niets en kan nooit dubbel opslaan.
+export async function uploadSourceChunkAction(formData: FormData): Promise<
+  { error: string } | { ok: true; alreadyDone: boolean }
+> {
+  const { toegang, scope } = await bewaakProject(formData);
+  const parsed = parseForm(uploadChunkSchema, formData);
+  if (!parsed.ok) return { error: parsed.error };
+  const { dossierId, runId, chunk } = parsed.data;
+  const blob = formData.get("bytes");
+  if (!(blob instanceof File) || blob.size === 0) {
+    return { error: "No chunk supplied." };
+  }
+  if (blob.size > SOURCE_CHUNK_MAX_BYTES) {
+    return { error: "Chunk is larger than 2 MB." };
+  }
+  const run = await getImportRun(db, runId);
+  if (!run || run.dossierId !== dossierId || run.source !== "tabel") {
+    return { error: "Unknown table import for this project." };
+  }
+  if (run.status !== "voorstel") {
+    return { error: "This table import is already finished." };
+  }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const { alreadyDone } = await addSourceChunk(db, {
+    runId,
+    filename: run.filename ?? blob.name,
+    mime: blob.type || "application/octet-stream",
+    chunk,
+    bytes,
+  });
+  return { ok: true, alreadyDone };
+}
+
+const finishTableImportSchema = z.object({ dossierId: zUuid, runId: zUuid });
+
+// Afronden: assembleren, maat- en magic-bytes-check, parsen, regels + matcher +
+// verplichte 'tabel'-review (recordTableImport), events, redirect ?tabel=<n>&run=<id>.
+export async function finishTableImportAction(input: {
+  dossierId: string;
+  runId: string;
+}): Promise<{ error: string } | void> {
+  const { toegang, scope } = await bewaakProject(input);
+  const actor = await getActor();
+  const parsed = parseJson(finishTableImportSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const { dossierId, runId } = parsed.data;
+
+  const run = await getImportRun(db, runId);
+  if (!run || run.dossierId !== dossierId || run.source !== "tabel") {
+    return { error: "Unknown table import for this project." };
+  }
+  // Idempotentie-poort (zelfde constructie als confirmImportRun): een run die al
+  // afgerond is doet niets meer — een dubbele finish kan geen regels verdubbelen.
+  if (run.status !== "voorstel") {
+    return { error: "This table import is already finished." };
+  }
+
+  const reject = async (reden: string, extra?: Record<string, unknown>) => {
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: runId,
+      action: "tabel_import_rejected",
+      actor,
+      payload: { reden, filename: run.filename, ...extra },
+    });
+  };
+
+  const file = await assembleSourceFile(db, runId);
+  if (!file) {
+    await reject("geen_chunks");
+    return { error: "No file chunks were uploaded for this import." };
+  }
+  if (file.bytes.length > SOURCE_FILE_MAX_BYTES) {
+    // kan alleen via een client die de afspraak schendt (8 × 2 MB = 16 MB > 15 MB)
+    await reject("te_groot", { size: file.bytes.length });
+    return { error: "The assembled file is larger than 15 MB." };
+  }
+
+  const kind = tableKindOf(file.filename, file.mime);
+  if (!kind) {
+    await reject("onbekend_type", { mime: file.mime });
+    return { error: "Unknown file type; expected .xlsx, .csv or .docx." };
+  }
+  // Magic bytes: xlsx en docx zijn PK-zip-containers; het gedeclareerde mime/de
+  // extensie is client-input, de bytes moeten het waarmaken vóór een parser start.
+  if ((kind === "xlsx" || kind === "docx") && !isZipContainer(file.bytes)) {
+    await reject("bytes_geen_office_bestand", { kind });
+    return { error: "The file bytes are not a valid Office document." };
+  }
+
+  let rows: TableRows;
+  try {
+    if (kind === "xlsx") {
+      rows = await rowsFromXlsx(file.bytes);
+    } else if (kind === "csv") {
+      rows = rowsFromCsv(new TextDecoder().decode(file.bytes));
+    } else {
+      const docx = await rowsFromDocx(file.bytes);
+      rows = docx.rows;
+      if (rows.length === 0) {
+        // Vrije-tekst-fallback (docx zonder tabellen): het ENIGE AI-pad van de
+        // tabel-import — de rij-variant van de leesroute (LEVER_REGELS_TOOL_RIJEN,
+        // '=== ROW N ==='-markers), georkestreerd in lib/repo/table-freetext.ts.
+        if (docx.freeText.trim() === "") {
+          await reject("docx_leeg");
+          return { error: "This Word document contains no tables and no text." };
+        }
+        if (!envApiKey()) {
+          // Zonder key valt er niets te lezen — eerlijk melden vóór de run wordt
+          // afgerond; de upload blijft staan en kan later opnieuw worden afgerond.
+          await reject("docx_zonder_tabellen_geen_key");
+          return {
+            error:
+              "This Word document contains no tables, and reading free-running text needs an AI key. Paste the rows as CSV instead.",
+          };
+        }
+        const brandNames = (
+          await db.select({ name: brands.name }).from(brands)
+        ).map((b) => b.name);
+        const vrij = await recordDocxFreeTextImport(db, {
+          dossierId,
+          runId,
+          filename: file.filename,
+          freeText: docx.freeText,
+          brandNames,
+          actor,
+        });
+        await logEvent(db, {
+          entity: "import_run",
+          entityId: runId,
+          action: "source_file_stored",
+          actor,
+          payload: {
+            filename: file.filename,
+            mime: file.mime,
+            size: file.bytes.length,
+            chunks: file.chunks,
+            kind: "docx_vrije_tekst",
+            rows: vrij.created.length,
+            batches: vrij.batches,
+            costEur: Number(vrij.costEur.toFixed(4)),
+            ...(vrij.gestopt ? { gestopt: vrij.gestopt } : {}),
+          },
+        });
+        revalidatePath(`/projects/${dossierId}`);
+        redirect(
+          `/projects/${dossierId}?tabel=${vrij.created.length}&run=${runId}`,
+        );
+      }
+    }
+  } catch {
+    await reject("parse_fout", { kind });
+    return { error: "The file could not be parsed." };
+  }
+
+  const brandNames = (await db.select({ name: brands.name }).from(brands)).map(
+    (b) => b.name,
+  );
+  const { lines, headerRow } = parseSpecLinesFromRows(rows, brandNames);
+
+  const result = await recordTableImport(db, {
+    dossierId,
+    filename: file.filename,
+    lines,
+    rawMarkdown: rowsToMarkdown(rows),
+    existingRunId: runId,
+    actor,
+  });
+
+  // Regel 5 + afspraak: source_file_stored éénmaal per bestand, niet per chunk.
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: runId,
+    action: "source_file_stored",
+    actor,
+    payload: {
+      filename: file.filename,
+      mime: file.mime,
+      size: file.bytes.length,
+      chunks: file.chunks,
+      kind,
+      rows: rows.length,
+      headerRow,
+    },
+  });
+
+  revalidatePath(`/projects/${dossierId}`);
+  redirect(`/projects/${dossierId}?tabel=${result.created.length}&run=${runId}`);
+}
+
+// >15 MB-pad: het bronbestand wordt NIET opgeslagen; de client heeft de rijen zelf
+// gelezen en stuurt ze als JSON. Zelfde parser en zelfde review-plicht — alleen het
+// audit trail-bestand ontbreekt (event source_file_skipped_too_large legt dat vast;
+// sourceStored:false in de payload is het contract met Bouwer B).
+const TABEL_MAX_ROWS = 5000; // ruim boven elke echte armaturenstaat, onder elk DoS-pad
+const TABEL_MAX_CELLS = 64;
+const TABEL_TEXT_CAP = 5 * 1024 * 1024; // zelfde grens als PAGES_TEXT_CAP
+
+const importTabelRowsSchema = z.object({
+  dossierId: zUuid,
+  filename: zTrimmed.min(1).max(255),
+  rows: z
+    .array(z.array(z.string()).max(TABEL_MAX_CELLS))
+    .max(TABEL_MAX_ROWS),
+});
+
+export async function importTabelRowsAction(input: {
+  dossierId: string;
+  filename: string;
+  rows: string[][];
+}): Promise<{ error: string } | void> {
+  const { toegang, scope } = await bewaakProject(input);
+  const actor = await getActor();
+  const parsed = parseJson(importTabelRowsSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const { dossierId, filename, rows } = parsed.data;
+  const totalChars = rows.reduce(
+    (n, r) => n + r.reduce((m, c) => m + c.length, 0),
+    0,
+  );
+  if (totalChars > TABEL_TEXT_CAP) {
+    return { error: "The pasted rows exceed 5 MB of text." };
+  }
+
+  const brandNames = (await db.select({ name: brands.name }).from(brands)).map(
+    (b) => b.name,
+  );
+  const { lines } = parseSpecLinesFromRows(rows, brandNames);
+  const result = await recordTableImport(db, {
+    dossierId,
+    filename,
+    lines,
+    rawMarkdown: rowsToMarkdown(rows),
+    actor,
+  });
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: result.run.id,
+    action: "source_file_skipped_too_large",
+    actor,
+    payload: { filename, rows: rows.length, sourceStored: false },
+  });
+
+  revalidatePath(`/projects/${dossierId}`);
+  redirect(
+    `/projects/${dossierId}?tabel=${result.created.length}&run=${result.run.id}`,
+  );
 }
 
 // Matcher (opnieuw) draaien op één regel.

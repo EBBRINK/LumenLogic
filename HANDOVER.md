@@ -5981,3 +5981,19 @@ session-revocation blokkeert.
 ZONDER session-revocation en zonder `password_reset_completed`-event (de throw viel ná
 updatePassword, vóór revokeSessionsOnPasswordReset). Vercel-logs nalopen op de
 uuid-fout en getroffen users' sessies handmatig verwijderen.
+
+## 2026-08-20 — Import meer formaten (xlsx/docx/csv/jpg/png) gebouwd
+
+Upload-vak op de projectpagina accepteert nu ook Excel, Word, CSV en beelden; alles door
+de M2-pijplijn (bronbestand als audit trail → regels lezen → elke regel naar Review).
+Plan + arbitrage: `docs/goal-import-meer-formaten.md`. Open eindes:
+
+- **Migratie 0024 is NIET tegen Neon gedraaid** — `bunx drizzle-kit migrate` vóór/bij deploy.
+- Wees-chunks: een finish die >15 MB weigert laat geüploade chunks staan tot de
+  run-cascade ze opruimt; geen retentiebeleid (zelfde open punt als OCR-beeldretentie C9).
+- exceljs wordt op het >15 MB-xlsx-fallbackpad client-side gebundeld (dynamische import);
+  bundle-impact niet gemeten. Docx >15 MB heeft bewust géén fallback (eerlijke fout).
+- Docx-vrije-tekst-fallback batcht vast op 40 rijen; bij dubbele truncation stuurt
+  niemand kleinere batches (gedocumenteerd in lib/ai/leesroute.ts).
+- Volle vitest-suite flakte op 8 niet-gerelateerde bestanden (bekende belasting-flake);
+  allemaal solo groen geverifieerd.

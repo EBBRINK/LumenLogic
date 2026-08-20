@@ -105,12 +105,16 @@ export const matchStatus = pgEnum("match_status", [
   "paars",
 ]);
 // Herkomst van een spec-regel (B-07): zichtbaar + betrouwbaarheid in de UI.
+// 'tabel' (migratie 0024, goal-import-meer-formaten): een regel uit een geüploade
+// xlsx/csv/docx-tabel — deterministisch per rij gelezen, geen AI. sourcePage betekent
+// bij deze bron het 1-GEBASEERDE RIJNUMMER in het bronbestand (bij pdf/ocr: pagina).
 export const specSource = pgEnum("spec_source", [
   "manual",
   "csv",
   "pdf",
   "ocr",
   "llm",
+  "tabel",
 ]);
 // Review-soorten (D-01): wat voor mensenkeuze een regel nodig heeft.
 // 'onzeker' en 'niet_beoordeeld' (migratie 0022): de twee nieuwe review-redenen die het
@@ -120,6 +124,10 @@ export const specSource = pgEnum("spec_source", [
 // regel aan de beurt kwam. Beide zijn eigen waarden en geen hergebruik van 'geel': een
 // mens moet ze anders behandelen (opnieuw laten draaien vs. een budgetbesluit), en de
 // review-wachtrij zou anders niet kunnen onderscheiden waaróm een regel er ligt.
+// 'tabel' (migratie 0024): verplichte review van een tabel-importregel — zelfde
+// gedachte als 'ocr' (élke machinaal gelezen regel langs een mens), maar met "Read
+// from row N" i.p.v. een paginabeeld. Alleen gezet op regels zonder bestaand
+// reviewKind: één regel draagt hooguit één review-reden (B7-regel uit de OCR-flow).
 export const reviewKind = pgEnum("review_kind", [
   "geel",
   "variant",
@@ -127,6 +135,7 @@ export const reviewKind = pgEnum("review_kind", [
   "ocr",
   "onzeker",
   "niet_beoordeeld",
+  "tabel",
 ]);
 // Rollen als "petten" (L-03/04): meerdere per persoon. Rol bepaalt de default-view,
 // nooit wat de engine toont (dat is de fase). org_admin beheert leden.
@@ -656,6 +665,34 @@ export const ocrPageImages = pgTable(
   ],
 );
 
+// ── Bronbestand van een tabel-import (0024, goal-import-meer-formaten) ───────
+// De geüploade xlsx/csv/docx zelf, gechunkt à max 2 MB per rij (Vercel-limiet) en
+// max 8 chunks (15 MB totaal). unique(import_run_id, chunk) is het idempotentie-
+// lock van de upload-loop (B4-patroon). Harde regel (B2, zoals ocr_page_images):
+// alléén getSourceFile in lib/repo/source-files.ts selecteert de bytes-kolom.
+export const importSourceFiles = pgTable(
+  "import_source_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importRunId: uuid("import_run_id")
+      .notNull()
+      .references(() => importRuns.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    // size = bytes van DEZE chunk (niet het totaal; het totaal is de som).
+    size: integer("size").notNull(),
+    chunk: integer("chunk").notNull(), // 0-gebaseerd, aaneengesloten
+    bytes: bytea("bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("import_source_files_run_chunk_uniq").on(t.importRunId, t.chunk),
+    index("import_source_files_run_idx").on(t.importRunId),
+  ],
+);
+
 export type ImportRow = {
   fixtureCode: string;
   quantity: number | null;
@@ -677,7 +714,7 @@ export type ImportRow = {
     color: string;
     dimmable: string;
   }>;
-  source: "pdf" | "ocr" | "llm" | "csv" | "bestek";
+  source: "pdf" | "ocr" | "llm" | "csv" | "bestek" | "tabel";
   rawText?: string;
   page?: number;
   checked: boolean; // OCR/LLM standaard uitgevinkt (B-04)

@@ -18,10 +18,14 @@ import {
   deleteLineAction,
   finishOcrAction,
   enqueueForMatchstationAction,
+  finishTableImportAction,
   importArmaturenboekPagesAction,
+  importTabelRowsAction,
   linkBestekAction,
   ocrPageAction,
   startOcrImportAction,
+  startTableImportAction,
+  uploadSourceChunkAction,
 } from "../actions";
 import { bewaakRoute } from "@/lib/route-toegang";
 import { toegangScope } from "@/lib/repo/toegang";
@@ -50,14 +54,19 @@ export default async function RegelsTab({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pdf?: string; ocr?: string; run?: string }>;
+  searchParams: Promise<{
+    pdf?: string;
+    ocr?: string;
+    tabel?: string;
+    run?: string;
+  }>;
 }) {
   const toegang = await bewaakRoute("/projects/[id]");
   const { id } = await params;
   // id gaat als uuid in project_dossiers.id / spec_lines.dossier_id. De dossier-layout
   // heeft dezelfde regel; beide zijn nodig (zie de toelichting daar).
   requireUuid(id);
-  const { pdf, ocr, run } = await searchParams;
+  const { pdf, ocr, tabel, run } = await searchParams;
   const dossier = await getDossier(db, toegangScope(toegang), id);
   if (!dossier) notFound();
   const lines = (await getSpecLines(db, id)) as unknown as SpecLineRow[];
@@ -117,6 +126,24 @@ export default async function RegelsTab({
         </div>
       )}
 
+      {tabel && (
+        <div className="mb-6 rounded-lg border bg-muted/40 p-3 text-sm">
+          <span className="font-medium">{tabel}</span> spec lines imported from
+          the table and matched — every imported line gets a review.
+          {run && (
+            <>
+              {" "}
+              <Link
+                href={`/projects/${dossier.id}/import/${run}`}
+                className="font-medium underline underline-offset-2 hover:text-foreground"
+              >
+                View the import run (source)
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Stap 5: PDF-upload als eerste blok — de hoofdingang van een project. */}
       {/*
         key: na een geslaagde import redirect de action naar DEZELFDE route met
@@ -138,6 +165,10 @@ export default async function RegelsTab({
         startOcrAction={startOcrImportAction}
         ocrPageAction={ocrPageAction}
         finishOcrAction={finishOcrAction}
+        startTableImportAction={startTableImportAction}
+        uploadSourceChunkAction={uploadSourceChunkAction}
+        finishTableImportAction={finishTableImportAction}
+        importTabelRowsAction={importTabelRowsAction}
         pendingOcr={pendingOcr}
       />
 

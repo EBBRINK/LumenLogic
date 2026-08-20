@@ -27,13 +27,18 @@ import {
 import {
   beslisRoute,
   isLeesrouteBatchSuccess,
+  isLeesrouteRijenBatchSuccess,
   leesrouteBatch,
+  leesrouteRijenBatch,
   LEESROUTE_RESERVE_EUR,
   LEESROUTE_SYSTEM_PROMPT,
+  LEESROUTE_SYSTEM_PROMPT_RIJEN,
+  LEVER_REGELS_TOOL_RIJEN,
   LEVER_REGELS_TOOL_TEKST,
   MAX_TOKENS_BATCH_RETRY,
   MAX_TOKENS_PER_BATCH,
   readPagesTextWithModel,
+  readRowsTextWithModel,
 } from "@/lib/ai/leesroute";
 import { KVK_FIXTURE, TNO_FIXTURE } from "@/lib/pdf/codestijl-fixtures";
 
@@ -250,6 +255,144 @@ test("LEVER_REGELS_TOOL_TEKST eist pagina; het OCR-schema bleef byte-gelijk", ()
   expect(LEVER_REGELS_TOOL_TEKST.name).toBe("lever_regels");
   expect(items.required).toEqual(["armatuurcode", "ruwe_tekst", "pagina"]);
   expect(items.properties.pagina).toMatchObject({ type: "integer" });
+});
+
+// ── 1b. Rij-variant (goal-import-meer-formaten, Bouwer B punt 2) ─────────────
+test("LEVER_REGELS_TOOL_RIJEN eist rij (niet pagina); zelfde afleverkanaal", () => {
+  const items = (
+    LEVER_REGELS_TOOL_RIJEN.input_schema as {
+      properties: {
+        regels: { items: { properties: Record<string, unknown>; required: string[] } };
+      };
+    }
+  ).properties.regels.items;
+  expect(LEVER_REGELS_TOOL_RIJEN.name).toBe("lever_regels");
+  expect(items.required).toEqual(["armatuurcode", "ruwe_tekst", "rij"]);
+  expect(items.properties.rij).toMatchObject({ type: "integer" });
+  expect(items.properties.pagina).toBeUndefined();
+});
+
+test("LEESROUTE_SYSTEM_PROMPT_RIJEN: gedeelde kern, ROW-markers, geen PAGE", () => {
+  expect(LEESROUTE_SYSTEM_PROMPT_RIJEN).toContain(SYSTEM_PROMPT_KERN);
+  expect(LEESROUTE_SYSTEM_PROMPT_RIJEN).toContain("=== ROW N ===");
+  expect(LEESROUTE_SYSTEM_PROMPT_RIJEN).not.toContain("=== PAGE N ===");
+  expect(LEESROUTE_SYSTEM_PROMPT_RIJEN).not.toContain("one page image");
+});
+
+test("readRowsTextWithModel: ROW-markers in de call, rij komt door, fallback telt", async () => {
+  const { client, calls } = mockClient([
+    toolResponse([
+      { armatuurcode: "Lp301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lp301", rij: 2 },
+      { armatuurcode: "Lp302", ruwe_tekst: "Lp302", rij: 99 }, // buiten batch
+      { armatuurcode: "Lp303", ruwe_tekst: "Lp303" }, // zonder rij
+    ]),
+  ]);
+  const result = await readRowsTextWithModel({
+    client,
+    rows: [
+      { rowNumber: 1, text: "vrije tekst rij 1" },
+      { rowNumber: 2, text: "vrije tekst rij 2" },
+    ],
+  });
+  // Call-vorm: ROW-markers, rij-tool, rij-prompt, batchbudget; regel 2 (geen prijs).
+  expect(calls.length).toBe(1);
+  expect(calls[0].max_tokens).toBe(MAX_TOKENS_PER_BATCH);
+  expect(calls[0].system).toBe(LEESROUTE_SYSTEM_PROMPT_RIJEN);
+  expect(JSON.stringify(calls[0].tools)).toBe(
+    JSON.stringify([LEVER_REGELS_TOOL_RIJEN]),
+  );
+  const [blok] = calls[0].messages[0].content;
+  if (blok.type !== "text") throw new Error("verwachtte een tekstblok");
+  expect(blok.text).toContain("=== ROW 1 ===");
+  expect(blok.text).toContain("=== ROW 2 ===");
+  expect(blok.text).not.toContain("=== PAGE");
+  expect(JSON.stringify(calls[0]).toLowerCase()).not.toContain("prijs");
+  // Regels dragen rij (nooit pagina); ongeldige/ontbrekende rij → eerste batchrij.
+  expect(result.regels.map((r) => [r.armatuurcode, r.rij])).toEqual([
+    ["Lp301", 2],
+    ["Lp302", 1],
+    ["Lp303", 1],
+  ]);
+  expect(result.regels.every((r) => !("pagina" in r))).toBe(true);
+  expect(result.rijOnbekend).toBe(2);
+  expect(result.truncated).toBe(0);
+});
+
+test("leesrouteRijenBatch: reservering → echte kosten, done-event met rijbereik", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client } = mockClient([
+    toolResponse([
+      { armatuurcode: "Lp301", merk: "XAL", type: "SASSO", ruwe_tekst: "Lp301", rij: 3 },
+    ]),
+  ]);
+  const result = await leesrouteRijenBatch(db, {
+    importRunId: run.id,
+    rows: [
+      { rowNumber: 3, text: "rij 3" },
+      { rowNumber: 4, text: "rij 4" },
+    ],
+    client,
+    actor: ACTOR,
+  });
+  if (!isLeesrouteRijenBatchSuccess(result)) throw new Error("verwachtte succes");
+  expect(result.regels.map((r) => [r.armatuurcode, r.rij])).toEqual([["Lp301", 3]]);
+  expect(result.costEur).toBeCloseTo(Number(USAGE_COST), 10);
+
+  const rows = await usageRows(db, run.id);
+  expect(rows.length).toBe(1);
+  expect(rows[0].purpose).toBe("leesroute");
+  expect(rows[0].costEur).toBe(USAGE_COST);
+
+  const done = await eventsByAction(db, "leesroute_batch_done");
+  expect(done.length).toBe(1);
+  expect(done[0].actor).toBe(ACTOR);
+  // Op het rij-pad draagt 'paginas' het RIJ-bereik (gedocumenteerd in leesroute.ts).
+  expect(done[0].payload).toMatchObject({ paginas: [3, 4], regels: 1 });
+});
+
+test("leesrouteRijenBatch: dubbele afkap → GEEN per-rij-escalatie, precies twee calls", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  const { client, calls } = mockClient([
+    truncatedResponse(),
+    truncatedResponse(),
+  ]);
+  const result = await leesrouteRijenBatch(db, {
+    importRunId: run.id,
+    rows: [
+      { rowNumber: 1, text: "rij 1" },
+      { rowNumber: 2, text: "rij 2" },
+    ],
+    client,
+    actor: ACTOR,
+  });
+  if (!isLeesrouteRijenBatchSuccess(result)) throw new Error("verwachtte succes");
+  expect(result.regels).toEqual([]);
+  expect(result.truncated).toBe(2);
+  expect(calls.map((c) => c.max_tokens)).toEqual([
+    MAX_TOKENS_PER_BATCH,
+    MAX_TOKENS_BATCH_RETRY,
+  ]);
+  expect((await eventsByAction(db, "leesroute_batch_truncated")).length).toBe(2);
+});
+
+test("leesrouteRijenBatch: budget op → skipped, geen call", async () => {
+  const db = await createTestDb();
+  const run = await seedRun(db);
+  await db.insert(llmUsage).values({
+    purpose: "ocr",
+    costEur: OCR_MAX_EUR_PER_RUN.toFixed(4),
+    importRunId: run.id,
+  });
+  const { client, calls } = mockClient([]);
+  const result = await leesrouteRijenBatch(db, {
+    importRunId: run.id,
+    rows: [{ rowNumber: 1, text: "rij" }],
+    client,
+  });
+  expect(result).toEqual({ skipped: "budget_run" });
+  expect(calls.length).toBe(0);
 });
 
 // ── 2. beslisRoute (puur) ────────────────────────────────────────────────────

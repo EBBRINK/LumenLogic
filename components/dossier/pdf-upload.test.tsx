@@ -32,7 +32,18 @@ import {
   KaartMetRedirectendeFinishOcr,
   KaartMetRedirectendeImport,
   KaartMetSessieRedirect,
+  // goal-import-meer-formaten (Bouwer B): tabelbron- en beeld-stubs
+  KaartAllesOnverwacht,
+  KaartMetBeeldOcr,
+  KaartMetRijenFallback,
+  KaartMetTabelChunkFout,
+  KaartMetTabelHappy,
+  KaartMetTabelResumeChunks,
+  KaartMetTabelStartError,
 } from "./pdf-upload-test-stubs";
+import { detectUploadKind, splitCsvRows } from "./upload-kind";
+import { ReviewQueue } from "./review-queue";
+import type { ReviewItem } from "./types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSpecLineForm } from "./add-spec-line-form";
 import { ImportMarkdown } from "./import-markdown";
@@ -202,9 +213,9 @@ for (const [name, { ui, ready }] of Object.entries(screens)) {
 test("PDF-upload staat boven de regeltabel", async () => {
   const { container } = await renderServer(<ProjectRegelsScreen />);
   await expect
-    .element(page.getByText("Upload luminaire schedule (PDF)"))
+    .element(page.getByText("Upload luminaire schedule"))
     .toBeInTheDocument();
-  const upload = container.querySelector('input[type="file"][name="pdf"]');
+  const upload = container.querySelector('input[type="file"][name="file"]');
   const tabel = container.querySelector("table");
   expect(upload).toBeTruthy();
   expect(tabel).toBeTruthy();
@@ -223,7 +234,7 @@ test("PDF-upload staat boven de regeltabel", async () => {
 // Hydration-wachtlus (zelfde soort race als brand-message.test.tsx): vóór hydratatie
 // zou de klik een native GET-submit doen die de testpagina wegnavigeert. We wachten
 // tot React zijn props aan het formulier heeft gehangen en interacteren pas daarna.
-async function uploadEnVerstuur(file: File | string) {
+async function uploadEnVerstuur(file: File | File[] | string) {
   await vi.waitFor(
     () => {
       const form = document.querySelector("form");
@@ -237,10 +248,10 @@ async function uploadEnVerstuur(file: File | string) {
     { timeout: 10_000, interval: 100 },
   );
   await userEvent.upload(
-    page.getByLabelText("Choose luminaire schedule PDF"),
+    page.getByLabelText("Choose luminaire schedule file"),
     file,
   );
-  await page.getByRole("button", { name: "Import PDF" }).click();
+  await page.getByRole("button", { name: "Import file" }).click();
 }
 
 // Het fixture-boek als pad (relatief aan de projectroot): met de playwright-provider is
@@ -319,7 +330,7 @@ test("beschadigde PDF → nette foutmelding client-side, kaart blijft bruikbaar"
   expect(document.body.textContent).not.toContain("Testfout");
   // knop weer vrij voor een nieuwe poging
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeEnabled();
 });
 
@@ -338,7 +349,7 @@ test("action antwoordt {error} → zichtbaar als alert; tekst-PDF raakt het OCR-
     .toBeInTheDocument();
   expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeEnabled();
 });
 
@@ -355,7 +366,7 @@ test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async (
   const sampler = setInterval(() => {
     const status = document.querySelector('[role="status"]');
     const input = document.querySelector(
-      'input[name="pdf"]',
+      'input[name="file"]',
     ) as HTMLInputElement | null;
     samples.push({
       busy: status?.textContent ?? "",
@@ -378,7 +389,7 @@ test("tijdens extractie/import: busy-status zichtbaar en knop disabled", async (
   expect(busySamples.every((s) => s.disabled)).toBe(true);
   // en na afloop weer vrij voor een nieuwe poging
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeEnabled();
 });
 
@@ -417,7 +428,7 @@ test("beeld-PDF (0 tekst) → OCR-pad: voortgang per pagina zichtbaar, daarna af
   // searchParams). Bij een FOUT gaat hij wél weer van slot — dat toetsen de
   // budget-stop- en fouttests hieronder onveranderd.
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeDisabled();
 });
 
@@ -441,7 +452,7 @@ test("RUN-budgetstop (€1-plafond) halverwege → loop breekt af, melding noemt
   // finish is bewust NIET aangeroepen (run staat serverside op 'gestopt').
   expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeEnabled();
 });
 
@@ -515,7 +526,7 @@ test("startOcrImportAction antwoordt {error} (geen key) → nette melding, niets
   // De pagina-action is nooit aangeroepen (marker bleef uit) en de kaart is weer vrij.
   expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
   await expect
-    .element(page.getByRole("button", { name: "Import PDF" }))
+    .element(page.getByRole("button", { name: "Import file" }))
     .toBeEnabled();
 });
 
@@ -637,7 +648,7 @@ test("geslaagde import (action redirect) → eerlijke overdracht, géén 'Import
   geenAlert(container);
   // Het formulier blijft op slot tot de navigatie de kaart vervangt — anders
   // vuurt een ongeduldige gebruiker een tweede (betaalde) import af.
-  const input = container.querySelector('input[name="pdf"]') as HTMLInputElement;
+  const input = container.querySelector('input[name="file"]') as HTMLInputElement;
   expect(input.disabled).toBe(true);
 });
 
@@ -852,3 +863,297 @@ test("project-ocr-done-failures (light, desktop)", async () => {
     path: "./project-ocr-done-failures.light.desktop.test.png",
   });
 });
+
+// ── goal-import-meer-formaten (Bouwer B): typeherkenning ─────────────────────
+
+test("detectUploadKind: extensie eerst, mime secundair, onbekend eerlijk", () => {
+  expect(detectUploadKind("boek.pdf", "")).toBe("pdf");
+  expect(detectUploadKind("staat.XLSX", "")).toBe("xlsx");
+  expect(detectUploadKind("staat.csv", "application/octet-stream")).toBe("csv");
+  expect(detectUploadKind("staat.docx", "")).toBe("docx");
+  expect(detectUploadKind("scan.jpg", "")).toBe("image");
+  expect(detectUploadKind("scan.jpeg", "")).toBe("image");
+  expect(detectUploadKind("scan.png", "")).toBe("image");
+  // Geen bruikbare extensie → mime beslist.
+  expect(detectUploadKind("export", "text/csv")).toBe("csv");
+  expect(detectUploadKind("export.bin", "image/png")).toBe("image");
+  // Extensie wint van een tegensprekende mime (extensie eerst).
+  expect(detectUploadKind("staat.csv", "application/pdf")).toBe("csv");
+  expect(detectUploadKind("notities.txt", "text/plain")).toBe("unknown");
+  expect(detectUploadKind("archief.zip", "")).toBe("unknown");
+});
+
+test("splitCsvRows: delimiter-sniffing ;/,/tab", () => {
+  expect(splitCsvRows("code;merk;aantal\nLp301;XAL;12")).toEqual([
+    ["code", "merk", "aantal"],
+    ["Lp301", "XAL", "12"],
+  ]);
+  expect(splitCsvRows("code,merk\nLp301,XAL")).toEqual([
+    ["code", "merk"],
+    ["Lp301", "XAL"],
+  ]);
+  expect(splitCsvRows("code\tmerk\nLp301\tXAL")).toEqual([
+    ["code", "merk"],
+    ["Lp301", "XAL"],
+  ]);
+  expect(splitCsvRows("")).toEqual([]);
+});
+
+// ── Tabelbron-interactietests ────────────────────────────────────────────────
+// 4,5 MB → 3 chunks van 2 MB (interface-afspraak: 2 MB per chunk, max 8).
+function makeTabelFile(name: string, mb: number): File {
+  return new File([new Uint8Array(Math.round(mb * 1024 * 1024))], name, {
+    type: "application/octet-stream",
+  });
+}
+
+test("xlsx ≤15 MB → chunk-loop: start → 3 chunks → finish redirect = handoff", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelHappy />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  // Start kreeg de bestandsnaam; precies 3 chunks gingen de deur uit.
+  expect(window.__tabelStart).toEqual([{ filename: "armaturenstaat.xlsx" }]);
+  expect(window.__verzondenChunks).toEqual(["0", "1", "2"]);
+  // Niet het PDF-, OCR- of rijen-pad.
+  expect(document.body.textContent).not.toContain("GEWONE-IMPORT-ONVERWACHT");
+  expect(document.body.textContent).not.toContain("OCR-PAD-ONVERWACHT");
+  expect(document.body.textContent).not.toContain("TABEL-PAD-ONVERWACHT");
+  expect(document.body.textContent).not.toContain("Import failed");
+});
+
+test("chunk-hervatten: al gedane chunks worden overgeslagen", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelResumeChunks />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("HERVAT-FOUT");
+  expect(window.__verzondenChunks).toEqual(["1", "2"]);
+});
+
+test("fout midden in de chunk-loop → eerlijke melding met deelnummer, finish niet aangeroepen", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelChunkFout />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.xlsx", 4.5));
+  await expect
+    .element(page.getByText(/Uploading part 2 of 3 failed/))
+    .toBeInTheDocument();
+  await expect.element(page.getByText(/Failed to fetch/)).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("TABEL-PAD-ONVERWACHT");
+  await expect
+    .element(page.getByRole("button", { name: "Import file" }))
+    .toBeEnabled();
+});
+
+test("tabel-action antwoordt {error} → zichtbaar als alert, kaart weer vrij", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetTabelStartError />
+    </Screen>,
+  );
+  await uploadEnVerstuur(makeTabelFile("armaturenstaat.csv", 0.01));
+  await expect
+    .element(page.getByText("Testfout: tabelimport geweigerd."))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Import file" }))
+    .toBeEnabled();
+});
+
+test(">15 MB CSV → bron niet geüpload, client leest rijen en importTabelRowsAction redirect", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetRijenFallback />
+    </Screen>,
+  );
+  // ~15,1 MB CSV: net boven de opslaggrens; de rijen zelf blijven leesbaar.
+  const regel = "Lp301;XAL;SASSO 100;12\n";
+  const herhaling = Math.ceil((15.1 * 1024 * 1024) / regel.length);
+  const groot = new File(
+    ["code;merk;type;aantal\n" + regel.repeat(herhaling)],
+    "armaturenstaat.csv",
+    { type: "text/csv" },
+  );
+  await uploadEnVerstuur(groot);
+  await expect
+    .element(page.getByText("Import complete — opening the results…"))
+    .toBeInTheDocument();
+  // De chunk-actions zijn nooit aangeraakt (marker bleef uit) …
+  expect(document.body.textContent).not.toContain("TABEL-PAD-ONVERWACHT");
+  // … en de rijen kwamen gesplitst (';'-sniffing) bij de rijen-action aan.
+  expect(window.__rijenImport?.length).toBe(1);
+  expect(window.__rijenImport?.[0].filename).toBe("armaturenstaat.csv");
+  expect(window.__rijenImport?.[0].rows[0]).toEqual([
+    "code",
+    "merk",
+    "type",
+    "aantal",
+  ]);
+  expect(window.__rijenImport?.[0].rows[1]).toEqual([
+    "Lp301",
+    "XAL",
+    "SASSO 100",
+    "12",
+  ]);
+}, 60_000);
+
+// ── Losse beelden (png/jpg) → OCR-loop zonder pdfjs ──────────────────────────
+async function makePng(name: string): Promise<File> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 240;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("geen 2d-context");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, 320, 240);
+  ctx.fillStyle = "#000";
+  ctx.font = "20px sans-serif";
+  ctx.fillText("Lp301 XAL SASSO", 20, 40);
+  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
+  if (!blob) throw new Error("geen png-blob");
+  return new File([blob], name, { type: "image/png" });
+}
+
+test("één png → OCR-loop (pageCount 1, eigen bestandsnaam, tile 0), daarna afgerond", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetBeeldOcr />
+    </Screen>,
+  );
+  await uploadEnVerstuur(await makePng("scan-blad1.png"));
+  await expect
+    .element(page.getByText("OCR finished — opening the results…"))
+    .toBeInTheDocument();
+  expect(window.__ocrStarts).toEqual([
+    { filename: "scan-blad1.png", pageCount: 1 },
+  ]);
+  expect(window.__verzondenTegels).toEqual(["1:0"]);
+  expect(document.body.textContent).not.toContain("GEWONE-IMPORT-ONVERWACHT");
+  expect(document.body.textContent).not.toContain("TABEL-PAD-ONVERWACHT");
+});
+
+test("twee png's → synthetische bestandsnaam (conventie bouwer A), beeld i = pagina i", async () => {
+  await renderServer(
+    <Screen>
+      <KaartMetBeeldOcr />
+    </Screen>,
+  );
+  await uploadEnVerstuur([
+    await makePng("scan-blad1.png"),
+    await makePng("scan-blad2.png"),
+  ]);
+  await expect
+    .element(page.getByText("OCR finished — opening the results…"))
+    .toBeInTheDocument();
+  expect(window.__ocrStarts?.length).toBe(1);
+  expect(window.__ocrStarts?.[0].pageCount).toBe(2);
+  expect(window.__ocrStarts?.[0].filename).toMatch(
+    /^armaturenstaat-d1-\d{8}\.beelden$/,
+  );
+  expect(window.__verzondenTegels).toEqual(["1:0", "2:0"]);
+});
+
+// ── Onbekend type en gemengde selectie: eerlijke fout, geen enkele action ────
+test("onbekend bestandstype → eerlijke fout, geen action aangeraakt", async () => {
+  await renderServer(
+    <Screen>
+      <KaartAllesOnverwacht />
+    </Screen>,
+  );
+  const txt = new File(["gewoon tekst"], "notities.txt", { type: "text/plain" });
+  await uploadEnVerstuur(txt);
+  await expect
+    .element(page.getByText(/This file type is not supported/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("ONVERWACHT");
+  await expect
+    .element(page.getByRole("button", { name: "Import file" }))
+    .toBeEnabled();
+});
+
+test("meerdere bestanden van gemengd type → eerlijke fout (alleen beelden mogen meervoudig)", async () => {
+  await renderServer(
+    <Screen>
+      <KaartAllesOnverwacht />
+    </Screen>,
+  );
+  await uploadEnVerstuur([
+    await makePng("scan.png"),
+    makeTabelFile("staat.xlsx", 0.01),
+  ]);
+  await expect
+    .element(page.getByText(/Multiple files are only supported for images/))
+    .toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("ONVERWACHT");
+});
+
+// ── Review-tab met tabelregels (screenshots + linkgedrag) ────────────────────
+// sourcePage draagt bij een tabelbron het RIJnummer; er bestaat geen paginabeeld,
+// dus de kaart zegt "Read from row N" en linkt naar het bron-controlespoor —
+// nooit naar de beeldroute (die zou 404 geven).
+const tabelReviewItem: ReviewItem = {
+  id: "s9",
+  fixtureCode: "Lp305",
+  brandText: "XAL",
+  productText: "SASSO 150",
+  status: "geel",
+  reviewKind: "tabel",
+  sourcePage: 7,
+  importRunId: "r9",
+  hasPageImage: false,
+  sourceText: "Lp305;XAL;SASSO 150;3000K;24",
+};
+
+function ReviewTabelScreen() {
+  return (
+    <Screen>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight">
+        Ziekenhuis Noord — Review
+      </h1>
+      <ReviewQueue
+        dossierId="d1"
+        pending={[tabelReviewItem]}
+        done={[]}
+        decideAction={noopAction}
+      />
+    </Screen>
+  );
+}
+
+test("tabelregel in de review: 'Read from row N', bronlink, géén beeldlink", async () => {
+  const { container } = await renderServer(<ReviewTabelScreen />);
+  await expect.element(page.getByText("Read from row")).toBeInTheDocument();
+  await expect.element(page.getByText("View source text")).toBeInTheDocument();
+  expect(container.textContent).not.toContain("View page image");
+  expect(container.textContent).not.toContain("Read from page");
+  const link = container.querySelector('a[href="/projects/d1/import/r9"]');
+  expect(link).toBeTruthy();
+  expect(container.querySelector('a[href*="ocr-image"]')).toBeNull();
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const [device, viewport] of Object.entries(viewports)) {
+    test(`review-tabel (${theme}, ${device})`, async () => {
+      await page.viewport(viewport.width, viewport.height);
+      if (theme === "dark") document.documentElement.classList.add("dark");
+      await renderServer(<ReviewTabelScreen />);
+      await expect.element(page.getByText("Read from row")).toBeInTheDocument();
+      await page.screenshot({
+        path: `./review-tabel.${theme}.${device}.test.png`,
+      });
+    });
+  }
+}

@@ -32,6 +32,7 @@ import aliasTeknaNauticSql from "./migrations/0021_alias_tekna_nautic.sql?raw";
 import matchstationSql from "./migrations/0022_matchstation.sql?raw";
 import vervallenZichtbaarSql from "./migrations/0022_vervallen_zichtbaar.sql?raw";
 import eventsEntityIdTextSql from "./migrations/0023_events_entity_id_text.sql?raw";
+import importMeerFormatenSql from "./migrations/0024_import_meer_formaten.sql?raw";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -94,6 +95,8 @@ export async function createTestDb(): Promise<TestDb> {
   // 0023: events.entity_id uuid → text — Better Auth-user-ids zijn geen uuid
   // (docs/probleem-events-entity-id-uuid.md).
   await client.exec(eventsEntityIdTextSql);
+  // 0024: spec_source/review_kind + 'tabel', import_source_files (goal-import-meer-formaten).
+  await client.exec(importMeerFormatenSql);
   return drizzle(client, { schema });
 }
 

@@ -496,6 +496,80 @@ function OcrCard({
   );
 }
 
+// Tabel-import (goal-import-meer-formaten): zelfde controlegedachte als de
+// OcrCard, maar de bron is een RIJ uit een xlsx/csv/docx-tabel — deterministisch
+// gelezen, geen OCR-leesfouten maar wél mogelijke kolomverwarring. sourcePage
+// draagt op dit pad het 1-based RIJNUMMER (discriminator: import_runs.source ===
+// 'tabel'); er bestaat nooit een paginabeeld, dus de kaart linkt altijd naar het
+// bron-controlespoor van de importrun en nooit naar de beeldroute (die zou 404
+// geven). Beeld-imports (jpg/png) houden reviewKind 'ocr' mét beeldlink.
+function TabelCard({
+  dossierId,
+  item,
+  decideAction,
+}: {
+  dossierId: string;
+  item: ReviewItem;
+  decideAction: Action;
+}) {
+  const hasSource = item.importRunId != null && item.sourcePage != null;
+  return (
+    <>
+      <p className="text-sm text-muted-foreground">
+        Check the imported line — table columns can be mislabeled or shifted.
+        Confirm if the line is correct, or open it for another match.
+      </p>
+      {item.sourceText && (
+        <details className="group/src border-l-2 pl-2.5">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="text-xs font-medium text-foreground">
+              Source text
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {" · "}
+              <span className="underline underline-offset-2 group-open/src:hidden">
+                show all
+              </span>
+              <span className="hidden underline underline-offset-2 group-open/src:inline">
+                show less
+              </span>
+            </span>
+            <span className="mt-0.5 line-clamp-2 font-mono text-xs leading-snug break-words whitespace-pre-wrap text-muted-foreground group-open/src:line-clamp-none">
+              {item.sourceText}
+            </span>
+          </summary>
+        </details>
+      )}
+      {hasSource && (
+        <p className="text-sm text-muted-foreground">
+          Read from row{" "}
+          <span className="font-medium text-foreground">{item.sourcePage}</span>
+          {" · "}
+          <a
+            href={`/projects/${dossierId}/import/${item.importRunId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            View source text
+          </a>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <form action={decideAction}>
+          <input type="hidden" name="dossierId" value={dossierId} />
+          <input type="hidden" name="specLineId" value={item.id} />
+          <input type="hidden" name="decision" value="gecontroleerd" />
+          <Button type="submit" size="sm">
+            <IconCheck /> Checked
+          </Button>
+        </form>
+        <OtherMatch dossierId={dossierId} itemId={item.id} />
+      </div>
+    </>
+  );
+}
+
 function PendingCard({
   dossierId,
   item,
@@ -560,6 +634,9 @@ function PendingCard({
         )}
         {item.reviewKind === "ocr" && (
           <OcrCard dossierId={dossierId} item={item} decideAction={decideAction} />
+        )}
+        {item.reviewKind === "tabel" && (
+          <TabelCard dossierId={dossierId} item={item} decideAction={decideAction} />
         )}
       </CardContent>
     </Card>

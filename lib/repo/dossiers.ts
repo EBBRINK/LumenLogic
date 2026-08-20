@@ -203,7 +203,7 @@ export type SpecLineInput = {
   reqShape?: string | null;
   reqColor?: string | null;
   reqDimmable?: string | null;
-  source?: "manual" | "csv" | "pdf" | "ocr" | "llm";
+  source?: "manual" | "csv" | "pdf" | "ocr" | "llm" | "tabel";
   sourceConfidence?: string | null;
   sourcePage?: number | null;
   importRunId?: string | null;

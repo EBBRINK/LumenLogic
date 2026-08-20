@@ -35,6 +35,18 @@ import { IconUpload } from "./icons";
 // armaturenboeken (5–50 MB, veel foto's) blijven gewoon werken.
 const MAX_CLIENT_PDF_BYTES = 100 * 1024 * 1024;
 
+// Tabelbron-limieten (goal-import-meer-formaten, interface-afspraak): 15 MB
+// totaal opgeslagen bron, 2 MB per chunk, max 8 chunks. Boven 15 MB wordt het
+// bronbestand NIET opgeslagen en gaan alleen de client-gelezen rijen de deur
+// uit (importTabelRowsAction, event source_file_skipped_too_large op de server).
+export const MAX_TABLE_SOURCE_BYTES = 15 * 1024 * 1024;
+export const TABLE_CHUNK_BYTES = 2 * 1024 * 1024;
+export const MAX_TABLE_CHUNKS = 8;
+
+// Typeherkenning + CSV-sniffing: pure helpers in ./upload-kind.ts (geen
+// "use client" — zo blijven ze door de RSC-testbrug heen direct unit-testbaar).
+import { detectUploadKind, splitCsvRows } from "./upload-kind";
+
 // NB de `void` in deze signatuur: die staat voor "de action gaf niets terug",
 // maar in ECHTE Next is dat succespad onbereikbaar — bij succes redirect de
 // action, en dan rejectet de promise met NEXT_REDIRECT in plaats van te
@@ -70,6 +82,32 @@ export type OcrPageAction = (formData: FormData) => Promise<
 export type FinishOcrAction = (
   formData: FormData,
 ) => Promise<{ error: string } | void>;
+
+// ── Tabelbron-actions (goal-import-meer-formaten, interface-afspraak) ────────
+// Signatures spiegelen de nieuwe server-actions van Bouwer A in
+// app/projects/actions.ts: start → chunks (idempotent, B4-lockpatroon) →
+// finish (assembleren, parsen, redirect ?tabel=<n>&run=<id>).
+export type StartTableImportAction = (input: {
+  dossierId: string;
+  filename: string;
+}) => Promise<{ error: string } | { runId: string; doneChunks: number[] }>;
+
+export type UploadSourceChunkAction = (formData: FormData) => Promise<
+  { error: string } | { ok: true; alreadyDone: boolean }
+>;
+
+export type FinishTableImportAction = (input: {
+  dossierId: string;
+  runId: string;
+}) => Promise<{ error: string } | void>;
+
+// >15 MB-pad: het bronbestand blijft achter, alleen de client-gelezen rijen
+// gaan de deur uit. Redirect bij succes zoals finishTableImportAction.
+export type ImportTabelRowsAction = (input: {
+  dossierId: string;
+  filename: string;
+  rows: string[][];
+}) => Promise<{ error: string } | void>;
 
 // Openstaande OCR-run van dit dossier (B5) — de projectpagina haalt dit bytes-vrij
 // op (getOpenOcrRun) zodat de kaart bij een paginabezoek een hervat-knop toont.
@@ -144,6 +182,13 @@ export function PdfUploadCard({
   startOcrAction,
   ocrPageAction,
   finishOcrAction,
+  // Tabelbron-actions zijn optioneel: bestaande aanroepers/stubs zonder deze
+  // props blijven werken; kiest iemand daar tóch een tabel-bestand, dan is de
+  // fout eerlijk ("not available") in plaats van een stille crash.
+  startTableImportAction,
+  uploadSourceChunkAction,
+  finishTableImportAction,
+  importTabelRowsAction,
   pendingOcr,
 }: {
   dossierId: string;
@@ -151,6 +196,10 @@ export function PdfUploadCard({
   startOcrAction: StartOcrAction;
   ocrPageAction: OcrPageAction;
   finishOcrAction: FinishOcrAction;
+  startTableImportAction?: StartTableImportAction;
+  uploadSourceChunkAction?: UploadSourceChunkAction;
+  finishTableImportAction?: FinishTableImportAction;
+  importTabelRowsAction?: ImportTabelRowsAction;
   pendingOcr?: PendingOcrRun | null;
 }) {
   // Eén toestand in plaats van drie losse vlaggen. Dat is niet cosmetisch: de
@@ -184,6 +233,53 @@ export function PdfUploadCard({
   // Blijft 'handoff' tóch staan, dan is de navigatie weggevallen — dat mag niet
   // stil zijn, ook niet als de classificatie hierboven ernaast zat.
   const hanging = useHangingHandoff(status.kind === "handoff");
+
+  // Gedeelde OCR-afronding (PDF-loop én losse-beelden-loop): finishOcrAction
+  // redirect bij succes naar ?ocr=…&run=… — de promise REJECT dan (zie de kop
+  // van dit bestand). Vóór de callAction-fix belandde dat in de buitenste catch
+  // en meldde een geslaagde OCR-run zich als "Import failed".
+  async function finishOcrRun(runId: string, pageCount: number, failed: number) {
+    setBusy("Finishing OCR…");
+    const form = new FormData();
+    form.set("dossierId", dossierId);
+    form.set("runId", runId);
+    const finished = await callAction(() => finishOcrAction(form), {
+      path: `/projects/${dossierId}`,
+    });
+    if (finished.kind === "failed") {
+      // De gelezen regels stáán al op het project. "Opnieuw proberen" is hier
+      // schadelijke raad: hervatten kost niets extra, opnieuw beginnen wel.
+      setError(
+        `OCR finished reading, but closing the run failed (${failureDetail(finished.error)}). The pages that were read are saved — choose the same file again to resume; already-read pages cost nothing extra.`,
+      );
+      return;
+    }
+    if (finished.kind === "signedOut") {
+      // Geen verzonnen faaltelling hier: requireSession() staat vóór alles in
+      // de action, dus de run is niet afgesloten en we weten de uitkomst niet.
+      setError(
+        "Your session expired before the OCR run could be closed. The pages that were read are saved — sign in again and choose the same file to resume; already-read pages cost nothing extra.",
+      );
+      return;
+    }
+    if (finished.kind === "divertedTo") {
+      setError(
+        `Finishing the OCR run ended on an unexpected page (${finished.href}) — the run was not confirmed. The pages that were read are saved; check the events log before retrying.`,
+      );
+      return;
+    }
+    if (finished.kind === "value" && finished.value && "error" in finished.value) {
+      setError(finished.value.error);
+      return;
+    }
+    // 'arrived' (productie: de redirect kwam waar hij hoorde) én 'value: void'
+    // (stub/geen-redirect) betekenen allebei: klaar.
+    setHandoff(
+      failed > 0
+        ? `OCR finished — ${failed} of ${pageCount} pages failed (see the events log); opening the results…`
+        : "OCR finished — opening the results…",
+    );
+  }
 
   // ── De OCR-loop (beeld-PDF, 0 tekens tekstlaag) ────────────────────────────
   async function runOcrLoop(file: File, pageCount: number) {
@@ -342,69 +438,338 @@ export function PdfUploadCard({
         }
       }
 
-      setBusy("Finishing OCR…");
-      const form = new FormData();
-      form.set("dossierId", dossierId);
-      form.set("runId", start.runId);
-      // finishOcrAction redirect bij succes naar ?ocr=…&run=… — de promise
-      // REJECT dan (zie de kop van dit bestand). Vóór deze fix belandde dat in de
-      // buitenste catch en meldde een geslaagde OCR-run zich als "Import failed";
-      // de afrondmelding hieronder was daardoor dode code op de deploy.
-      const finished = await callAction(() => finishOcrAction(form), {
-        path: `/projects/${dossierId}`,
-      });
-      if (finished.kind === "failed") {
-        // De gelezen regels stáán al op het project. "Opnieuw proberen" is hier
-        // schadelijke raad: hervatten kost niets extra, opnieuw beginnen wel.
-        setError(
-          `OCR finished reading, but closing the run failed (${failureDetail(finished.error)}). The pages that were read are saved — choose the same PDF again to resume; already-read pages cost nothing extra.`,
-        );
-        return;
-      }
-      if (finished.kind === "signedOut") {
-        // Geen verzonnen faaltelling hier: requireSession() staat vóór alles in
-        // de action, dus de run is niet afgesloten en we weten de uitkomst niet.
-        setError(
-          "Your session expired before the OCR run could be closed. The pages that were read are saved — sign in again and choose the same PDF to resume; already-read pages cost nothing extra.",
-        );
-        return;
-      }
-      if (finished.kind === "divertedTo") {
-        setError(
-          `Finishing the OCR run ended on an unexpected page (${finished.href}) — the run was not confirmed. The pages that were read are saved; check the events log before retrying.`,
-        );
-        return;
-      }
-      if (finished.kind === "value" && finished.value && "error" in finished.value) {
-        setError(finished.value.error);
-        return;
-      }
-      // 'arrived' (productie: de redirect kwam waar hij hoorde) én 'value: void'
-      // (stub/geen-redirect) betekenen allebei: klaar.
-      setHandoff(
-        failed > 0
-          ? `OCR finished — ${failed} of ${pageCount} pages failed (see the events log); opening the results…`
-          : "OCR finished — opening the results…",
-      );
+      await finishOcrRun(start.runId, pageCount, failed);
     } finally {
       // pdfjs-resources (gedecodeerde pagina's, worker-state) direct vrijgeven.
       pdf.destroy().catch(() => {});
     }
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus({ kind: "idle" });
-    const file = new FormData(e.currentTarget).get("pdf");
-    if (!(file instanceof File) || file.size === 0) return;
-    if (file.size > MAX_CLIENT_PDF_BYTES) {
+  // ── Losse beelden (jpg/png): OCR-loop zonder pdfjs ─────────────────────────
+  // Elk beeld ís al een paginabeeld — geen rasterisatie, geen tiling: beeld i =
+  // pagina i, altijd tile 0 (hele pagina). PNG gaat ongecodeerd de deur uit
+  // (server accepteert PNG op magic bytes — arbitragebesluit, geen client-side
+  // JPEG-hercodering).
+  async function runImageOcrLoop(files: File[]) {
+    const pageCount = files.length;
+    // Filename-conventie van Bouwer A voor N losse beelden; één beeld houdt
+    // zijn eigen naam (hervatten = zelfde bestand opnieuw kiezen).
+    const datum = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+    const filename =
+      pageCount === 1
+        ? files[0].name
+        : `armaturenstaat-${dossierId.slice(0, 8)}-${datum}.beelden`;
+    setBusy("Starting OCR import…");
+    const started = await callAction(
+      () => startOcrAction({ dossierId, filename, pageCount }),
+      { path: `/projects/${dossierId}` },
+    );
+    if (started.kind === "signedOut") {
       setError(
-        `This file is very large (${Math.round(file.size / 1024 / 1024)} MB) — the browser may freeze while reading it. Reduce the PDF to under 100 MB and try again.`,
+        "Your session expired — nothing was read or uploaded. Sign in again and choose the same images.",
       );
       return;
     }
-    setBusy("Reading PDF…");
+    if (started.kind !== "value") {
+      setError(
+        started.kind === "failed"
+          ? `Could not start the OCR import (${failureDetail(started.error)}). Nothing was read or uploaded.`
+          : `Starting the OCR import ended on an unexpected page (${started.href}) — nothing was read or uploaded.`,
+      );
+      return;
+    }
+    const start = started.value;
+    if ("error" in start) {
+      setError(start.error);
+      return;
+    }
+    const doneTiles = new Set(start.doneTiles.map((t) => `${t.page}:${t.tile}`));
+    let failed = 0;
+    let sentResumePrefix = start.resumed;
+    for (let i = 0; i < pageCount; i++) {
+      const pageNo = i + 1;
+      if (doneTiles.has(`${pageNo}:0`)) continue;
+      const resumePrefix = sentResumePrefix
+        ? `Resuming OCR from page ${pageNo} — `
+        : "";
+      sentResumePrefix = false;
+      const failNote = failed > 0 ? ` (${failed} pages failed)` : "";
+      setBusy(
+        `${resumePrefix}Reading page ${pageNo}/${pageCount} with OCR…${failNote}`,
+      );
+      // Maten uit het beeld zelf (de action wil width/height net als bij een
+      // gerenderde PDF-tegel); direct weer vrijgeven.
+      const bitmap = await createImageBitmap(files[i]);
+      const { width, height } = bitmap;
+      bitmap.close();
+      const form = new FormData();
+      form.set("dossierId", dossierId);
+      form.set("runId", start.runId);
+      form.set("page", String(pageNo));
+      form.set("tile", "0");
+      form.set("tileCount", "1");
+      form.set("width", String(width));
+      form.set("height", String(height));
+      form.set("image", files[i]);
+      const sent = await callAction(() => ocrPageAction(form), {
+        path: `/projects/${dossierId}`,
+      });
+      if (sent.kind === "signedOut") {
+        const left = pageCount - pageNo + 1;
+        setError(
+          `Your session expired during the OCR run — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are saved; sign in again and choose the same images to resume.`,
+        );
+        return;
+      }
+      if (sent.kind !== "value") {
+        const left = pageCount - pageNo + 1;
+        setError(
+          sent.kind === "failed"
+            ? `OCR stopped on page ${pageNo} (${failureDetail(sent.error)}) — ${left} of ${pageCount} pages were not (fully) read. The lines read so far are saved; choose the same images to resume.`
+            : `OCR stopped on page ${pageNo}: the request ended on an unexpected page (${sent.href}). The lines read so far are saved.`,
+        );
+        return;
+      }
+      const result = sent.value;
+      if ("stopped" in result) {
+        setError(ocrStopMessage(result.stopped, pageCount - pageNo + 1, pageCount));
+        return;
+      }
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      if ("failed" in result) failed++;
+    }
+    await finishOcrRun(start.runId, pageCount, failed);
+  }
+
+  // ── Tabelbron (xlsx/csv/docx): gechunkt naar de server ─────────────────────
+  // start → chunks (2 MB, idempotent) → finish; de server parst deterministisch
+  // (lib/table/, Bouwer A) en redirect naar ?tabel=<n>&run=<id>. Boven 15 MB
+  // wordt de bron niet opgeslagen: dan leest de client zelf de rijen en gaat
+  // alleen die JSON de deur uit (importTabelRowsAction).
+  async function runTableImport(file: File, kind: "xlsx" | "csv" | "docx") {
+    if (
+      !startTableImportAction ||
+      !uploadSourceChunkAction ||
+      !finishTableImportAction ||
+      !importTabelRowsAction
+    ) {
+      setError(
+        "Table import is not available here — upload a PDF, or add the lines via the CSV block below.",
+      );
+      return;
+    }
+
+    if (file.size > MAX_TABLE_SOURCE_BYTES) {
+      // >15 MB-fallback: rijen client-side lezen. Een docx van >15 MB kunnen we
+      // in de browser niet betrouwbaar lezen (mammoth is een server-dependency)
+      // — eerlijke fout in plaats van een halve import.
+      if (kind === "docx") {
+        setError(
+          `This Word file is larger than 15 MB (${Math.round(file.size / 1024 / 1024)} MB) and cannot be read in the browser. Export the schedule as PDF, Excel or CSV and try again.`,
+        );
+        return;
+      }
+      setBusy("File is larger than 15 MB — reading rows in the browser…");
+      let rows: string[][];
+      try {
+        if (kind === "csv") {
+          rows = splitCsvRows(await file.text());
+        } else {
+          const ExcelJS = await import("exceljs");
+          const wb = new ExcelJS.Workbook();
+          await wb.xlsx.load(await file.arrayBuffer());
+          rows = [];
+          const ws = wb.worksheets[0];
+          ws?.eachRow((row) => {
+            const cells: string[] = [];
+            row.eachCell({ includeEmpty: true }, (cell) => {
+              cells.push(cell.text ?? "");
+            });
+            rows.push(cells);
+          });
+        }
+      } catch {
+        setError(
+          "This file could not be read in the browser (corrupted or not a valid file) — nothing was imported.",
+        );
+        return;
+      }
+      setBusy(`Read ${rows.length} rows — importing…`);
+      const result = await callAction(
+        () => importTabelRowsAction({ dossierId, filename: file.name, rows }),
+        { path: `/projects/${dossierId}` },
+      );
+      if (result.kind === "failed") {
+        setError(
+          `The import did not complete (${failureDetail(result.error)}). Check this project's events log to see whether lines were saved before retrying.`,
+        );
+        return;
+      }
+      if (result.kind === "signedOut") {
+        setError(
+          "Your session expired before anything was imported — nothing was saved. Sign in again and choose the same file.",
+        );
+        return;
+      }
+      if (result.kind === "divertedTo") {
+        setError(
+          `The import ended on an unexpected page (${result.href}) — nothing was confirmed. Check this project's events log before retrying.`,
+        );
+        return;
+      }
+      if (result.kind === "value" && result.value && "error" in result.value) {
+        setError(result.value.error);
+        return;
+      }
+      setHandoff("Import complete — opening the results…");
+      return;
+    }
+
+    // ≤15 MB: bron opslaan via de chunk-loop (B4-lockpatroon van Bouwer A).
+    const chunkCount = Math.max(1, Math.ceil(file.size / TABLE_CHUNK_BYTES));
+    if (chunkCount > MAX_TABLE_CHUNKS) {
+      // Onbereikbaar onder de 15 MB-grens (8 × 2 MB = 16 MB), maar expliciet:
+      // liever een eerlijke fout dan een server-weigering halverwege.
+      setError("This file needs more than 8 upload chunks — it is too large.");
+      return;
+    }
+    setBusy("Starting import…");
+    const started = await callAction(
+      () => startTableImportAction({ dossierId, filename: file.name }),
+      { path: `/projects/${dossierId}` },
+    );
+    if (started.kind === "signedOut") {
+      setError(
+        "Your session expired — nothing was uploaded. Sign in again and choose the same file.",
+      );
+      return;
+    }
+    if (started.kind !== "value") {
+      setError(
+        started.kind === "failed"
+          ? `Could not start the import (${failureDetail(started.error)}). Nothing was uploaded.`
+          : `Starting the import ended on an unexpected page (${started.href}) — nothing was uploaded.`,
+      );
+      return;
+    }
+    const start = started.value;
+    if ("error" in start) {
+      setError(start.error);
+      return;
+    }
+    const doneChunks = new Set(start.doneChunks);
+    for (let chunk = 0; chunk < chunkCount; chunk++) {
+      if (doneChunks.has(chunk)) continue;
+      setBusy(`Uploading source file… (part ${chunk + 1}/${chunkCount})`);
+      const form = new FormData();
+      form.set("dossierId", dossierId);
+      form.set("runId", start.runId);
+      form.set("chunk", String(chunk));
+      form.set(
+        "bytes",
+        new File(
+          [file.slice(chunk * TABLE_CHUNK_BYTES, (chunk + 1) * TABLE_CHUNK_BYTES)],
+          `${file.name}.part${chunk}`,
+          { type: "application/octet-stream" },
+        ),
+      );
+      const sent = await callAction(() => uploadSourceChunkAction(form), {
+        path: `/projects/${dossierId}`,
+      });
+      if (sent.kind === "signedOut") {
+        setError(
+          "Your session expired during the upload — nothing was imported yet. Sign in again and choose the same file; parts already uploaded are skipped.",
+        );
+        return;
+      }
+      if (sent.kind !== "value") {
+        setError(
+          sent.kind === "failed"
+            ? `Uploading part ${chunk + 1} of ${chunkCount} failed (${failureDetail(sent.error)}) — nothing was imported yet. Choose the same file again to retry; parts already uploaded are skipped.`
+            : `Uploading part ${chunk + 1} ended on an unexpected page (${sent.href}) — nothing was imported yet.`,
+        );
+        return;
+      }
+      if ("error" in sent.value) {
+        setError(sent.value.error);
+        return;
+      }
+      // {ok} (alreadyDone of vers opgeslagen): door naar de volgende chunk.
+    }
+
+    setBusy("Reading rows and matching…");
+    const finished = await callAction(
+      () => finishTableImportAction({ dossierId, runId: start.runId }),
+      { path: `/projects/${dossierId}` },
+    );
+    if (finished.kind === "failed") {
+      setError(
+        `The import did not complete (${failureDetail(finished.error)}). The uploaded file is saved — choose the same file again to retry; check this project's events log first.`,
+      );
+      return;
+    }
+    if (finished.kind === "signedOut") {
+      setError(
+        "Your session expired before the import could be completed — no lines were saved. Sign in again and choose the same file.",
+      );
+      return;
+    }
+    if (finished.kind === "divertedTo") {
+      setError(
+        `The import ended on an unexpected page (${finished.href}) — nothing was confirmed. Check this project's events log before retrying.`,
+      );
+      return;
+    }
+    if (finished.kind === "value" && finished.value && "error" in finished.value) {
+      setError(finished.value.error);
+      return;
+    }
+    setHandoff("Import complete — opening the results…");
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setStatus({ kind: "idle" });
+    // Meerdere bestanden mag alléén voor losse beelden (beeld i = pagina i);
+    // elke andere combinatie is één bestand of een eerlijke fout.
+    const files = new FormData(e.currentTarget)
+      .getAll("file")
+      .filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return;
+    const kinds = files.map((f) => detectUploadKind(f.name, f.type));
+    if (kinds.includes("unknown")) {
+      setError(
+        "This file type is not supported — upload a PDF, Excel (.xlsx), CSV, Word (.docx) or images (JPG/PNG).",
+      );
+      return;
+    }
+    if (files.length > 1 && !kinds.every((k) => k === "image")) {
+      setError(
+        "Multiple files are only supported for images (JPG/PNG, one page per image) — choose a single file otherwise.",
+      );
+      return;
+    }
     try {
+      if (kinds[0] === "image") {
+        await runImageOcrLoop(files);
+        return;
+      }
+      const file = files[0];
+      if (kinds[0] === "xlsx" || kinds[0] === "csv" || kinds[0] === "docx") {
+        await runTableImport(file, kinds[0]);
+        return;
+      }
+      // PDF-pad — ongewijzigd.
+      if (file.size > MAX_CLIENT_PDF_BYTES) {
+        setError(
+          `This file is very large (${Math.round(file.size / 1024 / 1024)} MB) — the browser may freeze while reading it. Reduce the PDF to under 100 MB and try again.`,
+        );
+        return;
+      }
+      setBusy("Reading PDF…");
       let pages: string[];
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -462,7 +827,7 @@ export function PdfUploadCard({
       // in runOcrLoop die omvalt) en die was tot nu toe onzichtbaar achter de
       // generieke "Import failed".
       setError(
-        `Something went wrong while processing this PDF (${failureDetail(e)}). Check this project's events log before retrying.`,
+        `Something went wrong while processing this file (${failureDetail(e)}). Check this project's events log before retrying.`,
       );
     } finally {
       setBusy(null);
@@ -473,28 +838,28 @@ export function PdfUploadCard({
     ? pendingOcr.pagesTotal
       ? `Resume OCR (${pendingOcr.pagesDone} of ${pendingOcr.pagesTotal} pages done)`
       : `Resume OCR (${pendingOcr.pagesDone} pages done)`
-    : "Import PDF";
+    : "Import file";
 
   return (
     <Card className="mb-8">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <IconUpload aria-hidden /> Upload luminaire schedule (PDF)
+          <IconUpload aria-hidden /> Upload luminaire schedule
         </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-sm text-muted-foreground">
-          Upload the luminaire schedule — lines are matched automatically. PDFs
-          with a text layer are parsed directly; scanned (image) PDFs are read
-          page by page with OCR, and every read line gets a review. The source
-          is kept with the import as an audit trail.
+          Upload the luminaire schedule — PDF, Excel (.xlsx), CSV, Word (.docx)
+          or photos/scans (JPG/PNG); lines are matched automatically. Tables are
+          read row by row; scans are read with OCR, and every read line gets a
+          review. The source is kept with the import as an audit trail.
         </p>
         {pendingOcr && (
           <p className="mb-3 rounded-md border bg-muted/40 p-2.5 text-sm">
             An OCR import of{" "}
             <span className="font-medium">{pendingOcr.filename}</span> is still
             in progress ({pendingOcr.pagesDone} of{" "}
-            {pendingOcr.pagesTotal ?? "?"} pages done). Choose the same PDF
+            {pendingOcr.pagesTotal ?? "?"} pages done). Choose the same file
             again to resume — pages already read are skipped and cost nothing
             extra.
           </p>
@@ -502,11 +867,12 @@ export function PdfUploadCard({
         <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-3">
           <input
             type="file"
-            name="pdf"
-            accept="application/pdf"
+            name="file"
+            accept=".pdf,.xlsx,.csv,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+            multiple
             required
             disabled={locked}
-            aria-label="Choose luminaire schedule PDF"
+            aria-label="Choose luminaire schedule file"
             className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-2.5 file:py-1 file:text-sm"
           />
           <Button type="submit" disabled={locked}>

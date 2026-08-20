@@ -6,8 +6,8 @@
 // 'ocr', het Tinder-deck met paginabeeld) — zo blijft "niets stilzwijgend weglaten"
 // waar zonder dat de mens twee keer hetzelfde beoordeelt. De OCR-flow leeft in
 // lib/repo/ocr.ts.
-import { eq } from "drizzle-orm";
-import { importRuns, type ImportRow } from "@/db/schema";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { importRuns, specLines, type ImportRow } from "@/db/schema";
 import { triggerVangnet } from "@/lib/ai/vangnet";
 import { addSpecLines, type SpecLineInput } from "@/lib/repo/dossiers";
 import { runMatcher } from "@/lib/repo/matching";
@@ -16,8 +16,8 @@ import { logEvent } from "./events";
 
 // Alleen deze bronnen zijn een geldige spec_source (schema-enum). 'bestek' is een
 // aantallen-koppeling, geen herkomst van een spec-regel → val terug op 'csv'.
-const SPEC_SOURCES = new Set(["manual", "csv", "pdf", "ocr", "llm"]);
-type SpecSource = "manual" | "csv" | "pdf" | "ocr" | "llm";
+const SPEC_SOURCES = new Set(["manual", "csv", "pdf", "ocr", "llm", "tabel"]);
+type SpecSource = "manual" | "csv" | "pdf" | "ocr" | "llm" | "tabel";
 function toSpecSource(s: string): SpecSource {
   return SPEC_SOURCES.has(s) ? (s as SpecSource) : "csv";
 }
@@ -81,6 +81,81 @@ export async function recordPdfImport(
     actor?: string;
   },
 ) {
+  // Dunne wrapper sinds goal-import-meer-formaten: het gedeelde werk zit in
+  // recordImport hieronder. Gedrag is bewust byte-identiek aan vóór de
+  // generalisatie (run-insert, addSpecLines, matcher-lus, event, vangnet — in
+  // precies die volgorde); lib/repo/imports.test.ts bewijst het.
+  return recordImport(db, {
+    ...input,
+    source: "pdf",
+    reviewKind: null,
+    vangnet: true,
+  });
+}
+
+// Tabel-import (xlsx/csv/docx-tabellen): zelfde directe route als PDF — de rijen
+// zijn deterministisch gelezen, geen voorstel-scherm — maar élke regel krijgt een
+// VERPLICHTE review (reviewKind 'tabel', "Read from row N"), zoals de OCR-flow.
+// Daarom óók geen vangnet-trigger hier (B8-redenering uit lib/repo/ocr.ts): geen
+// machinaal gelezen merk mag de merkvergrendelde zoektool sturen vóór een mens de
+// bron zag. rawMarkdown = de rijen als markdown-tabel (lib/table/parse-rows.ts).
+//
+// existingRunId: het gechunkte pad heeft de run al bij startTableImport aangemaakt
+// (status 'voorstel' = upload loopt); dan vullen we díe run en zetten hem op
+// 'bevestigd'. Zonder existingRunId (het >15 MB-pad met client-gelezen rijen)
+// ontstaat de run hier, zoals bij PDF.
+export async function recordTableImport(
+  db: AppDb,
+  input: {
+    dossierId: string;
+    filename?: string | null;
+    lines: SpecLineInput[];
+    rawMarkdown: string;
+    existingRunId?: string;
+    actor?: string;
+  },
+) {
+  const result = await recordImport(db, {
+    ...input,
+    source: "tabel",
+    reviewKind: "tabel",
+    vangnet: false,
+  });
+  await logEvent(db, {
+    entity: "import_run",
+    entityId: result.run.id,
+    action: "tabel_import_done",
+    actor: input.actor,
+    payload: {
+      dossierId: input.dossierId,
+      filename: input.filename ?? null,
+      rows: input.lines.length,
+    },
+  });
+  return result;
+}
+
+// Het gedeelde werk van de directe importroutes (pdf/tabel). Volgorde is dezelfde
+// als het oorspronkelijke recordPdfImport en om dezelfde reden als confirmImportRun
+// (A9): eerst de run onomkeerbaar, dan de regels, dan pas de matcher — er is geen
+// transactie om op terug te vallen (neon-http).
+async function recordImport(
+  db: AppDb,
+  input: {
+    dossierId: string;
+    source: "pdf" | "tabel";
+    filename?: string | null;
+    lines: SpecLineInput[];
+    rawMarkdown: string;
+    existingRunId?: string;
+    // 'tabel' → elke nieuwe regel ZONDER bestaand reviewKind krijgt deze verplichte
+    // review (B7-regel: één regel draagt hooguit één review-reden — een matcher-geel
+    // of variant-flag die de matcher-lus net zette blijft staan).
+    reviewKind: "tabel" | null;
+    vangnet: boolean;
+    actor?: string;
+  },
+) {
   const rows: ImportRow[] = input.lines.map((l) => ({
     fixtureCode: l.fixtureCode,
     quantity: l.quantity ?? null,
@@ -97,23 +172,47 @@ export async function recordPdfImport(
       ...(l.reqBeamAngle != null ? { beamAngle: l.reqBeamAngle } : {}),
       ...(l.reqDimmable != null ? { dimmable: l.reqDimmable } : {}),
     },
-    source: "pdf",
+    // sourcePage (bij tabel: het rijnummer) mee in het snapshot, zodat het
+    // controlespoor per rij blijft tonen waar hij vandaan kwam (B-07).
+    ...(l.sourcePage != null ? { page: l.sourcePage } : {}),
+    source: input.source,
     checked: true, // deterministisch geparst → alles telt als bevestigd
   }));
 
-  const [run] = await db
-    .insert(importRuns)
-    .values({
-      dossierId: input.dossierId,
-      source: "pdf",
-      filename: input.filename ?? null,
-      status: "bevestigd",
-      rows,
-      counts: { total: rows.length, checked: rows.length },
-      rawMarkdown: input.rawMarkdown,
-      actor: input.actor ?? null,
-    })
-    .returning();
+  let run: typeof importRuns.$inferSelect;
+  if (input.existingRunId) {
+    // Gechunkt pad: de run bestaat al (startTableImport, status 'voorstel' zolang
+    // de upload loopt) — hier wordt hij gevuld en onomkeerbaar 'bevestigd'.
+    const [updated] = await db
+      .update(importRuns)
+      .set({
+        status: "bevestigd",
+        rows,
+        counts: { total: rows.length, checked: rows.length },
+        rawMarkdown: input.rawMarkdown,
+        actor: input.actor ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(importRuns.id, input.existingRunId))
+      .returning();
+    if (!updated) throw new Error(`import run ${input.existingRunId} not found`);
+    run = updated;
+  } else {
+    const [inserted] = await db
+      .insert(importRuns)
+      .values({
+        dossierId: input.dossierId,
+        source: input.source,
+        filename: input.filename ?? null,
+        status: "bevestigd",
+        rows,
+        counts: { total: rows.length, checked: rows.length },
+        rawMarkdown: input.rawMarkdown,
+        actor: input.actor ?? null,
+      })
+      .returning();
+    run = inserted;
+  }
 
   const created = input.lines.length
     ? await addSpecLines(
@@ -121,13 +220,31 @@ export async function recordPdfImport(
         input.dossierId,
         input.lines.map((l) => ({
           ...l,
-          source: "pdf" as const,
+          source: input.source,
           importRunId: run.id,
         })),
       )
     : [];
   for (const line of created) {
     await runMatcher(db, line.id, input.actor);
+  }
+
+  // Verplichte review (tabel): NÁ de matcher-lus, alleen op regels die dan nog géén
+  // reviewKind dragen — een matcher-geel of variant-flag blijft staan en dekt beide
+  // besluiten (B7-regel, zelfde constructie als de OCR-flow).
+  if (input.reviewKind && created.length) {
+    await db
+      .update(specLines)
+      .set({ reviewKind: input.reviewKind, updatedAt: new Date() })
+      .where(
+        and(
+          inArray(
+            specLines.id,
+            created.map((l) => l.id),
+          ),
+          isNull(specLines.reviewKind),
+        ),
+      );
   }
 
   await logEvent(db, {
@@ -137,7 +254,7 @@ export async function recordPdfImport(
     actor: input.actor,
     payload: {
       runId: run.id,
-      source: "pdf",
+      source: input.source,
       rows: rows.length,
       status: "bevestigd",
     },
@@ -146,8 +263,11 @@ export async function recordPdfImport(
   // AI-vangnet (stap 8): tweede pass over de restregels. In een Next-request draait het
   // via after() ná de response (import blokkeert er niet meer op); in tests/scripts
   // awaited met vangrails — fouten worden een ai_vangnet_failed-event, zonder key een
-  // skip-event; de import faalt er nooit door.
-  await triggerVangnet(db, input.dossierId, input.actor);
+  // skip-event; de import faalt er nooit door. Bij de tabel-route staat hij UIT
+  // (B8-redenering: eerst de mens, zie recordTableImport).
+  if (input.vangnet) {
+    await triggerVangnet(db, input.dossierId, input.actor);
+  }
 
   return { run, created };
 }

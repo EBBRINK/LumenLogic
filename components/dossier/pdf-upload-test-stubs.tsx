@@ -10,8 +10,12 @@ import { notFound, redirect } from "next/navigation";
 import {
   PdfUploadCard,
   type FinishOcrAction,
+  type FinishTableImportAction,
+  type ImportTabelRowsAction,
   type OcrPageAction,
   type StartOcrAction,
+  type StartTableImportAction,
+  type UploadSourceChunkAction,
 } from "./pdf-upload-card";
 
 // "Mag niet gebeuren"-stubs: komt de kaart tóch op dit pad, dan verschijnt de
@@ -428,6 +432,208 @@ export function KaartMetNotFound() {
       startOcrAction={startOcrOnverwacht}
       ocrPageAction={ocrPageOnverwacht}
       finishOcrAction={finishOcrOnverwacht}
+    />
+  );
+}
+
+// ── Tabelbron-stubs (goal-import-meer-formaten, Bouwer B) ────────────────────
+// Zelfde harness-beperking als bovenaan: de actions zijn client-side stubs; de
+// kaartlogica (typeherkenning, chunk-loop, >15 MB-fallback, callAction-uitkomsten)
+// wordt volledig en eerlijk getest.
+
+const tabelOnverwacht = {
+  startTableImportAction: (async () => ({
+    error: "TABEL-PAD-ONVERWACHT: startTableImportAction aangeroepen.",
+  })) satisfies StartTableImportAction,
+  uploadSourceChunkAction: (async () => ({
+    error: "TABEL-PAD-ONVERWACHT: uploadSourceChunkAction aangeroepen.",
+  })) satisfies UploadSourceChunkAction,
+  finishTableImportAction: (async () => ({
+    error: "TABEL-PAD-ONVERWACHT: finishTableImportAction aangeroepen.",
+  })) satisfies FinishTableImportAction,
+  importTabelRowsAction: (async () => ({
+    error: "TABEL-PAD-ONVERWACHT: importTabelRowsAction aangeroepen.",
+  })) satisfies ImportTabelRowsAction,
+};
+
+// Registratie via window (zie __verzondenTegels hierboven): wat de chunk-loop
+// werkelijk verstuurde, en wat de rijen-fallback aanleverde.
+declare global {
+  interface Window {
+    __verzondenChunks?: string[];
+    __tabelStart?: { filename: string }[];
+    __rijenImport?: { filename: string; rows: string[][] }[];
+    __ocrStarts?: { filename: string; pageCount: number }[];
+  }
+}
+
+// Happy path xlsx/csv: start vers, elke chunk slaagt, finish redirect naar
+// ?tabel=…&run=… — de productie-succesroute.
+export function KaartMetTabelHappy() {
+  if (typeof window !== "undefined") {
+    window.__verzondenChunks = [];
+    window.__tabelStart = [];
+  }
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={async (input) => {
+        window.__tabelStart?.push({ filename: input.filename });
+        return { runId: "r9", doneChunks: [] };
+      }}
+      uploadSourceChunkAction={async (form) => {
+        (window.__verzondenChunks ??= []).push(String(form.get("chunk")));
+        return { ok: true, alreadyDone: false };
+      }}
+      finishTableImportAction={async () => {
+        throw nextRedirectError("/projects/d1?tabel=5&run=r9");
+      }}
+      importTabelRowsAction={tabelOnverwacht.importTabelRowsAction}
+    />
+  );
+}
+
+// Hervatten: chunk 0 was al binnen (doneChunks) — alleen de rest mag de deur uit.
+export function KaartMetTabelResumeChunks() {
+  if (typeof window !== "undefined") window.__verzondenChunks = [];
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={async () => ({ runId: "r9", doneChunks: [0] })}
+      uploadSourceChunkAction={async (form) => {
+        const chunk = Number(form.get("chunk"));
+        if (chunk === 0) {
+          return { error: "HERVAT-FOUT: chunk 0 was al gedaan en werd tóch gestuurd." };
+        }
+        (window.__verzondenChunks ??= []).push(String(chunk));
+        return { ok: true, alreadyDone: false };
+      }}
+      finishTableImportAction={async () => {
+        throw nextRedirectError("/projects/d1?tabel=3&run=r9");
+      }}
+      importTabelRowsAction={tabelOnverwacht.importTabelRowsAction}
+    />
+  );
+}
+
+// Fout halverwege de chunk-loop: de kaart moet eerlijk melden welk deel faalde
+// en dat opnieuw kiezen de al geüploade delen overslaat.
+export function KaartMetTabelChunkFout() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={async () => ({ runId: "r9", doneChunks: [] })}
+      uploadSourceChunkAction={async (form) => {
+        if (Number(form.get("chunk")) >= 1) {
+          throw new TypeError("Failed to fetch");
+        }
+        return { ok: true, alreadyDone: false };
+      }}
+      finishTableImportAction={tabelOnverwacht.finishTableImportAction}
+      importTabelRowsAction={tabelOnverwacht.importTabelRowsAction}
+    />
+  );
+}
+
+// >15 MB-fallback: de bron blijft achter, de client leest de rijen zelf en
+// stuurt alléén die naar importTabelRowsAction (die daarna redirect).
+export function KaartMetRijenFallback() {
+  if (typeof window !== "undefined") window.__rijenImport = [];
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={tabelOnverwacht.startTableImportAction}
+      uploadSourceChunkAction={tabelOnverwacht.uploadSourceChunkAction}
+      finishTableImportAction={tabelOnverwacht.finishTableImportAction}
+      importTabelRowsAction={async (input) => {
+        window.__rijenImport?.push({
+          filename: input.filename,
+          // Alleen kop + eerste rijen vastleggen: 15 MB rijen serialiseren zou
+          // de test zelf traag maken.
+          rows: input.rows.slice(0, 3),
+        });
+        throw nextRedirectError("/projects/d1?tabel=2&run=r9");
+      }}
+    />
+  );
+}
+
+// Action antwoordt {error} op het tabelpad (bv. zod-weigering server-side).
+export function KaartMetTabelStartError() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      startTableImportAction={async () => ({
+        error: "Testfout: tabelimport geweigerd.",
+      })}
+      uploadSourceChunkAction={tabelOnverwacht.uploadSourceChunkAction}
+      finishTableImportAction={tabelOnverwacht.finishTableImportAction}
+      importTabelRowsAction={tabelOnverwacht.importTabelRowsAction}
+    />
+  );
+}
+
+// Losse beelden (png/jpg): OCR-loop zonder pdfjs — start registreert filename +
+// pageCount, elke pagina slaagt, finish redirect.
+export function KaartMetBeeldOcr() {
+  if (typeof window !== "undefined") {
+    window.__ocrStarts = [];
+    window.__verzondenTegels = [];
+  }
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={async (input) => {
+        window.__ocrStarts?.push({
+          filename: input.filename,
+          pageCount: input.pageCount,
+        });
+        return { runId: "r1", resumed: false, doneTiles: [] };
+      }}
+      ocrPageAction={async (form) => {
+        registreerTegel(form);
+        return { created: 1, duplicates: 0 };
+      }}
+      finishOcrAction={async () => {
+        throw nextRedirectError("/projects/d1?ocr=2&run=r1");
+      }}
+      {...tabelOnverwacht}
+    />
+  );
+}
+
+// Alle actions "mag niet gebeuren": voor de onbekend-type- en mixed-multi-tests
+// — élke aangeraakte action verraadt zich met een marker-alert.
+export function KaartAllesOnverwacht() {
+  return (
+    <PdfUploadCard
+      dossierId="d1"
+      importAction={importOnverwacht}
+      startOcrAction={startOcrOnverwacht}
+      ocrPageAction={ocrPageOnverwacht}
+      finishOcrAction={finishOcrOnverwacht}
+      {...tabelOnverwacht}
     />
   );
 }
