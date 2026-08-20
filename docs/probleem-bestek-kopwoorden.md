@@ -112,7 +112,12 @@ doet dan de gebruiker denkt, is erger dan een import die weigert.
    **de dedup vervalt op het tabelpad.** Elke dataregel wordt één spec-regel. De `seen`-set in
    `parseTocText` (PDF-inhoudsopgave) blijft ongewijzigd — dáár ís een fixture-code wél een
    sleutel.
-2b. **Rij zonder codering:** blijft een spec-regel zolang er een aantal of een product staat
+2b. **Rij zonder codering:** blijft een spec-regel als er een **product** staat. Niet "een
+   aantal óf een product" — zo stond het eerst en dat is bij het bouwen weerlegd: de
+   totaalregel op rij 102 heeft precies dat profiel (`Aantal = 86`, geen codering, geen
+   product) en zou dan als 43e armatuur van 86 stuks meetellen, waarmee de som op 172 komt
+   en het controlegetal omvalt. Alleen-een-getal is geen armatuur. Raakt rij 97 (3× Toldbod)
+   en rij 99 (2× n.t.b.), die allebei wél een product dragen
    (oorzaak 3). Volgt uit hetzelfde principe en is nodig om op 86 uit te komen.
 2c. **Zone doorvullen** tot de volgende niet-lege ruimtenaam (oorzaak 4).
 3. **Testfixture:** een geanonimiseerde kopie van het Bos-bestand in de repo — zelfde koprij en
