@@ -10,7 +10,8 @@ import {
   getImportRun,
   recordPdfImport,
 } from "@/lib/repo/imports";
-import type { ImportRow } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { importRuns, type ImportRow } from "@/db/schema";
 import { STATUS } from "@/components/dossier/status";
 
 // A9: één regelbare crash in de matcher-lus, verder de échte matcher. Zolang
@@ -225,4 +226,31 @@ test("A9: crasht de matcher halverwege, dan blijft het bij één set regels (gee
   expect(tweede.created).toHaveLength(0);
   // vóór de fix stonden hier 6 regels: verdubbelde aantallen op het klantstuk
   expect(await getSpecLines(db, dossier.id)).toHaveLength(3);
+});
+
+// Race (fix 20 aug 2026): twee gelijktijdige bevestigingen (dubbelklik, twee tabbladen)
+// lazen allebei 'voorstel' en maakten allebei regels aan. De poort is nu een atomaire
+// claim: UPDATE … SET status='bevestigen_bezig' WHERE status='voorstel' RETURNING.
+// PGlite is single-connection, dus we testen het contract: een run die al geclaimd is
+// ('bevestigen_bezig' — de toestand die de verliezer van de race aantreft) levert nul
+// regels en de bestaande "al bevestigd"-uitkomst.
+test("race: bevestigen van een al-geclaimde run ('bevestigen_bezig') maakt nul regels", async () => {
+  const db = await createTestDb();
+  const dossier = await createDossier(db, { orgId: null, name: "Dubbelklik" });
+  const rows: ImportRow[] = [
+    { fixtureCode: "A1", quantity: 3, brandText: "X", productText: "y", source: "csv", checked: true },
+  ];
+  const run = await createImportRun(db, { dossierId: dossier.id, source: "csv", rows });
+
+  // de winnaar heeft geclaimd maar is nog bezig — dit is precies wat de verliezer ziet
+  await db
+    .update(importRuns)
+    .set({ status: "bevestigen_bezig" })
+    .where(eq(importRuns.id, run.id));
+
+  const verliezer = await confirmImportRun(db, run.id, [0]);
+  expect(verliezer.created).toHaveLength(0);
+  expect(await getSpecLines(db, dossier.id)).toHaveLength(0);
+  // de claim van de winnaar blijft staan — de verliezer zet niets terug
+  expect((await getImportRun(db, run.id))?.status).toBe("bevestigen_bezig");
 });

@@ -612,7 +612,10 @@ export const importRuns = pgTable("import_runs", {
   source: text("source").notNull(), // 'pdf' | 'ocr' | 'llm' | 'csv' | 'bestek'
   filename: text("filename"),
   confidence: text("confidence"), // 'hoog' | 'middel' | 'laag'
-  status: text("status").notNull().default("voorstel"), // 'voorstel' | 'bevestigd' | 'geannuleerd'
+  // 'voorstel' | 'bevestigen_bezig' | 'bevestigd' | 'geannuleerd' — 'bevestigen_bezig'
+  // is de atomaire claim in confirmImportRun (race-fix 20 aug 2026); blijft hij hangen,
+  // dan crashte het aanmaken van regels ná de claim — bewust geen automatische reset.
+  status: text("status").notNull().default("voorstel"),
   rows: jsonb("rows").$type<ImportRow[]>().notNull(),
   counts: jsonb("counts").$type<Record<string, number>>(),
   actor: text("actor"),

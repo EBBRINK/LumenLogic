@@ -324,7 +324,22 @@ export async function confirmImportRun(
 ) {
   const run = await getImportRun(db, runId);
   if (!run) throw new Error(`import run ${runId} not found`);
-  if (run.status !== "voorstel") {
+  // Atomaire claim (fix 20 aug 2026): de status-check was lees-dan-schrijf, dus twee
+  // gelijktijdige bevestigingen (dubbelklik, twee tabbladen) lazen allebei 'voorstel'
+  // en maakten allebei regels aan. Eén UPDATE met de status in de WHERE is per
+  // statement atomair in Postgres — geen transactie nodig (db.transaction() gooit op
+  // neon-http, zie A9 hieronder). Alleen de aanroep die daadwerkelijk de rij raakte
+  // (RETURNING niet leeg) maakt regels; de verliezer krijgt dezelfde nette
+  // "al bevestigd"-uitkomst als het sequentiële pad. Crasht addSpecLines ná de claim,
+  // dan blijft de run bewust op 'bevestigen_bezig' hangen — geen automatische reset,
+  // want een herpoging die regels dubbel aanmaakt is duurder dan een run die een
+  // beheerder moet losmaken (verdubbelde aantallen zijn wat de klant betaalt).
+  const claimed = await db
+    .update(importRuns)
+    .set({ status: "bevestigen_bezig", updatedAt: new Date() })
+    .where(and(eq(importRuns.id, runId), eq(importRuns.status, "voorstel")))
+    .returning({ id: importRuns.id });
+  if (claimed.length === 0) {
     return { created: [] as Awaited<ReturnType<typeof addSpecLines>> };
   }
 
@@ -349,8 +364,9 @@ export async function confirmImportRun(
   // stonden de tien regels er al terwijl de run op 'voorstel' bleef staan — en de
   // gebruiker die nogmaals op Bevestigen klikte kreeg er tien bij. Gemeten: 1 regel na
   // de crash, 2 na de tweede poging. Verdubbelde aantallen zijn wat de klant betaalt.
-  // De idempotentie-poort hierboven (status !== 'voorstel') is dus alleen iets waard als
-  // de vlag valt op het moment dat de regels onomkeerbaar zijn.
+  // De idempotentie-poort is dus alleen iets waard als de vlag valt op het moment dat
+  // de regels onomkeerbaar zijn. De atomaire claim hierboven ('bevestigen_bezig') staat
+  // daar als extra poort vóór: hij wint de race, deze update sluit hem af.
   await db
     .update(importRuns)
     .set({ status: "bevestigd", actor: actor ?? run.actor, updatedAt: new Date() })

@@ -18,6 +18,7 @@ import {
 import {
   archivePriceList,
   extendPriceListValidity,
+  PriceListConflictError,
   replacePriceList,
   upsertPriceLines,
 } from "@/lib/repo/price-archive";
@@ -496,4 +497,100 @@ test("natuurlijke sleutel: zelfde (brand, supplier_article_code) twee keer → g
       supplierArticleCode: "K-40-001",
     }),
   ).rejects.toThrow();
+});
+
+// ── Race (fix 20 aug 2026): twee uploads voor hetzelfde merk tegelijk ─────────
+// PGlite is single-connection; een échte gelijktijdigheidstest kan niet. We testen het
+// contract: de claim is atomair (UPDATE … WHERE replaced_at IS NULL RETURNING), de
+// invariant "hooguit één actieve lijst per merk" is database-afgedwongen
+// (price_lists_brand_active_uniq, 0007), en de verliezer krijgt een nette fout.
+
+test("race-contract: nogmaals replacePriceList laat exact één actieve lijst achter", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Delta Light",
+    name: "Boxy R",
+    price: "150.00",
+  });
+
+  await replacePriceList(db, brandId, {
+    name: "Prijslijst 2027",
+    validFrom: "2027-01-01",
+    validUntil: "2027-12-31",
+  });
+  await replacePriceList(db, brandId, {
+    name: "Prijslijst 2027 v2",
+    validFrom: "2027-01-01",
+    validUntil: "2027-12-31",
+  });
+
+  const actief = (
+    await db.select().from(priceLists).where(eq(priceLists.brandId, brandId))
+  ).filter((l) => l.replacedAt === null);
+  expect(actief).toHaveLength(1);
+  expect(actief[0].name).toBe("Prijslijst 2027 v2");
+});
+
+test("race-contract: de unique index weigert een tweede actieve lijst (INSERT gooit)", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "iGuzzini",
+    name: "Laser Blade",
+    price: "220.00",
+  });
+  // seed heeft al een actieve lijst; een tweede actieve rij moet op de index klappen.
+  // Drizzle wikkelt de databasefout ("Failed query: …") — de echte violation zit in de
+  // cause-keten, dus daar zoeken we hem (zelfde keten die de productiecode afloopt).
+  const err = await db
+    .insert(priceLists)
+    .values({
+      brandId,
+      name: "Sluiproute",
+      validFrom: "2026-01-01",
+      validUntil: "2026-12-31",
+    })
+    .then(
+      () => null,
+      (e: unknown) => e,
+    );
+  expect(err).toBeInstanceOf(Error);
+  const keten: string[] = [];
+  for (let e = err as Error | undefined; e instanceof Error; e = e.cause as Error) {
+    keten.push(`${(e as Error & { code?: string }).code ?? ""} ${e.message}`);
+  }
+  expect(keten.join(" | ")).toMatch(/23505|price_lists_brand_active_uniq/);
+});
+
+test("race-contract: verliezer van de insert-race krijgt PriceListConflictError", async () => {
+  const db = await createTestDb();
+  const { brandId } = await seedBrandProduct(db, {
+    brand: "Modular",
+    name: "Smart lotis",
+    price: "99.00",
+  });
+  // Naboots van de interleaving: de verliezer claimt niets (de winnaar was hem voor),
+  // en op het moment dat hij zijn nieuwe lijst insert bestaat de lijst van de winnaar
+  // al. Single-connection-truc: laat de claim niets vinden door replaced_at te vullen
+  // NADAT de winnaarslijst er al staat — dan is de enige overgebleven stap de insert,
+  // en die klapt op de index… behalve dat de seed-lijst dan de actieve is. Daarom
+  // andersom: we geven de verliezer een db waarvan de claim-update niets teruggeeft.
+  const verliezerDb = new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop === "update") {
+        // claim vindt niets: de winnaar heeft de actieve lijst al gearchiveerd
+        return () => ({
+          set: () => ({ where: () => ({ returning: async () => [] }) }),
+        });
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as typeof db;
+
+  await expect(
+    replacePriceList(verliezerDb, brandId, {
+      name: "Verliezerslijst",
+      validFrom: "2027-01-01",
+      validUntil: "2027-12-31",
+    }),
+  ).rejects.toThrow(PriceListConflictError);
 });

@@ -70,6 +70,29 @@ export async function archivePriceList(
   return { archivedCount: rows.length };
 }
 
+// Twee gelijktijdige uploads voor hetzelfde merk (race-fix 20 aug 2026): de verliezer
+// van de insert-race — de partiële unique price_lists_brand_active_uniq (0007) staat
+// maar één actieve lijst per merk toe — krijgt deze fout, die de action-laag netjes aan
+// de gebruiker kan melden in plaats van een kale unique-violation.
+export class PriceListConflictError extends Error {
+  constructor(brandId: string) {
+    super(
+      `Brand ${brandId} already has an active price list (another upload just finished); retry in a moment`,
+    );
+    this.name = "PriceListConflictError";
+  }
+}
+
+function isActiveListUniqueViolation(err: unknown): boolean {
+  for (let e = err; e instanceof Error; e = e.cause as Error | undefined) {
+    const code = (e as Error & { code?: string }).code;
+    if (code === "23505" || e.message.includes("price_lists_brand_active_uniq")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Nieuwe prijslijst voor een merk: archiveert eerst de actieve lijst (als die er
 // is) en maakt daarna de nieuwe aan. Dé route voor "prijslijst 2027 komt binnen".
 export async function replacePriceList(
@@ -78,25 +101,43 @@ export async function replacePriceList(
   next: { name: string; validFrom: string; validUntil: string },
   actor?: string,
 ): Promise<{ priceListId: string; archivedCount: number }> {
-  const [active] = await db
-    .select()
-    .from(priceLists)
-    .where(and(eq(priceLists.brandId, brandId), isNull(priceLists.replacedAt)));
+  // Atomaire claim i.p.v. lees-dan-schrijf: twee gelijktijdige uploads lazen allebei
+  // dezelfde actieve lijst en archiveerden hem allebei (dubbele archiefrijen). Eén
+  // UPDATE met replaced_at IS NULL in de WHERE is per statement atomair — geen
+  // transactie nodig (db.transaction() gooit op neon-http, zie upsertPriceLines).
+  const claimed = await db
+    .update(priceLists)
+    .set({ replacedAt: new Date() })
+    .where(and(eq(priceLists.brandId, brandId), isNull(priceLists.replacedAt)))
+    .returning({ id: priceLists.id });
 
   let archivedCount = 0;
-  if (active) {
-    ({ archivedCount } = await archivePriceList(db, active.id, actor));
+  for (const { id } of claimed) {
+    // archivePriceList verplaatst de prijsregels en logt price_list_archived; dat hij
+    // replaced_at nogmaals zet is een no-op. Crasht dit ná de claim, dan blijven de
+    // regels in `prices` staan onder een vervangen lijst — archivePriceList(id) opnieuw
+    // draaien ruimt dat op (hij eist geen actieve lijst).
+    ({ archivedCount } = await archivePriceList(db, id, actor));
   }
-  const [created] = await db
-    .insert(priceLists)
-    .values({ brandId, ...next })
-    .returning();
+
+  let created: typeof priceLists.$inferSelect;
+  try {
+    [created] = await db
+      .insert(priceLists)
+      .values({ brandId, ...next })
+      .returning();
+  } catch (err) {
+    // De verliezer van de race: zijn claim vond niets (de winnaar archiveerde al) en
+    // de winnaarslijst bezet de partiële unique. Nette melding i.p.v. een 23505.
+    if (isActiveListUniqueViolation(err)) throw new PriceListConflictError(brandId);
+    throw err;
+  }
   await logEvent(db, {
     entity: "price_list",
     entityId: created.id,
     action: "price_list_created",
     actor,
-    payload: { brandId, replaced: active?.id ?? null },
+    payload: { brandId, replaced: claimed[0]?.id ?? null },
   });
   return { priceListId: created.id, archivedCount };
 }
