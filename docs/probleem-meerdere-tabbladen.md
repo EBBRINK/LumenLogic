@@ -1,0 +1,74 @@
+# Probleem: het tweede tabblad verdwijnt zonder een woord
+
+> Fase 1 van de werkwijze (probleem uitschrijven), 20 aug 2026. Aanleiding: dezelfde
+> armaturenlijst woning Bos als `docs/probleem-bestek-kopwoorden.md`. Vervolg:
+> `docs/goal-meerdere-tabbladen.md`.
+
+## Het probleem in één regel
+
+Een armaturenstaat met twee uitvoeringen naast elkaar — tabblad 1 met Delta Light, tabblad 2
+met Wever & Ducré — importeert alleen het eerste blad, en meldt niet dat het tweede bestaat.
+
+## Wat er nu gebeurt
+
+`lib/table/rows-from-xlsx.ts:39-41` pakt het eerste worksheet met inhoud. De motivering staat
+er expliciet bij: *een armaturenstaat is één tabel, extra tabbladen zijn vrijwel altijd legenda
+of lege sjabloonbladen.* Het clientpad voor bestanden boven 15 MB is nog strikter en neemt
+`wb.worksheets[0]` (`components/dossier/pdf-upload-card.tsx:585`).
+
+Die aanname klopt vaak, maar niet hier. Het Bos-bestand heeft twee tabbladen met dezelfde
+plattegrond en dezelfde ruimtes, maar een andere spot:
+
+| | Tabblad 1 | Tabblad 2 |
+|---|---|---|
+| Spot | Delta Light Spy 39 Trimless 24121 9220 B | Wever & Ducré 18486LQ3 |
+| Aantal | 53 | 49 |
+| Dimming | Dali-dim | Loxone |
+| Bruto materiaal | € 23.413 | € 14.954 |
+
+Het prijsverschil is € 8.459 op één woning. Dat is precies de vraag die de klant gesteld heeft,
+en precies de helft die vandaag stil wegvalt.
+
+## Waarom samenvoegen géén oplossing is
+
+De voor de hand liggende reflex — lees alle tabbladen en plak ze achter elkaar — geeft hier
+102 armaturen waar er 53 hangen. Het zijn geen vervolgbladen maar **alternatieven**: dezelfde
+plafonds, twee merken. Optellen levert een offerte op die twee keer dezelfde ruimte verlicht.
+
+## De diepere beperking
+
+Lumen Logic kent het begrip variant niet. Een dossier draagt één set spec-regels
+(`db/schema.ts:496-550`, `spec_lines.dossier_id`) en `getQuote` pakt hard de oudste offerte met
+`.limit(1)` (`lib/repo/dossiers.ts:651-657`) — één offerte per project, structureel. De versies
+onder `luminaire-schedule/versions` lijken erop maar zijn iets anders: een oplopende
+snapshot-keten van hetzelfde ontwerp op verschillende momenten
+(`lib/repo/armaturenboek-versions.ts:110-122`), met een diff tussen twee tijdstippen. Twee
+uitvoeringen kunnen daar niet naast elkaar bestaan.
+
+"Variant" betekent in deze codebase iets anders: kleurvarianten van één product
+(`lib/repo/variants.ts:40-60`, `docs/goal-variant-ranking.md`).
+
+Dit document lost dat **niet** op — zie `docs/probleem-varianten.md`. Wat hier wél moet
+gebeuren is dat de gebruiker niet langer bedrogen wordt over wat er is geïmporteerd.
+
+## Besloten op 20 aug 2026 (Timo)
+
+**De gebruiker kiest het tabblad.** Bij meer dan één tabblad met herkenbare data toont de
+upload een keuzelijst met per blad de naam en het aantal gevonden regels. Voorkomt
+dubbeltelling, maakt zichtbaar dat er een tweede uitvoering ligt, en is de natuurlijke opstap
+naar echte varianten later.
+
+Twee uitvoeringen naast elkaar zetten blijft voorlopig: twee losse dossiers aanmaken.
+
+## Aandachtspunten voor de planner
+
+- Het aantal regels per tabblad is pas bekend ná parsing. De keuzelijst moet dus elk blad
+  proefdraaien door `parseSpecLinesFromRows`, of op zijn minst door `detectHeader`.
+- Eén tabblad met data → geen keuzescherm, gedrag blijft exact als nu. De keuze mag geen
+  extra klik worden voor de 90% die één blad heeft.
+- Het gechunkte uploadpad (`startTableImportAction` → `uploadSourceChunkAction` →
+  `finishTableImportAction`, `app/projects/actions.ts:629-750`) en het >15 MB-clientpad
+  (`importTabelRowsAction`, `:858`) moeten dezelfde keuze respecteren. Nu lopen ze uiteen:
+  het clientpad kent `worksheets[0]` en zou de keuze stil negeren.
+- Deze klus zit in dezelfde bestanden als `docs/probleem-bestek-kopwoorden.md`. Doe die eerst;
+  zonder werkende koprij-herkenning is "aantal gevonden regels per tabblad" voor elk blad nul.

@@ -2,7 +2,7 @@
 
 **Datum:** 20 aug 2026 · **Status:** spec, wacht op goedkeuring testnaden
 **Probleem:** `docs/probleem-bestek-kopwoorden.md` (gemeten: het Bos-bestand levert 9
-onzinregels in plaats van 41 armaturen). De besluiten van 20 aug staan daar vast en worden
+onzinregels in plaats van 42 dataregels / 86 armaturen). De besluiten van 20 aug staan daar vast en worden
 hier niet heropend; deze spec beslecht alleen de twee open keuzes (tiebreak en drempel).
 
 ---
@@ -17,7 +17,7 @@ hier niet heropend; deze spec beslecht alleen de twee open keuzes (tiebreak en d
 >   treffer exact moet zijn. Akkoord.
 > - **Screenshot-eis:** vervalt voor deze klus. Dit is parser-werk in `lib/table` en er
 >   verandert geen enkele component, dus een screenshot van ongewijzigde UI bewijst niets.
->   De acceptatienaad (geanonimiseerd bestek erdoor → 41 regels) is hier de bewijslast.
+>   De acceptatienaad (geanonimiseerd bestek erdoor → 42 regels) is hier de bewijslast.
 >   Let op: dit is een uitzondering op de staande projecteis in `CLAUDE.md`, uitsluitend
 >   omdat er geen UI in scope zit. `docs/goal-meerdere-tabbladen.md` dékt de screenshot-eis
 >   wél — die bouwt de keuzelijst.
@@ -177,16 +177,52 @@ verbreden dus wél de kolomherkenning van een echte koprij, maar kunnen nooit al
 datarij tot koprij bombarderen. Het bestaande commentaar bij de drempel ("Type komt ook in
 gewone cellen voor") blijft waar en wordt aangevuld met deze regel.
 
-### 4. Dedup-sleutel `fixtureCode + zone`
+### 4. Dedup vervalt op het tabelpad
 
-In `parseSpecLinesFromRows` wordt de `seen`-sleutel `fixtureCode` + een scheidingsteken dat
-niet in celtekst kan voorkomen (`"\u0000"`) + de getrimde zone (lege/ontbrekende zone =
-lege string). Gevolgen, gemeten aan het Bos-bestand: 41 dataregels, 32 unieke codes, en
-alle duplicaten (`Wand` 3×, `Plint` 2×, codes 9/12/19/20/21/32 elk 2×) zitten in
-verschíllende ruimtes → 41 regels blijven staan. Zelfde code in dezélfde zone blijft
-dedupliceren (eerste rij wint), en zonder zone-kolom is het gedrag byte-voor-byte het
-huidige. Buiten scope: de `seen`-set in `parseTocText` (PDF-inhoudsopgave,
-`lib/pdf/armaturenboek.ts`) — daar bestaat geen zone en verandert niets.
+> **Herzien op 20 aug 2026 na hermeting.** De oorspronkelijke keuze — sleutel
+> `fixtureCode + zone` — is doorgerekend op de echte data en haalt de meetlat niet.
+> Timo heeft daarop besloten dat de dedup op dit pad hélemaal vervalt.
+
+De `seen`-set verdwijnt uit `parseSpecLinesFromRows`. Elke dataregel wordt één spec-regel.
+
+Waarom de zone-sleutel niet volstaat, gemeten aan het Bos-bestand (42 dataregels):
+
+| Sleutel | Regels |
+|---|---|
+| `fixtureCode` alleen (huidig) | 31 |
+| `fixtureCode + zone` (rauw) | 36 |
+| `fixtureCode + zone` (doorgevuld) | 35 |
+| `fixtureCode + zone + productText` | 38 |
+| **geen dedup** | **42** |
+
+Twee oorzaken. `Codering` is in een tabelbestek geen sleutel maar een **groeps- of
+positielabel**, en dezelfde ruimtenaam komt op twee verdiepingen voor. Vijf regels sneuvelen
+ook mét zone erbij, en twee daarvan zijn aantoonbaar een ánder armatuur dan hun buurregel:
+
+- rij 37 — code `9`, zone Keuken, product `Decoratief` (buur rij 36 is een Spy 39)
+- rij 57 — code `12`, zone Woonkamer, product `NIME II Trimless` (buur rij 56 is een Spy 39)
+- rij 73 — code `21`, zone Badkamer (buur rij 72, tweede regel in dezelfde ruimte)
+- rij 76 — code `20`, zone Douche (buur rij 32, andere verdieping, zelfde ruimtenaam)
+- rij 83 — code `19`, zone Overloop (buur rij 82, `N.t.b.`)
+
+Die weggooien is precies de fout die deze klus moest repareren.
+
+**Buiten scope en uitdrukkelijk ongewijzigd:** de `seen`-set in `parseTocText`
+(`lib/pdf/armaturenboek.ts`). Dáár komt de regel vandaan — `parse-rows.ts:178` verwijst er
+letterlijk naar — en dáár klopt hij: in een PDF-inhoudsopgave ís een fixture-code een
+sleutel. In een tabel is elke rij per constructie een eigen regel. Zet dat verschil als
+commentaar in de code, zodat niemand de dedup "terugrepareert".
+
+### 4b. Zone doorvullen over lege cellen
+
+`Ruimtenaam` is spaarzaam gevuld: 16 van de 42 rijen hebben een lege cel, omdat het bestek
+een samengevoegde-cel-layout gebruikt en de ruimtenaam alleen op de eerste regel van elke
+ruimte zet. Besluit (Timo, 20 aug): **doorvullen tot de volgende niet-lege ruimtenaam**,
+zoals een mens het bestek leest — de wandlamp op rij 17 hoort bij `Verkeersruimte`. Zonder
+doorvullen mist 40% van de regels zijn zone en zijn de zone-subtotalen in
+`lib/repo/estimate.ts:285-305` onbruikbaar.
+
+Doorvullen geldt alleen voor het veld `zone` en alleen bij een herkende koprij.
 
 ### 5. Testfixture
 
@@ -194,7 +230,8 @@ huidige. Buiten scope: de `seen`-set in `parseTocText` (PDF-inhoudsopgave,
   met exceljs een werkboek met exact de structuur van het Bos-bestand — kopregels
   (`Project:`, `Opdrachtgever:`, `Betreft:`, `Projectnr.:`) met **verzonnen** projectnaam,
   adres en opdrachtgever; de identieke koprij op rij 8; de tussenkopjes `BEGANE GROND`,
-  `VERDIEPING`, `BUITEN` en `Aantallen`; en alle 41 dataregels met de echte coderingen,
+  `VERDIEPING` (rij 60) en `BUITEN` (rij 96); de totaalregel `Aantallen` op rij 102
+  met `Aantal = 86`; en alle 42 dataregels met de echte coderingen,
   zones, aantallen en fabrikant/type-waarden (productdata is geen klantdata). Het script
   ís de anonimisering: reviewbaar in git, en de fixture is reproduceerbaar.
 - Output vastgelegd als `docs/examples/test-armaturenstaat-woning.xlsx` (naast de
@@ -205,16 +242,21 @@ huidige. Buiten scope: de `seen`-set in `parseTocText` (PDF-inhoudsopgave,
 Het geanonimiseerde Bos-bestand, door `rowsFromXlsx → parseSpecLinesFromRows` met de
 merkenlijst:
 
-- **41 spec-regels** (nu: 9, waarvan geen enkele een armatuur is);
+- **42 spec-regels** (nu: 9, waarvan geen enkele een armatuur is);
+- **de som van de aantallen is 86** — het bestek telt dat zelf op in de totaalregel op
+  rij 102, dus dit is een controlegetal uit de bron en geen aanname;
 - koprij herkend op rij 8 van het bestand;
-- élke regel heeft `zone` gevuld uit de kolom **Ruimtenaam** en `fixtureCode` uit
-  **Codering**;
+- élke regel heeft `zone` gevuld uit **Ruimtenaam**, doorgevuld over lege cellen heen
+  (16 van de 42 rijen hebben een lege cel); `fixtureCode` komt uit **Codering** en mag
+  leeg zijn — rij 97 (3× Toldbod) en rij 99 (2× n.t.b.) hebben er geen en tellen wél mee;
+- de totaalregel `Aantallen` (rij 102) levert **géén** spec-regel op;
 - steekproef op de inhoud: de Spy 39-regels tellen samen op tot 53 stuks, en de regels
   voor Heli X (2), NIME II (2), Louis Poulsen Toldbod (3) en CTO Trevi (1) zijn aanwezig
   met merk correct gesplitst uit Fabrikant/type;
 - de volledige bestaande testsuite blijft groen zonder wijziging aan bestaande
-  verwachtingen (de dedup-wijziging raakt geen bestaande test: die dedupliceren zonder
-  zone en dat gedrag is ongewijzigd).
+  verwachtingen. **Let op:** het vervallen van de dedup kán bestaande tests raken die een
+  dubbele code in dezelfde fixture verwachten — loop `parse-rows.test.ts` na en pas de
+  verwachting aan waar het gedrag bewust verandert, in plaats van de dedup terug te zetten.
 
 ## Buiten scope
 
@@ -227,5 +269,5 @@ merkenlijst:
 
 ## Gemeten resultaat (na het bouwen invullen)
 
-- [ ] Meetlat gehaald: … van 41 regels
+- [ ] Meetlat gehaald: … van 42 regels
 - [ ] Niet gehaald / open eindes: …
