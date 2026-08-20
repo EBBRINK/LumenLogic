@@ -764,6 +764,15 @@ export async function finishTableImportAction(input: {
   // `return` binnen een try met een kale `catch` zou als "parse_fout" eindigen.
   let bladRijen = new Map<number, TableRows>();
   let bladen: SheetSummary[] = [];
+  // In de try staat ALLEEN het parsen. De catch eronder logt 'parse_fout', en dat moet
+  // ook waar zijn: het vrije-tekst-pad hieronder doet een AI-leesroute, schrijft regels
+  // weg en eindigt in redirect() — geen van drieën is parsen. Stond het er wél in (tot
+  // 2026-08-20), dan slikte de catch het navigatiesignaal van een GESLAAGDE import op:
+  // redirect() werkt door te gooien (NEXT_REDIRECT-digest), dus een docx zonder tabellen
+  // die netjes was ingelezen kreeg "The file could not be parsed." terug, mét een
+  // misleidend tabel_import_rejected-event. Zelfde foutklasse als de lege catch in
+  // CLAUDE.md, maar dan serverkant.
+  let docxFreeText = "";
   try {
     if (kind === "xlsx") {
       const sheets = await sheetsFromXlsx(file.bytes);
@@ -775,56 +784,7 @@ export async function finishTableImportAction(input: {
     } else {
       const docx = await rowsFromDocx(file.bytes);
       rows = docx.rows;
-      if (rows.length === 0) {
-        // Vrije-tekst-fallback (docx zonder tabellen): het ENIGE AI-pad van de
-        // tabel-import — de rij-variant van de leesroute (LEVER_REGELS_TOOL_RIJEN,
-        // '=== ROW N ==='-markers), georkestreerd in lib/repo/table-freetext.ts.
-        if (docx.freeText.trim() === "") {
-          await reject("docx_leeg");
-          return { error: "This Word document contains no tables and no text." };
-        }
-        if (!envApiKey()) {
-          // Zonder key valt er niets te lezen — eerlijk melden vóór de run wordt
-          // afgerond; de upload blijft staan en kan later opnieuw worden afgerond.
-          await reject("docx_zonder_tabellen_geen_key");
-          return {
-            error:
-              "This Word document contains no tables, and reading free-running text needs an AI key. Paste the rows as CSV instead.",
-          };
-        }
-        const brandNames = (
-          await db.select({ name: brands.name }).from(brands)
-        ).map((b) => b.name);
-        const vrij = await recordDocxFreeTextImport(db, {
-          dossierId,
-          runId,
-          filename: file.filename,
-          freeText: docx.freeText,
-          brandNames,
-          actor,
-        });
-        await logEvent(db, {
-          entity: "import_run",
-          entityId: runId,
-          action: "source_file_stored",
-          actor,
-          payload: {
-            filename: file.filename,
-            mime: file.mime,
-            size: file.bytes.length,
-            chunks: file.chunks,
-            kind: "docx_vrije_tekst",
-            rows: vrij.created.length,
-            batches: vrij.batches,
-            costEur: Number(vrij.costEur.toFixed(4)),
-            ...(vrij.gestopt ? { gestopt: vrij.gestopt } : {}),
-          },
-        });
-        revalidatePath(`/projects/${dossierId}`);
-        redirect(
-          `/projects/${dossierId}?tabel=${vrij.created.length}&run=${runId}`,
-        );
-      }
+      docxFreeText = docx.freeText;
     }
   } catch {
     await reject("parse_fout", { kind });
@@ -881,6 +841,57 @@ export async function finishTableImportAction(input: {
     if (blad) {
       gekozenBlad = { index: blad.index, name: blad.name, lines: blad.lines };
     }
+  }
+
+  if (kind === "docx" && rows.length === 0) {
+    // Vrije-tekst-fallback (docx zonder tabellen): het ENIGE AI-pad van de
+    // tabel-import — de rij-variant van de leesroute (LEVER_REGELS_TOOL_RIJEN,
+    // '=== ROW N ==='-markers), georkestreerd in lib/repo/table-freetext.ts.
+    if (docxFreeText.trim() === "") {
+      await reject("docx_leeg");
+      return { error: "This Word document contains no tables and no text." };
+    }
+    if (!envApiKey()) {
+      // Zonder key valt er niets te lezen — eerlijk melden vóór de run wordt
+      // afgerond; de upload blijft staan en kan later opnieuw worden afgerond.
+      await reject("docx_zonder_tabellen_geen_key");
+      return {
+        error:
+          "This Word document contains no tables, and reading free-running text needs an AI key. Paste the rows as CSV instead.",
+      };
+    }
+    const brandNames = (
+      await db.select({ name: brands.name }).from(brands)
+    ).map((b) => b.name);
+    const vrij = await recordDocxFreeTextImport(db, {
+      dossierId,
+      runId,
+      filename: file.filename,
+      freeText: docxFreeText,
+      brandNames,
+      actor,
+    });
+    await logEvent(db, {
+      entity: "import_run",
+      entityId: runId,
+      action: "source_file_stored",
+      actor,
+      payload: {
+        filename: file.filename,
+        mime: file.mime,
+        size: file.bytes.length,
+        chunks: file.chunks,
+        kind: "docx_vrije_tekst",
+        rows: vrij.created.length,
+        batches: vrij.batches,
+        costEur: Number(vrij.costEur.toFixed(4)),
+        ...(vrij.gestopt ? { gestopt: vrij.gestopt } : {}),
+      },
+    });
+    revalidatePath(`/projects/${dossierId}`);
+    redirect(
+      `/projects/${dossierId}?tabel=${vrij.created.length}&run=${runId}`,
+    );
   }
 
   const brandNames = (await db.select({ name: brands.name }).from(brands)).map(
