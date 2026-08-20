@@ -44,6 +44,7 @@ const HEADER_KEYS: [string, ColumnField][] = [
   ["lichtcode", "fixtureCode"],
   ["fixture", "fixtureCode"],
   ["fixturecode", "fixtureCode"],
+  ["codering", "fixtureCode"],
   ["aantal", "quantity"],
   ["stuks", "quantity"],
   ["qty", "quantity"],
@@ -59,8 +60,14 @@ const HEADER_KEYS: [string, ColumnField][] = [
   ["product", "productText"],
   ["description", "productText"],
   ["armatuurtype", "productText"],
+  // gecombineerde merk+type-kolom uit Nederlandse bestekken: splitBrandType haalt
+  // het merk er per regel uit, precies zoals het PDF-pad dat doet
+  ["fabrikanttype", "productText"],
+  ["fabricaattype", "productText"],
+  ["merktype", "productText"],
   ["zone", "zone"],
   ["ruimte", "zone"],
+  ["ruimtenaam", "zone"],
   ["room", "zone"],
   ["locatie", "zone"],
   ["location", "zone"],
@@ -88,32 +95,75 @@ const HEADER_MAP = new Map(HEADER_KEYS);
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Hoeveel cellen van deze rij een bekend kopwoord zijn.
-function headerHits(row: string[]): Map<number, ColumnField> {
+// Welke sleutels ook als DEELWOORD mogen binden, langste eerst. Twee begrenzingen,
+// allebei bewust (goal-bestek-kopwoorden):
+//   • PREFIX, geen substring — substring maakt korte sleutels giftig ("opdracht"
+//     bevat "ra", "principe" bevat "ip"). Prijs: een kop "Naam ruimte" bindt niet;
+//     daarvoor is de woordenlijst hierboven de route.
+//   • MINIMAAL 4 TEKENS — "ip", "ra", "cri", "cct", "qty" en "sku" doen alleen exact
+//     mee. De kortste deelwoord-sleutels zijn "code", "type", "zone", "merk", "room".
+const PREFIX_MIN_LEN = 4;
+const PREFIX_KEYS = HEADER_KEYS.filter(([k]) => k.length >= PREFIX_MIN_LEN).sort(
+  (a, b) => b[0].length - a[0].length,
+);
+
+// Welke cellen van deze rij een kopwoord dragen, plus hoeveel daarvan EXACT waren.
+// Dat onderscheid draagt de drempel in detectHeader: een deelwoord mag een echte
+// koprij verbreden, maar nooit in zijn eentje een datarij tot koprij uitroepen.
+function headerHits(row: string[]): {
+  hits: Map<number, ColumnField>;
+  exact: number;
+} {
   const hits = new Map<number, ColumnField>();
   const taken = new Set<ColumnField>();
-  row.forEach((cell, i) => {
-    const field = HEADER_MAP.get(norm(cell));
-    // eerste kolom met een kopwoord wint ("Type" naast "Type opmerking")
+  const cells = row.map(norm);
+  let exact = 0;
+
+  // Pass 1 — exact. Eerste kolom met een kopwoord wint ("Type" naast "Type opmerking").
+  cells.forEach((cell, i) => {
+    const field = HEADER_MAP.get(cell);
     if (field && !taken.has(field)) {
       hits.set(i, field);
       taken.add(field);
+      exact++;
     }
   });
-  return hits;
+
+  // Pass 2 — deelwoord, uitsluitend op velden die pass 1 niet claimde en cellen die
+  // pass 1 niet bond. Dát is de tiebreak: "Ruimtenr." in kolom A is een treffer op
+  // "ruimte", maar zone hangt dan al aan "Ruimtenaam" in kolom B en de treffer valt
+  // dood — deterministisch, zonder negeerlijst.
+  //
+  // Binnen één cel wint de langste sleutel ONDER DE NOG VRIJE VELDEN (PREFIX_KEYS is
+  // op lengte gesorteerd, de find pakt dus de langste die past). Is het veld van de
+  // langste treffer al bezet, dan bindt de eerstvolgende kortere die nog vrij is:
+  // "Fabrikanttype-aanduiding" náást een "Fabrikant/type"-kolom bindt brandText, want
+  // productText hangt dan al aan de buurkolom. Per veld wint de eerste kolom.
+  cells.forEach((cell, i) => {
+    if (hits.has(i)) return;
+    const hit = PREFIX_KEYS.find(([k, f]) => !taken.has(f) && cell.startsWith(k));
+    if (!hit) return;
+    hits.set(i, hit[1]);
+    taken.add(hit[1]);
+  });
+
+  return { hits, exact };
 }
 
-// Koprij-detectie: de eerste rij binnen de eerste 10 met ≥ 2 herkende kopwoorden.
-// Eén treffer is te dun ("Type" komt ook in gewone cellen voor); twee betekent dat
-// de rij als geheel een kop is. Geen koprij gevonden → positioneel (CSV-plak-vorm).
+// Koprij-detectie: de eerste rij binnen de eerste 10 met ≥ 2 herkende kopwoorden,
+// waarvan minstens één EXACT. Eén treffer is te dun ("Type" komt ook in gewone cellen
+// voor); twee betekent dat de rij als geheel een kop is. De exacte-eis sluit het gat
+// dat deelwoorden anders openen: een datarij als ["Code 12","2","XAL","Type A"] haalt
+// twee deelwoord-treffers en zou zichzelf tot koprij bombarderen, waarna alles erboven
+// wegvalt. Geen koprij gevonden → positioneel (CSV-plak-vorm).
 const HEADER_SCAN_ROWS = 10;
 export function detectHeader(rows: TableRows): {
   headerRow: number | null;
   columns: Map<number, ColumnField>;
 } {
   for (let r = 0; r < Math.min(rows.length, HEADER_SCAN_ROWS); r++) {
-    const hits = headerHits(rows[r]);
-    if (hits.size >= 2) return { headerRow: r, columns: hits };
+    const { hits, exact } = headerHits(rows[r]);
+    if (hits.size >= 2 && exact >= 1) return { headerRow: r, columns: hits };
   }
   return { headerRow: null, columns: new Map() };
 }
@@ -153,8 +203,14 @@ export function parseSpecLinesFromRows(
   brandNames: string[],
 ): ParseRowsResult {
   const { headerRow, columns } = detectHeader(rows);
+  // Twee leesstrategieën, één keer benoemd: mét koprij weten we waar de kolommen
+  // staan, positioneel gokken we op de CSV-plak-volgorde. Drie regels hieronder
+  // hangen van dat onderscheid af (zone doorvullen, lege codering, dedup).
+  const positional = headerRow == null;
   const lines: SpecLineInput[] = [];
   const seen = new Set<string>();
+  // Laatst gelezen ruimtenaam, voor de samengevoegde-cel-layout hieronder.
+  let zoneCarry: string | null = null;
 
   for (let r = 0; r < rows.length; r++) {
     if (headerRow != null && r <= headerRow) continue; // kop + alles erboven is geen data
@@ -162,7 +218,7 @@ export function parseSpecLinesFromRows(
     if (row.every((c) => c.length === 0)) continue;
 
     const cell = (field: ColumnField): string | undefined => {
-      if (headerRow != null) {
+      if (!positional) {
         for (const [i, f] of columns) if (f === field) return row[i];
         return undefined;
       }
@@ -170,16 +226,48 @@ export function parseSpecLinesFromRows(
       return i >= 0 ? row[i] : undefined;
     };
 
+    // Ruimtenaam vult DOOR over lege cellen heen. Een armaturenstaat is een
+    // samengevoegde-cel-layout: de ruimte staat alleen op de eerste regel en geldt tot
+    // de volgende — precies zoals een mens de kolom leest. Zonder dit hield de
+    // armaturenstaat van een woning 16 van de 42 regels zonder zone en viel alles in
+    // één naamloze groep bij de zone-subtotalen (lib/repo/estimate.ts). Het doorvullen
+    // staat vóór de fixtureCode-controle, zodat ook een rij zonder armatuur de
+    // ruimtenaam kan zetten. Tussenkopjes ("VERDIEPING") staan in een andere kolom en
+    // lekken dus niet. Alleen bij een herkende koprij: positioneel is er geen
+    // zone-kolom, en dan mag er ook niets doorgevuld worden.
+    const zoneCell = positional ? undefined : cell("zone")?.trim();
+    if (zoneCell) zoneCarry = zoneCell;
+
     const fixtureCode = (cell("fixtureCode") ?? "").trim();
-    if (!fixtureCode) continue;
+    const productCell = cell("productText")?.trim() || null;
+    // Een rij ZONDER codering. Positioneel is een lege code het enige signaal dat een
+    // rij geen data is (meegeplakte rommel boven een CSV-plak) — daar blijft de guard
+    // dus staan. Mét koprij weten we wél waar de kolommen staan: een rij met een
+    // product maar zonder codering is gewoon een armatuur waarvoor de bestekschrijver
+    // geen positiecode had. In de armaturenstaat van een woning zijn dat rij 97 (3x
+    // Toldbod) en rij 99, samen 5 van de 86 stuks. Een rij die álleen een getal draagt
+    // is dat níet: de totaalregel "Aantallen = 86" onderaan het bestek heeft geen
+    // product en hoort geen spec-regel te worden.
+    if (!fixtureCode && (positional || !productCell)) continue;
     // positioneel pad: een meegeplakte kolomkop is geen spec-regel (parseSpecCsv-regel)
-    if (headerRow == null && /^(code|armatuurcode)$/i.test(fixtureCode)) continue;
-    // dubbele code in hetzelfde bestand: eerste rij wint (zelfde regel als parseTocText)
-    if (seen.has(fixtureCode)) continue;
-    seen.add(fixtureCode);
+    if (positional && /^(code|armatuurcode)$/i.test(fixtureCode)) continue;
+    // Dubbele code: alleen op het POSITIONELE pad wint de eerste rij. Dáár is een
+    // dubbele code hetzelfde signaal als in parseTocText (lib/pdf/armaturenboek.ts:110)
+    // — een armatuurcode ÍS een sleutel zodra er geen kolomstructuur is om op te
+    // vertrouwen, en de bestaande CSV-plak-test pint dat vast. (parseSpecCsv zelf
+    // dedupt níet; die leest een blok dat de gebruiker net zelf geplakt heeft.)
+    // Mét koprij vervalt de dedup: in een tabelbestek is "Codering" een groeps- of
+    // positielabel dat bewust herhaald wordt, en is elke rij per constructie een eigen
+    // regel. Gemeten op de armaturenstaat van een woning: dedup op code gooide 9 van de
+    // 42 regels weg, waaronder twee rijen die een ánder armatuur met dezelfde codering
+    // droegen (goal-bestek-kopwoorden, besloten 20 aug).
+    if (positional) {
+      if (seen.has(fixtureCode)) continue;
+      seen.add(fixtureCode);
+    }
 
     let brandText = cell("brandText")?.trim() || null;
-    let productText = cell("productText")?.trim() || null;
+    let productText = productCell;
     // Geen merk-kolom (of leeg) maar wél een omschrijving → zelfde merk-herkenning
     // als het PDF-pad. De woorden vóór de merknaam (zaalnamen) vallen daar bewust weg.
     if (!brandText && productText) {
@@ -198,7 +286,7 @@ export function parseSpecLinesFromRows(
     lines.push({
       fixtureCode,
       quantity: quantity ?? 1, // tabel zonder aantallen → default 1 (zoals de TOC)
-      zone: cell("zone")?.trim() || null,
+      zone: zoneCarry,
       brandText,
       productText,
       reqArticleCode: cell("reqArticleCode")?.trim() || null,

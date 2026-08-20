@@ -267,7 +267,44 @@ merkenlijst:
 - Geen melding richting gebruiker over gededupliceerde rijen — dat is
   `docs/probleem-liegende-import-melding.md`-terrein en na deze fix vrijwel leeg.
 
-## Gemeten resultaat (na het bouwen invullen)
+## Gemeten resultaat (20 aug 2026, gebouwd)
 
-- [ ] Meetlat gehaald: … van 42 regels
-- [ ] Niet gehaald / open eindes: …
+- [x] **Meetlat gehaald: 42 van 42 regels, som 86 van 86.** Gemeten door het echte pad
+  (`rowsFromXlsx → parseSpecLinesFromRows`) op `docs/examples/test-armaturenstaat-woning.xlsx`,
+  vastgelegd in `lib/table/armaturenstaat-acceptatie.test.ts` (7 tests). Koprij op rij 8,
+  40 regels met codering waarvan 31 uniek, 2 regels zonder codering (rij 97 en 99), zone
+  gevuld op alle 42, en de merktotalen 53 / 2 / 2 / 3 / 1 kloppen stuk voor stuk. De
+  totaalregel op rij 102 wordt niet meegeteld.
+- [x] Unit-naad uitgebreid in `lib/table/parse-rows.test.ts`: Bos-koprij, tiebreak
+  (Ruimtenaam wint van Ruimtenr.), Fabrikant/type-splitsing, deelwoord-pass (prefix,
+  langste sleutel, sleutels < 4 tekens uitgesloten), de exacte-treffer-drempel, het
+  vervallen van de dedup, en het doorvullen van de zone. Alle bestaande tests bleven
+  ongewijzigd groen — óók de positionele "dubbel → eerste rij wint", want daar blijft
+  de dedup staan.
+- [x] Volledige suite groen (2334 tests). Twee tests vielen om in de volle run
+  (`components/activate`, `components/data/custom-fields`) en zijn in isolatie groen; dat
+  is de bekende flakiness onder belasting, niet deze wijziging — een eerdere run gaf vier
+  ándere failures, allemaal buiten `lib/table`.
+
+### Twee afwijkingen van de spec, bewust
+
+**1. De totaalregel telt niet mee.**
+
+Besluit 2b staat in het probleemdocument als "blijft een spec-regel zolang er een aantal
+**of** een product staat". Letterlijk gebouwd haalt dat 43 regels in plaats van 42: de
+totaalregel op rij 102 heeft namelijk wél een aantal (86) en géén product, en zou dan als
+armatuur van 86 stuks geïmporteerd worden. Gebouwd is daarom de enige lezing die de
+meetlat haalt: **een rij zonder codering is een spec-regel als er een product staat.**
+Alleen-een-getal is geen armatuur. Zie de test "het bestek telt zichzelf op 86".
+
+**2. De dedup vervalt niet overal.** Het ontwerp hierboven zegt "de `seen`-set verdwijnt uit
+`parseSpecLinesFromRows`". Gebouwd is: de dedup vervalt zodra er een koprij herkend is, en
+blijft staan op het positionele pad. Dat is de expliciete keuze van Timo in de bouwsessie,
+en er is een reden voor: zonder koprij is er geen kolomstructuur om op te vertrouwen, en dan
+ís een dubbele code hetzelfde signaal als in `parseTocText`. De bestaande test "zonder
+koprij: positioneel — dubbel, eerste rij wint" bleef daardoor ongewijzigd groen, precies
+zoals de spec dat voor bestaande tests eiste.
+
+De acceptatienaad staat als `tests/acceptatie-bestek-kopwoorden.test.ts` bij de twee
+bestaande acceptatietests, niet in `lib/table/` — dat is wat naad 2 met "naast de bestaande
+acceptatietests" bedoelde.

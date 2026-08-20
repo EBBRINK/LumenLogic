@@ -317,6 +317,56 @@ merkloze regels, semantiek-besluit voor Timo); (4) de mail als aantallen-bron be
 nergens in het ontwerp. **Er is niets gedeployed naar productie** — alle wijzigingen staan
 op main (preview); migraties 0010–0012 zijn additief toegepast op de gedeelde Neon-DB._
 
+## Bestek-kopwoorden — een echt bestek levert 42 regels in plaats van 9 — 20 aug 2026
+
+`docs/goal-bestek-kopwoorden.md` gebouwd op branch `claude/gallant-curie-ea62ad`. De
+armaturenstaat van een woning leverde 9 onzinregels op; nu 42 spec-regels met som 86, en
+dat laatste is een controlegetal uit de bron (het bestek telt zichzelf op rij 102 op als
+`Aantallen = 86`). Wijzigingen zitten uitsluitend in `lib/table/parse-rows.ts`.
+
+**Twee aannames uit de spec zijn onderweg gesneuveld en zijn hermeten.** De meetlat stond
+eerst op 41, daarna op 40 en uiteindelijk op 42 regels; de goedgekeurde dedup-sleutel
+`fixtureCode + zone` haalde er maar 35 à 36. Het controlegetal 86 is wat de derde meting
+verifieerbaar maakte — gebruik hem bij elke volgende wijziging aan dit pad.
+
+**Eén afwijking van de letterlijke spec, bewust.** Besluit 2b in het probleemdocument zei
+"een aantal **of** een product". Zo gebouwd wordt de totaalregel op rij 102 (aantal 86,
+geen product) een 43e armatuur en verdubbelt de som naar 172. Gebouwd is: een rij zonder
+codering is een spec-regel als er een **product** staat. Alleen-een-getal is geen armatuur.
+
+**Tweede afwijking: de dedup is niet overal vervallen.** De spec schreef "de `seen`-set
+verdwijnt uit `parseSpecLinesFromRows`"; Timo koos in de bouwsessie expliciet voor "geen
+dedup zodra er een koprij is", waarbij het positionele CSV-plak-pad zijn dedup houdt. Daar
+is een dubbele code hetzelfde signaal als in `parseTocText`, en de bestaande test
+"dubbel — eerste rij wint" bleef daardoor ongewijzigd groen.
+
+### ⚠ Open eind: twee spec-regels zonder fixtureCode
+
+De twee regels zonder codering (rij 97 en 99) krijgen `fixtureCode: ""`. De import schrijft
+die via `recordTableImport` de repo in, maar de rest van de app gaat uit van een gevulde
+code:
+
+- `app/projects/actions.ts:153` — `specLineFieldsSchema` eist `fixtureCode: zTrimmed.min(1)`,
+  met het commentaar "Alles optioneel behalve de fixtureCode". Een gebruiker kan zo'n regel
+  dus **niet opslaan** in de regeleditor zonder zelf een code te verzinnen
+  (`app/projects/[id]/line/[lineId]/page.tsx:216`, `required`).
+- `lib/pdf/estimate.ts:373` — de p.m.-sectie drukt `${line.fixtureCode} — ${label}` af, dus
+  een lege code landt als `" — label"` op een KLANTDOCUMENT.
+
+Beide vallen buiten de scope van deze spec (geen UI-wijziging, geen wijziging aan de
+estimate). Kies bij de volgende ronde één kant: het schema versoepelen (`fixtureCode` mag
+leeg) óf de import een expliciete plaatsvervanger laten zetten. Niet laten hangen — het
+raakt een klantdocument, en dat is precies waar `docs/INVOERVALIDATIE.md` de repo-laag ook
+verantwoordelijk maakt.
+
+### Niet gedaan, bewust
+
+- `fixtureCode` blijft `string`, niet `string | null`. Dat is de eerlijkere modellering van
+  "geen positiecode", maar het raakt `db/schema.ts` (`notNull`), de matcher en de estimate;
+  te breed voor deze klus.
+- Screenshots overgeslagen — parser-only, geen component in scope. Timo heeft die
+  uitzondering expliciet goedgekeurd; `docs/goal-meerdere-tabbladen.md` dekt de eis wél.
+
 ## Ijzeren regel 3 herschreven — vervallen producten zichtbaar + driver-waarschuwing — 19 aug 2026
 
 Besloten in de demosessie met Brink Licht van 12 aug, door Timo bevestigd op 19 aug.
