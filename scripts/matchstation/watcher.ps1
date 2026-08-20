@@ -140,13 +140,20 @@ function Invoke-Sessie([string]$DossierDir) {
   if (-not $p.WaitForExit($timeoutMs)) {
     Write-Log "Sessie-timeout na $SessionTimeoutMinutes min — proces $($p.Id) wordt beëindigd."
     & taskkill /PID $p.Id /T /F 2>$null | Out-Null
-    # taskkill /T mist claude-subprocessen die zich uit de boom losmaken (gemeten
-    # 20 aug: tien wezen na twee timeouts). Ruim alles op dat 'claude' heet en ná de
-    # start van deze poging is begonnen — de interactieve desktop-app heet anders en
-    # draait al langer, die blijft buiten schot.
-    Get-Process -Name "claude" -ErrorAction SilentlyContinue |
-      Where-Object { $_.StartTime -ge $sessieStart } |
-      ForEach-Object { & taskkill /PID $_.Id /T /F 2>$null | Out-Null }
+    # Vangnet voor sessieprocessen die zich aan taskkill /T onttrekken. NIET op
+    # procesnaam of pad filteren: de desktop-app én een interactieve Claude Code-
+    # sessie heten óók claude.exe en draaien uit dezelfde versiemap (correctie
+    # 20 aug — een naam-filter had de desktop-app gekilld). De allowlist-string is
+    # uniek voor de headless matchsessie, dus dáárop matchen; try/catch omdat een
+    # Access Denied de hoofdlus ($ErrorActionPreference=Stop) niet mag breken.
+    try {
+      $wezen = @(Get-CimInstance Win32_Process -Filter "Name = 'claude.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -like '*Bash(psql:*' -and $_.CreationDate -ge $sessieStart })
+      if ($wezen.Count) { Write-Log "Wees-opruiming na timeout: $($wezen.Count) proces(sen)." }
+      foreach ($w in $wezen) { & taskkill /PID $w.ProcessId /T /F 2>$null | Out-Null }
+    } catch {
+      Write-Log "Wees-opruiming overgeslagen: $($_.Exception.Message)"
+    }
     return $false
   }
   if ($p.ExitCode -ne 0) {
