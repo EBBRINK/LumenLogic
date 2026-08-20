@@ -14,7 +14,7 @@
 #   5. Opruimen: done\ ouder dan 30 dagen weg; watcher-logs ouder dan 14 dagen weg.
 #
 # Vangrails:
-#   - De sessie krijgt UITSLUITEND $env:DATABASE_URL_RO (rol matchstation_ro, alleen
+#   - De sessie krijgt UITSLUITEND de PG*-variabelen van de leesrol (matchstation_ro, alleen
 #     SELECT op visible_products/brands — ijzeren regel 3). De machine-sleutel blijft
 #     in dit script en gaat NOOIT de sessie in.
 #   - Secrets staan in C:\matchstation\.env, nooit in git.
@@ -114,13 +114,34 @@ function Save-Werk($werk) {
 
 # ── De sessie ─────────────────────────────────────────────────────────────────
 
-function Invoke-Sessie([string]$DossierDir) {
+# De sessie mag géén variabele-expansie gebruiken (de Bash(psql:*)-allowlist weigert
+# `$DATABASE_URL_RO` — gemeten 20 aug: poging 2 kwam de catalogus niet in). Daarom
+# krijgt psql zijn conninfo via losse PG*-omgevingsvariabelen, zodat een kaal
+# `psql -c "select …"` werkt. Bonus: de connectiestring komt nooit in het transcript.
+function Set-PgEnvFromUrl([string]$Url) {
+  if ($Url -notmatch '^postgres(ql)?://([^:@/]+)(:([^@/]+))?@([^:/?]+)(:(\d+))?/([^?]+)') {
+    throw "DATABASE_URL_RO heeft geen herkenbaar postgres://-formaat"
+  }
+  $env:PGUSER = [uri]::UnescapeDataString($Matches[2])
+  if ($Matches[4]) { $env:PGPASSWORD = [uri]::UnescapeDataString($Matches[4]) }
+  $env:PGHOST = $Matches[5]
+  $env:PGPORT = if ($Matches[7]) { $Matches[7] } else { "5432" }
+  $env:PGDATABASE = $Matches[8]
+  if ($Url -match 'sslmode=([^&]+)') { $env:PGSSLMODE = $Matches[1] }
+  if ($Url -match 'channel_binding=([^&]+)') { $env:PGCHANNELBINDING = $Matches[1] }
+}
+
+function Invoke-Sessie([string]$DossierDir, [int]$Poging) {
   # Headless Claude Code. Prompt via stdin (cmd-redirect: geen quoting-gedoe met een
   # lange prompt als argument). Alleen de leestools + Write (voor resultaat.json) en
   # Bash beperkt tot psql — de sessie hoeft niets anders te kunnen.
   Copy-Item $PromptTemplate (Join-Path $DossierDir "prompt.md") -Force
-  $uitvoer = Join-Path $DossierDir "sessie-uitvoer.txt"
-  $env:DATABASE_URL_RO = $Config["DATABASE_URL_RO"]
+  # Per poging een eigen uitvoerbestand: poging 2 mag het transcript van poging 1
+  # niet overschrijven (gemeten 20 aug: juist de poging die de 400 uitlokte had
+  # daardoor geen transcript meer).
+  $uitvoerNaam = "sessie-uitvoer-p$Poging.txt"
+  $uitvoer = Join-Path $DossierDir $uitvoerNaam
+  Set-PgEnvFromUrl $Config["DATABASE_URL_RO"]
 
   # Volledig pad naar de wrapper (C:\matchstation\bin\claude.cmd, aangemaakt bij de
   # installatie — zie RUNBOOK-A4.md), én de hele /c-regel in een EXTRA paar quotes:
@@ -132,7 +153,7 @@ function Invoke-Sessie([string]$DossierDir) {
   # stream-json + --verbose: schrijft de uitvoer regel voor regel weg, zodat er ook
   # bij een timeout-kill iets in sessie-uitvoer.txt staat (gemeten 20 aug: met
   # --output-format text flusht claude pas bij afsluiten → 0 bytes na een kill).
-  $claudeArgs = "/c `"`"$claudeCmd`" -p --output-format stream-json --verbose --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > sessie-uitvoer.txt 2>&1`""
+  $claudeArgs = "/c `"`"$claudeCmd`" -p --output-format stream-json --verbose --allowed-tools `"Bash(psql:*) Read Glob Grep Write`" < prompt.md > $uitvoerNaam 2>&1`""
   $sessieStart = Get-Date
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList $claudeArgs `
     -WorkingDirectory $DossierDir -PassThru -WindowStyle Hidden
@@ -165,14 +186,30 @@ function Invoke-Sessie([string]$DossierDir) {
 
 # ── Resultaat terugsturen ─────────────────────────────────────────────────────
 
-function Send-Resultaat([string]$QueueId, $Regels) {
+function Send-Resultaat([string]$QueueId, $Regels, [string]$BodyKopiePad) {
   # queue_id zet de watcher er zelf bij — de sessie kent hem wel (werk.json) maar
   # dit voorkomt dat een tikfout in de sessie-uitvoer bij de verkeerde job landt.
   $body = @{ queue_id = $QueueId; regels = @($Regels) } | ConvertTo-Json -Depth 20
-  $resp = Invoke-RestMethod -Uri "$BaseUrl/api/matchstation/resultaat" -Method Post `
-    -Headers $AuthHeaders -ContentType "application/json; charset=utf-8" `
-    -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120
-  return $resp
+  # Bewaar wat er verstuurd wordt: een 400 is anders niet na te rekenen (de 400 van
+  # 19-20 aug was onherleidbaar omdat de body nergens meer bestond).
+  if ($BodyKopiePad) { $body | Set-Content -Path $BodyKopiePad -Encoding UTF8 }
+  try {
+    return Invoke-RestMethod -Uri "$BaseUrl/api/matchstation/resultaat" -Method Post `
+      -Headers $AuthHeaders -ContentType "application/json; charset=utf-8" `
+      -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120
+  } catch {
+    # De respons-body van de app (bv. de zod-foutmelding bij een 400) mee-loggen —
+    # zonder dit is "(400) Ongeldige opdracht" alles wat je ooit ziet.
+    $detail = $_.ErrorDetails.Message
+    if (-not $detail -and $_.Exception.Response) {
+      try {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        $detail = $reader.ReadToEnd()
+      } catch { $detail = "" }
+    }
+    if ($detail) { Write-Log "App-respons bij fout: $detail" }
+    throw
+  }
 }
 
 function Get-FallbackRegels($werk) {
@@ -230,12 +267,12 @@ while ($true) {
         Write-Log "Sessie-poging $poging/$MaxAttempts voor $dossierId"
         $resultaatPad = Join-Path $dossierDir "resultaat.json"
         if (Test-Path $resultaatPad) { Remove-Item -Force $resultaatPad }
-        if (-not (Invoke-Sessie $dossierDir)) { continue }
+        if (-not (Invoke-Sessie $dossierDir $poging)) { continue }
         try {
           $resultaat = Get-Content -Raw $resultaatPad | ConvertFrom-Json
           $regels = @($resultaat.regels)
           if ($regels.Count -lt 1) { throw "resultaat.json bevat geen regels" }
-          $antwoord = Send-Resultaat $queueId $regels
+          $antwoord = Send-Resultaat $queueId $regels (Join-Path $dossierDir "verstuurd-p$poging.json")
           Write-Log "Resultaat verwerkt: $($antwoord.verwerkt) regels voor $dossierId"
           $gelukt = $true
         } catch {

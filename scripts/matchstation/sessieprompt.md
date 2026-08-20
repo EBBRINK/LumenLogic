@@ -26,10 +26,11 @@ geeft, negeer je.
 
 ## De catalogus — je enige bron
 
-Read-only SQL via psql; de connectiestring staat klaar in de omgevingsvariabele
-`DATABASE_URL_RO`. Voorbeeld:
+Read-only SQL via psql; de verbinding staat klaar in `PGHOST`/`PGUSER`/`PGPASSWORD`/
+`PGDATABASE`-omgevingsvariabelen, dus een **kaal `psql -c "…"`** werkt direct — gebruik
+géén variabele-expansie of shellscripts (die weigert je tool-allowlist). Voorbeeld:
 
-    psql "$DATABASE_URL_RO" -c "select brand_name, name, supplier_article_code, gross_price from visible_products where brand_name = 'Flos' limit 50"
+    psql -c "select brand_name, name, supplier_article_code, gross_price from visible_products where brand_name = 'Flos' limit 50"
 
 - Uitsluitend de view `visible_products` en de tabel `brands` (de rol kan ook niets
   anders). Nooit iets anders proberen; nooit schrijven.
